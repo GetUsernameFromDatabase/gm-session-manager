@@ -1,0 +1,65 @@
+.env
+/data/
+*.exe
+# Downloaded by `go run ./cmd/vendorjs`
+/web/assets/vendor/
+
+### AI agent, Claude
+# Personal Claude Code settings and backups
+/.claude/settings.local.json
+/.claude/**/*.bak
+/.claude/**/*-bak
+## graphify -- https://github.com/Graphify-Labs/graphify
+# https://docs.graphify.com/guides/team-workflows#repository-workflow
+# https://github.com/orgs/Graphify-Labs/discussions/426
+/graphify-out/*
+!/graphify-out/graph.json
+!/graphify-out/GRAPH_REPORT.md
+!/graphify-out/graph.html
+
+# Created by https://www.toptal.com/developers/gitignore/api/go,visualstudiocode
+# Edit at https://www.toptal.com/developers/gitignore?templates=go,visualstudiocode
+
+### Go ###
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+
+### VisualStudioCode ###
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix
+
+### VisualStudioCode Patch ###
+# Ignore all local history of files
+.history
+.ionide
+
+# End of https://www.toptal.com/developers/gitignore/api/go,visualstudiocode

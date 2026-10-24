@@ -1,0 +1,502 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/db/sqlc"
+	"gm-session-manager/web/components/badge"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/checkbox"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/label"
+	selectcomp "gm-session-manager/web/components/select"
+	"slices"
+	"strings"
+)
+
+// Form fields of the import review.
+const (
+	ImportColName        = "col_name"
+	ImportColLink        = "col_link"
+	ImportColCategory    = "col_category"
+	ImportColDescription = "col_description"
+	ImportCatSource      = "cat_source"
+	ImportCatTarget      = "cat_target"
+	// ImportRowsField holds the ticked rows, encoded by app.js (see
+	// parseRowSet). Its presence marks a reviewed form.
+	ImportRowsField      = "rows"
+	ImportFilterQ        = "filter_q"
+	ImportFilterCategory = "filter_category"
+	ImportFilterStatus   = "filter_status"
+	ImportKeepCol        = "keep_col"
+	// ImportKeepVal values carry ImportKeepPrefix, so an empty CSV value is
+	// still a real checkbox value.
+	ImportKeepVal    = "keep_val"
+	ImportKeepPrefix = "="
+)
+
+// Values of the rows' category filter besides a category name.
+const (
+	importFilterAll  = "*"
+	importFilterNone = "-"
+)
+
+// ImportMapping is the CSV column of each image field (-1 for none).
+type ImportMapping struct {
+	Name, Link, Category, Description int
+}
+
+// ImportRow is one CSV row as it would be imported.
+type ImportRow struct {
+	Index       int
+	Name        string
+	Link        string
+	Host        string
+	Category    string
+	Description string
+	// Target is the category the row goes into ("" for none).
+	Target string
+	Ticked bool
+	// Problem says why the row cannot be imported ("" when it can).
+	Problem string
+}
+
+// ImportCategory is one category value of the CSV and the category it
+// becomes ("" for none). Values with the same target are merged.
+type ImportCategory struct {
+	Source string
+	Count  int
+	Target string
+}
+
+// ImportColumn describes one CSV column for the overview.
+type ImportColumn struct {
+	Header   string
+	Distinct int
+	Samples  []string
+}
+
+// ImportValue is one value of the keep-filter column.
+type ImportValue struct {
+	Value string
+	Count int
+	Kept  bool
+}
+
+// ImportView is the review step of a CSV import.
+type ImportView struct {
+	CampaignID int64
+	Token      string
+	Header     []string
+	Map        ImportMapping
+	Rows       []ImportRow
+	Cats       []ImportCategory
+	Categories []sqlc.ImageCategory
+	// The rows filter, kept across refreshes.
+	FilterQ        string
+	FilterCategory string
+	FilterStatus   string
+	// Total is the number of rows in the CSV; Rows holds the kept ones.
+	Total   int
+	Columns []ImportColumn
+	// KeepCol is the column filtering the rows (-1 for none).
+	KeepCol       int
+	KeepValues    []ImportValue
+	TooManyValues bool
+}
+
+func columnLabel(i int, header string) string {
+	if header == "" {
+		return fmt.Sprintf("Column %d", i+1)
+	}
+	return header
+}
+
+// roleOf names what column i is used for, if anything.
+func (v ImportView) roleOf(i int) string {
+	switch i {
+	case v.Map.Name:
+		return "Name"
+	case v.Map.Link:
+		return "Link"
+	case v.Map.Category:
+		return "Category"
+	case v.Map.Description:
+		return "Description"
+	}
+	return ""
+}
+
+func (v ImportView) filtering() bool {
+	return slices.ContainsFunc(v.KeepValues, func(x ImportValue) bool { return x.Kept })
+}
+
+func (v ImportView) url() string {
+	return fmt.Sprintf("/campaigns/%d/images/import/%s", v.CampaignID, v.Token)
+}
+
+func (v ImportView) columnItems(optional bool) []selectcomp.ItemData {
+	var items []selectcomp.ItemData
+	if optional {
+		items = append(items, selectcomp.ItemData{Value: "-1", Label: "None"})
+	}
+	for i, h := range v.Header {
+		items = append(items, selectcomp.ItemData{Value: fmt.Sprint(i), Label: columnLabel(i, h)})
+	}
+	return items
+}
+
+// filterItems filter the rows by the categories they will go into.
+func (v ImportView) filterItems() []selectcomp.ItemData {
+	items := []selectcomp.ItemData{{Value: importFilterAll, Label: "All categories"}, {Value: importFilterNone, Label: "No category"}}
+	var seen []string
+	for _, c := range v.Cats {
+		if c.Target != "" && !slices.Contains(seen, c.Target) {
+			seen = append(seen, c.Target)
+		}
+	}
+	slices.Sort(seen)
+	return append(items, selectItems(seen, func(s string) string { return s }, func(s string) string { return s })...)
+}
+
+// catGroups groups the category values by target, so values merged into
+// one category sit together. Groups sort by their category name (a value
+// with no category by its own name), values within a group by name.
+func (v ImportView) catGroups() [][]ImportCategory {
+	byTarget := map[string][]ImportCategory{}
+	var groups [][]ImportCategory
+	for _, c := range v.Cats {
+		if c.Target == "" {
+			groups = append(groups, []ImportCategory{c})
+			continue
+		}
+		byTarget[c.Target] = append(byTarget[c.Target], c)
+	}
+	for _, g := range byTarget {
+		slices.SortFunc(g, func(a, b ImportCategory) int { return strings.Compare(strings.ToLower(a.Source), strings.ToLower(b.Source)) })
+		groups = append(groups, g)
+	}
+	sortKey := func(g []ImportCategory) string {
+		if g[0].Target == "" {
+			return strings.ToLower(g[0].Source)
+		}
+		return strings.ToLower(g[0].Target)
+	}
+	slices.SortFunc(groups, func(a, b []ImportCategory) int {
+		if c := strings.Compare(sortKey(a), sortKey(b)); c != 0 {
+			return c
+		}
+		return strings.Compare(a[0].Source, b[0].Source)
+	})
+	return groups
+}
+
+// importStatusItems filter rows by tick and by link-check result; app.js
+// applies them.
+func importStatusItems() []selectcomp.ItemData {
+	return []selectcomp.ItemData{
+		{Value: "any", Label: "Any status"},
+		{Value: "ticked", Label: "Ticked"},
+		{Value: "unticked", Label: "Unticked"},
+		{Value: "broken", Label: "Didn't load"},
+	}
+}
+
+// filterValue is the chosen filter, or all when it no longer exists.
+func (v ImportView) filterValue() string {
+	for _, it := range v.filterItems() {
+		if it.Value == v.FilterCategory {
+			return it.Value
+		}
+	}
+	return importFilterAll
+}
+
+func rowFilterCategory(r ImportRow) string {
+	if r.Target == "" {
+		return importFilterNone
+	}
+	return r.Target
+}
+
+templ ImportUploadPage(l Layout, campaignID int64) {
+	@Page(l) {
+		@PageHeader("Import images", "Give a link to a CSV with a header row, or upload one. Next you choose the columns, the rows to bring in and how categories merge.")
+		<form method="post" enctype="multipart/form-data" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/images/import", campaignID)) } class="group/busy max-w-lg space-y-5" data-busy>
+			@busyIndicator("Reading the CSV…")
+			@sourceTabs(sourceField{ID: "csv-source", Label: "CSV file", Placeholder: "https://…/images.csv", Accept: ".csv,text/csv", FileHint: "A CSV with a header row."})
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				Continue
+			}
+		</form>
+	}
+}
+
+templ ImportReviewPage(l Layout, v ImportView) {
+	@Page(l) {
+		@PageHeader("Import images", fmt.Sprintf("%d rows in the file. Keep only what this campaign needs.", v.Total))
+		@ImportReview(v)
+	}
+}
+
+// ImportReview is the whole review form. Changing a column re-renders it;
+// changing a category re-renders the rows. Both carry the form so far, so
+// ticks and targets survive.
+templ ImportReview(v ImportView) {
+	<form id="import-review" method="post" action={ templ.SafeURL(v.url()) } class="group/busy space-y-6" data-busy>
+		@busyIndicator("Working…")
+		// Dimmed while busy; the delay keeps quick refreshes from flashing.
+		<div class="space-y-6 transition-opacity delay-150 group-aria-busy/busy:opacity-60">
+		<input type="hidden" name={ ImportRowsField }/>
+		@Section("Columns") {
+			<p class="mb-2 text-sm text-muted-foreground">These are guesses from the headers and values. Change any of them.</p>
+			<div
+				class="grid gap-3 sm:grid-cols-2 md:grid-cols-4"
+				hx-get={ v.url() }
+				hx-include="closest form"
+				hx-trigger="change"
+				hx-target="#import-review"
+				hx-swap="outerHTML"
+			>
+				@mappingField("Name", ImportColName, v.columnItems(false), v.Map.Name)
+				@mappingField("Link", ImportColLink, v.columnItems(false), v.Map.Link)
+				@mappingField("Category", ImportColCategory, v.columnItems(true), v.Map.Category)
+				@mappingField("Description", ImportColDescription, v.columnItems(true), v.Map.Description)
+			</div>
+			@columnOverview(v)
+		}
+		@Section("Keep only") {
+			@keepSection(v)
+		}
+		if len(v.Cats) > 0 {
+			@Section("Categories") {
+				<p class="mb-2 text-sm text-muted-foreground">
+					Each value keeps its own category unless you give several the same name: type the same name to merge them, or clear it for no category.
+					Values that differ only in case start out merged.
+				</p>
+				@categoryList(v.Categories)
+				// A change re-renders this list (regrouped and resorted) and the
+				// rows; inputs keep stable ids so htmx keeps the focus.
+				<div
+					id="import-categories"
+					class="space-y-2"
+					hx-get={ v.url() }
+					hx-include="closest form"
+					hx-trigger="change"
+					hx-target="#import-categories"
+					hx-select="#import-categories"
+					hx-select-oob="#import-rows"
+					hx-swap="outerHTML"
+				>
+					for _, group := range v.catGroups() {
+						if len(group) > 1 {
+							<div class="rounded-lg border-2 border-primary/50 bg-primary/5" data-merged>
+								<div class="flex items-center gap-2 px-2 pt-2 text-xs font-medium text-primary">
+									@icon.Merge(icon.Props{Size: 14})
+									Merged into { group[0].Target } · { fmt.Sprint(len(group)) } values
+								</div>
+								<div class="divide-y divide-primary/20">
+									for _, cat := range group {
+										@categoryRow(cat)
+									}
+								</div>
+							</div>
+						} else {
+							<div class="rounded-lg border">
+								@categoryRow(group[0])
+							</div>
+						}
+					}
+				</div>
+			}
+		}
+		@Section("Rows") {
+			@importRows(v)
+		}
+		<div class="flex flex-wrap items-center gap-3">
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				Import ticked rows
+			}
+			// Filled and kept current by app.js as rows are ticked.
+			<p id="import-summary" class="text-sm text-muted-foreground" aria-live="polite"></p>
+		</div>
+		</div>
+	</form>
+}
+
+// columnOverview shows every CSV column, what it is used for and a few of its values.
+templ columnOverview(v ImportView) {
+	<div class="mt-3 overflow-x-auto rounded-lg border">
+		<table class="w-full text-sm">
+			<thead class="bg-muted/50 text-left text-xs text-muted-foreground">
+				<tr>
+					<th class="p-2 font-medium">Column</th>
+					<th class="p-2 font-medium">Used as</th>
+					<th class="p-2 font-medium">Different values</th>
+					<th class="p-2 font-medium">Examples</th>
+				</tr>
+			</thead>
+			<tbody class="divide-y">
+				for i, col := range v.Columns {
+					<tr>
+						<td class="p-2 font-medium">{ columnLabel(i, col.Header) }</td>
+						<td class="p-2">
+							if role := v.roleOf(i); role != "" {
+								@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+									{ role }
+								}
+							}
+						</td>
+						<td class="p-2 text-muted-foreground">{ fmt.Sprint(col.Distinct) }</td>
+						<td class="max-w-xs p-2 text-xs text-muted-foreground">
+							for _, s := range col.Samples {
+								<div class="truncate" title={ s }>{ s }</div>
+							}
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
+// keepSection filters rows by the values of one column. Ticking several
+// values keeps rows with any of them, so differently spelled values of one
+// thing can all be kept.
+templ keepSection(v ImportView) {
+	<div
+		class="space-y-3"
+		hx-get={ v.url() }
+		hx-include="closest form"
+		hx-trigger="change"
+		hx-target="#import-review"
+		hx-swap="outerHTML"
+	>
+		<p class="text-sm text-muted-foreground">Keep only the rows whose column holds the values you tick, for example one campaign of a master file. Tick every spelling it has. For more complex filtering, filter the CSV before importing.</p>
+		@label.Label(label.Props{Class: "flex flex-col items-start gap-1 font-normal"}) {
+			Keep rows where
+			@formSelect("", ImportKeepCol, v.columnItems(true), fmt.Sprint(v.KeepCol), "w-56", "")
+		}
+		if v.TooManyValues {
+			<p class="text-sm text-muted-foreground">This column has too many different values to filter by. Filter the CSV before importing.</p>
+		} else if len(v.KeepValues) > 0 {
+			<div class="grid max-h-72 gap-1 overflow-y-auto rounded-lg border p-2 sm:grid-cols-2 md:grid-cols-3">
+				for _, val := range v.KeepValues {
+					@checkField(ImportKeepVal, ImportKeepPrefix+val.Value, val.Kept) {
+						if val.Value == "" {
+							<span class="italic">(empty)</span>
+						} else {
+							{ val.Value }
+						}
+						<span class="text-xs text-muted-foreground">{ fmt.Sprint(val.Count) }</span>
+					}
+				}
+			</div>
+		}
+		if v.filtering() {
+			<p class="text-sm font-medium">Keeping { fmt.Sprint(len(v.Rows)) } of { fmt.Sprint(v.Total) } rows.</p>
+		}
+	</div>
+}
+
+templ categoryRow(cat ImportCategory) {
+	<div class="flex flex-wrap items-center gap-2 p-2">
+		<input type="hidden" name={ ImportCatSource } value={ cat.Source }/>
+		<span class="flex flex-1 items-center gap-2">
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+				{ cat.Source }
+			}
+			<span class="text-xs text-muted-foreground">{ fmt.Sprint(cat.Count) } rows</span>
+		</span>
+		<span aria-hidden="true" class="text-muted-foreground">→</span>
+		@input.Input(input.Props{ID: fmt.Sprintf("cat-%x", cat.Source), Name: ImportCatTarget, Value: cat.Target, Placeholder: "No category", Class: "max-w-56", Attributes: templ.Attributes{"list": "image-categories", "aria-label": "Category for " + cat.Source, "maxlength": "100", "autocomplete": "off"}})
+	</div>
+}
+
+templ importRows(v ImportView) {
+	<div id="import-rows">
+		// Row 1 filters what is shown, row 2 acts on it.
+		<div class="mb-2 flex flex-wrap items-center gap-2" data-import-filter>
+			@input.Input(input.Props{Name: ImportFilterQ, Type: "search", Value: v.FilterQ, Placeholder: "Filter by name…", Class: "max-w-xs", Attributes: templ.Attributes{"data-import-q": "", "autocomplete": "off"}})
+			if len(v.Cats) > 0 {
+				@formSelect("", ImportFilterCategory, v.filterItems(), v.filterValue(), "", "")
+			}
+			@formSelect("", ImportFilterStatus, importStatusItems(), v.FilterStatus, "", "")
+		</div>
+		<div class="mb-2 flex flex-wrap items-center gap-2">
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"data-check-shown": "true"}}) {
+				Tick shown
+			}
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"data-check-shown": "false"}}) {
+				Untick shown
+			}
+			@button.Button(button.Props{Size: button.SizeSm, Class: "ml-auto", Attributes: templ.Attributes{
+				"data-check-links": "", "title": "Loads each ticked link as an image only until its size is known, so whole pictures are not downloaded.",
+			}}) {
+				@icon.ScanSearch()
+				Check image links
+			}
+		</div>
+		// Filled by app.js once links are checked.
+		<div id="link-check" hidden class="mb-2 flex flex-wrap items-center gap-2 text-sm">
+			<p id="link-check-status" class="font-medium" aria-live="polite"></p>
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Class: "hidden", Attributes: templ.Attributes{"data-untick-broken": ""}}) {
+				Untick them
+			}
+		</div>
+		<p id="status-hint" hidden class="mb-2 text-sm text-muted-foreground">Check image links first to see which ones didn't load.</p>
+		// The preview sits beside the scrolling list, as in the compendium,
+		// so the list itself carries no thumbnails.
+		<div class="grid gap-4 md:grid-cols-2">
+			// relative: the checkboxes' hidden inputs are absolutely positioned and
+			// would otherwise stretch the page to the full list height.
+			<div class="relative max-h-[60vh] overflow-y-auto rounded-lg border text-sm">
+				<table class="w-full">
+					<tbody class="divide-y">
+						for _, r := range v.Rows {
+							<tr
+								class="hover:bg-muted"
+								data-import-row
+								data-index={ fmt.Sprint(r.Index) }
+								data-name={ r.Name }
+								data-category={ rowFilterCategory(r) }
+								if r.Problem == "" {
+									data-preview-src={ r.Link }
+								}
+							>
+								<td class="w-8 p-2">
+									@checkbox.Checkbox(checkbox.Props{DefaultChecked: r.Ticked, Disabled: r.Problem != "", Attributes: templ.Attributes{"aria-label": "Import " + r.Name}})
+								</td>
+								<td class="p-2">
+									<div class="flex items-baseline justify-between gap-2">
+										<span class="font-medium">{ r.Name }</span>
+										<span class="shrink-0 text-xs text-muted-foreground">{ r.Target }</span>
+									</div>
+									<div class="flex items-baseline justify-between gap-2 text-xs">
+										if r.Problem != "" {
+											<span class="text-destructive">{ r.Problem }</span>
+										} else {
+											<span class="truncate text-muted-foreground">{ r.Host }</span>
+											<span data-link-status class="shrink-0 text-muted-foreground data-[state=broken]:font-medium data-[state=broken]:text-destructive data-[state=checking]:animate-pulse"></span>
+										}
+									</div>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+			<div class="hidden h-[60vh] items-center justify-center overflow-hidden rounded-lg border bg-muted md:flex">
+				<img id="import-preview" hidden alt="" class="flex items-center justify-center text-center size-full object-contain text-sm text-muted-foreground"/>
+				<p class="p-3 text-sm text-muted-foreground" data-import-hint>Hover a row to preview its image.</p>
+			</div>
+		</div>
+	</div>
+}
+
+templ mappingField(text, name string, items []selectcomp.ItemData, value int) {
+	@label.Label(label.Props{Class: "flex flex-col items-start gap-1 font-normal"}) {
+		{ text }
+		@formSelect("", name, items, fmt.Sprint(value), "w-full", "")
+	}
+}

@@ -1,0 +1,402 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/compendium"
+	"gm-session-manager/dnd5e"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/card"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/label"
+	"gm-session-manager/web/components/textarea"
+	"gm-session-manager/web/utils"
+	"slices"
+	"strings"
+)
+
+// WizardStep is one step of character creation.
+type WizardStep struct {
+	Key, Title string
+}
+
+// WizardView is one page of the creation wizard.
+type WizardView struct {
+	CharacterID int64
+	Step        string
+	Steps       []WizardStep
+	// Sheet is the character as it stands, read-only.
+	Sheet SheetView
+	Error string
+	// Options are the compendium's classes, species or backgrounds;
+	// Picked is the one being looked at and Choice what it gives.
+	Options   []Option
+	Picked    string
+	Choice    *WizardChoice
+	Equipment []EquipmentChoice
+}
+
+// WizardChoice is what a class, species or background gives.
+type WizardChoice struct {
+	Slug, Name string
+	// Traits are a class's core traits (primary ability, hit die…).
+	Traits map[string]string
+	// Facts are a species' or background's tagged parts (size, speed,
+	// ability scores…), shown as they are.
+	Facts []compendium.NameDesc
+	// Skills are the skill keys to choose SkillCount of (a class) or that
+	// come with it (a background).
+	SkillCount int
+	Skills     []string
+	// Abilities are a background's three abilities for its increases.
+	Abilities []string
+	Features  []FeaturePreview
+}
+
+// FeaturePreview is a feature as the wizard shows it, with what the sheet
+// will track for it.
+type FeaturePreview struct {
+	Name, Desc string
+	Effects    []string
+}
+
+// EquipmentChoice is a class's or background's starting equipment options.
+type EquipmentChoice struct {
+	Key, Title string
+	Options    []compendium.EquipmentOption
+}
+
+func (v WizardView) path(step string) string {
+	return fmt.Sprintf("/characters/%d/create/%s", v.CharacterID, step)
+}
+
+// done reports whether a step that adds to the sheet was applied.
+func (v WizardView) done(step string) bool { return v.Sheet.C.Sheet.SetUp(step) }
+
+templ WizardPage(l Layout, v WizardView) {
+	@Page(l) {
+		@PageHeader("Create "+v.Sheet.C.Name, "One step at a time. Skip anything you want to fill in later; everything stays editable on the sheet.")
+		<nav class="mb-6 flex flex-wrap gap-1.5" aria-label="Steps">
+			for i, st := range v.Steps {
+				<a
+					href={ templ.SafeURL(v.path(st.Key)) }
+					class={ "rounded-full border px-3 py-1 text-sm", templ.KV("border-primary bg-primary text-primary-foreground", st.Key == v.Step), templ.KV("text-muted-foreground", st.Key != v.Step) }
+					if st.Key == v.Step {
+						aria-current="step"
+					}
+				>
+					{ fmt.Sprint(i + 1) }. { st.Title }
+					if v.done(st.Key) {
+						✓
+					}
+				</a>
+			}
+		</nav>
+		if v.Error != "" {
+			@Notice(v.Error, true, "mb-4")
+		}
+		switch v.Step {
+			case "class", "species", "background":
+				@wizardPick(v)
+			case "abilities":
+				@wizardAbilities(v)
+			case "equipment":
+				@wizardEquipment(v)
+			case "details":
+				@wizardDetails(v)
+			case "review":
+				@wizardReview(v)
+		}
+	}
+}
+
+// wizardNav are a step form's buttons: Back, Skip (to the next step without
+// changing anything) and the form's own submit.
+templ wizardNav(v WizardView, submit string) {
+	{{ i := slices.IndexFunc(v.Steps, func(s WizardStep) bool { return s.Key == v.Step }) }}
+	<div class="flex flex-wrap items-center gap-2 pt-2">
+		if i > 0 {
+			<a class="text-sm underline" href={ templ.SafeURL(v.path(v.Steps[i-1].Key)) }>Back</a>
+		}
+		<span class="flex-1"></span>
+		if i+1 < len(v.Steps) {
+			<a class="text-sm underline" href={ templ.SafeURL(v.path(v.Steps[i+1].Key)) }>Skip</a>
+		}
+		if submit != "" {
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				{ submit }
+			}
+		}
+	</div>
+}
+
+// wizardPick chooses a class, species or background, showing what the one
+// picked gives before it is applied.
+templ wizardPick(v WizardView) {
+	if v.done(v.Step) {
+		<p class="mb-4 text-sm">
+			Already chosen:
+			<strong>
+				switch v.Step {
+					case "class":
+						{ v.Sheet.C.Sheet.ClassSummary() }
+					case "species":
+						{ v.Sheet.C.Sheet.Species }
+					default:
+						{ v.Sheet.C.Sheet.Background }
+				}
+			</strong>.
+			Change it on the sheet; level up for more classes.
+		</p>
+		<form method="post">
+			@wizardNav(v, "Next")
+		</form>
+	} else {
+		<form method="get" class="mb-6 flex items-center gap-2" onchange="this.submit()">
+			@label.Label(label.Props{For: "pick-trigger"}) {
+				{ map[string]string{"class": "Class", "species": "Species", "background": "Background"}[v.Step] }
+			}
+			@formSelect("pick", "pick", optionItems("Choose…", v.Options, func(o Option) string { return o.Slug }), v.Picked, "", "")
+			<noscript>
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+					Show
+				}
+			</noscript>
+		</form>
+		if len(v.Options) == 0 {
+			<p class="mb-4 text-sm text-muted-foreground">Nothing in the compendium yet. Skip this step and fill it in on the sheet.</p>
+		}
+		<form method="post" class="space-y-4">
+			<input type="hidden" name="pick" value={ v.Picked }/>
+			if c := v.Choice; c != nil {
+				@card.Card() {
+					@card.Header() {
+						@card.Title() {
+							{ c.Name }
+						}
+					}
+					@card.Content() {
+						<div class="space-y-4 text-sm">
+							@wizardFacts(c)
+							if v.Step == "class" && c.SkillCount > 0 {
+								<fieldset>
+									<legend class="font-medium">Choose { fmt.Sprint(c.SkillCount) } skills</legend>
+									<div class="mt-1 grid grid-cols-2 gap-1 sm:grid-cols-3">
+										for _, k := range c.Skills {
+											@checkField("skill", k, false) {
+												{ skillName(k) }
+											}
+										}
+									</div>
+								</fieldset>
+							}
+							if v.Step == "background" && len(c.Abilities) == 3 {
+								@backgroundAbilities(c)
+							}
+							if len(c.Features) > 0 {
+								<div>
+									<div class="font-medium">You get</div>
+									for _, f := range c.Features {
+										<details class="mt-1">
+											<summary class="cursor-pointer">
+												{ f.Name }
+												if len(f.Effects) > 0 {
+													<span class="text-xs text-muted-foreground">{ strings.Join(f.Effects, "; ") }</span>
+												}
+											</summary>
+											<div class="mt-1 text-muted-foreground">
+												@markdown(f.Desc)
+											</div>
+										</details>
+									}
+								</div>
+							}
+						</div>
+					}
+				}
+			}
+			@wizardNav(v, utils.IfElse(v.Choice != nil, "Choose "+choiceName(v.Choice), ""))
+		</form>
+	}
+}
+
+func choiceName(c *WizardChoice) string {
+	if c == nil {
+		return ""
+	}
+	return c.Name
+}
+
+func skillName(key string) string {
+	for _, sk := range dnd5e.Skills {
+		if sk.Key == key {
+			return sk.Name
+		}
+	}
+	return key
+}
+
+// wizardFacts are a class's core traits or a species' or background's
+// tagged parts.
+templ wizardFacts(c *WizardChoice) {
+	<dl class="grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr]">
+		for _, k := range []string{"Primary Ability", "Hit Point Die", "Saving Throw Proficiencies", "Weapon Proficiencies", "Armor Training", "Tool Proficiencies"} {
+			if t := c.Traits[k]; t != "" {
+				<dt class="text-muted-foreground">{ k }</dt>
+				<dd>{ t }</dd>
+			}
+		}
+		for _, f := range c.Facts {
+			<dt class="text-muted-foreground">{ f.Name }</dt>
+			<dd>
+				@markdown(f.Desc)
+			</dd>
+		}
+	</dl>
+}
+
+// backgroundAbilities raises the background's abilities: +2 and +1, or +1
+// to all three.
+templ backgroundAbilities(c *WizardChoice) {
+	{{ items := selectItems(c.Abilities, func(a string) string { return a }, func(a string) string { return dnd5e.AbilityNames[a] }) }}
+	<fieldset class="space-y-2">
+		<legend class="font-medium">Ability score increases</legend>
+		<div class="flex flex-wrap items-center gap-2">
+			<label class="flex items-center gap-1"><input type="radio" name="mode" value="two" checked/> +2 to</label>
+			@formSelect("", "plus2", items, c.Abilities[0], "", "")
+			<span>and +1 to</span>
+			@formSelect("", "plus1", items, c.Abilities[1], "", "")
+		</div>
+		<label class="flex items-center gap-1"><input type="radio" name="mode" value="three"/> +1 to all three</label>
+		<p class="text-xs text-muted-foreground">No score goes above 20. Set your base scores in the previous step first.</p>
+	</fieldset>
+}
+
+// wizardAbilities sets the six base scores, with the standard array and
+// the point-buy cost to help.
+templ wizardAbilities(v WizardView) {
+	if v.done("background") {
+		<p class="mb-4 text-sm">Your background's increases are already added to your scores, so change them on the sheet from now on.</p>
+		<form method="post">
+			@wizardNav(v, "Next")
+		</form>
+	} else {
+		@abilityForm(v)
+	}
+}
+
+templ abilityForm(v WizardView) {
+	<form method="post" class="space-y-4" data-point-buy>
+		<p class="text-sm text-muted-foreground">
+			Use the standard array (15, 14, 13, 12, 10, 8), buy points (27 points, scores 8–15), or type what you rolled. Put the highest in your class's primary ability. Background increases come next.
+		</p>
+		<div class="grid grid-cols-3 gap-3 sm:grid-cols-6">
+			for _, a := range dnd5e.Abilities {
+				<div class="space-y-1">
+					@label.Label(label.Props{For: "score-" + a}) {
+						{ dnd5e.AbilityNames[a] }
+					}
+					@input.Input(input.Props{ID: "score-" + a, Name: a, Type: "number", Value: fmt.Sprint(v.Sheet.C.Sheet.Scores[a]), Class: "text-center", Attributes: templ.Attributes{"min": "3", "max": "20", "required": true}})
+				</div>
+			}
+		</div>
+		<div class="flex flex-wrap items-center gap-3 text-sm">
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{
+				"onclick": "const f = this.form; [15, 14, 13, 12, 10, 8].forEach((n, i) => f.elements[['str','dex','con','int','wis','cha'][i]].value = n); f.dispatchEvent(new Event('input'))",
+			}}) {
+				Fill in the standard array
+			}
+			<span class="text-muted-foreground" data-point-cost></span>
+		</div>
+		@wizardNav(v, "Save scores")
+	</form>
+}
+
+// wizardEquipment picks one starting equipment option from the class and
+// one from the background.
+templ wizardEquipment(v WizardView) {
+	if v.done("equipment") {
+		<p class="mb-4 text-sm">Starting equipment is on the sheet already.</p>
+		<form method="post">
+			@wizardNav(v, "Next")
+		</form>
+	} else {
+		<form method="post" class="space-y-4 text-sm">
+			if len(v.Equipment) == 0 {
+				<p class="text-muted-foreground">Choose a class and a background first, or skip and add items on the sheet.</p>
+			}
+			for _, ec := range v.Equipment {
+				<fieldset class="space-y-2 rounded-md border p-3">
+					<legend class="px-1 font-medium">{ ec.Title }</legend>
+					for i, o := range ec.Options {
+						<label class="flex items-start gap-2">
+							<input type="radio" name={ "option_" + ec.Key } value={ o.Letter } checked?={ i == 0 } class="mt-1"/>
+							<span>
+								({ o.Letter })
+								for j, it := range o.Items {
+									if j > 0 {
+										,
+									}
+									if it.Qty > 1 {
+										{ fmt.Sprint(it.Qty) }
+									}
+									{ it.Name }
+								}
+								if o.GP > 0 {
+									if len(o.Items) > 0 {
+										and
+									}
+									{ fmt.Sprint(o.GP) } GP
+								}
+							</span>
+						</label>
+					}
+				</fieldset>
+			}
+			<p class="text-xs text-muted-foreground">Weapons go under attacks and armor is worn right away when the compendium knows them.</p>
+			@wizardNav(v, utils.IfElse(len(v.Equipment) > 0, "Take this equipment", ""))
+		</form>
+	}
+}
+
+templ wizardDetails(v WizardView) {
+	<form method="post" class="max-w-xl space-y-4">
+		<div class="space-y-1">
+			@label.Label(label.Props{For: "details-name"}) {
+				Name
+			}
+			@input.Input(input.Props{ID: "details-name", Name: "name", Value: v.Sheet.C.Name, Required: true, Attributes: templ.Attributes{"maxlength": "100"}})
+		</div>
+		<div class="space-y-1">
+			@label.Label(label.Props{For: "details-backstory"}) {
+				Backstory
+			}
+			@textarea.Textarea(textarea.Props{ID: "details-backstory", Name: "backstory", Rows: 8, Value: v.Sheet.C.Sheet.Backstory, Placeholder: "Where they come from, what they want…"})
+		</div>
+		@wizardNav(v, "Save")
+	</form>
+}
+
+// wizardReview is the finished character, read-only, with the breakdowns.
+templ wizardReview(v WizardView) {
+	<div class="space-y-4">
+		<p class="text-sm">
+			<strong>{ v.Sheet.C.Name }</strong>
+			for _, p := range v.Sheet.subtitle() {
+				· { p.text }
+			}
+		</p>
+		@hpCard(v.Sheet)
+		<div class="grid gap-4 md:grid-cols-2">
+			@abilitiesCard(v.Sheet)
+			@skillsCard(v.Sheet)
+		</div>
+		@actionsCard(v.Sheet)
+		<div class="grid gap-4 md:grid-cols-2">
+			@inventoryCard(v.Sheet)
+			@featuresCard(v.Sheet)
+		</div>
+		<form method="post">
+			@wizardNav(v, "Finish and open the sheet")
+		</form>
+	</div>
+}

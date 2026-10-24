@@ -1,0 +1,351 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/db/sqlc"
+	"gm-session-manager/perm"
+	"gm-session-manager/web/components/badge"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/checkbox"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/label"
+	selectcomp "gm-session-manager/web/components/select"
+	"slices"
+	"strings"
+)
+
+// Note kinds (notes.kind).
+const (
+	KindGameSession = "game_session"
+	KindGeneric     = "generic"
+)
+
+// NoteListView is the notes index.
+type NoteListView struct {
+	CampaignID int64
+	Notes      []NoteItem
+	Query      string
+	Hits       []sqlc.SearchReadableBlocksRow
+	// CanCreate is true for the GM and players.
+	CanCreate bool
+}
+
+templ NotesPage(l Layout, v NoteListView) {
+	@Page(l) {
+		@PageHeader("Notes", "Game session logs, handouts, secrets and your own notes.")
+		<form method="get" class="mb-4 flex gap-2">
+			@input.Input(input.Props{Name: "q", Type: "search", Value: v.Query, Placeholder: "Search notes"})
+			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+				Search
+			}
+		</form>
+		if v.Query != "" {
+			<ul class="mb-6 space-y-2">
+				for _, h := range v.Hits {
+					<li class="rounded-md border p-2 text-sm">
+						<a class="font-medium underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d#block-%d", h.NoteID, h.BlockID)) }>{ h.Title }</a>
+						<p class="line-clamp-2 text-muted-foreground">{ h.Text }</p>
+					</li>
+				}
+				if len(v.Hits) == 0 {
+					<li class="text-sm text-muted-foreground">Nothing found.</li>
+				}
+			</ul>
+		}
+		@NoteList(v.CampaignID, v.Notes)
+		if v.CanCreate {
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/notes", v.CampaignID)) } class="mt-6 flex flex-wrap gap-2">
+				@input.Input(input.Props{Name: "title", Placeholder: "New note title", Required: true, Class: "max-w-xs"})
+				@formSelect("", "kind", noteKindItems, "", "", "")
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					Create
+				}
+			</form>
+		}
+	}
+}
+
+templ NoteList(campaignID int64, notes []NoteItem) {
+	<ul id="notes-list" hx-swap-oob="true" class="divide-y rounded-lg border" { live(LiveNotes, campaignID)... }>
+		for _, n := range notes {
+			<li class="flex items-center justify-between gap-2 p-3">
+				<span class="flex min-w-0 items-baseline gap-2">
+					<a class="font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", n.ID)) }>{ n.Title }</a>
+					<span class="text-xs text-muted-foreground">
+						@authorRef(n.Author)
+					</span>
+				</span>
+				<span class="flex gap-1">
+					if n.Kind == KindGameSession {
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							Game session
+						}
+					}
+					if n.OwnerCharacterID.Valid {
+						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+							Player note
+						}
+					}
+				</span>
+			</li>
+		}
+		if len(notes) == 0 {
+			<li class="p-3 text-sm text-muted-foreground">No notes yet.</li>
+		}
+	</ul>
+}
+
+// BlockView is one note block as a viewer sees it. The document itself is
+// loaded by the editor from /blocks/{id}/doc.
+type BlockView struct {
+	ID             int64
+	Visibility     perm.Visibility
+	PlayersCanEdit bool
+	Audience       []int64
+	// ForYou is set for non-GM readers of a secret, who are always in its audience.
+	ForYou  bool
+	CanEdit bool
+	// CanManage is true for the note's manager and the block's author.
+	CanManage bool
+	Author    Author
+}
+
+// Author is who wrote a note or block: a character's name, or "GM". Href
+// links to the sheet when the viewer may open it.
+type Author struct {
+	Name string
+	Href string
+}
+
+// NoteItem is one row of the notes index.
+type NoteItem struct {
+	sqlc.Note
+	Author Author
+}
+
+templ authorRef(a Author) {
+	if a.Href != "" {
+		<span>by <a class="underline" href={ templ.SafeURL(a.Href) }>{ a.Name }</a></span>
+	} else {
+		<span>{ "by " + a.Name }</span>
+	}
+}
+
+// NoteView is a note page.
+type NoteView struct {
+	Note         sqlc.Note
+	Blocks       []BlockView
+	CanManage    bool
+	Visibilities []perm.Visibility
+	// Characters are the campaign's characters, for 'listed' audiences.
+	Characters  []sqlc.Character
+	Backlinks   []sqlc.ListBacklinksRow
+	EntityLinks []sqlc.ListEntityFieldBacklinksRow
+}
+
+func (v NoteView) characterNames(ids []int64) string {
+	var names []string
+	for _, c := range v.Characters {
+		if slices.Contains(ids, c.ID) {
+			names = append(names, c.Name)
+		}
+	}
+	if len(names) == 0 {
+		return "nobody yet"
+	}
+	return strings.Join(names, ", ")
+}
+
+func visibilityLabel(vis perm.Visibility) string {
+	switch vis {
+	case perm.VisGM:
+		return "GM only"
+	case perm.VisPlayers:
+		return "Everyone"
+	case perm.VisListed:
+		return "Secret"
+	case perm.VisOwner:
+		return "Private"
+	}
+	return string(vis)
+}
+
+templ NotePage(l Layout, v NoteView) {
+	@Page(l) {
+		@NoteMeta(v)
+		@NoteBlocks(v)
+		if len(v.Visibilities) > 0 {
+			@addBlockForm(v)
+		}
+		<section class="mt-10">
+			<h2 class="mb-2 text-sm font-semibold text-muted-foreground uppercase">Linked mentions</h2>
+			<ul class="space-y-1 text-sm">
+				@npcMentions(v.EntityLinks)
+				for _, b := range v.Backlinks {
+					<li><a class="underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", b.ID)) }>{ b.Title }</a></li>
+				}
+				if len(v.Backlinks) == 0 && len(v.EntityLinks) == 0 {
+					<li class="text-muted-foreground">No other note links here yet. Type [[ in a block to link.</li>
+				}
+			</ul>
+		</section>
+	}
+}
+
+templ NoteMeta(v NoteView) {
+	<div id={ fmt.Sprintf("note-%d-meta", v.Note.ID) } hx-swap-oob="true" class="mb-6" { live(LiveNote, v.Note.ID)... }>
+		if v.CanManage {
+			<form class="flex flex-wrap items-center gap-2" hx-post={ fmt.Sprintf("/notes/%d/rename", v.Note.ID) } hx-trigger="change">
+				@input.Input(input.Props{Name: "title", Value: v.Note.Title, Class: "h-auto min-w-0 flex-1 border-transparent px-1 text-2xl font-semibold md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Title"}})
+				@formSelect("", "kind", noteKindItems, v.Note.Kind, "", "")
+				@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{
+					"hx-post": fmt.Sprintf("/notes/%d/delete", v.Note.ID), "hx-confirm": "Delete this note and all its blocks?",
+				}}) {
+					Delete
+				}
+			</form>
+		} else {
+			<h1 class="text-2xl font-semibold">{ v.Note.Title }</h1>
+		}
+		if v.Note.Kind == KindGameSession {
+			<p class="text-sm text-muted-foreground">Game session</p>
+		}
+	</div>
+}
+
+templ NoteBlocks(v NoteView) {
+	<div id={ fmt.Sprintf("note-%d-blocks", v.Note.ID) } hx-swap-oob="true" class="space-y-4" { live(LiveNote, v.Note.ID)... }>
+		for i, b := range v.Blocks {
+			<article id={ fmt.Sprintf("block-%d", b.ID) } class="rounded-lg border" data-block={ fmt.Sprint(b.ID) } data-editable={ fmt.Sprint(b.CanEdit) }>
+				<header class="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+						{ visibilityLabel(b.Visibility) }
+					}
+					@authorRef(b.Author)
+					if b.Visibility == perm.VisListed && b.ForYou {
+						<span>{ "for you" }</span>
+					} else if b.Visibility == perm.VisListed {
+						<span>{ "for " + v.characterNames(b.Audience) }</span>
+					}
+					if b.Visibility == perm.VisPlayers && b.PlayersCanEdit {
+						<span>players can edit</span>
+					}
+					if !b.CanEdit {
+						<span>read only</span>
+					}
+					<span class="flex-1"></span>
+					if b.CanEdit {
+						@label.Label(label.Props{Class: "cursor-pointer text-xs font-normal underline"}) {
+							Attach file
+							<input type="file" class="hidden" data-attach={ fmt.Sprint(b.ID) }/>
+						}
+					}
+					if v.CanManage {
+						if i > 0 {
+							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/move", b.ID), "hx-vals": `{"dir":"up"}`, "aria-label": "Move up"}}) {
+								@icon.ArrowUp()
+							}
+						}
+						if i < len(v.Blocks)-1 {
+							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/move", b.ID), "hx-vals": `{"dir":"down"}`, "aria-label": "Move down"}}) {
+								@icon.ArrowDown()
+							}
+						}
+					}
+					if b.CanManage {
+						if len(v.Visibilities) > 0 {
+							@blockAccess(v, b)
+						}
+						@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/delete", b.ID), "hx-confirm": "Delete this block?", "aria-label": "Delete block"}}) {
+							@icon.X()
+						}
+					}
+				</header>
+				<div id={ fmt.Sprintf("editor-%d", b.ID) } hx-preserve="true" class="note-editor px-3 py-2" data-editor={ fmt.Sprint(b.ID) }></div>
+			</article>
+		}
+		if len(v.Blocks) == 0 {
+			<p class="text-sm text-muted-foreground">This note has no blocks you can see.</p>
+		}
+	</div>
+}
+
+templ blockAccess(v NoteView, b BlockView) {
+	<details class="relative" data-popover>
+		<summary class="cursor-pointer underline">Access</summary>
+		<form class="absolute right-0 z-10 mt-1 w-64 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow" hx-post={ fmt.Sprintf("/blocks/%d/access", b.ID) }>
+			@visibilityFields(v, b.Visibility, b.PlayersCanEdit, b.Audience)
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs}) {
+				Save
+			}
+		</form>
+	</details>
+}
+
+templ visibilityFields(v NoteView, current perm.Visibility, editable bool, audience []int64) {
+	<div class="space-y-2" title="Read access: who can see this block" onchange={ templ.JSUnsafeFuncCall(visToggleJS) }>
+		@formSelect("", "visibility", selectItems(v.Visibilities, func(vis perm.Visibility) string { return string(vis) }, visibilityLabel), string(current), "w-full", "")
+		// Each option below only applies to one visibility; the server drops it otherwise.
+		if slices.Contains(v.Visibilities, perm.VisPlayers) {
+			<div data-for-vis={ string(perm.VisPlayers) } hidden?={ current != perm.VisPlayers }>
+				@checkField("players_can_edit", "true", editable) {
+					Players can edit
+				}
+			</div>
+		}
+		if slices.Contains(v.Visibilities, perm.VisListed) {
+			<fieldset data-for-vis={ string(perm.VisListed) } class="space-y-1" hidden?={ current != perm.VisListed }>
+				<legend class="text-muted-foreground">Shown to:</legend>
+				for _, c := range v.Characters {
+					@checkField("audience", fmt.Sprint(c.ID), slices.Contains(audience, c.ID)) {
+						{ c.Name }
+					}
+				}
+			</fieldset>
+		}
+	</div>
+}
+
+// visToggleJS shows each [data-for-vis] option only while its visibility is
+// chosen. It runs on the visibility fields' change events.
+const visToggleJS = `const vis = this.querySelector("[name=visibility]").value; for (const f of this.querySelectorAll("[data-for-vis]")) f.hidden = f.dataset.forVis !== vis`
+
+var noteKindItems = []selectcomp.ItemData{{Value: KindGeneric, Label: "Note"}, {Value: KindGameSession, Label: "Game session"}}
+
+// checkField is a shadcn checkbox with its label.
+templ checkField(name, value string, checked bool) {
+	@label.Label(label.Props{Class: "font-normal"}) {
+		@checkbox.Checkbox(checkbox.Props{Name: name, Value: value, DefaultChecked: checked})
+		{ children... }
+	}
+}
+
+templ addBlockForm(v NoteView) {
+	<form class="mt-4 flex flex-wrap items-start gap-3 rounded-lg border border-dashed p-3 text-sm" hx-post={ fmt.Sprintf("/notes/%d/blocks", v.Note.ID) }>
+		<div class="w-64 space-y-2">
+			@visibilityFields(v, v.Visibilities[0], false, nil)
+		</div>
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+			Add block
+		}
+	</form>
+}
+
+// SwitcherResults is the quick switcher's result list.
+templ SwitcherResults(items []LinkItem) {
+	for _, it := range items {
+		<li><a class="block rounded px-2 py-1.5 hover:bg-accent" href={ templ.SafeURL(it.URL) }>{ it.Label } <span class="text-xs text-muted-foreground">{ it.Kind }</span></a></li>
+	}
+	if len(items) == 0 {
+		<li class="px-2 py-1.5 text-sm text-muted-foreground">No matches</li>
+	}
+}
+
+// LinkItem is a note, entity or image a viewer may link to or jump to.
+type LinkItem struct {
+	ID    string `json:"id"` // "note:12", "entity:3" or "image:5"
+	Label string `json:"label"`
+	Kind  string `json:"kind"`
+	URL   string `json:"url"`
+}

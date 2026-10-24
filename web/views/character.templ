@@ -1,0 +1,1380 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/compendium"
+	"gm-session-manager/db/sqlc"
+	"gm-session-manager/dnd5e"
+	"gm-session-manager/perm"
+	"gm-session-manager/web/components/badge"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/card"
+	"gm-session-manager/web/components/combobox"
+	"gm-session-manager/web/components/command"
+	"gm-session-manager/web/components/dialog"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/inputgroup"
+	"gm-session-manager/web/components/popover"
+	"gm-session-manager/web/components/spinner"
+	"gm-session-manager/web/components/tooltip"
+	"gm-session-manager/web/utils"
+	"maps"
+	"net/url"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+)
+
+// SheetView is a character as one viewer sees it.
+type SheetView struct {
+	ID         int64
+	CampaignID int64
+	C          dnd5e.Character
+	Conditions []sqlc.Condition
+	// Looks are the character's images the viewer may see (perm.VisibleLooks).
+	Looks []perm.Look
+	// What the viewer may change (see perm.CanCharacter).
+	CanHP, CanConditions, CanSheet bool
+	// SpellData are the compendium details of the sheet's spells, by slug.
+	SpellData map[string]*compendium.SpellData
+}
+
+func (s SheetView) cmdURL() string { return fmt.Sprintf("/characters/%d/cmd", s.ID) }
+
+func (s SheetView) condition(slug string) (sqlc.Condition, bool) {
+	i := slices.IndexFunc(s.Conditions, func(c sqlc.Condition) bool { return c.Slug == slug })
+	if i < 0 {
+		return sqlc.Condition{}, false
+	}
+	return s.Conditions[i], true
+}
+
+func cmdVals(cmd string) string {
+	return fmt.Sprintf(`{"cmd":%q}`, cmd)
+}
+
+templ CharacterPage(l Layout, s SheetView) {
+	@Page(l) {
+		@CharacterSheet(s)
+		if s.CanSheet {
+			@builderDialog()
+		}
+	}
+}
+
+// cmdButton runs one command.
+templ cmdButton(s SheetView, cmd string, variant button.Variant) {
+	@button.Button(button.Props{Size: button.SizeXs, Variant: variant, Attributes: templ.Attributes{"hx-post": s.cmdURL(), "hx-vals": cmdVals(cmd)}}) {
+		{ children... }
+	}
+}
+
+templ CharacterSheet(s SheetView) {
+	<div id={ fmt.Sprintf("character-%d", s.ID) } hx-swap-oob="true" class="space-y-6" { live(LiveCharacter, s.ID)... }>
+		<div class="flex flex-wrap items-end justify-between gap-3">
+			<div>
+				<h1 class="text-2xl font-semibold">
+					@editable(s, edit{"details", "set-name", ""}, "Change name", "") {
+						{ s.C.Name }
+					}
+				</h1>
+				<p class="text-sm text-muted-foreground">
+					for i, p := range s.subtitle() {
+						if i > 0 {
+							·
+						}
+						@editable(s, p.to, "Change "+p.what, "") {
+							{ p.text }
+						}
+					}
+					if s.C.Sheet.Level() > 0 {
+						· Level { fmt.Sprint(s.C.Sheet.Level()) }
+					}
+				</p>
+			</div>
+			if s.CanSheet {
+				<div class="flex items-center gap-3">
+					<a class="text-sm underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d/levelup", s.ID)) }>Level up</a>
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: templ.Attributes{
+						"hx-post":    fmt.Sprintf("/characters/%d/remove", s.ID),
+						"hx-confirm": "Delete " + s.C.Name + "? This logs out every device playing it. The GM can restore it.",
+						"aria-label": "Delete character", "title": "Delete character",
+					}}) {
+						@icon.Trash2()
+					}
+					@button.Button(button.Props{Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "", "", ""))}) {
+						@icon.Pencil()
+						Change…
+					}
+				</div>
+			}
+		</div>
+		if s.CanSheet && s.C.Sheet.Level() == 0 && !s.C.Sheet.SetUp("review") {
+			<p class="rounded-lg border border-primary/50 bg-primary/5 p-3 text-sm">
+				New character? Choose class, species, scores, background and equipment one step at a time:
+				<a class="font-medium underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d/create", s.ID)) }>finish setting up</a>.
+			</p>
+		}
+		if s.CanSheet {
+			@commandBar(s)
+		}
+		@hpCard(s)
+		@conditionsCard(s)
+		@modifiersCard(s)
+		<div class="grid gap-4 md:grid-cols-2">
+			@abilitiesCard(s)
+			@skillsCard(s)
+		</div>
+		@actionsCard(s)
+		<div class="grid gap-4 md:grid-cols-2">
+			@attacksCard(s)
+			@armorCard(s)
+		</div>
+		@spellsCard(s)
+		<div class="grid gap-4 md:grid-cols-2">
+			@inventoryCard(s)
+			@featuresCard(s)
+		</div>
+		@backstoryCard(s)
+		@characterLooks(s)
+	</div>
+}
+
+// characterLooks is the character's looks; the player manages them and
+// decides which the rest of the table sees.
+templ characterLooks(s SheetView) {
+	if s.CanSheet || len(s.Looks) > 0 {
+		@looksSection(s.Looks, utils.IfElse(s.CanSheet, fmt.Sprintf("/characters/%d/images/", s.ID), ""),
+			utils.IfElse(s.CanSheet, "The current look is your portrait. Other players see only revealed looks.", "")) {
+			if s.CanSheet {
+				<form
+					class="group/busy max-w-md space-y-3"
+					data-busy
+					hx-post={ fmt.Sprintf("/characters/%d/images", s.ID) }
+					hx-encoding="multipart/form-data"
+				>
+					@sourceTabs(sourceField{
+						ID: fmt.Sprintf("look-source-%d", s.ID), Label: "Add a look", Placeholder: "https://…",
+						Accept: "image/png,image/jpeg,image/gif,image/webp", FileHint: "PNG, JPEG, GIF or WebP, up to 20 MB.",
+					})
+					@input.Input(input.Props{Name: "name", Placeholder: "Name (optional)", Attributes: templ.Attributes{"maxlength": "200", "aria-label": "Look name"}})
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+						Add look
+					}
+					@busyIndicator("Uploading…")
+				</form>
+			}
+		}
+	}
+}
+
+// subtitlePart is one piece of the line under the name.
+type subtitlePart struct {
+	text, what string
+	to         edit
+}
+
+// subtitle is species, background and classes, leaving out empty ones;
+// classes change through levelling up.
+func (s SheetView) subtitle() []subtitlePart {
+	parts := []subtitlePart{
+		{s.C.Sheet.Species, "species", edit{"details", "set-species", ""}},
+		{s.C.Sheet.Background, "background", edit{"details", "set-background", ""}},
+		{s.C.Sheet.ClassSummary(), "classes", edit{}},
+	}
+	return slices.DeleteFunc(parts, func(p subtitlePart) bool { return p.text == "" })
+}
+
+templ hpCard(s SheetView) {
+	@card.Card() {
+		@card.Content() {
+			<div class="flex flex-wrap items-center gap-6">
+				<div>
+					<div class="text-xs text-muted-foreground uppercase">Hit points</div>
+					<div class="text-3xl font-semibold tabular-nums">
+						@editable(s, edit{"hp", "hp-set", ""}, "Change hit points", "") {
+							<span { bind("text=hp")... }>{ fmt.Sprint(s.C.HP) }</span>
+						}
+						@editable(s, edit{"hp", "hp-max", ""}, "Change max hit points", "") {
+							<span class="text-lg text-muted-foreground">/{ fmt.Sprint(s.C.MaxHP) }</span>
+						}
+						if s.C.TempHP > 0 {
+							@editable(s, edit{"hp", "hp-temp", ""}, "Change temporary hit points", "") {
+								<span class="ml-2 text-lg text-sky-600" { bind("text=temp")... }>{ tempLabel(s.C.TempHP) }</span>
+							}
+						}
+					</div>
+				</div>
+				if s.CanHP {
+					<form class="flex items-center gap-2" hx-post={ s.cmdURL() } hx-on::after-request="this.reset()">
+						@input.Input(input.Props{Name: "hp_amount", Type: "number", Class: "w-20", Placeholder: "0", Required: true, Attributes: templ.Attributes{"min": "1", "inputmode": "numeric", "aria-label": "Hit points"}})
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "hp_op", "value": "damage"}}) {
+							Damage
+						}
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Attributes: templ.Attributes{"name": "hp_op", "value": "heal"}}) {
+							Heal
+						}
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "hp_op", "value": "temp"}}) {
+							Temp
+						}
+					</form>
+				}
+				<dl class="grid grid-cols-3 gap-x-6 gap-y-1 text-sm sm:grid-cols-6">
+					@stat(s, "AC", fmt.Sprint(s.C.Sheet.ArmorClass()), "", edit{"details", "set-ac", ""}) {
+						@modWarn(s, "ac", dnd5e.ModAC)
+					}
+					@stat(s, "Speed", fmt.Sprint(s.C.Sheet.WalkSpeed()), "", edit{"details", "set-speed", ""}) {
+						@modWarn(s, "speed", dnd5e.ModSpeed)
+					}
+					@stat(s, "Init", dnd5e.Signed(s.C.Sheet.Initiative()), "", edit{"mods", "mod-add", dnd5e.ModInit}) {
+						@modWarn(s, "init", dnd5e.ModInit, "dex")
+					}
+					@stat(s, "Prof", dnd5e.Signed(s.C.Sheet.ProficiencyBonus()), "", edit{})
+					@stat(s, "Passive Perception", fmt.Sprint(s.C.Sheet.PassivePerception()), "", edit{"mods", "mod-add", dnd5e.ModPassive}) {
+						@modWarn(s, "passive", dnd5e.ModPassive, "skill.perception", "wis")
+					}
+					@stat(s, "Hit dice", hitDice(s.C.Sheet), "hd", edit{"rest", "hitdie-use", ""})
+				</dl>
+			</div>
+			if dying(s) {
+				<div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+					<span class="font-medium">Death saves</span>
+					<span { bind("text=ds.s")... }>{ fmt.Sprintf("✓ %d/3", s.C.Sheet.DeathSaves.Successes) }</span>
+					<span { bind("text=ds.f")... }>{ fmt.Sprintf("✗ %d/3", s.C.Sheet.DeathSaves.Failures) }</span>
+					if s.CanSheet {
+						@cmdButton(s, "deathsave success", button.VariantOutline) {
+							Success
+						}
+						@cmdButton(s, "deathsave fail", button.VariantOutline) {
+							Failure
+						}
+						@cmdButton(s, "deathsave reset", button.VariantGhost) {
+							Reset
+						}
+					}
+				</div>
+			}
+			if s.CanSheet {
+				<div class="mt-3 flex flex-wrap gap-2">
+					@cmdButton(s, "rest short", button.VariantOutline) {
+						Short rest
+					}
+					@cmdButton(s, "rest long", button.VariantOutline) {
+						Long rest
+					}
+					@cmdButton(s, "hitdie use", button.VariantOutline) {
+						Spend hit die
+					}
+					@cmdButton(s, "inspiration", button.VariantOutline) {
+						<span { bind("text=insp")... }>{ inspirationLabel(s.C.Sheet.Inspiration) }</span>
+					}
+				</div>
+			}
+		}
+	}
+}
+
+func hitDice(s dnd5e.Sheet) string {
+	total := s.Level()
+	if total == 0 {
+		return "–"
+	}
+	dice := s.HitDice()
+	sizes := slices.Sorted(maps.Keys(dice))
+	slices.Reverse(sizes)
+	parts := make([]string, len(sizes))
+	for i, d := range sizes {
+		if len(sizes) == 1 {
+			parts[i] = fmt.Sprintf("d%d", d)
+		} else {
+			parts[i] = fmt.Sprintf("%dd%d", dice[d], d)
+		}
+	}
+	return fmt.Sprintf("%d/%d %s", total-s.HitDiceUsed, total, strings.Join(parts, " + "))
+}
+
+// edit names the builder form a value opens; the zero edit opens none.
+type edit struct{ verb, op, subject string }
+
+// editable lets the owner tap its children to open the form that changes
+// them; everyone else just sees the children. It keeps the text's look.
+templ editable(s SheetView, to edit, label, class string) {
+	if s.CanSheet && to.verb != "" {
+		@button.Button(button.Props{Variant: button.VariantGhost, Class: utils.CN("-mx-1 h-auto px-1 py-0 text-inherit [font:inherit]", class), Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, to.verb, to.op, to.subject), templ.Attributes{"title": label})}) {
+			{ children... }
+		}
+	} else {
+		{ children... }
+	}
+}
+
+// stat is one figure, followed by its children (a modifier warning); key
+// binds it when it changes often.
+templ stat(s SheetView, name, value, key string, to edit) {
+	<div>
+		{{ tip, why := statTips[name], statWhy[name] }}
+		if tip != "" || why != "" {
+			<dt>
+				@whyPopover(s, "why-"+strings.ReplaceAll(strings.ToLower(name), " ", "-"), name, tip, why) {
+					<span class="text-xs text-muted-foreground underline decoration-dotted underline-offset-2">{ name }</span>
+				}
+			</dt>
+		} else {
+			<dt class="text-xs text-muted-foreground">{ name }</dt>
+		}
+		<dd class="flex items-center gap-1 font-medium tabular-nums">
+			@editable(s, to, "Change "+name, "") {
+				<span
+					if key != "" {
+						{ bind("text="+key)... }
+					}
+				>{ value }</span>
+			}
+			{ children... }
+		</dd>
+	</div>
+}
+
+// statWhy are the stats with a breakdown (dnd5e.Sheet.Explain target).
+var statWhy = map[string]string{"AC": dnd5e.ModAC, "Speed": dnd5e.ModSpeed, "Init": dnd5e.ModInit, "Passive Perception": dnd5e.ModPassive}
+
+// whyPopover opens from its children to say what a value is for and what
+// makes it up. id must be stable, so the live view's markup hash is.
+templ whyPopover(s SheetView, id, title, tip, target string) {
+	@popover.Popover(popover.Props{ID: id}) {
+		@button.Button(button.Props{Variant: button.VariantGhost, Class: "-mx-1 h-auto px-1 py-0 font-normal", Attributes: with(popover.Trigger(ctx), templ.Attributes{"aria-label": "Why " + title})}) {
+			{ children... }
+		}
+		@popover.Content(popover.ContentProps{Class: "w-72 text-sm font-normal"}) {
+			<div class="font-medium">{ title }</div>
+			if tip != "" {
+				<p class="mt-1 text-xs text-muted-foreground">{ tip }</p>
+			}
+			if target != "" {
+				@breakdown(s.C.Sheet.Explain(target))
+			}
+		}
+	}
+}
+
+// breakdown lists what makes up a value, the parts that do not count right
+// now struck through, and the total.
+templ breakdown(parts []dnd5e.Part) {
+	<ul class="mt-2 space-y-0.5 text-xs">
+		for _, p := range parts {
+			<li class={ "flex justify-between gap-3", templ.KV("text-muted-foreground line-through", p.Off) }>
+				<span>{ p.Label }</span>
+				<span class="tabular-nums">{ dnd5e.Signed(p.Value) }</span>
+			</li>
+		}
+		<li class="flex justify-between gap-3 border-t pt-0.5 font-medium">
+			<span>Total</span>
+			<span class="tabular-nums">{ fmt.Sprint(dnd5e.Sum(parts)) }</span>
+		</li>
+	</ul>
+}
+
+// armorCard is the armor worn and what it makes of AC, then the armor in
+// the inventory to change into.
+templ armorCard(s SheetView) {
+	{{ sh := s.C.Sheet }}
+	@card.Card() {
+		@cardTitle(s, "Armour", "armor", "")
+		@card.Content() {
+			{{ spare := s.spareArmor() }}
+			if sh.Armor == nil && !sh.Shield && len(spare) == 0 {
+				<p class="text-sm text-muted-foreground">No armour: AC is 10 + Dexterity, or Unarmored Defense if a feature gives it.</p>
+			}
+			<ul class="divide-y text-sm">
+				if sh.Armor != nil {
+					@gearRow(s, sh.Armor.Name, sh.Armor.Type+" · "+dnd5e.ArmorEffect(*sh.Armor, sh.Mod("dex")), "armor off", "Take off", true)
+				}
+				if sh.Shield {
+					@gearRow(s, "Shield", "+2 AC", "shield off", "Put down", true)
+				}
+				for _, it := range spare {
+					if it.Shield {
+						@gearRow(s, it.Name, "+2 AC", fmt.Sprintf("armor wear %q", it.Name), "Wear", false)
+					} else {
+						@gearRow(s, it.Name, it.Armor.Type+" · "+dnd5e.ArmorEffect(*it.Armor, sh.Mod("dex")), fmt.Sprintf("armor wear %q", it.Name), "Wear", false)
+					}
+				}
+			</ul>
+			<div class="mt-3 flex flex-wrap items-center gap-2 empty:hidden">
+				if sh.ArmorTooHeavy() {
+					@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
+						Needs Strength { fmt.Sprint(sh.Armor.StrReq) }: −10 ft speed
+					}
+				}
+				if sh.StealthDisadvantage() {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						Stealth disadvantage
+					}
+				}
+				if untrained := sh.ArmorUntrained(); len(untrained) > 0 {
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-amber-500 text-amber-700 dark:text-amber-300", Attributes: templ.Attributes{"title": "Without armor training you have disadvantage on Strength and Dexterity tests and attacks, and cannot cast spells. Add the training under Proficiencies if you have it."}}) {
+						Not trained: { strings.Join(untrained, ", ") }
+					}
+				}
+			</div>
+		}
+	}
+}
+
+// gearRow is one piece of armor: what is worn stands out, the rest is
+// muted, each with the command that changes it.
+templ gearRow(s SheetView, name, detail, cmd, verb string, on bool) {
+	<li class="flex items-center justify-between gap-2 py-1">
+		<span class={ templ.KV("text-muted-foreground", !on) }>
+			<span class={ templ.KV("font-medium text-foreground", on) }>{ name }</span>
+			<span class="ml-1 text-xs text-muted-foreground">{ detail }</span>
+		</span>
+		if s.CanSheet {
+			@cmdButton(s, cmd, utils.IfElse(on, button.VariantGhost, button.VariantOutline)) {
+				{ verb }
+			}
+		}
+	</li>
+}
+
+// spareArmor is the armor and shields in the inventory not worn.
+func (s SheetView) spareArmor() []dnd5e.Item {
+	return slices.DeleteFunc(slices.Clone(s.C.Sheet.Inventory), func(it dnd5e.Item) bool {
+		return it.Armor == nil && !it.Shield || s.C.Sheet.Worn(it)
+	})
+}
+
+// spareWeapons are the weapons in the inventory not ready to attack with.
+func (s SheetView) spareWeapons() []dnd5e.Item {
+	return slices.DeleteFunc(slices.Clone(s.C.Sheet.Inventory), func(it dnd5e.Item) bool {
+		return it.Weapon == nil || s.C.Sheet.Ready(it)
+	})
+}
+
+// statTips explain the stats whose names do not say what they are for.
+var statTips = map[string]string{
+	"Passive Perception": "10 + your Perception bonus: what you notice without looking. Hidden creatures' Stealth is checked against it.",
+	"Init":               "Initiative: add it to a d20 when combat starts.",
+	"AC":                 "Armor class: an attack hits you if its roll meets or beats this.",
+	"Speed":              "How far you can move on your turn, in feet.",
+	"Prof":               "Proficiency bonus: added to the attacks, saves and skills you are proficient in.",
+	"Hit dice":           "Spend these on a short rest to heal; a long rest restores them.",
+}
+
+// profMark shows a proficiency level at a glance.
+templ profMark(level string) {
+	switch level {
+		case dnd5e.ProfExpertise:
+			<span class="text-primary" title="Expertise">★</span>
+		case dnd5e.ProfProficient:
+			<span class="text-primary" title="Proficient">●</span>
+		default:
+			<span class="text-muted-foreground" title="Not proficient">○</span>
+	}
+}
+
+// hasMods reports whether any custom modifier is on one of targets.
+func (s SheetView) hasMods(targets ...string) bool {
+	return slices.ContainsFunc(s.C.Sheet.Modifiers, func(m dnd5e.CustomMod) bool { return slices.Contains(targets, m.Target) })
+}
+
+// modWarn flags a value changed by custom modifiers; a tap lists them, and
+// the owner can tap one to edit it. id must be stable so the live view's
+// markup hash is.
+templ modWarn(s SheetView, id string, targets ...string) {
+	if s.hasMods(targets...) {
+		@popover.Popover(popover.Props{ID: "mods-" + id}) {
+			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-5 text-amber-600 dark:text-amber-400", Attributes: with(popover.Trigger(ctx), templ.Attributes{"aria-label": "Custom modifiers apply"})}) {
+				@icon.TriangleAlert(icon.Props{Size: 14})
+			}
+			@popover.Content(popover.ContentProps{Class: "w-64 text-sm font-normal"}) {
+				<div class="mb-1 font-medium">Custom modifiers</div>
+				for i, m := range s.C.Sheet.Modifiers {
+					if slices.Contains(targets, m.Target) {
+						@modRow(s, i, m, false)
+					}
+				}
+			}
+		}
+	}
+}
+
+// cardTitle is a card header with an edit button that opens the builder.
+templ cardTitle(s SheetView, title, verb, op string) {
+	@card.Header() {
+		@card.Title() {
+			{ title }
+		}
+		if s.CanSheet {
+			@card.Action() {
+				@builderButton(s, verb, op, "Edit "+strings.ToLower(title))
+			}
+		}
+	}
+}
+
+templ conditionsCard(s SheetView) {
+	<div class="flex flex-wrap items-center gap-1.5">
+		for _, slug := range dnd5e.Conditions {
+			if slug == exhaustion {
+				@exhaustionChip(s)
+			} else {
+				@conditionChip(s, slug)
+			}
+		}
+		for _, c := range s.Conditions {
+			if c.Slug == dnd5e.TrackConcentration || c.Slug == dnd5e.TrackCustom {
+				@tooltip.Tooltip() {
+					<span class="inline-flex items-center gap-1 rounded-full border border-primary px-2 py-0.5 text-xs" { tooltip.Trigger(ctx)... }>
+						if c.Slug == dnd5e.TrackConcentration {
+							Concentrating: { c.Note }
+						} else {
+							{ c.Note }
+						}
+						if c.ExpiresRound.Valid {
+							(until round { fmt.Sprint(c.ExpiresRound.Int64) })
+						}
+						if s.CanConditions {
+							@removeButton(fmt.Sprintf("/conditions/%d/delete", c.ID))
+						}
+					</span>
+					@conditionTip(c.Slug)
+				}
+			}
+		}
+		if s.CanConditions {
+			<form class="inline-flex" hx-post={ s.cmdURL() } hx-on::after-request="this.reset()">
+				@input.Input(input.Props{Name: "cmd", Placeholder: "concentrate Bless", Class: "h-6 w-44 rounded-full px-2 text-xs md:text-xs"})
+			</form>
+		}
+	</div>
+}
+
+// conditionChip's look follows aria-pressed, so a live toggle only flips
+// that attribute.
+templ conditionChip(s SheetView, slug string) {
+	{{ _, on := s.condition(slug) }}
+	@tooltip.Tooltip() {
+		@button.Button(button.Props{
+			Variant:    button.VariantOutline,
+			Size:       button.SizeXs,
+			Class:      "rounded-full capitalize text-muted-foreground aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80",
+			Disabled:   !s.CanConditions,
+			Attributes: with(templ.Attributes{"hx-post": s.cmdURL(), "hx-vals": cmdVals("toggle " + slug), "aria-pressed": fmt.Sprint(on)}, bind("aria-pressed=cond."+slug), tooltip.Trigger(ctx)),
+		}) {
+			{ slug }
+		}
+		@conditionTip(slug)
+	}
+}
+
+templ exhaustionChip(s SheetView) {
+	{{ c, on := s.condition(exhaustion) }}
+	@tooltip.Tooltip() {
+		<span class={ "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs", templ.KV("border-primary bg-primary text-primary-foreground", on), templ.KV("text-muted-foreground", !on) } { tooltip.Trigger(ctx)... }>
+			if s.CanConditions {
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-4", Attributes: templ.Attributes{"aria-label": "Less exhaustion", "hx-post": s.cmdURL(), "hx-vals": cmdVals("exhaustion -1")}}) {
+					@icon.Minus(icon.Props{Size: 12})
+				}
+			}
+			exhaustion
+			if on {
+				<span { bind("text=exh")... }>{ c.Note }</span>
+			}
+			if s.CanConditions {
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-4", Attributes: templ.Attributes{"aria-label": "More exhaustion", "hx-post": s.cmdURL(), "hx-vals": cmdVals("exhaustion +1")}}) {
+					@icon.Plus(icon.Props{Size: 12})
+				}
+			}
+		</span>
+		@conditionTip(exhaustion)
+	}
+}
+
+// commandsID is the palette that explains the commands and fills one in.
+const commandsID = "command-help"
+
+// commandBar runs typed commands; its palette lists every command with an
+// example, and picking one puts the example in the bar to adjust.
+templ commandBar(s SheetView) {
+	<div class="space-y-1">
+		<form hx-post={ s.cmdURL() } hx-on::after-request="if(event.detail.successful) this.reset()" class="flex flex-wrap gap-2">
+			@input.Input(input.Props{ID: "command-input", Name: "cmd", Class: "flex-1",Placeholder: "Command, e.g. hp -5, slot use 2, item add Rope", Attributes: templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "aria-keyshortcuts": "/ Tab Control+Space", "aria-describedby": "command-hint", "data-verbs": strings.Join(dnd5e.Verbs(), " "), "data-complete": fmt.Sprintf("/characters/%d/complete", s.ID)}})
+			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: with(dialog.TriggerFor(commandsID), templ.Attributes{"title": "Browse commands"})}) {
+				@icon.BookOpen()
+				<span class="hidden sm:inline">Commands</span>
+			}
+			@button.Button(button.Props{Type: button.TypeSubmit, Disabled: true, Attributes: templ.Attributes{"data-command-run": true}}) {
+				Run
+			}
+		</form>
+		<div id="command-hint" class="space-y-0.5 text-xs text-muted-foreground" aria-live="polite"></div>
+	</div>
+	@command.Dialog(command.DialogProps{ID: commandsID, Title: "Commands", Description: "Pick a command to fill it in, then adjust and run it. In the bar, Tab completes a word and Ctrl+Space lists the choices."}) {
+		@command.Command(command.Props{Label: "Commands", Attributes: templ.Attributes{"data-command-help": "command-input"}}) {
+			@command.Input(command.InputProps{Placeholder: "What do you want to do? (coins, slot, rest…)"})
+			@command.List() {
+				@command.Empty() {
+					No matching command.
+				}
+				for _, h := range dnd5e.Help {
+					@command.Item(command.ItemProps{Value: h.Example + " " + h.Desc, Attributes: templ.Attributes{"data-example": h.Example, "data-syntax": h.Syntax, "data-desc": h.Desc}}) {
+						<div class="flex min-w-0 flex-col">
+							<span>{ h.Desc }</span>
+							<span class="truncate font-mono text-xs text-muted-foreground">{ h.Syntax }</span>
+						</div>
+					}
+				}
+			}
+			@button.Button(button.Props{Variant: button.VariantGhost, Class: "sr-only", Attributes: dialog.CloseFor(commandsID)}) {
+				Close
+			}
+		}
+	}
+}
+
+templ abilitiesCard(s SheetView) {
+	@card.Card() {
+		@cardTitle(s, "Abilities", "abilities", "")
+		@card.Content() {
+			<div class="grid grid-cols-3 gap-3">
+				for _, a := range dnd5e.Abilities {
+					<div class="relative rounded-md border p-2 text-center">
+						if s.CanSheet {
+							@button.Button(button.Props{
+								Variant:    button.VariantGhost,
+								Class:      "h-auto w-full flex-col gap-0 py-1",
+								Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "abilities", "ability", a), templ.Attributes{"aria-label": "Change " + dnd5e.AbilityNames[a]}),
+							}) {
+								@abilityFace(s, a)
+							}
+						} else {
+							@abilityFace(s, a)
+						}
+						<div class="absolute top-1 right-1">
+							@modWarn(s, a, a)
+						</div>
+						{{ saveLevel := dnd5e.ProfNone }}
+						if slices.Contains(s.C.Sheet.SaveProfs, a) {
+							{{ saveLevel = dnd5e.ProfProficient }}
+						}
+						<div class={ "mt-1 flex items-center justify-center gap-0.5 text-xs", templ.KV("font-semibold", saveLevel != dnd5e.ProfNone) }>
+							@editable(s, edit{"profs", focusSave, a}, dnd5e.AbilityNames[a]+" save proficiency", "gap-1") {
+								@profMark(saveLevel)
+								save { dnd5e.Signed(s.C.Sheet.SaveBonus(a)) }
+							}
+							@modWarn(s, "save-"+a, "save."+a)
+						</div>
+					</div>
+				}
+			</div>
+		}
+	}
+}
+
+// abilityFace is an ability tile's name, modifier and score.
+templ abilityFace(s SheetView, a string) {
+	<div class="text-xs text-muted-foreground uppercase">{ a }</div>
+	<div class="text-xl font-semibold">{ dnd5e.Signed(s.C.Sheet.Mod(a)) }</div>
+	<div class="text-xs">{ fmt.Sprint(s.C.Sheet.Score(a)) }</div>
+}
+
+templ skillsCard(s SheetView) {
+	@card.Card() {
+		@cardTitle(s, "Skills", "profs", "")
+		@card.Content() {
+			<ul class="grid grid-cols-2 gap-x-4 text-sm">
+				for _, sk := range dnd5e.Skills {
+					{{ level := s.C.Sheet.ProfLevel(sk.Key) }}
+					{{ to := edit{"profs", focusSkill, sk.Key} }}
+					<li class="flex items-center gap-0.5">
+						@editable(s, to, sk.Name+" proficiency", "") {
+							<span class={ "flex items-center gap-1.5", templ.KV("font-semibold", level != dnd5e.ProfNone) }>
+								@profMark(level)
+								{ sk.Name }
+							</span>
+						}
+						@modWarn(s, "skill-"+sk.Key, "skill."+sk.Key, sk.Ability)
+						if sk.Key == "stealth" && s.C.Sheet.StealthDisadvantage() {
+							<span class="text-xs text-destructive" title="Your armor gives disadvantage on Stealth">disadv.</span>
+						}
+						<span class="ml-auto">
+							@editable(s, to, sk.Name+" proficiency", "") {
+								<span class="tabular-nums">{ dnd5e.Signed(s.C.Sheet.SkillBonus(sk)) }</span>
+							}
+						</span>
+					</li>
+				}
+			</ul>
+			if len(s.C.Sheet.Languages) > 0 || s.CanSheet {
+				<p class="mt-3 text-xs text-muted-foreground">
+					<span class="font-medium text-foreground">Languages</span>
+					@editable(s, edit{"profs", "lang-add", ""}, "Change languages", "mx-0 whitespace-normal text-left") {
+						if len(s.C.Sheet.Languages) > 0 {
+							{ strings.Join(s.C.Sheet.Languages, ", ") }
+						} else {
+							Add languages
+						}
+					}
+				</p>
+			}
+			if len(s.C.Sheet.OtherProfs) > 0 || s.CanSheet {
+				<p class="mt-3 text-xs text-muted-foreground">
+					@editable(s, edit{"profs", "other-add", ""}, "Change other proficiencies", "mx-0 whitespace-normal text-left") {
+						if len(s.C.Sheet.OtherProfs) > 0 {
+							{ strings.Join(s.C.Sheet.OtherProfs, ", ") }
+						} else {
+							Add armor, weapon or tool proficiencies
+						}
+					}
+				</p>
+			}
+		}
+	}
+}
+
+// spellSlots are the slot counters at the top of the spells card.
+templ spellSlots(s SheetView) {
+	<div class="mb-3 flex flex-wrap gap-3">
+		for i, sl := range s.C.Sheet.Slots {
+			if sl.Max > 0 {
+				<div class="rounded-md border p-2 text-center">
+					<div class="text-xs text-muted-foreground">Level { fmt.Sprint(i + 1) }</div>
+					@editable(s, edit{"slots", "slot-max", fmt.Sprint(i + 1)}, "Change slot count", "") {
+						<div class="font-semibold tabular-nums" { bind(fmt.Sprintf("text=slot.%d", i+1))... }>{ slotLabel(sl) }</div>
+					}
+					if s.CanSheet {
+						<div class="mt-1 flex gap-1">
+							@cmdButton(s, fmt.Sprintf("slot use %d", i+1), button.VariantOutline) {
+								Use
+							}
+							@cmdButton(s, fmt.Sprintf("slot restore %d", i+1), button.VariantGhost) {
+								+
+							}
+						</div>
+					}
+				</div>
+			}
+		}
+		if s.C.Sheet.Pact.Max > 0 {
+			<div class="rounded-md border p-2 text-center">
+				<div class="text-xs text-muted-foreground">Pact (level { fmt.Sprint(s.C.Sheet.PactLevel) })</div>
+				<div class="font-semibold tabular-nums" { bind("text=pact")... }>{ slotLabel(s.C.Sheet.Pact) }</div>
+				if s.CanSheet {
+					<div class="mt-1 flex gap-1">
+						@cmdButton(s, "pact use", button.VariantOutline) {
+							Use
+						}
+						@cmdButton(s, "pact restore", button.VariantGhost) {
+							+
+						}
+					</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+// spellsCard holds slots and spells together, since casting spends both.
+// Each spell opens to its compendium text, loaded when first opened.
+templ spellsCard(s SheetView) {
+	{{ hasSlots := s.C.Sheet.MaxSpellLevel() > 0 || s.C.Sheet.Pact.Max > 0 }}
+	if len(s.C.Sheet.Spells) > 0 || hasSlots || s.CanSheet {
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					Spells
+				}
+				if ab := s.C.Sheet.SpellAbility(); ab != "" {
+					@card.Description() {
+						Spell attack { dnd5e.Signed(s.C.Sheet.SpellAttack(ab)) } · Save DC { fmt.Sprint(s.C.Sheet.SpellDC(ab)) } ({ dnd5e.AbilityNames[ab] })
+					}
+				}
+				if s.CanSheet {
+					@card.Action() {
+						@builderButton(s, "spells", "", "Edit spells")
+					}
+				}
+			}
+			@card.Content() {
+				if hasSlots {
+					@spellSlots(s)
+				}
+				<ul class="divide-y text-sm">
+					for _, sp := range s.C.Sheet.Spells {
+						<li class="flex items-start justify-between gap-2 py-1">
+							<details
+								class="min-w-0 flex-1"
+								hx-get={ fmt.Sprintf("/compendium/lookup?kind=spell&slug=%s", url.QueryEscape(sp.Slug)) }
+								hx-trigger="toggle once"
+								hx-target="find [data-spell-body]"
+								hx-swap="innerHTML"
+							>
+								<summary class="cursor-pointer py-0.5">
+									<span class={ templ.KV("font-semibold", sp.Prepared) }>{ sp.Name }</span>
+									<span class="text-xs text-muted-foreground">
+										if sp.Level == 0 {
+											cantrip
+										} else {
+											level { fmt.Sprint(sp.Level) }
+										}
+										if sp.Prepared {
+											· prepared
+										}
+									</span>
+								</summary>
+								<div data-spell-body class="mt-1 space-y-2 pb-2 text-xs">
+									@spinner.Spinner(spinner.Props{Class: "size-4"})
+								</div>
+							</details>
+							if s.CanSheet {
+								<span class="flex shrink-0 gap-1">
+									if sp.Level > 0 {
+										if sp.Prepared {
+											@cmdButton(s, "spell unprepare "+sp.Slug, button.VariantGhost) {
+												Unprepare
+											}
+										} else {
+											@cmdButton(s, "spell prepare "+sp.Slug, button.VariantGhost) {
+												Prepare
+											}
+										}
+									}
+									@cmdButton(s, "spell remove "+sp.Slug, button.VariantDestructive) {
+										Remove
+									}
+								</span>
+							}
+						</li>
+					}
+				</ul>
+				if s.CanSheet {
+					<div class="mt-3">
+						@spellPicker(s, fmt.Sprintf("spell-search-%d", s.ID), "Add a spell…", false)
+					</div>
+				}
+			}
+		}
+	}
+}
+
+// spellPicker searches compendium spells to add. Its results scroll in a
+// box of their own and stay through the sheet's live refetches (hx-preserve,
+// so id must be stable), until cleared with ×.
+templ spellPicker(s SheetView, id, placeholder string, autofocus bool) {
+	<div id={ id } hx-preserve="true">
+		@inputgroup.InputGroup() {
+			@inputgroup.Input(inputgroup.InputProps{Name: "q", Placeholder: placeholder, Attributes: templ.Attributes{
+				"hx-get":       fmt.Sprintf("/compendium/search?kind=spell&character=%d", s.ID),
+				"hx-trigger":   "input changed delay:200ms, keyup[key=='Enter']",
+				"hx-target":    "#" + id + " ul",
+				"hx-swap":      "innerHTML",
+				"aria-label":   "Search spells",
+				"autocomplete": "off",
+				"autofocus":    autofocus,
+			}})
+			@inputgroup.Addon(inputgroup.AddonProps{Align: inputgroup.AlignInlineEnd}) {
+				@inputgroup.Button(inputgroup.ButtonProps{Size: inputgroup.ButtonSizeIconXs, Variant: button.VariantGhost, Attributes: templ.Attributes{
+					"aria-label": "Clear search",
+					"onclick":    "const p = this.closest('[hx-preserve]'), q = p.querySelector('input'); q.value = ''; p.querySelector('ul').replaceChildren(); q.focus()",
+				}}) {
+					@icon.X()
+				}
+			}
+		}
+		<ul class="mt-1 max-h-72 overflow-y-auto text-sm"></ul>
+		<a class="text-xs text-muted-foreground underline" href="/compendium/homebrew/new?kind=spell&add=1">Not in the compendium? Create a custom spell</a>
+	</div>
+}
+
+// inventoryCard always shows every coin, zeros too, so there is one
+// obvious place to change them.
+templ inventoryCard(s SheetView) {
+	@card.Card() {
+		@cardTitle(s, "Inventory", "items", "")
+		@card.Content() {
+			<div class="mb-3 grid grid-cols-5 gap-2 text-center">
+				for _, c := range coinList(s.C.Sheet.Coins) {
+					<div class="rounded-md border py-1">
+						@editable(s, edit{"coins", "coin-edit", c.name}, "Change "+c.name, "w-full flex-col gap-0") {
+							<span class="text-xs text-muted-foreground uppercase">{ c.name }</span>
+							<span class="font-semibold tabular-nums">{ fmt.Sprint(c.n) }</span>
+						}
+					</div>
+				}
+			</div>
+			<ul class="divide-y text-sm">
+				for _, it := range s.C.Sheet.Inventory {
+					<li class="flex items-center justify-between gap-2 py-1">
+						@editable(s, edit{"items", "item-edit", it.Name}, "Change "+it.Name, "flex-col items-start gap-0 whitespace-normal text-left") {
+							<span class="inline-flex items-center gap-1">{ it.Name } <span class="text-muted-foreground tabular-nums">{ fmt.Sprint(it.Qty) }</span> @gearMark(s, it)</span>
+							if it.Notes != "" {
+								<span class="text-xs text-muted-foreground">{ it.Notes }</span>
+							}
+						}
+						if s.CanSheet {
+							<span class="flex gap-1">
+								@cmdButton(s, fmt.Sprintf("item remove %q", it.Name), button.VariantGhost) {
+									−
+								}
+								@cmdButton(s, fmt.Sprintf("item add %q", it.Name), button.VariantGhost) {
+									+
+								}
+							</span>
+						}
+					</li>
+				}
+			</ul>
+			if s.CanSheet {
+				<form class="mt-3 flex gap-2" hx-post={ s.cmdURL() } hx-on::after-request="if(event.detail.successful) this.reset()">
+					<div class="min-w-0 flex-1">
+						@itemPicker(fmt.Sprintf("item-name-%d", s.ID), "item_name", "Add item", false)
+					</div>
+					@input.Input(input.Props{Name: "item_qty", Type: "number", Class: "w-20", Value: "1", Attributes: templ.Attributes{"min": "1", "aria-label": "Quantity"}})
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+						Add
+					}
+				</form>
+			}
+		}
+	}
+}
+
+// gearMark is an icon saying an item is worn or ready, explained on hover.
+templ gearMark(s SheetView, it dnd5e.Item) {
+	{{ worn, ready := s.C.Sheet.Worn(it), s.C.Sheet.Ready(it) }}
+	if worn || ready {
+		{{ tip := utils.IfElse(worn, "Worn", "Ready to attack with") }}
+		@tooltip.Tooltip() {
+			<span class="text-primary" aria-label={ tip } { tooltip.Trigger(ctx)... }>
+				if worn {
+					@icon.Shield(icon.Props{Size: 14})
+				} else {
+					@icon.Sword(icon.Props{Size: 14})
+				}
+			</span>
+			@tooltip.Content() {
+				{ tip }
+			}
+		}
+	}
+}
+
+// itemPicker picks an item name: compendium items load into its list as
+// they are typed (SearchComboItems), and createButton takes any other name.
+templ itemPicker(id, name, placeholder string, autofocus bool) {
+	@combobox.Combobox(combobox.Props{Name: name, Required: true}) {
+		@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: placeholder, Attributes: templ.Attributes{
+			"maxlength": "200", "autofocus": autofocus, "aria-label": "Item", "data-combobox-create-input": "",
+			"hx-get": "/compendium/search?kind=item&format=combobox", "hx-vals": "js:{q: this.value}",
+			"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-list", "hx-swap": "innerHTML",
+		}})
+		@combobox.Content() {
+			@createButton(id)
+			@combobox.List(combobox.ListProps{ID: id + "-list"}) {
+				<template data-combobox-create-item>
+					@combobox.Item()
+				</template>
+			}
+		}
+	}
+}
+
+templ featuresCard(s SheetView) {
+	@card.Card() {
+		@cardTitle(s, "Features", "features", "")
+		@card.Content() {
+			<div class="space-y-1 text-sm">
+				for _, f := range s.C.Sheet.Features {
+					<details>
+						<summary class="cursor-pointer">
+							<span class="font-medium">{ f.Name }</span>
+							if f.Source != "" {
+								<span class="text-xs text-muted-foreground">{ f.Source }</span>
+							}
+						</summary>
+						<div class="mt-1 text-muted-foreground">
+							@markdown(f.Description)
+						</div>
+						if s.CanSheet {
+							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeXs, Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "features", "feature-add", f.Name))}) {
+								@icon.Pencil()
+								Edit
+							}
+						}
+					</details>
+				}
+				if len(s.C.Sheet.Features) == 0 {
+					<p class="text-muted-foreground">Features appear here as you level up.</p>
+				}
+			</div>
+		}
+	}
+}
+
+// actionKinds are what an action takes, in turn order.
+var actionKinds = []struct{ key, title, tip string }{
+	{"action", "Action", "One per turn: attack, cast a spell, Dash, Dodge, Help, Hide…"},
+	{"bonus", "Bonus Action", "One per turn, only for things that say so."},
+	{"reaction", "Reaction", "One per round, even on others' turns, when its trigger happens."},
+	{"other", "Other", "Limited features that take no action of their own."},
+}
+
+// actionSections are the Actions card's sections: what each action is.
+var actionSections = []struct{ key, title string }{
+	{"attacks", "Attacks"}, {"spells", "Spells"}, {"features", "Features"},
+}
+
+// actionEntry is one thing the character can do, with why they can.
+type actionEntry struct {
+	Name, Detail, Why string
+	// Kind is what it takes (an actionKinds key).
+	Kind string
+	// Weapon, for attacks, breaks down the bonuses to hit and damage.
+	Weapon string
+	// OffHand marks a weapon's two-weapon fighting bonus attack.
+	OffHand bool
+	// SpellSlug opens the spell's text; FeatureIdx (with Uses) shows and
+	// spends its uses.
+	SpellSlug  string
+	FeatureIdx int
+	Uses       bool
+}
+
+var (
+	reSpellAttack = regexp.MustCompile(`(?i)make an? (?:ranged|melee) spell attack`)
+	reSpellSave   = regexp.MustCompile(`(?i)\b(strength|dexterity|constitution|intelligence|wisdom|charisma) saving throw`)
+)
+
+// actions sorts what the character can do into sections: ready weapons,
+// spells they can cast now and features, each in turn order.
+func (s SheetView) actions() map[string][]actionEntry {
+	sh := s.C.Sheet
+	out := map[string][]actionEntry{}
+	for _, w := range sh.Weapons {
+		detail := fmt.Sprintf("%s to hit · %s · %s", dnd5e.Signed(sh.AttackBonus(w)), sh.DamageLabel(w), weaponReach(w))
+		out["attacks"] = append(out["attacks"], actionEntry{Name: w.Name, Detail: detail, Why: w.Properties, Kind: "action", Weapon: w.Name})
+	}
+	if sh.CanDualWield() {
+		for _, w := range sh.LightWeapons() {
+			detail := fmt.Sprintf("%s to hit · %s · %s", dnd5e.Signed(sh.AttackBonus(w)), sh.OffHandDamage(w), weaponReach(w))
+			out["attacks"] = append(out["attacks"], actionEntry{Name: "Off-hand: " + w.Name, Detail: detail, Why: offHandRule, Kind: "bonus", Weapon: w.Name, OffHand: true})
+		}
+	}
+	ab := sh.SpellAbility()
+	for _, sp := range sh.Spells {
+		d := s.SpellData[sp.Slug]
+		if d == nil || sp.Level > 0 && !sp.Prepared {
+			continue
+		}
+		kind := castingKind(d.CastingTime)
+		detail := strings.TrimSpace(d.CastingTime + " · " + d.Range)
+		if ab != "" {
+			if reSpellAttack.MatchString(d.Desc) {
+				detail += " · " + dnd5e.Signed(sh.SpellAttack(ab)) + " to hit"
+			} else if m := reSpellSave.FindStringSubmatch(d.Desc); m != nil {
+				detail += fmt.Sprintf(" · DC %d %s save", sh.SpellDC(ab), strings.ToUpper(m[1][:3]))
+			}
+		}
+		if sp.Level > 0 {
+			detail += fmt.Sprintf(" · level %d slot", sp.Level)
+		}
+		out["spells"] = append(out["spells"], actionEntry{Name: sp.Name, Detail: detail, SpellSlug: sp.Slug, Kind: kind})
+	}
+	for i, f := range sh.Features {
+		kind := f.Action
+		if kind == "magic" {
+			kind = "action"
+		}
+		if kind == "" {
+			if !f.Uses.Limited() {
+				continue
+			}
+			kind = "other"
+		}
+		detail := strings.TrimSpace(dnd5e.ActionLabels[f.Action] + " · " + f.Source)
+		out["features"] = append(out["features"], actionEntry{Name: f.Name, Detail: strings.Trim(detail, " ·"), Why: f.Description, Kind: kind, FeatureIdx: i, Uses: f.Uses.Limited()})
+	}
+	for _, entries := range out {
+		slices.SortStableFunc(entries, func(a, b actionEntry) int { return kindOrder(a.Kind) - kindOrder(b.Kind) })
+	}
+	return out
+}
+
+func kindOrder(kind string) int {
+	return slices.IndexFunc(actionKinds, func(k struct{ key, title, tip string }) bool { return k.key == kind })
+}
+
+// offHandRule is the Light property's extra attack, paraphrased from the
+// SRD 5.2 (CC-BY 4.0, Wizards of the Coast).
+const offHandRule = "Bonus Action, after you take the Attack action with a different Light weapon. No ability modifier to its damage unless it is negative."
+
+// castingKind sorts a casting time ("action", "bonus action", "reaction,
+// which you take when…", "1 minute") into an Actions card group.
+func castingKind(t string) string {
+	t = strings.ToLower(t)
+	switch {
+	case strings.HasPrefix(t, "bonus"):
+		return "bonus"
+	case strings.HasPrefix(t, "reaction"):
+		return "reaction"
+	case strings.HasPrefix(t, "action"), strings.HasPrefix(t, "1 action"):
+		return "action"
+	}
+	return "other"
+}
+
+// weaponReach is "melee" or "ranged 80/320".
+func weaponReach(w dnd5e.Weapon) string {
+	if w.Range == "" {
+		return "melee"
+	}
+	if strings.Contains(strings.ToLower(w.Properties), "thrown") {
+		return "melee or thrown " + w.Range + " ft"
+	}
+	return "ranged " + w.Range + " ft"
+}
+
+// usesLabel is "2/3 left" for a feature's uses.
+func (s SheetView) usesLabel(f dnd5e.Feature) string {
+	n := s.C.Sheet.MaxUses(f.Uses)
+	return fmt.Sprintf("%d/%d left", max(n-f.Uses.Used, 0), n)
+}
+
+// actionsCard is what the character can do on a turn and why: attacks,
+// spells ready to cast and features, each opening to its rules text.
+// Features' uses are live-bound and spent with a tap.
+templ actionsCard(s SheetView) {
+	{{ groups := s.actions() }}
+	if len(groups) > 0 {
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					Actions
+				}
+				@card.Description() {
+					What you can do on your turn, and why.
+				}
+			}
+			@card.Content() {
+				<div class="space-y-4">
+					for _, sec := range actionSections {
+						if entries := groups[sec.key]; len(entries) > 0 {
+							<section>
+								<h3 class="border-b pb-1 text-sm font-semibold">{ sec.title }</h3>
+								<ul class="mt-1 grid gap-x-6 text-sm md:grid-cols-2">
+									for _, e := range entries {
+										@actionRow(s, e)
+									}
+								</ul>
+							</section>
+						}
+					}
+				</div>
+			}
+		}
+	}
+}
+
+templ actionRow(s SheetView, e actionEntry) {
+	<li class="flex items-start justify-between gap-2 py-1">
+		<details
+			class="min-w-0 flex-1"
+			if e.SpellSlug != "" {
+				hx-get={ fmt.Sprintf("/compendium/lookup?kind=spell&slug=%s", url.QueryEscape(e.SpellSlug)) }
+				hx-trigger="toggle once"
+				hx-target="find [data-why]"
+				hx-swap="innerHTML"
+			}
+		>
+			<summary class="cursor-pointer">
+				<span class="font-medium">{ e.Name }</span>
+				@actionKindBadge(e.Kind)
+				<span class="text-xs text-muted-foreground">{ e.Detail }</span>
+			</summary>
+			<div data-why class="mt-1 space-y-2 pb-2 text-xs text-muted-foreground">
+				if e.Weapon != "" {
+					<div class="grid gap-3 sm:grid-cols-2">
+						<div>
+							<div class="font-medium text-foreground">To hit</div>
+							@breakdown(s.C.Sheet.Explain(dnd5e.ModAttack + "." + e.Weapon))
+						</div>
+						<div>
+							<div class="font-medium text-foreground">Damage bonus</div>
+							@breakdown(s.C.Sheet.Explain(utils.IfElse(e.OffHand, "offhand", dnd5e.ModDamage) + "." + e.Weapon))
+						</div>
+					</div>
+					if e.Why != "" {
+						<p>{ e.Why }</p>
+					}
+				} else if e.SpellSlug != "" {
+					@spinner.Spinner(spinner.Props{Class: "size-4"})
+				} else if e.Why != "" {
+					@markdown(e.Why)
+				} else {
+					No rules text.
+				}
+			</div>
+		</details>
+		if e.Uses {
+			{{ f := s.C.Sheet.Features[e.FeatureIdx] }}
+			<span class="flex shrink-0 items-center gap-1">
+				<span class="text-xs tabular-nums" title={ dnd5e.UsesLabel(f.Uses) } { bind(fmt.Sprintf("text=use.%d", e.FeatureIdx))... }>{ s.usesLabel(f) }</span>
+				if s.CanSheet {
+					@cmdButton(s, "use "+strconv.Quote(f.Name), button.VariantOutline) {
+						Use
+					}
+					@cmdButton(s, "restore "+strconv.Quote(f.Name), button.VariantGhost) {
+						+
+					}
+				}
+			</span>
+		}
+	</li>
+}
+
+// actionKindBadge says what an action takes, its tip on hover.
+templ actionKindBadge(kind string) {
+	if i := kindOrder(kind); i >= 0 {
+		{{ k := actionKinds[i] }}
+		@tooltip.Tooltip() {
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "mx-1 px-1.5 py-0 text-[10px] font-normal", Attributes: tooltip.Trigger(ctx)}) {
+				{ k.title }
+			}
+			@tooltip.Content() {
+				{ k.tip }
+			}
+		}
+	}
+}
+
+// attacksCard shows each ready weapon's bonus to hit and damage, then the
+// weapons in the inventory to ready.
+templ attacksCard(s SheetView) {
+	@card.Card() {
+		@cardTitle(s, "Attacks", "weapons", "")
+		@card.Content() {
+			{{ spare := s.spareWeapons() }}
+			if len(s.C.Sheet.Weapons) == 0 && len(spare) == 0 {
+				<p class="text-sm text-muted-foreground">No weapons yet.</p>
+			} else {
+				<ul class="divide-y text-sm">
+					for i, w := range s.C.Sheet.Weapons {
+						@weaponRow(s, fmt.Sprint(i), w, true)
+					}
+					for i, it := range spare {
+						@weaponRow(s, fmt.Sprintf("stowed-%d", i), *it.Weapon, false)
+					}
+				</ul>
+			}
+		}
+	}
+}
+
+// weaponRow is a weapon's bonus to hit and damage; stowed ones are muted,
+// and only ready ones open the weapon form, which readies what it saves.
+// id keeps the modifier popovers' ids stable.
+templ weaponRow(s SheetView, id string, w dnd5e.Weapon, ready bool) {
+	<li class={ "flex items-center justify-between gap-2 py-1", templ.KV("text-muted-foreground", !ready) }>
+		<span>
+			@editable(s, utils.IfElse(ready, edit{"weapons", "weapon-add", w.Name}, edit{}), "Change "+w.Name, "") {
+				<span class={ templ.KV("font-medium", ready) }>{ w.Name }</span>
+			}
+			<span class="ml-1 text-xs text-muted-foreground">{ s.weaponAbility(w) }</span>
+		</span>
+		<span class="flex items-center gap-3 tabular-nums">
+			<span class="flex items-center gap-0.5">
+				@editable(s, edit{"mods", "mod-add", dnd5e.ModAttack + "." + w.Name}, "Add a modifier to hit", "") {
+					{ dnd5e.Signed(s.C.Sheet.AttackBonus(w)) } to hit
+				}
+				@modWarn(s, "atk-"+id, attackTargets(w, dnd5e.ModAttack)...)
+			</span>
+			<span class="flex flex-col items-end text-muted-foreground">
+				<span class="flex items-center gap-0.5">
+					@editable(s, edit{"mods", "mod-add", dnd5e.ModDamage + "." + w.Name}, "Add a modifier to damage", "") {
+						{ s.C.Sheet.DamageLabel(w) }
+					}
+					@modWarn(s, "dmg-"+id, attackTargets(w, dnd5e.ModDamage)...)
+				</span>
+				if ready && s.C.Sheet.CanDualWield() && slices.ContainsFunc(s.C.Sheet.LightWeapons(), func(l dnd5e.Weapon) bool { return l.Name == w.Name }) {
+					<span class="inline-flex items-center gap-1 text-xs">
+						@tooltip.Tooltip() {
+							<span class="inline-flex" aria-label="Off-hand damage" { tooltip.Trigger(ctx)... }>
+								@icon.Swords(icon.Props{Size: 12})
+							</span>
+							@tooltip.Content() {
+								Off-hand: a Bonus Action attack with a second Light weapon
+							}
+						}
+						{ s.C.Sheet.OffHandDamage(w) }
+					</span>
+				}
+			</span>
+			if s.CanSheet {
+				@cmdButton(s, fmt.Sprintf("weapon %s %q", utils.IfElse(ready, "stow", "ready"), w.Name), utils.IfElse(ready, button.VariantGhost, button.VariantOutline)) {
+					{ utils.IfElse(ready, "Stow", "Ready") }
+				}
+			}
+		</span>
+	</li>
+}
+
+// weaponAbility names the ability a weapon attacks with; finesse takes
+// the better of STR and DEX, as AttackBonus does.
+func (s SheetView) weaponAbility(w dnd5e.Weapon) string {
+	if w.Ability != "finesse" {
+		return strings.ToUpper(w.Ability)
+	}
+	if s.C.Sheet.Mod("dex") > s.C.Sheet.Mod("str") {
+		return "DEX (finesse)"
+	}
+	return "STR (finesse)"
+}
+
+// attackTargets are the modifier targets that change a weapon's kind (to
+// hit or damage), including those on its ability.
+func attackTargets(w dnd5e.Weapon, kind string) []string {
+	t := []string{kind, kind + "." + w.Name}
+	if w.Ability == "finesse" {
+		return append(t, "str", "dex")
+	}
+	return append(t, w.Ability)
+}
+
+templ modifiersCard(s SheetView) {
+	if len(s.C.Sheet.Modifiers) > 0 || s.CanSheet {
+		@card.Card() {
+			@cardTitle(s, "Custom modifiers", "mods", "")
+			@card.Content() {
+				if len(s.C.Sheet.Modifiers) == 0 {
+					<p class="text-sm text-muted-foreground">Bonuses the app does not work out itself: magic items, homebrew, house rules.</p>
+				} else {
+					<div class="space-y-1 text-sm">
+						for i, m := range s.C.Sheet.Modifiers {
+							@modRow(s, i, m, false)
+						}
+					</div>
+				}
+			}
+		}
+	}
+}
+
+templ backstoryCard(s SheetView) {
+	if s.C.Sheet.Backstory != "" || s.CanSheet {
+		@card.Card() {
+			@cardTitle(s, "Backstory", "details", "set-backstory")
+			@card.Content() {
+				if s.C.Sheet.Backstory == "" {
+					<p class="text-sm text-muted-foreground">No backstory yet.</p>
+				} else {
+					@editable(s, edit{"details", "set-backstory", ""}, "Change backstory", "block w-full whitespace-pre-line text-left") {
+						<p class="text-sm">{ s.C.Sheet.Backstory }</p>
+					}
+				}
+			}
+		}
+	}
+}

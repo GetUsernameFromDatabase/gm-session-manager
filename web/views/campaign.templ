@@ -1,0 +1,242 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/db/sqlc"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/utils"
+)
+
+// Device is one logged-in device of a character.
+type Device struct {
+	SessionID int64
+	UserAgent string // empty when not connected right now
+	Online    bool
+}
+
+// RosterCharacter is a character with its devices.
+type RosterCharacter struct {
+	Character sqlc.Character
+	Devices   []Device
+}
+
+// Roster is the GM's live view of the table.
+type Roster struct {
+	Campaign   sqlc.Campaign
+	Characters []RosterCharacter
+	// OtherCampaigns are copy targets.
+	OtherCampaigns []sqlc.Campaign
+	// Deleted are characters their player or the GM deleted; the GM may
+	// restore them.
+	Deleted []sqlc.Character
+}
+
+// PendingView is a join request on the GM's screen.
+type PendingView struct {
+	ID         string
+	CampaignID int64
+	Name       string
+	Claim      bool
+	Player     string
+	OS         string
+	Phone      bool
+	Host       string
+}
+
+// PendingGroup is one campaign's waiting requests, oldest first.
+type PendingGroup struct {
+	CampaignID   int64
+	CampaignName string
+	Requests     []PendingView
+}
+
+templ CampaignOverview(l Layout, r Roster, j JoinInfo) {
+	@Page(l) {
+		@PageHeader(r.Campaign.Name, "Table overview")
+		<div class="grid gap-6 md:grid-cols-[1fr_20rem]">
+			@CampaignRoster(r)
+			<div class="space-y-4">
+				@joinPanel(j)
+				<a class="block text-sm underline" href={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/export", r.Campaign.ID)) }>Export campaign (zip)</a>
+			</div>
+		</div>
+	}
+}
+
+// PendingRequests is the GM's approval popup on every page, for every
+// campaign. It hangs from the top so a new request lands below the others
+// instead of moving the button under the GM's cursor.
+templ PendingRequests(groups []PendingGroup) {
+	<div id="pending-requests" hx-swap-oob="true" class="fixed top-16 right-4 z-50 max-h-[calc(100vh-5rem)] w-80 space-y-2 overflow-y-auto" { live(LiveRequests, 0)... }>
+		for _, g := range groups {
+			if len(g.Requests) > 1 {
+				// Decides only the requests shown, never one that arrived since.
+				<form class="flex items-center gap-2 rounded-lg border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg">
+					for _, p := range g.Requests {
+						<input type="hidden" name="id" value={ p.ID }/>
+					}
+					<span class="min-w-0 flex-1 truncate">
+						{ fmt.Sprintf("%d requests for ", len(g.Requests)) }
+						@campaignLink(g)
+					</span>
+					@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/campaigns/%d/requests/all/approve", g.CampaignID), "aria-label": fmt.Sprintf("Approve all %d requests for %s", len(g.Requests), g.CampaignName)}}) {
+						Approve
+					}
+					@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/campaigns/%d/requests/all/deny", g.CampaignID), "aria-label": fmt.Sprintf("Deny all %d requests for %s", len(g.Requests), g.CampaignName)}}) {
+						Deny
+					}
+				</form>
+			}
+			for _, p := range g.Requests {
+				<div class="rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg" role="alertdialog">
+					<p class="font-medium">
+						if p.Claim {
+							{ p.Player } wants to play { p.Name }
+						} else {
+							{ p.Player } wants to create { p.Name }
+						}
+					</p>
+					// The bar above names the campaign when there are several.
+					if len(g.Requests) == 1 {
+						<p class="text-sm">
+							@campaignLink(g)
+						</p>
+					}
+					<p class="mb-3 flex items-center gap-1 text-xs text-muted-foreground">
+						{ p.OS }
+						if p.Phone {
+							@icon.Smartphone(icon.Props{Class: "size-3.5", Attributes: templ.Attributes{"role": "img", "aria-label": "phone"}})
+						} else {
+							@icon.Monitor(icon.Props{Class: "size-3.5", Attributes: templ.Attributes{"role": "img", "aria-label": "computer"}})
+						}
+						if p.Host != "" {
+							· { p.Host }
+						}
+					</p>
+					<div class="flex gap-2">
+						@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/campaigns/%d/requests/%s/approve", g.CampaignID, p.ID)}}) {
+							Approve
+						}
+						@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/campaigns/%d/requests/%s/deny", g.CampaignID, p.ID)}}) {
+							Deny
+						}
+					</div>
+				</div>
+			}
+		}
+	</div>
+}
+
+// campaignLink opens a request's campaign in a new tab, leaving the GM's page.
+templ campaignLink(g PendingGroup) {
+	<a class="underline" href={ templ.SafeURL(fmt.Sprintf("/campaigns/%d", g.CampaignID)) } target="_blank" rel="noopener">{ g.CampaignName }</a>
+}
+
+templ CampaignRoster(r Roster) {
+	<section id="campaign-roster" hx-swap-oob="true" { live(LiveRoster, r.Campaign.ID)... }>
+		<div class="mb-3 flex items-center justify-between">
+			<h2 class="text-lg font-semibold">Characters</h2>
+			@button.Button(button.Props{
+				Variant:    utils.IfElse(r.Campaign.OpenJoin, button.VariantDefault, button.VariantOutline),
+				Size:       button.SizeXs,
+				Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/campaigns/%d/open-join", r.Campaign.ID), "title": "When open, new characters are created without your approval", "aria-pressed": fmt.Sprint(r.Campaign.OpenJoin)},
+			}) {
+				Open join: { utils.IfElse(r.Campaign.OpenJoin, "on", "off") }
+			}
+		</div>
+		<div class="space-y-3">
+			for _, rc := range r.Characters {
+				@rosterCard(r, rc)
+			}
+			if len(r.Characters) == 0 {
+				<p class="text-sm text-muted-foreground">No characters yet. Players create them when they join.</p>
+			}
+		</div>
+		if len(r.Deleted) > 0 {
+			<h3 class="mt-6 mb-2 text-sm font-semibold">Deleted characters</h3>
+			<ul class="space-y-2 text-sm">
+				for _, ch := range r.Deleted {
+					<li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed p-2">
+						<span>
+							{ ch.Name }
+							<span class="text-xs text-muted-foreground">deleted @localTime(ch.DeletedAt.Time)</span>
+						</span>
+						<span class="flex flex-wrap gap-2">
+							@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/characters/%d/restore", ch.ID)}}) {
+								Restore
+							}
+							<a class="text-xs underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d/download", ch.ID)) } download>Download</a>
+							@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantDestructive, Attributes: templ.Attributes{
+								"hx-post": fmt.Sprintf("/characters/%d/delete", ch.ID), "hx-confirm": "Delete " + ch.Name + " forever, with their notes? This cannot be undone.",
+							}}) {
+								Delete forever
+							}
+						</span>
+					</li>
+				}
+			</ul>
+		}
+		<form
+			class="group/busy mt-6 flex flex-wrap items-center gap-2 text-sm"
+			data-busy
+			hx-post={ fmt.Sprintf("/campaigns/%d/characters/import", r.Campaign.ID) }
+			hx-encoding="multipart/form-data"
+			hx-on::after-request="if (event.detail.successful) this.reset()"
+		>
+			<label for="character-file" class="text-muted-foreground">Import a character file</label>
+			@input.Input(input.Props{ID: "character-file", Name: "file", Type: "file", Required: true, Class: "w-auto", Attributes: templ.Attributes{"accept": ".json,application/json"}})
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs, Variant: button.VariantOutline}) {
+				Import
+			}
+			@busyIndicator("Importing…")
+		</form>
+	</section>
+}
+
+templ rosterCard(r Roster, rc RosterCharacter) {
+	<div class="rounded-lg border p-3">
+		<div class="flex flex-wrap items-center justify-between gap-2">
+			<a class="font-medium underline-offset-2 hover:underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d", rc.Character.ID)) }>{ rc.Character.Name }</a>
+			<span class="text-sm" { bind(fmt.Sprintf("text=ch.%d.hp", rc.Character.ID))... }>{ rosterHP(rc) }</span>
+		</div>
+		<ul class="mt-2 space-y-1 text-sm">
+			for _, d := range rc.Devices {
+				<li class="flex items-center justify-between gap-2">
+					{{ on := fmt.Sprintf("data-online=dev.%d.on", d.SessionID) }}
+					<span class="flex items-center gap-2">
+						<span class="inline-block size-2 rounded-full bg-muted-foreground/40 data-[online=true]:bg-green-500" data-online={ fmt.Sprint(d.Online) } { bind(on)... }></span>
+						<span class="data-[online=false]:text-muted-foreground" data-online={ fmt.Sprint(d.Online) } { bind(on, fmt.Sprintf("text=dev.%d.label", d.SessionID))... }>{ deviceLabel(d) }</span>
+					</span>
+					@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantDestructive, Attributes: templ.Attributes{
+						"hx-post": fmt.Sprintf("/sessions/%d/kick", d.SessionID), "hx-confirm": "Kick this device? It can ask to join again.",
+					}}) {
+						Kick
+					}
+				</li>
+			}
+			if len(rc.Devices) == 0 {
+				<li class="text-muted-foreground">No devices logged in</li>
+			}
+		</ul>
+		<details class="mt-2 text-sm">
+			<summary class="cursor-pointer text-muted-foreground">More</summary>
+			<div class="mt-2 flex flex-wrap items-center gap-2">
+				if len(r.OtherCampaigns) > 0 {
+					<form class="flex items-center gap-2" hx-post={ fmt.Sprintf("/characters/%d/copy", rc.Character.ID) }>
+						@formSelect("", "campaign_id", selectItems(r.OtherCampaigns, func(c sqlc.Campaign) string { return fmt.Sprint(c.ID) }, func(c sqlc.Campaign) string { return c.Name }), "", "h-7", "")
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs, Variant: button.VariantOutline}) {
+							Copy to campaign
+						}
+					</form>
+				}
+				@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantDestructive, Attributes: templ.Attributes{
+					"hx-post": fmt.Sprintf("/characters/%d/remove", rc.Character.ID), "hx-confirm": "Delete " + rc.Character.Name + " and log out its devices? You can restore it afterwards.",
+				}}) {
+					Delete character
+				}
+			</div>
+		</details>
+	</div>
+}

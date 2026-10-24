@@ -1,0 +1,1297 @@
+package views
+
+import (
+	"cmp"
+	"encoding/json"
+	"fmt"
+	"gm-session-manager/dnd5e"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/combobox"
+	"gm-session-manager/web/components/dialog"
+	"gm-session-manager/web/components/field"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/input"
+	selectcomp "gm-session-manager/web/components/select"
+	"gm-session-manager/web/components/tabs"
+	"gm-session-manager/web/components/textarea"
+	"gm-session-manager/web/utils"
+	"maps"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
+)
+
+// builderID is the command builder dialog on the character page.
+const builderID = "command-builder"
+
+// builderOp is one form of the command builder: the command prefix it sends,
+// the sign put before its number, and (by Key) the fields it asks for. The
+// server appends the fields to the prefix as raw arguments in a fixed order:
+// subject, ability, dice, dtype, prof, n, text.
+type builderOp struct {
+	Key, Label, Prefix, Sign string
+}
+
+// builderVerb is one group of builder forms.
+type builderVerb struct {
+	Key, Label string
+	Ops        []builderOp
+}
+
+// builderVerbs lists what the sheet's owner can do, in menu order. Forms
+// that could not apply right now (no slots, no items) are left out.
+func (s SheetView) builderVerbs() []builderVerb {
+	sh := s.C.Sheet
+	slots := []builderOp{}
+	if sh.MaxSpellLevel() > 0 {
+		slots = append(slots,
+			builderOp{"slot-use", "Use slot", "slot use", ""},
+			builderOp{"slot-restore", "Restore slot", "slot restore", ""})
+	}
+	slots = append(slots, builderOp{"slot-max", "Set slot count", "slot max", ""})
+	if sh.Pact.Max > 0 {
+		slots = append(slots,
+			builderOp{"pact-use", "Use pact slot", "pact use", ""},
+			builderOp{"pact-restore", "Restore pact slot", "pact restore", ""})
+	}
+	rest := []builderOp{
+		{"rest-short", "Short rest", "rest short", ""},
+		{"rest-long", "Long rest", "rest long", ""},
+		{"hitdie-use", "Spend hit die", "hitdie use", ""},
+		{"hitdie-restore", "Regain hit die", "hitdie restore", ""},
+		{"inspiration", "Toggle inspiration", "inspiration", ""},
+	}
+	if dying(s) {
+		rest = append(rest,
+			builderOp{"ds-success", "Death save success", "deathsave success", ""},
+			builderOp{"ds-fail", "Death save failure", "deathsave fail", ""},
+			builderOp{"ds-reset", "Reset death saves", "deathsave reset", ""})
+	}
+	return []builderVerb{
+		{"hp", "Hit points", []builderOp{
+			{"hp-set", "Set HP", "hp", "="},
+			{"hp-temp", "Temp HP", "temp", ""},
+			{"hp-max", "Max HP", "maxhp", "="},
+		}},
+		{"conditions", "Conditions", []builderOp{
+			{"cond-add", "Add", "condition add", ""},
+			{"cond-remove", "Remove", "condition remove", ""},
+			{"exh-up", "More exhaustion", "exhaustion", "+"},
+			{"exh-down", "Less exhaustion", "exhaustion", "-"},
+		}},
+		{"rest", "Rest & recovery", rest},
+		{"abilities", "Ability scores", []builderOp{{"ability", "Set score", "set ability", ""}}},
+		{"profs", "Proficiencies", []builderOp{
+			{focusSkill, "Skill", "prof set skill", ""},
+			{focusSave, "Saving throw", "prof set save", ""},
+			{"skill-add", "Add skill", "prof add skill", ""},
+			{"skill-remove", "Remove skill", "prof remove skill", ""},
+			{"exp-add", "Add expertise", "prof add expertise", ""},
+			{"exp-remove", "Remove expertise", "prof remove expertise", ""},
+			{"save-add", "Add save", "prof add save", ""},
+			{"save-remove", "Remove save", "prof remove save", ""},
+			{"other-add", "Add other", "prof add other", ""},
+			{"other-remove", "Remove other", "prof remove other", ""},
+			{"lang-add", "Add language", "prof add language", ""},
+			{"lang-remove", "Remove language", "prof remove language", ""},
+		}},
+		{"details", "Details", []builderOp{
+			{"set-name", "Name", "set name", ""},
+			{"set-species", "Species", "set species", ""},
+			{"set-background", "Background", "set background", ""},
+			{"set-backstory", "Backstory", "set backstory", ""},
+			{"set-ac", "AC bonus", "set ac", ""},
+			{"set-speed", "Base speed", "set speed", ""},
+		}},
+		{"armor", "Armor", []builderOp{{"armor", "Armor", "", ""}}},
+		{"weapons", "Weapons", []builderOp{
+			{"weapon-add", "Add or replace", "weapon add", ""},
+			{"weapon-remove", "Remove", "weapon remove", ""},
+		}},
+		{"mods", "Custom modifiers", []builderOp{
+			{"mod-add", "Add or replace", "mod add", ""},
+			{modEdit, "Save", "mod edit", ""},
+		}},
+		{"slots", "Spell slots", slots},
+		{"spells", "Spells", []builderOp{
+			{"spell-add", "Add", "", ""},
+			{"spell-prepare", "Prepare", "spell prepare", ""},
+			{"spell-unprepare", "Unprepare", "spell unprepare", ""},
+			{"spell-remove", "Remove", "spell remove", ""},
+		}},
+		{"items", "Inventory", []builderOp{
+			{"item-add", "Add", "item add", ""},
+			{"item-edit", "Change count", "item set", ""},
+			{"item-note", "Note", "item note", ""},
+		}},
+		{"coins", "Coins", []builderOp{{"coin-edit", "Coins", "", ""}}},
+		{"features", "Features", []builderOp{
+			{"feature-add", "Add or replace", "feature add", ""},
+			{"feature-remove", "Remove", "feature remove", ""},
+		}},
+	}
+}
+
+// pickBuilder finds the chosen verb and op, defaulting to the first of each.
+func (s SheetView) pickBuilder(verb, op string) ([]builderVerb, builderVerb, builderOp) {
+	verbs := s.builderVerbs()
+	v := verbs[max(slices.IndexFunc(verbs, func(b builderVerb) bool { return b.Key == verb }), 0)]
+	return verbs, v, v.Ops[max(slices.IndexFunc(v.Ops, func(b builderOp) bool { return b.Key == op }), 0)]
+}
+
+// builderURL opens a builder form, with subject preselected when not empty.
+func builderURL(s SheetView, verb, op, subject string) string {
+	return fmt.Sprintf("/characters/%d/builder?verb=%s&op=%s&subject=%s", s.ID, verb, op, url.QueryEscape(subject))
+}
+
+// builderLoad makes an element load a builder form into the dialog.
+func builderLoad(s SheetView, verb, op, subject string) templ.Attributes {
+	return templ.Attributes{"hx-get": builderURL(s, verb, op, subject), "hx-target": "#builder", "hx-swap": "innerHTML"}
+}
+
+// builderButton opens the command builder at verb and op.
+templ builderButton(s SheetView, verb, op, label string) {
+	@button.Button(button.Props{Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, verb, op, ""), templ.Attributes{"aria-label": label, "title": label})}) {
+		@icon.Pencil(icon.Props{Size: 16})
+	}
+}
+
+// builderDialog is the empty dialog the builder forms load into.
+templ builderDialog() {
+	@dialog.Dialog(dialog.Props{ID: builderID}) {
+		@dialog.Content(dialog.ContentProps{Class: "max-h-[90dvh] overflow-y-auto sm:max-w-xl"}) {
+			@dialog.Header() {
+				@dialog.Title() {
+					Change character
+				}
+			}
+			<div id="builder"></div>
+		}
+	}
+}
+
+// chip is a pressed-state button that loads another builder form.
+templ chip(s SheetView, verb, op, label string, on bool) {
+	@button.Button(button.Props{
+		Variant:    button.VariantOutline,
+		Size:       button.SizeSm,
+		Class:      pressedClass,
+		Attributes: with(builderLoad(s, verb, op, ""), templ.Attributes{"aria-pressed": fmt.Sprint(on)}),
+	}) {
+		{ label }
+	}
+}
+
+// BuilderExtra is what a builder form takes from the compendium: a weapon
+// or feature picked in its look-up, and names a field suggests.
+type BuilderExtra struct {
+	Weapon  *dnd5e.Weapon
+	Feature *dnd5e.Feature
+	// FeatureMods are Feature's stat changes, read from its text.
+	FeatureMods []dnd5e.CustomMod
+	Suggestions []string
+}
+
+// BuilderPick is one result of the builder's compendium look-up. Feature
+// names a class feature inside the class entry EntryID.
+type BuilderPick struct {
+	EntryID                     int64
+	Slug, Feature, Name, Detail string
+}
+
+// CommandBuilder picks a command with taps instead of typing: what, how,
+// then only the fields that command needs, filled with what is on the sheet.
+// subject, when it is one of the form's choices, is chosen up front.
+templ CommandBuilder(s SheetView, verb, op, subject string, x BuilderExtra) {
+	{{ verbs, v, o := s.pickBuilder(verb, op) }}
+	<div class="space-y-4">
+		<div class="flex flex-wrap gap-1.5">
+			for _, b := range verbs {
+				@chip(s, b.Key, "", b.Label, b.Key == v.Key)
+			}
+		</div>
+		if v.Key == "profs" {
+			@profTabs(s, o)
+		}
+		if chips := v.chips(o); len(chips) > 1 {
+			<div class="flex flex-wrap gap-1.5 border-t pt-4">
+				for _, b := range chips {
+					@chip(s, v.Key, b.Key, b.Label, b.Key == o.Key)
+				}
+			</div>
+		}
+		switch o.Key {
+			case "spell-add":
+				@spellSearch(s)
+			case "coin-edit":
+				@coinForm(s, subject)
+			case "armor":
+				@armorForm(s)
+			case modEdit:
+				@modEditForm(s, subject)
+			case focusSkill, focusSave:
+				@profForm(s, o, subject)
+			default:
+				if o.Key == "weapon-add" && s.weapon(subject) == nil {
+					@compendiumLookup(s, "weapon", "Look up a weapon in the compendium…")
+				}
+				@builderForm(s, o, subject, x)
+				if o.Key == "mod-add" {
+					@modList(s)
+				}
+		}
+	</div>
+}
+
+// Focus forms are reached by tapping one thing on the sheet, so they have no
+// chip. modEdit's subject is the modifier's index on the sheet; the others'
+// is a skill or ability key.
+const (
+	modEdit    = "mod-edit"
+	focusSkill = "skill"
+	focusSave  = "save"
+)
+
+// chips are the verb's forms that get a chip; proficiencies show only the
+// forms of cur's tab.
+func (v builderVerb) chips(cur builderOp) []builderOp {
+	return slices.DeleteFunc(slices.Clone(v.Ops), func(o builderOp) bool {
+		return slices.Contains([]string{modEdit, focusSkill, focusSave}, o.Key) || (v.Key == "profs" && opGroup(o.Key) != opGroup(cur.Key))
+	})
+}
+
+// opGroup is what a form's key changes: "skill" for skill, skill-add and
+// skill-remove.
+func opGroup(key string) string {
+	g, _, _ := strings.Cut(key, "-")
+	return g
+}
+
+// profTabGroups are the proficiency tabs by opGroup; each opens its add form.
+var profTabGroups = []struct{ Key, Label string }{
+	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"other", "Other"},
+}
+
+templ profTabs(s SheetView, o builderOp) {
+	@tabs.Tabs(tabs.Props{DefaultValue: opGroup(o.Key), Class: "border-t pt-4"}) {
+		@tabs.List(tabs.ListProps{Class: "group-data-horizontal/tabs:h-auto w-full flex-wrap"}) {
+			for _, t := range profTabGroups {
+				@tabs.Trigger(tabs.TriggerProps{Value: t.Key, Attributes: builderLoad(s, "profs", t.Key+"-add", "")}) {
+					{ t.Label }
+				}
+			}
+		}
+	}
+}
+
+// pressedClass styles a toggle button by its aria-pressed state.
+const pressedClass = "aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80"
+
+// profFocus is one skill or save as its focus form shows it.
+type profFocus struct {
+	Name, Level, ModTarget string
+	Bonus                  int
+	Levels                 []string
+}
+
+func (s SheetView) profFocus(key, subject string) (profFocus, bool) {
+	sh := s.C.Sheet
+	if key == focusSave {
+		name, ok := dnd5e.AbilityNames[subject]
+		level := dnd5e.ProfNone
+		if slices.Contains(sh.SaveProfs, subject) {
+			level = dnd5e.ProfProficient
+		}
+		return profFocus{name + " save", level, "save." + subject, sh.SaveBonus(subject), []string{dnd5e.ProfNone, dnd5e.ProfProficient}}, ok
+	}
+	i := slices.IndexFunc(dnd5e.Skills, func(sk dnd5e.Skill) bool { return sk.Key == subject })
+	if i < 0 {
+		return profFocus{}, false
+	}
+	sk := dnd5e.Skills[i]
+	return profFocus{sk.Name, sh.ProfLevel(sk.Key), "skill." + sk.Key, sh.SkillBonus(sk), []string{dnd5e.ProfNone, dnd5e.ProfProficient, dnd5e.ProfExpertise}}, true
+}
+
+// profForm sets one skill's or save's proficiency with a single tap. The
+// modifier link sits outside the form, whose after-request handler would
+// close the dialog after loading the next form.
+templ profForm(s SheetView, o builderOp, subject string) {
+	if f, ok := s.profFocus(o.Key, subject); !ok {
+		<p class="border-t pt-4 text-sm text-muted-foreground">Pick a skill or saving throw on the sheet.</p>
+	} else {
+		<form
+			class="grid gap-4 border-t pt-4"
+			hx-post={ s.cmdURL() }
+			hx-on::after-request="if (event.detail.successful) this.querySelector('[data-slot=dialog-close]').click()"
+		>
+			<input type="hidden" name="prefix" value={ o.Prefix }/>
+			<input type="hidden" name="subject" value={ subject }/>
+			<div class="flex items-baseline justify-between gap-2">
+				<span class="font-medium">{ f.Name }</span>
+				<span class="text-2xl font-semibold tabular-nums">{ dnd5e.Signed(f.Bonus) }</span>
+			</div>
+			@breakdown(s.C.Sheet.Explain(f.ModTarget))
+			<div class="grid gap-2 sm:grid-flow-col">
+				for _, l := range f.Levels {
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Class: pressedClass, Attributes: templ.Attributes{"name": "text", "value": l, "aria-pressed": fmt.Sprint(l == f.Level)}}) {
+						@profMark(l)
+						{ profLabels[l] }
+					}
+				}
+			</div>
+			<div class="flex justify-end">
+				@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.CloseFor(builderID)}) {
+					Cancel
+				}
+			</div>
+		</form>
+		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Attributes: builderLoad(s, "mods", "mod-add", f.ModTarget)}) {
+			@icon.Plus()
+			Add a custom modifier to { f.Name }
+		}
+	}
+}
+
+var profLabels = map[string]string{dnd5e.ProfNone: "Not proficient", dnd5e.ProfProficient: "Proficient", dnd5e.ProfExpertise: "Expertise"}
+
+// removeVals are the fields of the button that removes what an edit form
+// shows, or nil when the subject does not exist yet.
+func (s SheetView) removeVals(key, subject string) map[string]string {
+	switch {
+	case key == "weapon-add" && s.weapon(subject) != nil:
+		return map[string]string{"prefix": "weapon remove", "subject": subject}
+	case key == "feature-add" && s.feature(subject) != nil:
+		return map[string]string{"prefix": "feature remove", "subject": subject}
+	}
+	return nil
+}
+
+func (s SheetView) weapon(name string) *dnd5e.Weapon {
+	i := slices.IndexFunc(s.C.Sheet.Weapons, func(w dnd5e.Weapon) bool { return w.Name == name })
+	if i < 0 {
+		return nil
+	}
+	return &s.C.Sheet.Weapons[i]
+}
+
+func (s SheetView) feature(name string) *dnd5e.Feature {
+	i := slices.IndexFunc(s.C.Sheet.Features, func(f dnd5e.Feature) bool { return f.Name == name })
+	if i < 0 {
+		return nil
+	}
+	return &s.C.Sheet.Features[i]
+}
+
+// builderRemove is an edit form's Remove button. It sits inside the form,
+// so it sends only its own fields (htmx 2's hx-vals win over the form's).
+templ builderRemove(s SheetView, vals map[string]string) {
+	@button.Button(button.Props{Variant: button.VariantDestructive, Attributes: closeAfter(templ.Attributes{
+		"hx-post":   s.cmdURL(),
+		"hx-params": strings.Join(slices.Sorted(maps.Keys(vals)), ","),
+		"hx-vals":   toJSON(vals),
+	})}) {
+		Remove
+	}
+}
+
+// modAt is the modifier at index subject, if it is still there.
+func (s SheetView) modAt(subject string) (dnd5e.CustomMod, bool) {
+	i, err := strconv.Atoi(subject)
+	if err != nil || i < 0 || i >= len(s.C.Sheet.Modifiers) {
+		return dnd5e.CustomMod{}, false
+	}
+	return s.C.Sheet.Modifiers[i], true
+}
+
+// modEditForm changes or removes one modifier. The command names it by its
+// target and note, not its index, so another device's edit cannot redirect it.
+templ modEditForm(s SheetView, subject string) {
+	if m, ok := s.modAt(subject); !ok {
+		<p class="border-t pt-4 text-sm text-muted-foreground">That modifier is no longer on the sheet.</p>
+	} else {
+		{{ items, _, _ := s.builderSubjects("mod-add") }}
+		<form
+			class="grid gap-4 border-t pt-4"
+			hx-post={ s.cmdURL() }
+			hx-on::after-request="if (event.detail.successful) this.querySelector('[data-slot=dialog-close]').click()"
+		>
+			<input type="hidden" name="prefix" value="mod edit"/>
+			<input type="hidden" name="from" value={ m.Target }/>
+			<input type="hidden" name="fromnote" value={ m.Note }/>
+			@field.Group(field.GroupProps{Class: "gap-4"}) {
+				@subjectField("Applies to", chooseFirst(items, m.Target), "")
+				@numberField("Bonus (negative for a penalty)", -50, 50, m.Value, true)
+				@textField("Source", m.Note, "", true)
+			}
+			<div class="flex justify-between gap-2">
+				@builderRemove(s, map[string]string{"prefix": "mod remove", "subject": m.Target, "text": m.Note})
+				<div class="flex gap-2">
+					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.CloseFor(builderID)}) {
+						Cancel
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Save
+					}
+				</div>
+			</div>
+		</form>
+	}
+}
+
+templ builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) {
+	{{ items, maxes, values := s.builderSubjects(o.Key) }}
+	{{ items = chooseFirst(items, subject) }}
+	<form
+		class="grid gap-4 border-t pt-4"
+		hx-post={ s.cmdURL() }
+		hx-on::after-request={ templ.JSUnsafeFuncCall(builderDoneJS) }
+		if verb, ok := stayOpen[o.Key]; ok {
+			data-reload={ builderURL(s, verb, o.Key, "") }
+		}
+		data-max={ toJSON(maxes) }
+		data-value={ toJSON(values) }
+		onchange={ templ.JSUnsafeFuncCall(builderChangeJS) }
+	>
+		<input type="hidden" name="prefix" value={ o.Prefix }/>
+		<input type="hidden" name="sign" value={ o.Sign }/>
+		@field.Group(field.GroupProps{Class: "gap-4"}) {
+			@builderFields(s, o, subject, items, maxes, values, x)
+		}
+		<div class="flex justify-end gap-2">
+			if vals := s.removeVals(o.Key, subject); vals != nil {
+				<div class="mr-auto">
+					@builderRemove(s, vals)
+				</div>
+			}
+			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.CloseFor(builderID)}) {
+				Cancel
+			}
+			@button.Button(button.Props{Type: button.TypeSubmit, Disabled: items != nil && len(items) == 0}) {
+				{ o.submitLabel() }
+			}
+		</div>
+	</form>
+}
+
+// stayOpen are forms (op key to verb) used several times in a row: after a
+// submit they reload with the sheet's new choices instead of closing the dialog.
+var stayOpen = map[string]string{"feature-remove": "features"}
+
+// builderDoneJS closes the dialog (or reloads a stayOpen form) after the
+// form's own submit, not after requests from fields inside it.
+const builderDoneJS = `if (event.detail.elt !== this || !event.detail.successful) return; if (this.dataset.reload) htmx.ajax("GET", this.dataset.reload, {target: "#builder", swap: "innerHTML"}); else this.querySelector("[data-slot=dialog-close]").click()`
+
+// submitLabel names the form's button: Save for forms that set a value,
+// whose labels name the field rather than an action.
+func (o builderOp) submitLabel() string {
+	if strings.HasPrefix(o.Prefix, "set ") {
+		return "Save"
+	}
+	return o.Label
+}
+
+// builderChangeJS sets the number field's limit (0 is none, as in
+// numberAttrs) and current value for the chosen subject, from the form's
+// data-max and data-value maps.
+const builderChangeJS = `if (event.target.name !== "subject" || !this.elements.n) return; const n = this.elements.n, k = event.target.value, m = JSON.parse(this.dataset.max), v = JSON.parse(this.dataset.value); if (m[k] > 0) n.max = m[k]; else n.removeAttribute("max"); if (k in v) n.value = v[k]`
+
+func toJSON(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp.ItemData, maxes, values map[string]int, x BuilderExtra) {
+	{{ first := firstValue(items) }}
+	switch o.Key {
+		case "hp-temp":
+			@numberField("Temporary hit points", 0, 0, s.C.TempHP, true)
+		case "hp-set":
+			@numberField("Hit points", 0, s.C.MaxHP, s.C.HP, false)
+		case "hp-max":
+			@numberField("Max hit points", 0, 0, s.C.MaxHP, false)
+		case "cond-add":
+			@subjectField("Condition", items, "capitalize")
+			@textField("Note", "", "Spell name for concentration, effect for custom", false)
+		case "exh-up", "exh-down":
+			@numberField("Levels", 1, maxes[""], 1, false)
+		case "ability":
+			@subjectField("Ability", items, "")
+			@numberField("Base score", 1, 30, values[first], false)
+		case "set-name":
+			@textField(o.Label, s.detail(o.Key), "", true)
+		case "set-species", "set-background":
+			@field.Field() {
+				@field.Label(field.LabelProps{For: "builder-text"}) {
+					{ o.Label }
+				}
+				@createCombobox("builder-text", "text", s.detail(o.Key), "", 200, x.Suggestions)
+				if len(x.Suggestions) > 0 {
+					@field.Description() {
+						Pick one from the compendium or type your own.
+					}
+				}
+			}
+		case "set-backstory":
+			@field.Field() {
+				@field.Label(field.LabelProps{For: "builder-text"}) {
+					Backstory
+				}
+				@textarea.Textarea(textarea.Props{ID: "builder-text", Name: "text", Rows: 8, Value: s.C.Sheet.Backstory})
+			}
+		case "set-ac":
+			<div class="text-sm">
+				<div class="font-medium">Armor class { fmt.Sprint(s.C.Sheet.ArmorClass()) }</div>
+				@breakdown(s.C.Sheet.Explain(dnd5e.ModAC))
+				<p class="mt-2 text-xs text-muted-foreground">Change what you wear in the Armour card. The bonus below is added whatever you wear.</p>
+			</div>
+			@numberField("AC bonus (always added)", -20, 30, s.C.Sheet.ACBonus, false)
+		case "set-speed":
+			@numberField("Base speed (ft)", 0, 500, s.C.Sheet.Speed, false)
+		case "slot-max":
+			@subjectField("Slot level", items, "")
+			@numberField("Slots", 0, 9, values[first], false)
+		case "item-add":
+			@field.Field() {
+				@field.Label(field.LabelProps{For: "builder-subject"}) {
+					Item
+				}
+				@itemPicker("builder-subject", "subject", "Search or type a name", true)
+				@field.Description() {
+					Suggestions come from the compendium; any name works.
+					<a class="underline" href="/compendium/homebrew/new?kind=item&add=1">Create a custom item</a> to give it a description.
+				}
+			}
+			@numberField("Quantity", 1, 0, 1, false)
+		case "item-edit":
+			@subjectField("Item", items, "")
+			@numberField("Count (0 removes it)", 0, 0, values[first], true)
+		case "item-note":
+			@subjectField("Item", items, "")
+			@textField("Note", "", "", false)
+		case "feature-add":
+			{{ f, mods, suggested := s.featureToEdit(subject, x) }}
+			if s.feature(subject) != nil {
+				@nameField("Feature", f.Name, true)
+			} else {
+				@featurePicker(s.ID, f.Name)
+			}
+			<input type="hidden" name="source" value={ f.Source }/>
+			@field.Field() {
+				@field.Label(field.LabelProps{For: "builder-text"}) {
+					Description
+				}
+				@textarea.Textarea(textarea.Props{ID: "builder-text", Name: "text", Rows: 5, Value: f.Description})
+			}
+			@featureEffectFields(s, f, mods, suggested)
+		case "other-add":
+			@nameField("Proficiency", "", false)
+		case "lang-add":
+			@nameField("Language", "", false)
+		case "weapon-add":
+			if w := s.weapon(subject); w != nil {
+				@weaponFields(s, *w, true)
+			} else if x.Weapon != nil {
+				@weaponFields(s, *x.Weapon, false)
+			} else {
+				@weaponFields(s, dnd5e.Weapon{Ability: "str", Proficient: true}, false)
+			}
+		case "mod-add":
+			@subjectField("Applies to", items, "")
+			@numberField("Bonus (negative for a penalty)", -50, 50, 1, true)
+			@textField("Source", "", "Ring of Protection, house rule…", true)
+		default:
+			if items != nil {
+				@subjectField(subjectLabel(o.Key), items, "capitalize")
+			}
+	}
+}
+
+// featureToEdit is the feature the form starts from: the one on the sheet,
+// one picked in the look-up, or a new one; with its stat changes. A feature
+// with nothing automated yet gets suggestions read from its text.
+func (s SheetView) featureToEdit(subject string, x BuilderExtra) (dnd5e.Feature, []dnd5e.CustomMod, bool) {
+	if f := s.feature(subject); f != nil {
+		var mods []dnd5e.CustomMod
+		for _, m := range s.C.Sheet.Modifiers {
+			if m.Source == f.Name {
+				mods = append(mods, m)
+			}
+		}
+		if f.Action == "" && !f.Uses.Limited() && f.Unarmored == "" && len(mods) == 0 && f.Description != "" {
+			fe := *f
+			return fe, dnd5e.ParseEffects(f.Name, f.Description, nil, "").Apply(&fe), true
+		}
+		return *f, mods, false
+	}
+	if x.Feature != nil {
+		return *x.Feature, x.FeatureMods, true
+	}
+	return dnd5e.Feature{}, nil, false
+}
+
+// chooseFirst moves the item with value subject to the front, where the
+// select and the number field take their starting choice from.
+func chooseFirst(items []selectcomp.ItemData, subject string) []selectcomp.ItemData {
+	i := slices.IndexFunc(items, func(it selectcomp.ItemData) bool { return it.Value == subject })
+	if i <= 0 {
+		return items
+	}
+	return slices.Concat(items[i:i+1], items[:i], items[i+1:])
+}
+
+func firstValue(items []selectcomp.ItemData) string {
+	if len(items) == 0 {
+		return ""
+	}
+	return items[0].Value
+}
+
+func subjectLabel(key string) string {
+	switch {
+	case strings.HasPrefix(key, "cond"):
+		return "Condition"
+	case strings.HasPrefix(key, "slot"):
+		return "Slot level"
+	case strings.HasPrefix(key, "item"):
+		return "Item"
+	case strings.HasPrefix(key, "save"):
+		return "Saving throw"
+	case strings.HasPrefix(key, "spell"):
+		return "Spell"
+	case strings.HasPrefix(key, "feature"):
+		return "Feature"
+	case strings.HasPrefix(key, "weapon"):
+		return "Weapon"
+	case strings.HasPrefix(key, "other"):
+		return "Proficiency"
+	}
+	return "Skill"
+}
+
+templ subjectField(label string, items []selectcomp.ItemData, class string) {
+	@field.Field() {
+		@field.Label(field.LabelProps{For: "builder-subject-trigger"}) {
+			{ label }
+		}
+		if len(items) == 0 {
+			<p class="text-sm text-muted-foreground">Nothing to choose right now.</p>
+		} else {
+			@formSelect("builder-subject", "subject", items, "", "w-full "+class, class)
+		}
+	}
+}
+
+// nameField names a new thing; an existing thing's name is fixed, since
+// the command finds the thing to replace by its name.
+templ nameField(label, value string, fixed bool) {
+	@field.Field() {
+		@field.Label(field.LabelProps{For: "builder-subject"}) {
+			{ label }
+		}
+		@input.Input(input.Props{ID: "builder-subject", Name: "subject", Value: value, Required: true, Attributes: templ.Attributes{"autocomplete": "off", "maxlength": "200", "readonly": fixed}})
+		if fixed {
+			@field.Description() {
+				To rename, remove it and add it again.
+			}
+		}
+	}
+}
+
+templ textField(label, value, placeholder string, required bool) {
+	@field.Field() {
+		@field.Label(field.LabelProps{For: "builder-text"}) {
+			{ label }
+		}
+		@input.Input(input.Props{ID: "builder-text", Name: "text", Value: value, Placeholder: placeholder, Required: required, Attributes: templ.Attributes{"autocomplete": "off", "maxlength": "200"}})
+	}
+}
+
+// numberField is the form's one number; hi 0 means no upper limit. Big
+// steppers sit either side so phones need no keyboard.
+templ numberField(label string, lo, hi, value int, focus bool) {
+	@field.Field() {
+		@field.Label(field.LabelProps{For: "builder-n"}) {
+			{ label }
+		}
+		<div class="flex items-center gap-2">
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": "Less", "onclick": "this.nextElementSibling.stepDown()"}}) {
+				@icon.Minus()
+			}
+			@input.Input(input.Props{ID: "builder-n", Name: "n", Type: "number", Value: fmt.Sprint(value), Required: true, Class: "w-24 text-center", Attributes: numberAttrs(lo, hi, focus)})
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": "More", "onclick": "this.previousElementSibling.stepUp()"}}) {
+				@icon.Plus()
+			}
+		</div>
+	}
+}
+
+func numberAttrs(lo, hi int, focus bool) templ.Attributes {
+	a := templ.Attributes{"min": fmt.Sprint(lo), "inputmode": "numeric"}
+	if hi > 0 {
+		a["max"] = fmt.Sprint(hi)
+	}
+	if focus {
+		a["autofocus"] = true
+	}
+	return a
+}
+
+// weaponFields describe w; editing fixes its name.
+templ weaponFields(s SheetView, w dnd5e.Weapon, editing bool) {
+	@nameField("Weapon", w.Name, editing)
+	if editing {
+		<div class="text-sm">
+			<span class="font-medium">To hit</span>
+			@breakdown(s.C.Sheet.Explain(dnd5e.ModAttack + "." + w.Name))
+		</div>
+	}
+	<div class="grid grid-cols-2 gap-4">
+		@field.Field() {
+			@field.Label(field.LabelProps{For: "builder-ability-trigger"}) {
+				Attack ability
+			}
+			@formSelect("builder-ability", "ability", weaponAbilities(), w.Ability, "w-full", "")
+		}
+		@field.Field() {
+			@field.Label(field.LabelProps{For: "builder-dice"}) {
+				Damage dice
+			}
+			@input.Input(input.Props{ID: "builder-dice", Name: "dice", Value: w.Dice, Placeholder: "1d8", Required: true, Attributes: templ.Attributes{"pattern": `\d+(d\d+)?`, "title": "Dice such as 1d8, or a flat number"}})
+		}
+	</div>
+	<div class="grid grid-cols-2 gap-4">
+		@field.Field() {
+			@field.Label(field.LabelProps{For: "builder-range"}) {
+				Range (ft)
+			}
+			@input.Input(input.Props{ID: "builder-range", Name: "range", Value: w.Range, Placeholder: "80/320, empty for melee", Attributes: templ.Attributes{"maxlength": "20"}})
+		}
+		@field.Field() {
+			@field.Label(field.LabelProps{For: "builder-properties"}) {
+				Properties
+			}
+			@input.Input(input.Props{ID: "builder-properties", Name: "properties", Value: w.Properties, Placeholder: "Finesse, Light", Attributes: templ.Attributes{"maxlength": "300"}})
+		}
+	</div>
+	@field.Field() {
+		@field.Label(field.LabelProps{For: "builder-dtype"}) {
+			Damage type
+		}
+		@createCombobox("builder-dtype", "dtype", w.DamageType, "slashing", 50, damageTypes)
+	}
+	@checkField("prof", "prof", w.Proficient) {
+		Proficient (adds the proficiency bonus to hit)
+	}
+	if !editing {
+		<p class="text-xs text-muted-foreground">An existing weapon with this name is replaced. For magic bonuses, add a custom modifier to the weapon.</p>
+	}
+}
+
+var damageTypes = []string{"acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"}
+
+func weaponAbilities() []selectcomp.ItemData {
+	items := []selectcomp.ItemData{{Value: "finesse", Label: "Finesse (better of STR and DEX)"}}
+	for _, a := range dnd5e.Abilities {
+		items = append(items, selectcomp.ItemData{Value: a, Label: dnd5e.AbilityNames[a]})
+	}
+	return items
+}
+
+// featureEffectFields set what the sheet automates for a feature: the
+// action it takes, its uses and their reset, unarmored AC and stat changes.
+templ featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, suggested bool) {
+	<fieldset class="grid gap-3 rounded-md border p-3">
+		<legend class="px-1 text-sm font-medium">What the sheet tracks</legend>
+		if suggested {
+			<p class="text-xs text-muted-foreground">Filled in from the description; check it against the text.</p>
+		}
+		<div class="grid gap-3 sm:grid-cols-3">
+			@field.Field() {
+				@field.Label(field.LabelProps{For: "builder-action-trigger"}) {
+					Using it takes
+				}
+				@formSelect("builder-action", "action", actionItems, cmp.Or(f.Action, " "), "w-full", "")
+			}
+			@field.Field() {
+				@field.Label(field.LabelProps{For: "builder-uses-trigger"}) {
+					Uses
+				}
+				@formSelect("builder-uses", "uses", usesItems(f.Uses), usesValue(f.Uses), "w-full", "")
+				<input type="hidden" name="uses_table" value={ toJSON(f.Uses.ByLevel) }/>
+				<input type="hidden" name="uses_class" value={ f.Uses.Class }/>
+			}
+			@field.Field() {
+				@field.Label(field.LabelProps{For: "builder-reset-trigger"}) {
+					Uses come back on
+				}
+				@formSelect("builder-reset", "reset", resetItems, cmp.Or(f.Uses.Reset, "long"), "w-full", "")
+			}
+		</div>
+		@field.Field() {
+			@field.Label(field.LabelProps{For: "builder-uses-n"}) {
+				Number of uses (when Uses is a number)
+			}
+			@input.Input(input.Props{ID: "builder-uses-n", Name: "uses_n", Type: "number", Value: fmt.Sprint(max(f.Uses.Fixed, 1)), Class: "w-24", Attributes: templ.Attributes{"min": "1", "max": "99"}})
+		}
+		@field.Field() {
+			@field.Label(field.LabelProps{For: "builder-unarmored-trigger"}) {
+				AC without armor
+			}
+			@formSelect("builder-unarmored", "unarmored", unarmoredItems, cmp.Or(f.Unarmored, " "), "w-full", "")
+			@checkField("no_shield", "true", f.NoShield) {
+				Not with a shield
+			}
+		}
+		<div class="grid gap-2">
+			<span class="text-sm font-medium">Stat changes</span>
+			for _, m := range append(mods, dnd5e.CustomMod{}) {
+				<div class="flex flex-wrap items-center gap-2">
+					@formSelect("", "mod_target", append([]selectcomp.ItemData{{Value: " ", Label: "Nothing"}}, s.modTargetItems()...), cmp.Or(m.Target, " "), "w-44", "")
+					@input.Input(input.Props{Name: "mod_value", Type: "number", Value: fmt.Sprint(m.Value), Class: "w-20", Attributes: templ.Attributes{"min": "-50", "max": "50", "aria-label": "Bonus"}})
+					@formSelect("", "mod_when", whenItems, cmp.Or(m.When, " "), "w-56", "")
+				</div>
+			}
+		</div>
+	</fieldset>
+}
+
+var actionItems = []selectcomp.ItemData{{Value: " ", Label: "Nothing special"}, {Value: "action", Label: "An action"}, {Value: "bonus", Label: "A bonus action"}, {Value: "reaction", Label: "A reaction"}, {Value: "magic", Label: "A Magic action"}}
+
+var resetItems = []selectcomp.ItemData{{Value: "long", Label: "A long rest"}, {Value: "short", Label: "A short or long rest"}, {Value: "short-one", Label: "One on a short rest, all on a long rest"}}
+
+var whenItems = []selectcomp.ItemData{{Value: " ", Label: "Always"}, {Value: "no-heavy-armor", Label: "Not in heavy armor"}, {Value: "unarmored", Label: "Wearing no armor"}, {Value: "unarmored-no-shield", Label: "No armor and no shield"}}
+
+var unarmoredItems = append([]selectcomp.ItemData{{Value: " ", Label: "Armor or base AC as usual"}},
+	selectItems(dnd5e.Abilities, func(a string) string { return a }, func(a string) string { return "10 + Dexterity + " + dnd5e.AbilityNames[a] })...)
+
+// usesItems are the choices of how often a feature can be used; the class
+// table choice shows only for a feature that has one.
+func usesItems(u dnd5e.Uses) []selectcomp.ItemData {
+	items := []selectcomp.ItemData{{Value: " ", Label: "Unlimited"}, {Value: "n", Label: "A number"}, {Value: "prof", Label: "Proficiency bonus"}}
+	for _, a := range dnd5e.Abilities {
+		items = append(items, selectcomp.ItemData{Value: a, Label: dnd5e.AbilityNames[a] + " modifier"})
+	}
+	if len(u.ByLevel) > 0 {
+		items = append(items, selectcomp.ItemData{Value: "table", Label: "By " + u.Class + " level (class table)"})
+	}
+	return items
+}
+
+func usesValue(u dnd5e.Uses) string {
+	switch {
+	case u.Fixed > 0:
+		return "n"
+	case u.Ability != "":
+		return u.Ability
+	case u.Prof:
+		return "prof"
+	case len(u.ByLevel) > 0:
+		return "table"
+	}
+	return " "
+}
+
+// modTargetItems are the modifier targets, for a select.
+func (s SheetView) modTargetItems() []selectcomp.ItemData {
+	var items []selectcomp.ItemData
+	for _, t := range s.modTargets() {
+		items = append(items, selectcomp.ItemData{Value: t, Label: modTargetLabel(t)})
+	}
+	return items
+}
+
+// modList shows the modifiers already on the sheet; tapping one edits it.
+templ modList(s SheetView) {
+	if len(s.C.Sheet.Modifiers) > 0 {
+		<div class="space-y-1 border-t pt-3 text-sm">
+			<div class="text-xs text-muted-foreground uppercase">Current modifiers</div>
+			for i, m := range s.C.Sheet.Modifiers {
+				@modRow(s, i, m, true)
+			}
+		</div>
+	}
+}
+
+// modRow is one modifier; the owner taps it to edit or remove it. Inside
+// the dialog it only swaps the form, since the dialog is already open.
+templ modRow(s SheetView, i int, m dnd5e.CustomMod, inDialog bool) {
+	if s.CanSheet {
+		{{ load := builderLoad(s, "mods", modEdit, fmt.Sprint(i)) }}
+		if !inDialog {
+			{{ load = with(dialog.TriggerFor(builderID), load) }}
+		}
+		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "h-auto w-full justify-start py-1 text-left font-normal whitespace-normal", Attributes: with(load, templ.Attributes{"aria-label": "Edit modifier " + m.Note})}) {
+			@modText(m)
+			@icon.Pencil(icon.Props{Size: 14, Class: "ml-auto shrink-0 text-muted-foreground"})
+		}
+	} else {
+		<div>
+			@modText(m)
+		</div>
+	}
+}
+
+templ modText(m dnd5e.CustomMod) {
+	<span><span class="font-medium tabular-nums">{ dnd5e.Signed(m.Value) }</span> { modTargetLabel(m.Target) } <span class="text-muted-foreground">({ m.Note })</span></span>
+}
+
+// compendiumLookup finds a weapon or armor in the compendium; picking one
+// reloads the form below filled in from it. It sits outside the form, so
+// Enter here never submits it.
+templ compendiumLookup(s SheetView, pick, placeholder string) {
+	<div class="space-y-1 border-t pt-4">
+		@input.Input(input.Props{Type: "search", Placeholder: placeholder, Attributes: templ.Attributes{
+			"name":         "q",
+			"hx-get":       fmt.Sprintf("/characters/%d/picks?pick=%s", s.ID, pick),
+			"hx-trigger":   "input changed delay:200ms, search",
+			"hx-target":    "next ul",
+			"hx-swap":      "innerHTML",
+			"aria-label":   placeholder,
+			"autocomplete": "off",
+		}})
+		<ul class="max-h-48 overflow-y-auto text-sm"></ul>
+	</div>
+}
+
+// BuilderPicks are compendium look-up results. Use fills the form in; for
+// armor it puts the armor on at once.
+templ BuilderPicks(characterID int64, pick string, picks []BuilderPick) {
+	for _, p := range picks {
+		<li class="flex items-center justify-between gap-2 py-0.5">
+			<span class="min-w-0 truncate">
+				{ p.Name }
+				<span class="text-xs text-muted-foreground">{ p.Detail }</span>
+			</span>
+			if pick == "armor" {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: closeAfter(templ.Attributes{
+					"hx-post": fmt.Sprintf("/characters/%d/cmd", characterID), "hx-vals": cmdVals("armor wear " + p.Slug),
+				})}) {
+					Wear
+				}
+			} else {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{
+					"hx-get":    pickURL(characterID, "weapons", "weapon-add", p),
+					"hx-target": "#builder",
+					"hx-swap":   "innerHTML",
+				}}) {
+					Use
+				}
+			}
+		</li>
+	}
+	if len(picks) == 0 {
+		<li class="py-0.5 text-muted-foreground">
+			No matches. You can still fill in your own below
+			if pick == "weapon" {
+				, or <a class="underline" href="/compendium/homebrew/new?kind=item&add=1">create a custom weapon</a>
+			}
+			.
+		</li>
+	}
+}
+
+// pickURL reloads the builder form filled in from a look-up pick.
+func pickURL(characterID int64, verb, op string, p BuilderPick) string {
+	return fmt.Sprintf("/characters/%d/builder?verb=%s&op=%s&entry=%d&feature=%s", characterID, verb, op, p.EntryID, url.QueryEscape(p.Feature))
+}
+
+// featurePicker names a new feature: feats and class features load into
+// its list as they are typed (BuilderPickItems), and picking one reloads
+// the form filled in from it (app.js); createButton takes any other name.
+templ featurePicker(characterID int64, value string) {
+	{{ id := "builder-subject" }}
+	<div data-builder-pick>
+		@field.Field() {
+			@field.Label(field.LabelProps{For: id}) {
+				Feature
+			}
+			@combobox.Combobox(combobox.Props{Name: "subject", Required: true, DefaultValue: value, Items: comboItems(value, nil)}) {
+				@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: "Search feats and class features, or type a name", Attributes: templ.Attributes{
+					"maxlength": "200", "autocomplete": "off", "data-combobox-create-input": "",
+					"hx-get": fmt.Sprintf("/characters/%d/picks?pick=feature&format=combobox", characterID), "hx-vals": "js:{q: this.value}",
+					"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-list", "hx-swap": "innerHTML",
+				}})
+				@combobox.Content() {
+					@createButton(id)
+					@combobox.List(combobox.ListProps{ID: id + "-list"}) {
+						<template data-combobox-create-item>
+							@combobox.Item()
+						</template>
+					}
+				}
+			}
+		}
+	</div>
+}
+
+// BuilderPickItems fill a featurePicker's list; each pick carries the URL
+// that fills the form in from it.
+templ BuilderPickItems(characterID int64, picks []BuilderPick) {
+	for _, p := range picks {
+		@combobox.Item(combobox.ItemProps{Value: p.Name, Label: p.Name, Attributes: templ.Attributes{"data-builder-load": pickURL(characterID, "features", "feature-add", p)}}) {
+			{ p.Name }
+			<span class="text-xs text-muted-foreground">{ p.Detail }</span>
+		}
+	}
+	<template data-combobox-create-item>
+		@combobox.Item()
+	</template>
+}
+
+// closeAfter makes a builder button close the dialog once its request
+// succeeds, since the sheet behind it shows the result.
+func closeAfter(a templ.Attributes) templ.Attributes {
+	a["hx-on::after-request"] = "if (event.detail.successful) document.querySelector('#" + builderID + " [data-slot=dialog-close]')?.click()"
+	return a
+}
+
+// armorForm shows the armor worn, takes it off, toggles the shield and
+// looks up armor to put on.
+templ armorForm(s SheetView) {
+	{{ sh := s.C.Sheet }}
+	<div class="space-y-3 border-t pt-4 text-sm">
+		<p>
+			if sh.Armor != nil {
+				Wearing <strong>{ sh.Armor.Name }</strong> ({ sh.Armor.Type }).
+			} else {
+				No armor.
+			}
+			if sh.Shield {
+				With a shield.
+			}
+		</p>
+		<div class="flex flex-wrap gap-2">
+			if sh.Armor != nil {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: closeAfter(templ.Attributes{"hx-post": s.cmdURL(), "hx-vals": cmdVals("armor off")})}) {
+					Take off armor
+				}
+			}
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: pressedClass, Attributes: closeAfter(templ.Attributes{
+				"hx-post": s.cmdURL(), "hx-vals": cmdVals("shield " + utils.IfElse(sh.Shield, "off", "on")), "aria-pressed": fmt.Sprint(sh.Shield),
+			})}) {
+				Shield (+2 AC)
+			}
+		</div>
+		<p class="text-xs text-muted-foreground">Without armor, AC is 10 + Dexterity, or Unarmored Defense if a feature gives it. An AC bonus set under Details is always added.</p>
+	</div>
+	@compendiumLookup(s, "armor", "Look up armor or a shield to wear…")
+}
+
+// coinForm sets all five coins at once. The server sends each change as a
+// difference from the amount shown, so changes made meanwhile on another
+// device still add up.
+templ coinForm(s SheetView, focus string) {
+	<form
+		class="grid gap-4 border-t pt-4"
+		hx-post={ s.cmdURL() }
+		hx-on::after-request="if (event.detail.successful) this.querySelector('[data-slot=dialog-close]').click()"
+	>
+		<div class="grid grid-cols-5 gap-2">
+			for _, c := range coinList(s.C.Sheet.Coins) {
+				@field.Field() {
+					@field.Label(field.LabelProps{For: "coin-" + c.name, Class: "justify-center uppercase"}) {
+						{ c.name }
+					}
+					@input.Input(input.Props{ID: "coin-" + c.name, Name: "coin_" + c.name, Type: "number", Value: fmt.Sprint(c.n), Required: true, Class: "px-1 text-center", Attributes: numberAttrs(0, 0, c.name == cmp.Or(focus, "gp"))})
+					<input type="hidden" name={ "was_" + c.name } value={ fmt.Sprint(c.n) }/>
+				}
+			}
+		</div>
+		<div class="flex justify-end gap-2">
+			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.CloseFor(builderID)}) {
+				Cancel
+			}
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				Save
+			}
+		</div>
+	</form>
+}
+
+templ spellSearch(s SheetView) {
+	<div class="border-t pt-4">
+		@spellPicker(s, "spell-search-builder", "Search the compendium for a spell…", true)
+	</div>
+}
+
+// detail is the current value a details form edits.
+func (s SheetView) detail(key string) string {
+	switch key {
+	case "set-name":
+		return s.C.Name
+	case "set-species":
+		return s.C.Sheet.Species
+	}
+	return s.C.Sheet.Background
+}
+
+// builderSubjects lists what a form can pick (nil when it picks nothing,
+// empty when there is nothing to pick right now), with the most its number
+// may be and the number to start from for each pick.
+func (s SheetView) builderSubjects(key string) ([]selectcomp.ItemData, map[string]int, map[string]int) {
+	sh := s.C.Sheet
+	items := []selectcomp.ItemData{}
+	maxes, values := map[string]int{}, map[string]int{}
+	add := func(value, label string) { items = append(items, selectcomp.ItemData{Value: value, Label: label}) }
+	skills := func(keep func(sk dnd5e.Skill) bool) {
+		for _, sk := range dnd5e.Skills {
+			if keep(sk) {
+				add(sk.Key, sk.Name)
+			}
+		}
+	}
+	abilities := func(keep func(a string) bool) {
+		for _, a := range dnd5e.Abilities {
+			if keep(a) {
+				add(a, dnd5e.AbilityNames[a])
+			}
+		}
+	}
+	has := func(list []string) func(string) bool { return func(x string) bool { return slices.Contains(list, x) } }
+	switch key {
+	case "cond-add":
+		for _, slug := range append(slices.Clone(dnd5e.Conditions), dnd5e.TrackConcentration) {
+			if _, on := s.condition(slug); !on && slug != exhaustion {
+				add(slug, slug)
+			}
+		}
+		add(dnd5e.TrackCustom, "custom effect")
+	case "cond-remove":
+		for _, c := range s.Conditions {
+			if c.Slug != exhaustion && !slices.ContainsFunc(items, func(it selectcomp.ItemData) bool { return it.Value == c.Slug }) {
+				add(c.Slug, strings.TrimSpace(c.Slug+" "+c.Note))
+			}
+		}
+	case "exh-up", "exh-down":
+		level := 0
+		if c, on := s.condition(exhaustion); on {
+			level, _ = strconv.Atoi(c.Note)
+		}
+		maxes[""] = 6 - level
+		if key == "exh-up" {
+			return nil, maxes, values
+		}
+		maxes[""] = level
+		if level > 0 {
+			add(exhaustion, exhaustion)
+		}
+	case "ability":
+		abilities(func(string) bool { return true })
+		for _, a := range dnd5e.Abilities {
+			values[a] = sh.Scores[a]
+		}
+	case "skill-add":
+		skills(func(sk dnd5e.Skill) bool { return !has(sh.SkillProfs)(sk.Key) })
+	case "skill-remove":
+		skills(func(sk dnd5e.Skill) bool { return has(sh.SkillProfs)(sk.Key) })
+	case "exp-add":
+		skills(func(sk dnd5e.Skill) bool { return has(sh.SkillProfs)(sk.Key) && !has(sh.Expertise)(sk.Key) })
+	case "exp-remove":
+		skills(func(sk dnd5e.Skill) bool { return has(sh.Expertise)(sk.Key) })
+	case "save-add":
+		abilities(func(a string) bool { return !has(sh.SaveProfs)(a) })
+	case "save-remove":
+		abilities(has(sh.SaveProfs))
+	case "other-remove":
+		for _, p := range sh.OtherProfs {
+			add(p, p)
+		}
+	case "lang-remove":
+		for _, l := range sh.Languages {
+			add(l, l)
+		}
+	case "slot-use", "slot-restore", "slot-max":
+		for i, sl := range sh.Slots {
+			lvl := fmt.Sprint(i + 1)
+			if key == "slot-max" || key == "slot-use" && sl.Used < sl.Max || key == "slot-restore" && sl.Used > 0 {
+				add(lvl, fmt.Sprintf("Level %s (%s)", lvl, slotLabel(sl)))
+			}
+			values[lvl] = sl.Max
+		}
+	case "pact-use", "pact-restore":
+		if key == "pact-use" && sh.Pact.Used < sh.Pact.Max || key == "pact-restore" && sh.Pact.Used > 0 {
+			add("", "Pact slot ("+slotLabel(sh.Pact)+")")
+		}
+	case "item-edit", "item-note":
+		for _, it := range sh.Inventory {
+			add(it.Name, it.Name)
+			values[it.Name] = it.Qty
+		}
+	case "spell-prepare", "spell-unprepare", "spell-remove":
+		for _, sp := range sh.Spells {
+			if key == "spell-remove" || sp.Level > 0 && sp.Prepared == (key == "spell-unprepare") {
+				add(sp.Slug, sp.Name)
+			}
+		}
+	case "feature-remove":
+		for _, f := range sh.Features {
+			add(f.Name, f.Name)
+		}
+	case "weapon-remove":
+		for _, w := range sh.Weapons {
+			add(w.Name, w.Name)
+		}
+	case "mod-add":
+		for _, t := range s.modTargets() {
+			add(t, modTargetLabel(t))
+		}
+	default:
+		return nil, maxes, values
+	}
+	return items, maxes, values
+}
+
+type coin struct {
+	n    int
+	name string
+}
+
+func coinList(c dnd5e.Coins) []coin {
+	return []coin{{c.PP, "pp"}, {c.GP, "gp"}, {c.EP, "ep"}, {c.SP, "sp"}, {c.CP, "cp"}}
+}
+
+// modTargets lists every value a custom modifier can change.
+func (s SheetView) modTargets() []string {
+	out := []string{dnd5e.ModAC, dnd5e.ModSpeed, dnd5e.ModInit, dnd5e.ModPassive, dnd5e.ModAttack, dnd5e.ModDamage}
+	for _, w := range s.C.Sheet.Weapons {
+		out = append(out, dnd5e.ModAttack+"."+w.Name, dnd5e.ModDamage+"."+w.Name)
+	}
+	out = append(out, dnd5e.Abilities...)
+	for _, a := range dnd5e.Abilities {
+		out = append(out, "save."+a)
+	}
+	for _, sk := range dnd5e.Skills {
+		out = append(out, "skill."+sk.Key)
+	}
+	return out
+}
+
+// modTargetLabel names a modifier target for people.
+func modTargetLabel(t string) string {
+	if name, ok := dnd5e.AbilityNames[t]; ok {
+		return name + " score"
+	}
+	kind, rest, _ := strings.Cut(t, ".")
+	switch kind {
+	case "save":
+		return dnd5e.AbilityNames[rest] + " save"
+	case "skill":
+		for _, sk := range dnd5e.Skills {
+			if sk.Key == rest {
+				return sk.Name
+			}
+		}
+	case dnd5e.ModAttack:
+		if rest != "" {
+			return rest + " to hit"
+		}
+		return "All attacks to hit"
+	case dnd5e.ModDamage:
+		if rest != "" {
+			return rest + " damage"
+		}
+		return "All weapon damage"
+	}
+	return map[string]string{dnd5e.ModAC: "Armor class", dnd5e.ModSpeed: "Speed", dnd5e.ModInit: "Initiative", dnd5e.ModPassive: "Passive perception"}[t]
+}

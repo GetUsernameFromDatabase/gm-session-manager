@@ -1,0 +1,244 @@
+@import "tailwindcss" source(none);
+
+@source "../../**/*.templ";
+@source "../../components/**/*.go";
+@source "../js/app.js";
+@source "../js/notes.js";
+@source "../js/wikilink.js";
+
+@import "./tw-animate.css";
+@import "./shadcn-tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-heading: var(--font-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.147 0.004 49.3);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.147 0.004 49.3);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.147 0.004 49.3);
+  --primary: oklch(0.852 0.199 91.936);
+  --primary-foreground: oklch(0.421 0.095 57.708);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.96 0.002 17.2);
+  --muted-foreground: oklch(0.547 0.021 43.1);
+  --accent: oklch(0.96 0.002 17.2);
+  --accent-foreground: oklch(0.214 0.009 43.1);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0.005 34.3);
+  --input: oklch(0.922 0.005 34.3);
+  --ring: oklch(0.714 0.014 41.2);
+  --chart-1: oklch(0.868 0.007 39.5);
+  --chart-2: oklch(0.547 0.021 43.1);
+  --chart-3: oklch(0.438 0.017 39.3);
+  --chart-4: oklch(0.367 0.016 35.7);
+  --chart-5: oklch(0.268 0.011 36.5);
+  --radius: 0.875rem;
+  --sidebar: oklch(0.986 0.002 67.8);
+  --sidebar-foreground: oklch(0.147 0.004 49.3);
+  --sidebar-primary: oklch(0.681 0.162 75.834);
+  --sidebar-primary-foreground: oklch(0.987 0.026 102.212);
+  --sidebar-accent: oklch(0.96 0.002 17.2);
+  --sidebar-accent-foreground: oklch(0.214 0.009 43.1);
+  --sidebar-border: oklch(0.922 0.005 34.3);
+  --sidebar-ring: oklch(0.714 0.014 41.2);
+}
+
+.dark {
+  --background: oklch(0.147 0.004 49.3);
+  --foreground: oklch(0.986 0.002 67.8);
+  --card: oklch(0.214 0.009 43.1);
+  --card-foreground: oklch(0.986 0.002 67.8);
+  --popover: oklch(0.214 0.009 43.1);
+  --popover-foreground: oklch(0.986 0.002 67.8);
+  --primary: oklch(0.795 0.184 86.047);
+  --primary-foreground: oklch(0.421 0.095 57.708);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.268 0.011 36.5);
+  --muted-foreground: oklch(0.714 0.014 41.2);
+  --accent: oklch(0.268 0.011 36.5);
+  --accent-foreground: oklch(0.986 0.002 67.8);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.547 0.021 43.1);
+  --chart-1: oklch(0.868 0.007 39.5);
+  --chart-2: oklch(0.547 0.021 43.1);
+  --chart-3: oklch(0.438 0.017 39.3);
+  --chart-4: oklch(0.367 0.016 35.7);
+  --chart-5: oklch(0.268 0.011 36.5);
+  --sidebar: oklch(0.214 0.009 43.1);
+  --sidebar-foreground: oklch(0.986 0.002 67.8);
+  --sidebar-primary: oklch(0.795 0.184 86.047);
+  --sidebar-primary-foreground: oklch(0.987 0.026 102.212);
+  --sidebar-accent: oklch(0.268 0.011 36.5);
+  --sidebar-accent-foreground: oklch(0.986 0.002 67.8);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.547 0.021 43.1);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Rich-text note blocks (TipTap). The editor renders plain elements, so
+   give them document styling here instead of utility classes. */
+
+@layer components {
+  .note-editor .tiptap {
+    @apply min-h-12 outline-none;
+  }
+  .note-editor .tiptap > * + *,
+  .markdown > * + * {
+    @apply mt-2;
+  }
+  .note-editor .tiptap h1 {
+    @apply text-2xl font-semibold;
+  }
+  .note-editor .tiptap h2 {
+    @apply text-xl font-semibold;
+  }
+  .note-editor .tiptap h3 {
+    @apply text-lg font-semibold;
+  }
+  .note-editor .tiptap ul,
+  .markdown ul {
+    @apply list-disc pl-6;
+  }
+  .note-editor .tiptap ol,
+  .markdown ol {
+    @apply list-decimal pl-6;
+  }
+  .note-editor .tiptap blockquote,
+  .markdown blockquote {
+    @apply border-l-2 pl-3 text-muted-foreground;
+  }
+  .note-editor .tiptap code,
+  .markdown code {
+    @apply rounded bg-muted px-1 font-mono text-sm;
+  }
+  .note-editor .tiptap pre {
+    @apply rounded bg-muted p-3 font-mono text-sm;
+  }
+  .note-editor .tiptap img {
+    @apply max-h-96 rounded;
+  }
+  .note-editor .tiptap a,
+  .markdown a,
+  .wikilink {
+    @apply text-primary underline underline-offset-2;
+  }
+  .wikilink {
+    @apply rounded bg-accent px-1 no-underline;
+  }
+  .wikilink > img {
+    @apply max-h-96 rounded;
+  }
+  /* A floated [[image]] lets text wrap beside it; its block contains the float.
+     One the viewer may not see shows its name inline. */
+  .wikilink[data-float="left"]:has(> img:not([hidden])) {
+    @apply float-left mr-3 mb-2 max-w-1/2 bg-transparent p-0;
+  }
+  .wikilink[data-float="right"]:has(> img:not([hidden])) {
+    @apply float-right mb-2 ml-3 max-w-1/2 bg-transparent p-0;
+  }
+  .wikilink[data-float] > img {
+    @apply max-w-full;
+  }
+  .note-editor .tiptap,
+  .field-editor .tiptap {
+    @apply flow-root;
+  }
+  /* ProseMirror's caret helper after an [[image]] ending a line; must stay in the DOM. */
+  .tiptap img.ProseMirror-separator {
+    @apply inline size-0;
+  }
+  /* An NPC field's editor (fields.js). */
+  .field-editor {
+    @apply rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs md:text-sm dark:bg-input/30;
+  }
+  .field-editor:focus-within {
+    @apply border-ring ring-3 ring-ring/50;
+  }
+  .field-editor .tiptap {
+    @apply min-h-10 whitespace-pre-wrap outline-none;
+  }
+  /* An [[image]] shows the image, not its name; selected, a ring. */
+  .wikilink > img:not([hidden]) + span {
+    @apply hidden;
+  }
+  .ProseMirror-selectednode.wikilink > img {
+    @apply ring-2 ring-ring;
+  }
+  .markdown :is(h1, h2, h3, h4, h5, h6) {
+    @apply mt-4 font-semibold;
+  }
+  /* Compendium Markdown tables, styled like the shadcn table. */
+  .markdown table {
+    @apply w-full caption-bottom;
+  }
+  .markdown tr {
+    @apply border-b;
+  }
+  .markdown th {
+    @apply px-2 py-1 text-left font-medium text-muted-foreground;
+  }
+  .markdown td {
+    @apply px-2 py-1;
+  }
+  .note-editor .tiptap p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    @apply pointer-events-none float-left h-0 text-muted-foreground;
+  }
+}

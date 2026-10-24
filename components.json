@@ -1,0 +1,21 @@
+{
+  "scripts": {
+    "dir": "web/assets/js",
+    "path": "/assets/js"
+  },
+  "$schema": "https://shadcn-templ.com/schema/components.json",
+  "style": "base-nova",
+  "tailwind": {
+    "css": "web/assets/css/globals.css",
+    "baseColor": "taupe",
+    "cssVariables": true
+  },
+  "rtl": false,
+  "iconLibrary": "lucide",
+  "menuColor": "default",
+  "menuAccent": "subtle",
+  "aliases": {
+    "components": "gm-session-manager/web/components",
+    "utils": "gm-session-manager/web/utils"
+  }
+}

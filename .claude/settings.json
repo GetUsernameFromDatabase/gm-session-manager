@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(graphify *)",
+      "Bash(go version *)",
+      "Bash(go mod *)",
+      "Bash(go test *)",
+      "Bash(go vet *)",
+      "Bash(go build *)",
+      "Bash(go generate *)",
+      "Bash(gofmt *)",
+      "Bash(golangci-lint version)",
+      "Bash(golangci-lint run *)",
+      "Bash(tailwindcss *)",
+      "Bash(sqlc *)",
+      "Bash(templ *)",
+      "Bash(go tool templ *)",
+      "Bash(shadcn-templ *)",
+      "Bash(go tool shadcn-templ *)",
+      "Bash(node --check web/assets/js/app.js)"
+    ],
+    "ask": [
+      "Bash(gh pr create:*)",
+      "Bash(git commit:*)",
+      "Bash(go run *)",
+      "Bash(git add:*)"
+    ],
+    "deny": [
+      "Read(*.env)",
+      "Bash(rm:*)",
+      "Bash(curl:*)",
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf /*)",
+      "Bash(curl * | bash)",
+      "Bash(curl * | sh)",
+      "Bash(wget * | bash)",
+      "Bash(wget * | sh)",
+      "Bash(eval *)",
+      "Bash(sqlc push *)"
+    ],
+    "defaultMode": "plan"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PROJECT_DIR}/.claude/hooks/sed-hook.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "graphify hook-guard search",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "graphify hook-guard read",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

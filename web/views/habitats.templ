@@ -1,0 +1,112 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/compendium"
+	"gm-session-manager/db/sqlc"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/checkbox"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/table"
+	"gm-session-manager/web/utils"
+	"net/url"
+)
+
+// HabitatGridID is the grid's element, swapped alone on filtering.
+const HabitatGridID = "habitat-grid"
+
+// HabitatView is the GM's habitat grid: the monsters whose name contains
+// Filter and the habitats each one has.
+type HabitatView struct {
+	Filter   string
+	Monsters []sqlc.ListMonstersByNameRow
+	Has      map[int64]map[string]bool
+}
+
+templ HabitatsPage(l Layout, v HabitatView) {
+	@Page(l) {
+		@PageHeader("Habitats", "A click saves. Filter by name, then use + or − under a habitat to change every monster that matches.")
+		<form
+			method="get"
+			class="mb-4"
+			hx-get="/compendium/habitats"
+			hx-trigger="submit, input[target.id==='habitat-q'] delay:200ms"
+			hx-target={ "#" + HabitatGridID }
+			hx-swap="outerHTML"
+			hx-push-url="true"
+		>
+			@input.Input(input.Props{ID: "habitat-q", Name: "q", Type: "search", Value: v.Filter, Placeholder: "Filter monsters by name (e.g. hill, dragon)…", Class: "max-w-md", Attributes: templ.Attributes{"autocomplete": "off", "aria-label": "Filter monsters by name"}})
+		</form>
+		@HabitatGrid(v)
+	}
+}
+
+// HabitatGrid is the monsters × habitats table. Each box is its own form
+// posted on change; + and − apply one habitat to every match of Filter.
+templ HabitatGrid(v HabitatView) {
+	// The table scrolls in its own box, so the filter above stays on screen
+	// and the sticky header row and Monster column need no navbar offset.
+	<div id={ HabitatGridID } class="[&_[data-slot=table-container]]:max-h-[calc(100dvh-14rem)]">
+		if len(v.Monsters) == 0 {
+			<p class="text-sm text-muted-foreground">No monster's name contains “{ v.Filter }”.</p>
+		} else {
+			<p class="mb-2 text-xs text-muted-foreground">{ fmt.Sprint(len(v.Monsters)) } monsters.</p>
+			@table.Table() {
+				@table.Header() {
+					@table.Row() {
+						@table.Head(table.HeadProps{Class: "sticky top-0 left-0 z-20 bg-background"}) {
+							Monster
+						}
+						for _, h := range compendium.Habitats {
+							@table.Head(table.HeadProps{Class: "sticky top-0 z-10 bg-background text-center"}) {
+								<div>{ h }</div>
+								<div class="flex justify-center">
+									@habitatBatchButton(v, h, true)
+									@habitatBatchButton(v, h, false)
+								</div>
+							}
+						}
+					}
+				}
+				@table.Body() {
+					for _, m := range v.Monsters {
+						@table.Row() {
+							@table.Cell(table.CellProps{Class: "sticky left-0 z-10 bg-background"}) {
+								<a class="hover:underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", m.ID)) }>{ m.Name }</a>
+							}
+							for _, h := range compendium.Habitats {
+								@table.Cell(table.CellProps{Class: "text-center"}) {
+									<form class="flex justify-center" hx-post="/compendium/habitats/cell" hx-trigger="change" hx-vals={ toJSON(map[string]any{"entry_id": m.ID, "habitat": h}) }>
+										@checkbox.Checkbox(checkbox.Props{Name: "on", Value: "true", DefaultChecked: v.Has[m.ID][h], Attributes: templ.Attributes{"aria-label": h + ": " + m.Name}})
+									</form>
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	</div>
+}
+
+// habitatBatchButton adds (on) or removes habitat h for every match.
+templ habitatBatchButton(v HabitatView, h string, on bool) {
+	{{ what := fmt.Sprintf(utils.IfElse(on, "Add %s to all %d monsters shown", "Remove %s from all %d monsters shown"), h, len(v.Monsters)) }}
+	@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: templ.Attributes{
+		"type": "button", "title": what, "aria-label": what,
+		"hx-post": "/compendium/habitats/batch", "hx-vals": toJSON(map[string]any{"q": v.Filter, "habitat": h, "on": on}),
+		"hx-confirm": what + "?", "hx-target": "#" + HabitatGridID, "hx-swap": "outerHTML",
+	}}) {
+		if on {
+			@icon.Plus()
+		} else {
+			@icon.Minus()
+		}
+	}
+}
+
+// habitatsURL opens the grid filtered to name.
+func habitatsURL(name string) templ.SafeURL {
+	return templ.SafeURL("/compendium/habitats?" + url.Values{"q": {name}}.Encode())
+}

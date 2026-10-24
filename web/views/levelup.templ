@@ -1,0 +1,247 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/dnd5e"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/card"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/label"
+	selectcomp "gm-session-manager/web/components/select"
+	"slices"
+	"strings"
+)
+
+// Option is a compendium choice in a form.
+type Option struct {
+	Slug  string
+	Name  string
+	Level int
+}
+
+// LevelUpView is the level-up helper.
+type LevelUpView struct {
+	CharacterID int64
+	Name        string
+	Level       int
+	// Sheet is the character before levelling, to show what changes.
+	Sheet       dnd5e.Sheet
+	Classes     []Option
+	Selected    string
+	Plan        *dnd5e.LevelUpPlan
+	Subclasses  []Option
+	Feats       []Option
+	Spells      []Option
+	Error       string
+}
+
+func slotSummary(slots [9]int) string {
+	out := ""
+	for i, n := range slots {
+		if n > 0 {
+			if out != "" {
+				out += ", "
+			}
+			out += fmt.Sprintf("L%d×%d", i+1, n)
+		}
+	}
+	if out == "" {
+		return "none"
+	}
+	return out
+}
+
+// slotMaxima is how many slots of each level s has.
+func slotMaxima(s dnd5e.Sheet) [9]int {
+	var out [9]int
+	for i, sl := range s.Slots {
+		out[i] = sl.Max
+	}
+	return out
+}
+
+func sortedColumns(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+templ LevelUpPage(l Layout, v LevelUpView) {
+	@Page(l) {
+		@PageHeader("Level up "+v.Name, fmt.Sprintf("Currently level %d. Structured parts are filled in for you; you can still change anything afterwards with commands.", v.Level))
+		if v.Error != "" {
+			@Notice(v.Error, true, "mb-4")
+		}
+		<form method="get" class="mb-6 flex items-center gap-2" onchange="this.submit()">
+			@label.Label(label.Props{For: "class-trigger"}) {
+				Class
+			}
+			@formSelect("class", "class", optionItems("Choose a class…", v.Classes, func(o Option) string { return o.Slug }), v.Selected, "", "")
+			<noscript>
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+					Show
+				}
+			</noscript>
+		</form>
+		if len(v.Classes) == 0 {
+			<p class="text-muted-foreground">No classes in the compendium yet. Ask the GM to import the SRD (see README), or add features by hand with commands.</p>
+		}
+		if v.Plan != nil {
+			@levelUpForm(v, *v.Plan)
+		}
+	}
+}
+
+templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
+	<form method="post" class="space-y-4">
+		<input type="hidden" name="class" value={ p.Class.Slug }/>
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					{ p.Class.Name } { fmt.Sprint(p.ClassLevel) } (character level { fmt.Sprint(p.NewLevel) })
+				}
+			}
+			@card.Content() {
+				<div class="space-y-4 text-sm">
+					for _, w := range p.Warnings {
+						<p class="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-300" role="alert">{ w } You can still take the level.</p>
+					}
+					<div>
+						<div class="font-medium">What changes</div>
+						<ul class="mt-1 list-disc space-y-0.5 pl-5">
+							<li>Max hit points +{ fmt.Sprint(p.AverageHP) } (fixed; or your roll below)</li>
+							if pb := dnd5e.ProficiencyAt(p.NewLevel); pb != v.Sheet.ProficiencyBonus() {
+								<li>Proficiency bonus { dnd5e.Signed(v.Sheet.ProficiencyBonus()) } → { dnd5e.Signed(pb) }</li>
+							}
+							if before := slotMaxima(v.Sheet); before != p.Slots {
+								<li>Spell slots { slotSummary(before) } → { slotSummary(p.Slots) }</li>
+							}
+							if p.Pact != v.Sheet.Pact.Max || p.PactLevel != v.Sheet.PactLevel {
+								<li>Pact slots { fmt.Sprint(p.Pact) } at level { fmt.Sprint(p.PactLevel) }</li>
+							}
+							for _, f := range p.Features {
+								<li>
+									New feature: { f.Name }
+									if fx := dnd5e.ParseEffects(f.Name, f.Description, p.Class.Table, p.Class.Name).Summary(); len(fx) > 0 {
+										<span class="text-muted-foreground">({ strings.Join(fx, "; ") })</span>
+									}
+								</li>
+							}
+							if p.ASI {
+								<li>Ability Score Improvement or a feat</li>
+							}
+							if p.NeedsSubclass {
+								<li>Choose a subclass</li>
+							}
+							if p.IsNewClass && v.Level > 0 {
+								<li>New class: { p.Class.Name } (no new saving throw proficiencies)</li>
+							}
+						</ul>
+					</div>
+					<div>
+						<div class="font-medium">Hit points</div>
+						if v.Level == 0 {
+							<p>First level: maximum hit die (d{ fmt.Sprint(p.Class.HitDie) }) plus Constitution: <strong>+{ fmt.Sprint(p.AverageHP) }</strong>.</p>
+						} else {
+							<p>Take the fixed <strong>+{ fmt.Sprint(p.AverageHP) }</strong>, or enter what you rolled on the d{ fmt.Sprint(p.Class.HitDie) } (Constitution is added for you).</p>
+							@input.Input(input.Props{Name: "hp_roll", Type: "number", Class: "mt-1 w-28", Placeholder: "roll", Attributes: templ.Attributes{"min": "1", "max": fmt.Sprint(p.Class.HitDie)}})
+						}
+					</div>
+					<div>
+						<div class="font-medium">Spell slots after this level</div>
+						<p>
+							{ slotSummary(p.Slots) }
+							if p.Pact > 0 {
+								· Pact { fmt.Sprint(p.Pact) } at level { fmt.Sprint(p.PactLevel) }
+							}
+						</p>
+					</div>
+					if len(p.Columns) > 0 {
+						<div>
+							<div class="font-medium">Class table</div>
+							<ul>
+								for _, k := range sortedColumns(p.Columns) {
+									<li>{ k }: { p.Columns[k] }</li>
+								}
+							</ul>
+						</div>
+					}
+					if p.NeedsSubclass && len(v.Subclasses) > 0 {
+						<div>
+							@label.Label(label.Props{For: "subclass-trigger", Class: "mb-1"}) {
+								Subclass
+							}
+							@formSelect("subclass", "subclass", optionItems("Decide later", v.Subclasses, func(o Option) string { return o.Name }), "", "", "")
+						</div>
+					}
+					if p.ASI {
+						<fieldset class="space-y-2">
+							<legend class="font-medium">Ability Score Improvement or feat</legend>
+							<div class="flex flex-wrap items-center gap-2">
+								@abilitySelect("asi1", "+1 or +2 to")
+								@abilitySelect("asi2", "and +1 to")
+								<span class="text-muted-foreground">or feat</span>
+								@formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), "", "", "")
+							</div>
+							<p class="text-xs text-muted-foreground">Pick one ability for +2, two different abilities for +1 each, or a feat.</p>
+						</fieldset>
+					}
+					if len(p.Features) > 0 {
+						<div>
+							<div class="font-medium">New features</div>
+							for _, f := range p.Features {
+								<details class="mt-1">
+									<summary class="cursor-pointer">{ f.Name }</summary>
+									<div class="mt-1 text-muted-foreground">
+										@markdown(f.Description)
+									</div>
+								</details>
+							}
+						</div>
+					}
+					if len(v.Spells) > 0 {
+						<div>
+							<div class="font-medium">Learn or prepare spells</div>
+							<div class="mt-1 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2">
+								for _, sp := range v.Spells {
+									@checkField("spell", sp.Slug, false) {
+										{ sp.Name }
+										<span class="text-xs text-muted-foreground">
+											if sp.Level == 0 {
+												cantrip
+											} else {
+												L{ fmt.Sprint(sp.Level) }
+											}
+										</span>
+									}
+								}
+							</div>
+						</div>
+					}
+				</div>
+			}
+			@card.Footer() {
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					Gain level { fmt.Sprint(p.NewLevel) }
+				}
+			}
+		}
+	</form>
+}
+
+templ abilitySelect(name, label string) {
+	<span class="text-muted-foreground">{ label }</span>
+	@formSelect("", name, abilityItems, "", "", "")
+}
+
+var abilityItems = append([]selectcomp.ItemData{{Value: "", Label: "—"}},
+	selectItems(dnd5e.Abilities, func(a string) string { return a }, func(a string) string { return dnd5e.AbilityNames[a] })...)
+
+// optionItems is a select over opts led by an empty choice labelled none.
+func optionItems(none string, opts []Option, value func(Option) string) []selectcomp.ItemData {
+	return append([]selectcomp.ItemData{{Value: "", Label: none}},
+		selectItems(opts, value, func(o Option) string { return o.Name })...)
+}

@@ -1,0 +1,205 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/db/sqlc"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/card"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/label"
+)
+
+// JoinInfo is what the GM shows players so they can connect.
+type JoinInfo struct {
+	URLs        []string
+	QR          string // src of the QR code image
+	Fingerprint string
+}
+
+templ joinPanel(j JoinInfo) {
+	@card.Card() {
+		@card.Header() {
+			@card.Title() {
+				Players join here
+			}
+			@card.Description() {
+				Scan the code or open the address on a phone on the same network. Each device accepts the certificate warning once.
+			}
+		}
+		@card.Content() {
+			<div class="flex flex-wrap items-center gap-6">
+				if len(j.URLs) > 0 {
+					<img src={ j.QR } alt="QR code for the join address" width="180" height="180" class="rounded bg-white p-2"/>
+				}
+				<div class="space-y-1 text-sm">
+					if len(j.URLs) == 0 {
+						<p>No private network address found. Connect this PC to the same Wi-Fi as the players.</p>
+					}
+					for _, u := range j.URLs {
+						<div class="flex items-center gap-1">
+							<p class="font-mono">{ u }</p>
+							@button.Button(button.Props{Size: button.SizeIconSm, Variant: button.VariantGhost, Class: "group", Attributes: templ.Attributes{"data-copy": u, "aria-label": "Copy join link", "title": "Copy join link"}}) {
+								@icon.Copy(icon.Props{Size: 16, Class: "group-data-[copied]:hidden"})
+								@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-[copied]:block"})
+							}
+						</div>
+					}
+					<p class="pt-2 text-xs text-muted-foreground">Certificate SHA-256: <span class="font-mono break-all">{ j.Fingerprint }</span></p>
+				</div>
+			</div>
+		}
+	}
+}
+
+templ GMHome(l Layout, campaigns []sqlc.Campaign, j JoinInfo) {
+	@Page(l) {
+		@PageHeader("Campaigns", "You are the GM on this device.")
+		<div class="grid gap-6 md:grid-cols-2">
+			<div class="space-y-3">
+				for _, c := range campaigns {
+					<a href={ templ.SafeURL(fmt.Sprintf("/campaigns/%d", c.ID)) } class="block rounded-lg border p-4 hover:bg-accent">
+						<div class="font-medium">{ c.Name }</div>
+						<div class="text-sm text-muted-foreground">{ c.System } { c.Edition }</div>
+					</a>
+				}
+				if len(campaigns) == 0 {
+					<p class="text-muted-foreground">No campaigns yet.</p>
+				}
+				<form method="post" action="/campaigns" class="flex gap-2 pt-2">
+					@input.Input(input.Props{Name: "name", Placeholder: "New campaign name", Required: true})
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Create
+					}
+				</form>
+			</div>
+			@joinPanel(j)
+		</div>
+	}
+}
+
+templ JoinCampaigns(l Layout, campaigns []sqlc.Campaign) {
+	@Page(l) {
+		@PageHeader("Join a campaign", "Pick the campaign your table is playing.")
+		<div class="space-y-3">
+			for _, c := range campaigns {
+				<a href={ templ.SafeURL(fmt.Sprintf("/join/%d", c.ID)) } class="block rounded-lg border p-4 hover:bg-accent">
+					<div class="font-medium">{ c.Name }</div>
+				</a>
+			}
+			if len(campaigns) == 0 {
+				<p class="text-muted-foreground">The GM has not created a campaign yet.</p>
+			}
+		</div>
+		@adminLink()
+	}
+}
+
+templ adminLink() {
+	<p class="mt-10 text-sm text-muted-foreground">
+		GM on another device? <a class="underline" href="/admin/login">Log in as GM</a>
+	</p>
+}
+
+templ JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err string) {
+	@Page(l) {
+		@PageHeader(c.Name, "Choose your character, or make a new one.")
+		if err != "" {
+			@Notice(err, true, "mb-4")
+		}
+		// app.js copies the name into each form and remembers it on this device.
+		<div class="mb-6 space-y-2">
+			@label.Label(label.Props{For: "player-name"}) {
+				Your name <span class="text-destructive" aria-hidden="true">*</span>
+			}
+			@input.Input(input.Props{ID: "player-name", Placeholder: "So the GM knows who you are", Required: true, Attributes: templ.Attributes{"maxlength": "12", "autocomplete": "nickname", "aria-describedby": "player-name-error"}})
+			<p id="player-name-error" class="text-sm text-destructive" hidden>Enter your name so the GM knows who you are.</p>
+		</div>
+		<div class="space-y-2">
+			for _, ch := range chars {
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/join/%d/claim/%d", c.ID, ch.ID)) } class="flex items-center justify-between rounded-lg border p-3" data-player>
+					<input type="hidden" name="player"/>
+					<span class="font-medium">{ ch.Name }</span>
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+						This is me
+					}
+				</form>
+			}
+		</div>
+		<form method="post" action={ templ.SafeURL(fmt.Sprintf("/join/%d/create", c.ID)) } class="mt-6 space-y-2" data-player>
+			<input type="hidden" name="player"/>
+			@label.Label(label.Props{For: "new-name"}) {
+				New character
+			}
+			<div class="flex gap-2">
+				@input.Input(input.Props{ID: "new-name", Name: "name", Placeholder: "Character name", Required: true})
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					Create
+				}
+			</div>
+			if !c.OpenJoin {
+				<p class="text-xs text-muted-foreground">The GM approves new characters in this campaign.</p>
+			}
+		</form>
+		@adminLink()
+	}
+}
+
+// Waiting is a visitor's join request as they see it.
+type Waiting struct {
+	Secret string
+	Name   string
+	State  string // "waiting", "approved", "denied"
+}
+
+templ JoinWaiting(l Layout, w Waiting) {
+	@Page(l) {
+		@PageHeader("Waiting for the GM", "Keep this page open.")
+		@PendingStatus(w)
+	}
+}
+
+// PendingStatus is swapped in over the websocket when the GM decides. On
+// approval it redeems the request right away.
+templ PendingStatus(w Waiting) {
+	<div id="pending-status" hx-swap-oob="true" { live(LiveWaiting, w.Secret)... }>
+		switch w.State {
+			case "approved":
+				<p>Approved! Opening { w.Name }…</p>
+				<form hx-post="/requests/complete" hx-trigger="load" hx-swap="none">
+					<input type="hidden" name="secret" value={ w.Secret }/>
+				</form>
+			case "denied":
+				<p>The GM declined this request.</p>
+				<p class="mt-4"><a class="underline" href="/join">Start over</a></p>
+			default:
+				<p>Asked the GM for <strong>{ w.Name }</strong>. This page updates by itself.</p>
+		}
+	</div>
+}
+
+templ AdminLogin(l Layout, err string) {
+	@Page(l) {
+		@PageHeader("GM login", "For GM devices other than the host PC.")
+		<form method="post" action="/admin/login" class="max-w-sm space-y-3">
+			if err != "" {
+				@Notice(err, true, "")
+			}
+			<div class="space-y-1">
+				@label.Label(label.Props{For: "username"}) {
+					Username
+				}
+				@input.Input(input.Props{ID: "username", Name: "username", Required: true, Attributes: templ.Attributes{"autocomplete": "username"}})
+			</div>
+			<div class="space-y-1">
+				@label.Label(label.Props{For: "password"}) {
+					Password
+				}
+				@input.Input(input.Props{ID: "password", Name: "password", Type: "password", Required: true, Attributes: templ.Attributes{"autocomplete": "current-password"}})
+			</div>
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				Log in
+			}
+		</form>
+	}
+}

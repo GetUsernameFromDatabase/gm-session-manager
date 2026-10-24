@@ -1,0 +1,446 @@
+package views
+
+import (
+	"fmt"
+	"slices"
+	"gm-session-manager/db/sqlc"
+	"gm-session-manager/web/components/badge"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/combobox"
+	"gm-session-manager/web/components/field"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/input"
+	selectcomp "gm-session-manager/web/components/select"
+	"gm-session-manager/web/components/tabs"
+	"gm-session-manager/web/components/textarea"
+	"gm-session-manager/web/utils"
+)
+
+// ImageItem is one image as a page shows it. Players get only ID, Name
+// and Src; the handlers leave the rest empty for them.
+type ImageItem struct {
+	ID          int64
+	Name        string
+	Category    string
+	Description string
+	// URL is the external link (empty for uploads), for the edit form.
+	URL string
+	// Version names the link or file, so Src changes with it and browsers
+	// may cache it for good.
+	Version string
+}
+
+// Src is where browsers load the image: the authorized handler, which
+// serves an upload or redirects to the external link.
+func (i ImageItem) Src() string {
+	if i.Version == "" {
+		return ImageSrc(i.ID)
+	}
+	return ImageSrc(i.ID) + "?v=" + i.Version
+}
+
+// ImageSrc is the authorized URL of image id.
+func ImageSrc(id int64) string { return fmt.Sprintf("/images/%d/file", id) }
+
+// DisplayURL is the display window of a campaign.
+func DisplayURL(campaignID int64) string { return fmt.Sprintf("/campaigns/%d/display", campaignID) }
+
+// JoinQRSrc is the join QR code image for a campaign, or for the campaign
+// list when campaignID is 0. The query name matches web's queryCampaign.
+func JoinQRSrc(campaignID int64) string {
+	if campaignID == 0 {
+		return "/join.png"
+	}
+	return fmt.Sprintf("/join.png?campaign=%d", campaignID)
+}
+
+// ImagesView is the GM's image picker.
+type ImagesView struct {
+	CampaignID int64
+	Query      string
+	CategoryID int64
+	Categories []sqlc.ImageCategory
+	Images     []ImageItem
+	// Imported is how many images an import just added (shown once).
+	Imported int
+}
+
+// ImageResultsID is the element htmx swaps when searching or filtering.
+const ImageResultsID = "image-results"
+
+templ ImagesPage(l Layout, v ImagesView) {
+	@Page(l) {
+		<div class="mb-6 flex flex-wrap items-center gap-2">
+			<h1 class="mr-auto text-2xl font-semibold">Images</h1>
+			@openDisplayButton(v.CampaignID)
+			@button.Button(button.Props{Variant: button.VariantOutline, Class: showPressed, Attributes: showAttrs(JoinQRSrc(v.CampaignID), "Join")}) {
+				@icon.QrCode()
+				Show join QR
+			}
+			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{"data-clear-display": ""}}) {
+				Clear display
+			}
+			@button.Button(button.Props{Variant: button.VariantOutline, Href: fmt.Sprintf("/campaigns/%d/images/import", v.CampaignID)}) {
+				Import CSV
+			}
+			@button.Button(button.Props{Href: fmt.Sprintf("/campaigns/%d/images/new", v.CampaignID)}) {
+				New image
+			}
+		</div>
+		if v.Imported > 0 {
+			<p class="mb-4 rounded-md border px-3 py-2 text-sm" role="status">Imported { fmt.Sprint(v.Imported) } images.</p>
+		}
+		<form
+			method="get"
+			class="mb-4 flex flex-wrap gap-2"
+			hx-get={ fmt.Sprintf("/campaigns/%d/images", v.CampaignID) }
+			hx-trigger="submit, input[target.name==='q'] delay:200ms, change[target.name!=='q']"
+			hx-target={ "#" + ImageResultsID }
+			hx-swap="outerHTML"
+			hx-push-url="true"
+		>
+			@input.Input(input.Props{Name: "q", Type: "search", Value: v.Query, Placeholder: "Search by name…", Class: "max-w-xs", Attributes: templ.Attributes{"autocomplete": "off"}})
+			@formSelect("", "category", categoryFilterItems(v.Categories), fmt.Sprint(v.CategoryID), "", "")
+		</form>
+		@ImageResults(v)
+	}
+}
+
+func categoryFilterItems(cats []sqlc.ImageCategory) []selectcomp.ItemData {
+	items := []selectcomp.ItemData{{Value: "0", Label: "All categories"}}
+	return append(items, selectItems(cats, func(c sqlc.ImageCategory) string { return fmt.Sprint(c.ID) }, func(c sqlc.ImageCategory) string { return c.Name })...)
+}
+
+templ ImageResults(v ImagesView) {
+	<div id={ ImageResultsID } class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+		for _, img := range v.Images {
+			<div class="flex flex-col overflow-hidden rounded-lg border">
+				<a href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ID)) } class="block aspect-video bg-muted">
+					// flex on an img centers its alt text when the link is broken (Firefox);
+					// a loaded image is unaffected.
+					<img src={ img.Src() } alt={ img.Name } loading="lazy" class="flex items-center justify-center text-center size-full object-contain text-sm text-muted-foreground"/>
+				</a>
+				<div class="flex flex-1 flex-col gap-2 p-2">
+					<div class="flex items-start justify-between gap-1">
+						<a class="truncate text-sm font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ID)) }>{ img.Name }</a>
+						if img.Category != "" {
+							@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+								{ img.Category }
+							}
+						}
+					</div>
+					@showButton(img, "mt-auto")
+				</div>
+			</div>
+		}
+		if len(v.Images) == 0 {
+			<p class="col-span-full text-sm text-muted-foreground">No images found.</p>
+		}
+	</div>
+}
+
+// showPressed marks a show button while its image is on the display.
+const showPressed = "aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+
+// showAttrs make a button put src on the display window (app.js).
+func showAttrs(src, name string) templ.Attributes {
+	return templ.Attributes{"data-show-image": "", "data-src": src, "data-name": name, "aria-pressed": "false"}
+}
+
+// showButton puts an image on the display window; app.js presses it while
+// that image is shown and a second click clears the display.
+templ showButton(img ImageItem, class string) {
+	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: showPressed + " " + class, Attributes: showAttrs(img.Src(), img.Name)}) {
+		@icon.Monitor()
+		Show
+	}
+}
+
+// openDisplayButton opens the display window; app.js opens it as a popup
+// window, the link is the fallback.
+templ openDisplayButton(campaignID int64) {
+	@button.Button(button.Props{Variant: button.VariantOutline, Href: DisplayURL(campaignID), Target: "_blank", Attributes: templ.Attributes{"data-open-display": ""}}) {
+		@icon.Monitor()
+		Open display
+	}
+}
+
+// ImageView is one image page: the GM's editor or a player's view.
+type ImageView struct {
+	CampaignID int64
+	Image      ImageItem
+	IsGM       bool
+	Categories []sqlc.ImageCategory
+	Backlinks  []sqlc.ListBacklinksRow
+	// EntityLinks are the NPCs whose fields link the image.
+	EntityLinks []sqlc.ListEntityFieldBacklinksRow
+	// NPCs or Characters wear the image as a look (never both); the choices
+	// are who else it may be given to.
+	NPCs             []sqlc.ListImageEntitiesRow
+	NPCChoices       []sqlc.Entity
+	Characters       []sqlc.ListImageCharactersRow
+	CharacterChoices []sqlc.Character
+}
+
+templ ImagePage(l Layout, v ImageView) {
+	@Page(l) {
+		if !v.IsGM {
+			@PageHeader(v.Image.Name, "")
+			<img src={ v.Image.Src() } alt={ v.Image.Name } class="flex items-center justify-center text-center max-h-[75vh] min-h-40 rounded-lg border object-contain text-sm text-muted-foreground"/>
+		} else {
+			<div class="grid gap-6 md:grid-cols-2">
+				@imageForm(v)
+				<div class="space-y-3">
+					@imagePreview(v.Image)
+					if v.Image.ID != 0 {
+						<div class="flex flex-wrap gap-2">
+							@showButton(v.Image, "")
+							@openDisplayButton(v.CampaignID)
+						</div>
+						@imageBindForm(v)
+						<section>
+							<h2 class="mb-2 text-sm font-semibold text-muted-foreground uppercase">Linked mentions</h2>
+							<ul class="space-y-1 text-sm">
+								for _, e := range v.NPCs {
+									<li>NPC · <a class="underline" href={ templ.SafeURL(fmt.Sprintf("/entities/%d", e.ID)) }>{ e.Name }</a></li>
+								}
+								for _, ch := range v.Characters {
+									<li>Character · <a class="underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d", ch.ID)) }>{ ch.Name }</a></li>
+								}
+								@npcMentions(v.EntityLinks)
+								for _, b := range v.Backlinks {
+									<li><a class="underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", b.ID)) }>{ b.Title }</a></li>
+								}
+								if len(v.Backlinks) == 0 && len(v.NPCs) == 0 && len(v.Characters) == 0 && len(v.EntityLinks) == 0 {
+									<li class="text-muted-foreground">No notes, NPCs or characters mention this image yet.</li>
+								}
+							</ul>
+						</section>
+					}
+				</div>
+			</div>
+		}
+	}
+}
+
+// imageBindForm gives the image to an NPC (as a look of an existing one,
+// or a new one) or, while no NPC wears it, to a character. A character's
+// image is theirs alone. Each group's row wraps item by item.
+templ imageBindForm(v ImageView) {
+	{{ action := fmt.Sprintf("/images/%d/npc", v.Image.ID) }}
+	if len(v.Characters) == 0 {
+		<div class="space-y-4">
+			<section class="space-y-2">
+				<h2 class="text-sm font-semibold text-muted-foreground uppercase">NPC</h2>
+				<div class="flex flex-wrap items-center gap-2">
+					if len(v.NPCChoices) > 0 {
+						<form class="contents" hx-post={ action }>
+							@formSelect("", "entity", selectItems(v.NPCChoices, func(e sqlc.Entity) string { return fmt.Sprint(e.ID) }, func(e sqlc.Entity) string { return e.Name }), "", "w-48", "")
+							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+								Add as look
+							}
+						</form>
+						<span class="text-sm text-muted-foreground">or</span>
+					}
+					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": action}}) {
+						@icon.UserPlus()
+						Create new NPC
+					}
+				</div>
+			</section>
+			if len(v.NPCs) == 0 && len(v.CharacterChoices) > 0 {
+				<section class="space-y-2">
+					<h2 class="text-sm font-semibold text-muted-foreground uppercase">Character</h2>
+					<form class="flex flex-wrap items-center gap-2" hx-post={ action }>
+						@formSelect("", "character", selectItems(v.CharacterChoices, func(ch sqlc.Character) string { return fmt.Sprint(ch.ID) }, func(ch sqlc.Character) string { return ch.Name }), "", "w-48", "")
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+							Give image
+						}
+					</form>
+				</section>
+			}
+		</div>
+	}
+}
+
+// imagePreview shows the saved image; app.js swaps in the chosen link or
+// file before it is saved.
+templ imagePreview(img ImageItem) {
+	{{ src := utils.IfElse(img.ID == 0, "", img.Src()) }}
+	<img
+		src={ src }
+		alt={ utils.IfElse(img.Name == "", "Preview", img.Name) }
+		data-image-preview={ src }
+		hidden?={ src == "" }
+		class="flex items-center justify-center text-center max-h-[60vh] min-h-40 w-full rounded-lg border bg-muted object-contain text-sm text-muted-foreground [&[hidden]]:hidden"
+	/>
+	<div data-image-preview-empty hidden?={ src != "" } class="flex min-h-40 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground [&[hidden]]:hidden">
+		The preview shows here.
+	</div>
+}
+
+func imageAction(v ImageView) string {
+	if v.Image.ID == 0 {
+		return fmt.Sprintf("/campaigns/%d/images", v.CampaignID)
+	}
+	return fmt.Sprintf("/images/%d", v.Image.ID)
+}
+
+templ imageForm(v ImageView) {
+	<form method="post" action={ templ.SafeURL(imageAction(v)) } enctype="multipart/form-data" class="space-y-5">
+		@sourceTabs(sourceField{
+			ID: "image-source", Label: "Image", URL: v.Image.URL, Placeholder: "https://…",
+			Accept: "image/png,image/jpeg,image/gif,image/webp",
+			// An existing image without a link is an upload.
+			Upload:   v.Image.ID != 0 && v.Image.URL == "",
+			FileHint: utils.IfElse(v.Image.ID == 0, "PNG, JPEG, GIF or WebP, up to 20 MB.", "Choose a file to replace the current image. PNG, JPEG, GIF or WebP, up to 20 MB."),
+		})
+		@field.Field() {
+			@field.Label(field.LabelProps{For: "image-name"}) {
+				Name
+			}
+			@input.Input(input.Props{ID: "image-name", Name: "name", Value: v.Image.Name, Required: true, Attributes: templ.Attributes{"maxlength": "200"}})
+		}
+		@categoryInput(v.Categories, v.Image.Category)
+		@field.Field() {
+			@field.Label(field.LabelProps{For: "image-description"}) {
+				Description
+			}
+			@textarea.Textarea(textarea.Props{ID: "image-description", Name: "description", Value: v.Image.Description, Rows: 4})
+		}
+		<div class="flex flex-wrap gap-2">
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				Save
+			}
+			if v.Image.ID != 0 {
+				@button.Button(button.Props{Variant: button.VariantDestructive, Class: "ml-auto", Attributes: templ.Attributes{
+					"hx-post": fmt.Sprintf("/images/%d/delete", v.Image.ID), "hx-confirm": "Delete " + v.Image.Name + "?",
+				}}) {
+					Delete
+				}
+			}
+		</div>
+	</form>
+}
+
+// createButton is a create-as-you-type combobox's button: while the text of
+// input inputID names no item, app.js shows it; it adds the text as an item
+// (from the list's template[data-combobox-create-item]) and selects it.
+templ createButton(inputID string) {
+	@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm, Class: "m-1 justify-start [&[hidden]]:hidden", Attributes: templ.Attributes{"data-combobox-create": inputID, "hidden": true}}) {
+		@icon.Plus()
+		<span></span>
+	}
+}
+
+// categoryInput offers every existing category and takes new names through
+// createButton. Only Save submits the selection.
+templ categoryInput(cats []sqlc.ImageCategory, value string) {
+	{{ names := make([]string, len(cats)) }}
+	for i, c := range cats {
+		{{ names[i] = c.Name }}
+	}
+	@field.Field() {
+		@field.Label(field.LabelProps{For: "image-category"}) {
+			Category
+		}
+		@createCombobox("image-category", "category", value, "Person, Area…", 100, names)
+	}
+}
+
+// createCombobox offers names and takes new ones through createButton.
+templ createCombobox(id, name, value, placeholder string, maxLen int, names []string) {
+	@combobox.Combobox(combobox.Props{Name: name, DefaultValue: value, Items: comboItems(value, names)}) {
+		@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: placeholder, ShowClear: true, Attributes: templ.Attributes{"maxlength": fmt.Sprint(maxLen), "autocomplete": "off", "data-combobox-create-input": ""}})
+		@combobox.Content() {
+			@createButton(id)
+			@combobox.List() {
+				for _, n := range names {
+					@combobox.Item(combobox.ItemProps{Value: n}) {
+						{ n }
+					}
+				}
+				<template data-combobox-create-item>
+					@combobox.Item()
+				</template>
+			}
+		}
+	}
+}
+
+// sourceField is a choice between a link and an upload, as tabs; app.js
+// submits only the active tab's input.
+type sourceField struct {
+	ID, Label, URL, Placeholder, Accept, FileHint string
+	// Upload opens the upload tab.
+	Upload bool
+}
+
+templ sourceTabs(f sourceField) {
+	@field.Field(field.Props{Attributes: templ.Attributes{"data-source-field": ""}}) {
+		@field.Title() {
+			{ f.Label }
+		}
+		@tabs.Tabs(tabs.Props{ID: f.ID, DefaultValue: utils.IfElse(f.Upload, "upload", "link")}) {
+			@tabs.List(tabs.ListProps{Class: "w-fit"}) {
+				@tabs.Trigger(tabs.TriggerProps{Value: "link"}) {
+					@icon.Link()
+					Link
+				}
+				@tabs.Trigger(tabs.TriggerProps{Value: "upload"}) {
+					@icon.Upload()
+					Upload
+				}
+			}
+			@tabs.Content(tabs.ContentProps{Value: "link"}) {
+				@input.Input(input.Props{ID: f.ID + "-url", Name: "url", Type: "url", Value: f.URL, Placeholder: f.Placeholder, Attributes: templ.Attributes{"aria-label": f.Label + " link"}})
+			}
+			@tabs.Content(tabs.ContentProps{Value: "upload", Class: "space-y-2"}) {
+				@input.Input(input.Props{ID: f.ID + "-file", Name: "file", Type: "file", Accept: f.Accept, Attributes: templ.Attributes{"aria-label": f.Label + " file"}})
+				@field.Description() {
+					{ f.FileHint }
+				}
+			}
+		}
+	}
+}
+
+// comboItems are a combobox's labels for names, plus value when it has no
+// item of its own (a custom species, say) so the input still shows it.
+func comboItems(value string, names []string) []combobox.ItemData {
+	items := make([]combobox.ItemData, 0, len(names)+1)
+	for _, n := range names {
+		items = append(items, combobox.ItemData{Value: n, Label: n})
+	}
+	if value != "" && !slices.Contains(names, value) {
+		items = append(items, combobox.ItemData{Value: value, Label: value})
+	}
+	return items
+}
+
+templ categoryList(cats []sqlc.ImageCategory) {
+	<datalist id="image-categories">
+		for _, c := range cats {
+			<option value={ c.Name }></option>
+		}
+	</datalist>
+}
+
+// DisplayPage is the display window: the image the GM picked, full screen.
+// It follows the picker through localStorage (app.js), with no websocket.
+templ DisplayPage(campaignID int64) {
+	<!DOCTYPE html>
+	<html lang="en" class="dark">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Display · GM Session Manager</title>
+			<link rel="stylesheet" href="/assets/css/output.css"/>
+			<script src="/assets/vendor/htmx.min.js"></script>
+			<script src="/assets/js/app.js"></script>
+		</head>
+		<body class="h-screen overflow-hidden bg-black" data-campaign={ fmt.Sprint(campaignID) }>
+			<img id="display-image" hidden alt="" class="flex items-center justify-center text-center size-full object-contain text-2xl text-white/70"/>
+		</body>
+	</html>
+}

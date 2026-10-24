@@ -1,0 +1,427 @@
+package views
+
+import (
+	"cmp"
+	"fmt"
+	"gm-session-manager/db/sqlc"
+	"gm-session-manager/perm"
+	"gm-session-manager/web/components/badge"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/combobox"
+	"gm-session-manager/web/components/icon"
+	switchcomp "gm-session-manager/web/components/switch"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/textarea"
+	"gm-session-manager/web/components/tooltip"
+	"gm-session-manager/web/utils"
+	"slices"
+)
+
+// SuggestedFields are the NPC fields offered when creating or editing an
+// entity. They are a frontend recommendation only: any key may be stored.
+var SuggestedFields = []string{
+	"role", "description", "appearance", "personality", "motivation",
+	"location", "faction", "relationship to the party", "stat block", "gm notes",
+}
+
+// OrderedFieldKeys lists suggested keys first, in order, then the rest
+// alphabetically.
+func OrderedFieldKeys(f perm.Fields) []string {
+	var keys []string
+	for _, k := range SuggestedFields {
+		if _, ok := f[k]; ok {
+			keys = append(keys, k)
+		}
+	}
+	var rest []string
+	for k := range f {
+		if !slices.Contains(SuggestedFields, k) {
+			rest = append(rest, k)
+		}
+	}
+	slices.Sort(rest)
+	return append(keys, rest...)
+}
+
+// EntityListView is the NPC index.
+type EntityListView struct {
+	CampaignID int64
+	Entities   []perm.Entity
+	IsGM       bool
+}
+
+templ EntitiesPage(l Layout, v EntityListView) {
+	@Page(l) {
+		@PageHeader("NPCs", "")
+		@EntityList(v)
+		if v.IsGM {
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/entities", v.CampaignID)) } class="mt-6 flex gap-2">
+				@input.Input(input.Props{Name: "name", Placeholder: "New NPC name", Required: true, Class: "max-w-xs"})
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					Create
+				}
+			</form>
+		}
+	}
+}
+
+templ EntityList(v EntityListView) {
+	<ul id="entities-list" hx-swap-oob="true" class="divide-y rounded-lg border" { live(LiveEntities, v.CampaignID)... }>
+		for _, e := range v.Entities {
+			<li class="flex items-center justify-between gap-2 p-3">
+				<a class="font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/entities/%d", e.ID)) }>{ e.Name }</a>
+				if v.IsGM {
+					if e.IsRevealed {
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							Revealed
+						}
+					} else {
+						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+							Hidden
+						}
+					}
+				}
+			</li>
+		}
+		if len(v.Entities) == 0 {
+			<li class="p-3 text-sm text-muted-foreground">
+				if v.IsGM {
+					No NPCs yet.
+				} else {
+					The GM has not revealed any NPCs yet.
+				}
+			</li>
+		}
+	</ul>
+}
+
+// EntityView is one entity page.
+type EntityView struct {
+	CampaignID int64
+	E          perm.Entity
+	IsGM       bool
+	// Compendium is the linked statblock (GM only).
+	Compendium *sqlc.CompendiumEntry
+	// ActiveEncounterID lets the GM add the NPC to the running fight.
+	ActiveEncounterID int64
+	// ImageChoices are the campaign's images not yet one of its looks (GM only).
+	ImageChoices []sqlc.ListImagesRow
+	// Readable are the [[link]] targets in the fields a player may open
+	// (keys as WikiLink.Key); the others show as their label.
+	Readable    map[string]bool
+	Backlinks   []sqlc.ListBacklinksRow
+	EntityLinks []sqlc.ListEntityFieldBacklinksRow
+}
+
+func (v EntityView) canOpen(l WikiLink) bool { return v.IsGM || v.Readable[l.Key()] }
+
+templ EntityPage(l Layout, v EntityView) {
+	@Page(l) {
+		@EntityDetail(v)
+		<section class="mt-10">
+			<h2 class="mb-2 text-sm font-semibold text-muted-foreground uppercase">Linked mentions</h2>
+			<ul class="space-y-1 text-sm">
+				if v.IsGM {
+					for _, img := range v.E.Images {
+						<li>Image · <a class="underline" href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ImageID)) }>{ img.Name }</a></li>
+					}
+				}
+				@npcMentions(v.EntityLinks)
+				for _, b := range v.Backlinks {
+					<li><a class="underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", b.ID)) }>{ b.Title }</a></li>
+				}
+				if len(v.Backlinks) == 0 && len(v.EntityLinks) == 0 && (!v.IsGM || len(v.E.Images) == 0) {
+					<li class="text-muted-foreground">No notes mention this NPC yet.</li>
+				}
+			</ul>
+		</section>
+	}
+}
+
+templ EntityDetail(v EntityView) {
+	<div id={ fmt.Sprintf("entity-%d", v.E.ID) } hx-swap-oob="true" { live(LiveEntity, v.E.ID)... }>
+		if v.IsGM {
+			@entityForm(v)
+		} else {
+			@PageHeader(v.E.Name, "")
+			<dl class="space-y-3">
+				for _, k := range OrderedFieldKeys(v.E.Fields) {
+					<div>
+						<dt class="text-xs font-semibold text-muted-foreground uppercase">{ k }</dt>
+						<dd class="flow-root whitespace-pre-line">
+							@wikiText(v.E.Fields[k].Value, v.canOpen)
+						</dd>
+					</div>
+				}
+			</dl>
+		}
+		@entityLooks(v)
+	</div>
+}
+
+// entityLooks is the NPC's looks; the GM manages them.
+templ entityLooks(v EntityView) {
+	if v.IsGM || len(v.E.Images) > 0 {
+		@looksSection(v.E.Images, utils.IfElse(v.IsGM, fmt.Sprintf("/entities/%d/images/", v.E.ID), ""),
+			utils.IfElse(v.IsGM, "The current look is the NPC's portrait. Players see only revealed looks.", "")) {
+			if v.IsGM {
+				if len(v.ImageChoices) > 0 {
+					<form class="flex flex-wrap items-center gap-2" hx-post={ fmt.Sprintf("/entities/%d/images", v.E.ID) }>
+						@formSelect("", "image", selectItems(v.ImageChoices, func(i sqlc.ListImagesRow) string { return fmt.Sprint(i.ID) }, func(i sqlc.ListImagesRow) string { return i.Name }), "", "w-56", "")
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+							Add look
+						}
+					</form>
+				} else if len(v.E.Images) == 0 {
+					<p class="text-sm text-muted-foreground">Add images on the Images page, then link them here.</p>
+				}
+			}
+		}
+	}
+}
+
+// looksSection shows looks (an NPC's or a character's), the current one
+// first and larger as the portrait. It only ever gets the looks the viewer
+// may see. base is where the look actions live, empty when read-only;
+// children add more looks.
+templ looksSection(looks []perm.Look, base, hint string) {
+	<section class="mt-8 space-y-3">
+		<h2 class="text-sm font-semibold text-muted-foreground uppercase">Looks</h2>
+		if hint != "" {
+			<p class="text-xs text-muted-foreground">{ hint }</p>
+		}
+		<div class="flex flex-wrap items-start gap-4">
+			for _, img := range looks {
+				<figure class={ "space-y-1", utils.IfElse(img.IsCurrent, "w-64", "w-32") }>
+					<a href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ImageID)) }>
+						<img src={ LookItem(img).Src() } alt={ img.Name } loading="lazy" class="aspect-square w-full rounded-lg border bg-muted object-cover"/>
+					</a>
+					<figcaption class="flex flex-wrap items-center gap-1 text-xs">
+						<span class="truncate">{ img.Name }</span>
+						if img.IsCurrent {
+							@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+								Current
+							}
+						}
+					</figcaption>
+					if base != "" {
+						@lookControls(base+fmt.Sprint(img.ImageID)+"/", img)
+					}
+				</figure>
+			}
+		</div>
+		{ children... }
+	</section>
+}
+
+// lookControls are the buttons under a look: reveal or hide, make current,
+// unlink. base is the look's action URL prefix.
+templ lookControls(base string, img perm.Look) {
+	<div class="flex items-center gap-1">
+		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "aria-pressed:text-primary text-muted-foreground", Attributes: templ.Attributes{
+			"hx-post": base + "reveal", "aria-pressed": fmt.Sprint(img.IsRevealed), "title": utils.IfElse(img.IsRevealed, "Revealed to players", "Hidden from players"),
+		}}) {
+			if img.IsRevealed {
+				@icon.Eye(icon.Props{Size: 14})
+			} else {
+				@icon.EyeOff(icon.Props{Size: 14})
+			}
+		}
+		if !img.IsCurrent {
+			@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeXs, Class: "px-0", Attributes: templ.Attributes{"hx-post": base + "current"}}) {
+				Make current
+			}
+		}
+		<span class="ml-auto">
+			@removeButton(base + "unlink")
+		</span>
+	</div>
+}
+
+// LookItem is a look as an image to load.
+func LookItem(img perm.Look) ImageItem {
+	return ImageItem{ID: img.ImageID, Name: img.Name, Version: img.Version}
+}
+
+// EntityGone replaces an entity's page content when it is hidden or
+// deleted while a player is looking at it.
+templ EntityGone(id int64) {
+	<div id={ fmt.Sprintf("entity-%d", id) } hx-swap-oob="true" { live(LiveEntity, id)... }>
+		<p class="text-muted-foreground">This NPC is not available.</p>
+	</div>
+}
+
+templ entityForm(v EntityView) {
+	{{ keys := OrderedFieldKeys(v.E.Fields) }}
+	<form hx-post={ fmt.Sprintf("/entities/%d", v.E.ID) } class="group/fields space-y-4">
+		<div class="flex flex-wrap items-center gap-3">
+			@input.Input(input.Props{Name: "name", Value: v.E.Name, Required: true, Class: "max-w-sm text-lg font-semibold"})
+			@checkField("revealed", "true", v.E.IsRevealed) {
+				Players can see this NPC
+			}
+		</div>
+		<div class="flex flex-wrap items-center justify-between gap-2">
+			<p class="text-xs text-muted-foreground">Tick a field to reveal it. Unrevealed fields never reach players' devices. <span class="text-amber-600 dark:text-amber-500">Fields left empty are not saved.</span></p>
+			// Shows the fields as stored, [[links]] as text; it submits nothing.
+			<label class="flex items-center gap-2 text-xs text-muted-foreground" data-raw-switch>
+				@switchcomp.Switch(switchcomp.Props{Size: switchcomp.SizeSm})
+				Raw text
+			</label>
+		</div>
+		<input type="hidden" name="count" value={ fmt.Sprint(len(keys)) }/>
+		// A long list scrolls in place, keeping Save and the sections below close.
+		<div data-field-rows class="peer max-h-[50vh] space-y-3 overflow-y-auto pr-1">
+			for i, k := range keys {
+				@fieldRow(i, k, v.E.Fields[k])
+			}
+		</div>
+		<p class="hidden text-sm text-muted-foreground peer-empty:block">No fields yet.</p>
+		<template data-field-row>
+			@fieldRow(0, "", perm.Field{})
+		</template>
+		@addFieldInput(v.E.ID, keys)
+		<div class="flex flex-wrap gap-2">
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				Save
+			}
+			if v.ActiveEncounterID != 0 {
+				@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{
+					"hx-post": fmt.Sprintf("/encounters/%d/combatants", v.ActiveEncounterID), "hx-vals": fmt.Sprintf(`{"kind":"entity","id":"%d"}`, v.E.ID),
+				}}) {
+					Add to current fight
+				}
+			}
+			@button.Button(button.Props{Variant: button.VariantDestructive, Attributes: templ.Attributes{
+				"hx-post": fmt.Sprintf("/entities/%d/delete", v.E.ID), "hx-confirm": "Delete " + v.E.Name + "?",
+			}}) {
+				Delete
+			}
+		</div>
+		<div class="text-sm">
+			<span class="font-medium">Statblock:</span>
+			if v.Compendium != nil {
+				<a class="underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", v.Compendium.ID)) }>{ v.Compendium.Name }</a>
+				@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeXs, Class: "text-muted-foreground", Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", v.E.ID), "hx-vals": `{"entry":"0"}`}}) {
+					unlink
+				}
+			} else {
+				<span class="text-muted-foreground">none</span>
+			}
+			@input.Input(input.Props{Name: "q", Type: "search", Placeholder: "Link a compendium monster…", Class: "mt-1 max-w-sm", Attributes: templ.Attributes{
+				"hx-get":     fmt.Sprintf("/compendium/search?kind=monster&entity=%d", v.E.ID),
+				"hx-trigger": "input changed delay:200ms, search",
+				"hx-target":  "next ul",
+				"hx-swap":    "innerHTML",
+			}})
+			<ul class="mt-1"></ul>
+		</div>
+	</form>
+}
+
+func missingSuggestions(keys []string) []string {
+	var out []string
+	for _, k := range SuggestedFields {
+		if !slices.Contains(keys, k) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// fieldRow is one stored field: its key, value and whether players see it.
+// app.js clones a blank one for each field added and removes rows; Save
+// stores what is left.
+templ fieldRow(i int, key string, f perm.Field) {
+	<div class="group/field space-y-1" data-field-key={ key } data-empty?={ f.Value == "" }>
+		<div class="flex items-center gap-2">
+			<span class="text-sm font-medium" data-field-label>{ key }</span>
+			// Shown while the value is empty (fields.js keeps data-empty).
+			<span class="hidden group-data-[empty]/field:inline-flex">
+				@tooltip.Tooltip() {
+					<span class="inline-flex text-amber-600 dark:text-amber-500" tabindex="0" aria-label="Empty fields are not saved" { tooltip.Trigger(ctx)... }>
+						@icon.TriangleAlert(icon.Props{Size: 14})
+					</span>
+					@tooltip.Content() {
+						Fields with an empty value are not saved.
+					}
+				}
+			</span>
+			<input type="hidden" name={ fmt.Sprintf("key_%d", i) } value={ key }/>
+			<span class="ml-auto">
+				@checkField(fmt.Sprintf("revealed_%d", i), "true", f.IsRevealed) {
+					revealed
+				}
+			</span>
+			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-4 " + quietDestructive, Attributes: templ.Attributes{"aria-label": "Remove field", "data-remove-field": ""}}) {
+				@icon.X(icon.Props{Size: 12})
+			}
+		</div>
+		// The value is the hidden input the form posts: an editor is not a
+		// form control. fields.js shows it in an editor that renders [[links]]
+		// as notes do, or with Raw text on, as stored in the textarea.
+		<input type="hidden" name={ fmt.Sprintf("value_%d", i) } value={ f.Value } data-field-value/>
+		<div class="group-data-[raw]/fields:hidden" data-field-editor></div>
+		<div class="hidden group-data-[raw]/fields:block">
+			@textarea.Textarea(textarea.Props{Value: f.Value, Rows: 2, Placeholder: "Value", Attributes: templ.Attributes{"aria-label": "Value as stored", "data-field-raw": ""}})
+		</div>
+	</div>
+}
+
+// wikiText is a field value with its [[links]] shown as in notes; a link
+// the viewer may not open shows as its label.
+templ wikiText(s string, canOpen func(WikiLink) bool) {
+	for _, p := range ParseWiki(s) {
+		if p.Link == nil {
+			{ p.Text }
+		} else if canOpen(*p.Link) {
+			@wikiLink(*p.Link)
+		} else {
+			{ p.Link.Label }
+		}
+	}
+}
+
+// wikiLink is one link as notes render it: an [[image]] shows the image.
+templ wikiLink(l WikiLink) {
+	<a class="wikilink" href={ templ.SafeURL(l.URL()) } data-mention={ l.Key() }
+		if l.Kind == "image" {
+			data-float={ cmp.Or(l.Float, "left") }
+		}
+	>
+		if l.Kind == "image" {
+			<img src={ ImageSrc(l.ID) } alt={ l.Label } loading="lazy"/>
+		}
+		<span>{ l.Label }</span>
+	</a>
+}
+
+// npcMentions are the linked-mentions rows for NPCs whose fields link here.
+templ npcMentions(rows []sqlc.ListEntityFieldBacklinksRow) {
+	for _, e := range rows {
+		<li>NPC · <a class="underline" href={ templ.SafeURL(fmt.Sprintf("/entities/%d", e.ID)) }>{ e.Name }</a></li>
+	}
+}
+
+// addFieldInput adds a field row: pick a suggestion not in use or type any
+// key (the create button, as for image categories). It submits nothing.
+templ addFieldInput(entityID int64, keys []string) {
+	{{ id := fmt.Sprintf("add-field-%d", entityID) }}
+	<div class="max-w-sm" data-add-field>
+		@combobox.Combobox() {
+			@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: "Add a field…", Attributes: templ.Attributes{"maxlength": "100", "aria-label": "Add a field", "data-combobox-create-input": ""}})
+			@combobox.Content() {
+				@createButton(id)
+				@combobox.List() {
+					for _, k := range missingSuggestions(keys) {
+						@combobox.Item(combobox.ItemProps{Value: k}) {
+							{ k }
+						}
+					}
+					<template data-combobox-create-item>
+						@combobox.Item()
+					</template>
+				}
+			}
+		}
+	</div>
+}

@@ -1,0 +1,319 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/web/components"
+	"gm-session-manager/web/components/alert"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/kbd"
+	"gm-session-manager/web/components/separator"
+	"gm-session-manager/web/components/spinner"
+	"gm-session-manager/web/utils"
+	"time"
+)
+
+// Nav keys for Layout.Active.
+const (
+	NavHome       = "home"
+	NavCharacter  = "character"
+	NavCombat     = "combat"
+	NavNotes      = "notes"
+	NavEntities   = "entities"
+	NavCompendium = "compendium"
+	NavImages     = "images"
+)
+
+// Layout is the frame around every page.
+type Layout struct {
+	Title string
+	// IsGM shows the GM navigation.
+	IsGM bool
+	// Campaign is the campaign the page belongs to (0 for none).
+	CampaignID   int64
+	CampaignName string
+	// CharacterID is the player's character, for the player navigation.
+	CharacterID int64
+	Active      string
+	// HasSession shows the logout button.
+	HasSession bool
+	// WS connects the page to the hub; nil for pages without live updates.
+	WS *WS
+	// Modules are extra ES module scripts (the notes editor).
+	Modules []string
+	// Requests are the join requests waiting for the GM, in every campaign.
+	Requests []PendingGroup
+}
+
+// WS is the websocket endpoint and the hub position the page was read at.
+type WS struct {
+	URL   string
+	Epoch string
+	Seq   uint64
+}
+
+func (l Layout) title() string {
+	if l.Title == "" {
+		return "GM Session Manager"
+	}
+	return l.Title + " · GM Session Manager"
+}
+
+templ Page(l Layout) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ l.title() }</title>
+			<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"/>
+			<link rel="stylesheet" href="/assets/css/output.css"/>
+			<script src="/assets/vendor/htmx.min.js"></script>
+			<script src="/assets/vendor/htmx-ws.js"></script>
+			<script src="/assets/js/app.js"></script>
+			<script src="/assets/js/live.js"></script>
+			@components.Scripts()
+			for _, m := range l.Modules {
+				<script type="module" src={ m }></script>
+			}
+		</head>
+		<body
+			class="min-h-screen bg-background text-foreground antialiased"
+			if l.WS != nil {
+				hx-ext="ws"
+				ws-connect={ l.WS.URL }
+			}
+			if l.CampaignID != 0 {
+				data-campaign={ fmt.Sprint(l.CampaignID) }
+			}
+			data-gm?={ l.IsGM }
+		>
+			if l.WS != nil {
+				<div id="ws-state" hidden data-epoch={ l.WS.Epoch } data-seq={ fmt.Sprint(l.WS.Seq) }></div>
+			}
+			@navbar(l)
+			<main class="mx-auto max-w-5xl px-4 py-6">
+				<div id="flash"></div>
+				{ children... }
+			</main>
+			if l.IsGM && l.WS != nil {
+				@PendingRequests(l.Requests)
+			}
+			if l.CampaignID != 0 && l.WS != nil {
+				@switcher(l.CampaignID)
+			}
+			if l.CampaignID != 0 {
+				@menuIcons()
+			}
+		</body>
+	</html>
+}
+
+templ navbar(l Layout) {
+	// Sticky on the header, not the nav, so the border and background span
+	// the full width; the solid background hides content scrolling under it.
+	<header class="sticky top-0 z-30 border-b bg-background">
+		<nav class="group mx-auto flex max-w-5xl flex-wrap items-center gap-1 px-4 py-2 text-sm">
+			<a href="/" class="mr-3 font-semibold">GM Session Manager</a>
+			// On phones the links drop below the bar as a column, shown by the menu button.
+			<div id="nav-links" class="order-last hidden basis-full flex-col gap-1 pt-2 group-data-open:flex sm:order-none sm:flex sm:basis-auto sm:flex-row sm:pt-0">
+				@navLinks(l)
+				// On phones Log out sits in the menu, set apart, so it is hard to tap by mistake.
+				if l.HasSession {
+					@separator.Separator(separator.Props{Class: "my-1 sm:hidden"})
+					@logoutButton("sm:hidden")
+				}
+			</div>
+			<span class="flex-1"></span>
+			if l.CampaignID != 0 && l.WS != nil {
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "hidden text-muted-foreground sm:inline-flex", Attributes: templ.Attributes{"onclick": "gsm.openSwitcher()"}}) {
+					Search
+					@kbd.Kbd() {
+						Ctrl K
+					}
+				}
+			}
+			@button.Button(button.Props{
+				Variant:    button.VariantGhost,
+				Size:       button.SizeIconSm,
+				Attributes: templ.Attributes{"onclick": "gsm.toggleTheme()", "aria-label": "Toggle dark mode", "title": "Toggle dark mode"},
+			}) {
+				@icon.Moon(icon.Props{Class: "dark:hidden"})
+				@icon.Sun(icon.Props{Class: "hidden dark:block"})
+			}
+			if l.HasSession {
+				@logoutButton("ml-2 hidden sm:block")
+			}
+			if l.HasSession || l.CampaignID != 0 || l.IsGM || l.CharacterID != 0 {
+				@button.Button(button.Props{
+					Variant: button.VariantGhost,
+					Size:    button.SizeIconSm,
+					Class:   "sm:hidden",
+					Attributes: templ.Attributes{
+						"onclick":       "this.setAttribute('aria-expanded', this.closest('nav').toggleAttribute('data-open'))",
+						"aria-expanded": "false",
+						"aria-controls": "nav-links",
+						"aria-label":    "Menu",
+					},
+				}) {
+					@icon.Menu(icon.Props{Class: "group-data-open:hidden"})
+					@icon.X(icon.Props{Class: "hidden group-data-open:block"})
+				}
+			}
+		</nav>
+	</header>
+}
+
+templ logoutButton(class string) {
+	<form method="post" action="/logout" class={ class }>
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+			@icon.LogOut()
+			Log out
+		}
+	</form>
+}
+
+templ navLinks(l Layout) {
+	if l.CampaignID != 0 {
+		if l.IsGM {
+			@navLink(fmt.Sprintf("/campaigns/%d", l.CampaignID), l.CampaignName, l.Active == NavHome, nil)
+		} else if l.CharacterID != 0 {
+			@navLink(fmt.Sprintf("/characters/%d", l.CharacterID), "Character", l.Active == NavCharacter, nil)
+		}
+		@navLink(fmt.Sprintf("/campaigns/%d/combat", l.CampaignID), "Combat", l.Active == NavCombat, nil)
+		@navLink(fmt.Sprintf("/campaigns/%d/notes", l.CampaignID), "Notes", l.Active == NavNotes, nil)
+		@navLink(fmt.Sprintf("/campaigns/%d/entities", l.CampaignID), "NPCs", l.Active == NavEntities, nil)
+		if l.IsGM {
+			@navLink(fmt.Sprintf("/campaigns/%d/images", l.CampaignID), "Images", l.Active == NavImages, nil)
+		}
+	}
+	if l.IsGM || l.CharacterID != 0 {
+		// Inside a campaign, set apart the links that leave it in a new tab.
+		if l.CampaignID != 0 {
+			@separator.Separator(separator.Props{Class: "my-1 sm:hidden"})
+			@separator.Separator(separator.Props{Orientation: separator.OrientationVertical, Class: "mx-2 my-1 hidden sm:block"})
+		}
+		@navLink("/compendium", "Compendium", l.Active == NavCompendium, compendiumLinkAttrs(l.CampaignID)) {
+			if l.CampaignID != 0 {
+				@icon.ExternalLink(icon.Props{Class: "size-3.5 text-muted-foreground"})
+			}
+		}
+	}
+}
+
+// compendiumLinkAttrs opens the compendium in a new tab inside a campaign, since the compendium page has no campaign navbar.
+func compendiumLinkAttrs(campaignID int64) templ.Attributes {
+	if campaignID == 0 {
+		return nil
+	}
+	return templ.Attributes{"target": "_blank"}
+}
+
+templ navLink(href, label string, active bool, attrs templ.Attributes) {
+	<a
+		href={ templ.SafeURL(href) }
+		{ attrs... }
+		class={ "inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-accent", templ.KV("bg-accent font-medium", active) }
+	>
+		{ label }
+		{ children... }
+	</a>
+}
+
+// menuIcons are the icons of the [[link]] menu, which wikilink.js builds.
+templ menuIcons() {
+	<template id="menu-icons">
+		@icon.ExternalLink()
+		@icon.Cast()
+		@icon.PanelLeft()
+		@icon.PanelRight()
+		@icon.Type()
+		@icon.Pencil()
+		@icon.Trash2()
+	</template>
+}
+
+// switcher is the quick switcher (Ctrl+K): search notes and NPCs by name.
+templ switcher(campaignID int64) {
+	<dialog id="switcher" class="m-auto w-full max-w-lg rounded-lg border bg-popover p-0 text-popover-foreground shadow-lg backdrop:bg-black/40">
+		<div class="p-3">
+			@input.Input(input.Props{Name: "q", Type: "search", Placeholder: "Jump to a note or NPC…", Attributes: templ.Attributes{
+				"autocomplete": "off",
+				"hx-get":       fmt.Sprintf("/campaigns/%d/switcher", campaignID),
+				"hx-trigger":   "input changed delay:150ms, search",
+				"hx-target":    "#switcher-results",
+				"hx-swap":      "innerHTML",
+			}})
+			<ul id="switcher-results" class="mt-2 max-h-80 overflow-y-auto"></ul>
+		</div>
+	</dialog>
+}
+
+// Flash is an out-of-band message shown at the top of the page.
+templ Flash(msg string, isError bool) {
+	<div id="flash" hx-swap-oob="true">
+		if msg != "" {
+			@Notice(msg, isError, "mb-4")
+		}
+	</div>
+}
+
+// Notice is a message box; an error is red with an icon so it is not missed.
+// Line breaks in msg are kept.
+templ Notice(msg string, isError bool, class string) {
+	@alert.Alert(alert.Props{
+		Variant: utils.IfElse(isError, alert.VariantDestructive, alert.VariantDefault),
+		Class:   utils.CN(utils.IfElse(isError, "border-destructive/50 bg-destructive/10", ""), class),
+	}) {
+		if isError {
+			@icon.CircleAlert()
+		} else {
+			@icon.Info()
+		}
+		@alert.Description(alert.DescriptionProps{Class: utils.CN("whitespace-pre-line", utils.IfElse(isError, "", "text-foreground"))}) {
+			{ msg }
+		}
+	}
+}
+
+templ PageHeader(title, subtitle string) {
+	<div class="mb-6">
+		<h1 class="text-2xl font-semibold">{ title }</h1>
+		if subtitle != "" {
+			<p class="text-sm text-muted-foreground">{ subtitle }</p>
+		}
+	</div>
+}
+
+templ Section(title string) {
+	<section class="mb-8">
+		<h2 class="mb-3 text-lg font-semibold">{ title }</h2>
+		{ children... }
+	</section>
+}
+
+// busyIndicator shows while its data-busy form (with group/busy) works:
+// app.js sets aria-busy on submit and during the form's htmx requests.
+// Fixed, so it stays in view on long pages.
+templ busyIndicator(label string) {
+	<div class="fixed right-4 bottom-4 z-40 hidden items-center gap-2 rounded-full border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow group-aria-busy/busy:flex" aria-live="polite">
+		@spinner.Spinner()
+		{ label }
+	</div>
+}
+
+// localTime shows a stored (UTC) time; app.js rewrites it in the viewer's
+// timezone and locale.
+templ localTime(t time.Time) {
+	<time datetime={ t.UTC().Format(time.RFC3339) }>{ t.UTC().Format("2 Jan 2006 15:04 UTC") }</time>
+}
+
+// ErrorPage is a plain message page with one link onward.
+templ ErrorPage(l Layout, msg, backURL, backLabel string) {
+	@Page(l) {
+		@PageHeader(l.Title, "")
+		<p>{ msg }</p>
+		<p class="mt-4"><a class="underline" href={ templ.SafeURL(backURL) }>{ backLabel }</a></p>
+	}
+}
