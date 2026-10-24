@@ -1,6 +1,7 @@
 package views
 
 import (
+	"cmp"
 	"fmt"
 	"gm-session-manager/compendium"
 	"gm-session-manager/db/sqlc"
@@ -221,7 +222,7 @@ templ hpCard(s SheetView) {
 						}
 					</form>
 				}
-				<dl class="grid grid-cols-3 gap-x-6 gap-y-1 text-sm sm:grid-cols-6">
+				<dl class="grid grid-cols-3 gap-x-6 gap-y-1 text-sm sm:grid-cols-4 lg:grid-cols-8">
 					@stat(s, "AC", fmt.Sprint(s.C.Sheet.ArmorClass()), "", edit{"details", "set-ac", ""}) {
 						@modWarn(s, "ac", dnd5e.ModAC)
 					}
@@ -236,6 +237,8 @@ templ hpCard(s SheetView) {
 						@modWarn(s, "passive", dnd5e.ModPassive, "skill.perception", "wis")
 					}
 					@stat(s, "Hit dice", hitDice(s.C.Sheet), "hd", edit{"rest", "hitdie-use", ""})
+					@stat(s, "Size", cmp.Or(s.C.Sheet.Size, "—"), "", edit{"details", "set-size", ""})
+					@stat(s, "Vision", cmp.Or(s.C.Sheet.Vision, "Normal"), "", edit{"details", "set-vision", ""})
 				</dl>
 			</div>
 			if dying(s) {
@@ -461,6 +464,7 @@ var statTips = map[string]string{
 	"Speed":              "How far you can move on your turn, in feet.",
 	"Prof":               "Proficiency bonus: added to the attacks, saves and skills you are proficient in.",
 	"Hit dice":           "Spend these on a short rest to heal; a long rest restores them.",
+	"Vision":             "What you can see in darkness and dim light without a light source.",
 }
 
 // profMark shows a proficiency level at a glance.

@@ -407,9 +407,13 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if name == "" {
 			return nil, userError{errors.New("give your character a name")}
 		}
-		backstory := c.PostForm("backstory")
+		backstory, vision := c.PostForm("backstory"), strings.TrimSpace(c.PostForm("vision"))
+		size := dnd5e.SizeNamed(c.PostForm("size"))
+		if size == "" {
+			return nil, userError{errors.New("pick a size")}
+		}
 		cmd := dnd5e.NewCommand("create details", perm.ScopeSheet, func(cc *dnd5e.Character) error {
-			cc.Name, cc.Sheet.Backstory = name, backstory
+			cc.Name, cc.Sheet.Backstory, cc.Sheet.Size, cc.Sheet.Vision = name, backstory, size, vision
 			return nil
 		})
 		return &cmd, nil
@@ -446,17 +450,26 @@ func addProfs(s *dnd5e.Sheet, skills []string, other ...string) {
 
 var reFeet = regexp.MustCompile(`(\d+)\s*feet`)
 
-// applySpecies sets the species, its speed, and its traits as features
-// with what the sheet can automate.
+// applySpecies sets the species, its speed, size and darkvision, and its
+// traits as features with what the sheet can automate.
 func applySpecies(s *dnd5e.Sheet, name string, d *compendium.TextData) {
 	s.Species = name
 	for _, p := range d.Parts {
+		if strings.Contains(p.Name, "Darkvision") {
+			if m := reFeet.FindStringSubmatch(p.Desc); m != nil {
+				s.Vision = "Darkvision " + m[1] + " ft"
+			}
+		}
 		switch {
 		case p.Type == "speed" || p.Name == "Speed":
 			if m := reFeet.FindStringSubmatch(p.Desc); m != nil {
 				s.Speed, _ = strconv.Atoi(m[1])
 			}
 		case p.Type == "size" || p.Name == "Size":
+			// "Medium or Small" names no single size: the player picks it in Details.
+			if size := dnd5e.SizeNamed(strings.TrimSuffix(strings.TrimSpace(p.Desc), ".")); size != "" {
+				s.Size = size
+			}
 		default:
 			f := dnd5e.Feature{Name: p.Name, Source: name, Description: p.Desc}
 			mods := dnd5e.ParseEffects(p.Name, p.Desc, nil, "").Apply(&f)

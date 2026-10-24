@@ -1,6 +1,7 @@
 package views
 
 import (
+	"cmp"
 	"fmt"
 	"gm-session-manager/compendium"
 	"gm-session-manager/dnd5e"
@@ -365,6 +366,21 @@ templ wizardDetails(v WizardView) {
 				Name
 			}
 			@input.Input(input.Props{ID: "details-name", Name: "name", Value: v.Sheet.C.Name, Required: true, Attributes: templ.Attributes{"maxlength": "100"}})
+		</div>
+		// Species set these when they can; a species of two sizes leaves the pick here.
+		<div class="flex flex-wrap gap-4">
+			<div class="space-y-1">
+				@label.Label(label.Props{For: "details-size-trigger"}) {
+					Size
+				}
+				@formSelect("details-size", "size", sizeItems, cmp.Or(v.Sheet.C.Sheet.Size, "Medium"), "w-40", "")
+			</div>
+			<div class="flex-1 space-y-1">
+				@label.Label(label.Props{For: "details-vision"}) {
+					Vision
+				}
+				@input.Input(input.Props{ID: "details-vision", Name: "vision", Value: v.Sheet.C.Sheet.Vision, Placeholder: "Normal sight, or Darkvision 60 ft", Attributes: templ.Attributes{"maxlength": "200"}})
+			</div>
 		</div>
 		<div class="space-y-1">
 			@label.Label(label.Props{For: "details-backstory"}) {

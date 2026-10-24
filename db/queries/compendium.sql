@@ -167,10 +167,11 @@ SELECT id, kind, slug, name FROM compendium_entries
 WHERE kind = ?
 ORDER BY name;
 
--- BindMonsterImages guesses a link for monsters that never had one.
+-- BindMonsterImages guesses a link for a data folder's monsters that never
+-- had one; a link the GM set or cleared ('') is kept.
 -- name: BindMonsterImages :exec
 UPDATE compendium_entries SET image_url = sqlc.arg(prefix) || slug || '.png'
-WHERE kind = 'monster' AND image_url IS NULL;
+WHERE kind = 'monster' AND image_url IS NULL AND source_key = sqlc.arg(source_key);
 
 -- name: SetCompendiumImage :execrows
 UPDATE compendium_entries SET image_url = ?

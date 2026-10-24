@@ -103,6 +103,8 @@ func (s SheetView) builderVerbs() []builderVerb {
 			{"set-backstory", "Backstory", "set backstory", ""},
 			{"set-ac", "AC bonus", "set ac", ""},
 			{"set-speed", "Base speed", "set speed", ""},
+			{"set-size", "Size", "set size", ""},
+			{"set-vision", "Vision", "set vision", ""},
 		}},
 		{"armor", "Armor", []builderOp{{"armor", "Armor", "", ""}}},
 		{"weapons", "Weapons", []builderOp{
@@ -548,6 +550,15 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 			@numberField("AC bonus (always added)", -20, 30, s.C.Sheet.ACBonus, false)
 		case "set-speed":
 			@numberField("Base speed (ft)", 0, 500, s.C.Sheet.Speed, false)
+		case "set-size":
+			@field.Field() {
+				@field.Label(field.LabelProps{For: "builder-subject-trigger"}) {
+					Size
+				}
+				@formSelect("builder-subject", "subject", sizeItems, cmp.Or(s.C.Sheet.Size, "Medium"), "w-full", "")
+			}
+		case "set-vision":
+			@textField("Vision", s.C.Sheet.Vision, "Darkvision 60 ft (none: normal sight)", true)
 		case "slot-max":
 			@subjectField("Slot level", items, "")
 			@numberField("Slots", 0, 9, values[first], false)
@@ -858,7 +869,9 @@ templ featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, 
 
 var actionItems = []selectcomp.ItemData{{Value: " ", Label: "Nothing special"}, {Value: "action", Label: "An action"}, {Value: "bonus", Label: "A bonus action"}, {Value: "reaction", Label: "A reaction"}, {Value: "magic", Label: "A Magic action"}}
 
-var resetItems = []selectcomp.ItemData{{Value: "long", Label: "A long rest"}, {Value: "short", Label: "A short or long rest"}, {Value: "short-one", Label: "One on a short rest, all on a long rest"}}
+var sizeItems = selectItems(dnd5e.Sizes, func(s string) string { return s }, func(s string) string { return s })
+
+var resetItems =[]selectcomp.ItemData{{Value: "long", Label: "A long rest"}, {Value: "short", Label: "A short or long rest"}, {Value: "short-one", Label: "One on a short rest, all on a long rest"}}
 
 var whenItems = []selectcomp.ItemData{{Value: " ", Label: "Always"}, {Value: "no-heavy-armor", Label: "Not in heavy armor"}, {Value: "unarmored", Label: "Wearing no armor"}, {Value: "unarmored-no-shield", Label: "No armor and no shield"}}
 

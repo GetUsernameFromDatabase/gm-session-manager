@@ -22,6 +22,18 @@ const Edition = "2024"
 // Abilities lists the ability score keys in sheet order.
 var Abilities = []string{"str", "dex", "con", "int", "wis", "cha"}
 
+// Sizes are the creature sizes, smallest first.
+var Sizes = []string{"Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"}
+
+// SizeNamed is the size named like name (any case), or "".
+func SizeNamed(name string) string {
+	i := slices.IndexFunc(Sizes, func(s string) bool { return strings.EqualFold(s, strings.TrimSpace(name)) })
+	if i < 0 {
+		return ""
+	}
+	return Sizes[i]
+}
+
 // AbilityNames maps ability keys to display names.
 var AbilityNames = map[string]string{
 	"str": "Strength", "dex": "Dexterity", "con": "Constitution",
@@ -345,9 +357,13 @@ type Sheet struct {
 	Scores     map[string]int `json:"abilities"            validate:"dive,keys,oneof=str dex con int wis cha,endkeys,min=1,max=30"`
 	// ACBonus is added to AC whatever is worn; AC is the base AC older
 	// sheets set by hand, turned into ACBonus by ParseSheet.
-	ACBonus    int      `json:"ac_bonus,omitempty"   validate:"min=-20,max=30"`
-	AC         int      `json:"ac,omitempty"         validate:"min=0,max=50"`
-	Speed      int      `json:"speed"                validate:"min=0,max=500"`
+	ACBonus int    `json:"ac_bonus,omitempty"   validate:"min=-20,max=30"`
+	AC      int    `json:"ac,omitempty"         validate:"min=0,max=50"`
+	Speed   int    `json:"speed"                validate:"min=0,max=500"`
+	Size    string `json:"size,omitempty"       validate:"omitempty,oneof=Tiny Small Medium Large Huge Gargantuan"`
+	// Vision is what the character sees in the dark ("Darkvision 60 ft");
+	// empty is normal sight.
+	Vision     string   `json:"vision,omitempty"     validate:"max=200"`
 	SaveProfs  []string `json:"save_profs"           validate:"dive,oneof=str dex con int wis cha"`
 	SkillProfs []string `json:"skill_profs"          validate:"dive,required"`
 	Expertise  []string `json:"expertise"            validate:"dive,required"`

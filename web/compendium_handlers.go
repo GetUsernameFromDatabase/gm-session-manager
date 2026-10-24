@@ -237,10 +237,10 @@ func (a *App) compendiumEntry(c *gin.Context) {
 		return
 	}
 	v := views.EntryView{Entry: e, Source: src, Data: data, IsGM: w.isGM(), Habitats: habitats, CanEdit: e.IsHomebrew && perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64)}
-	// Set after a wiki import: back to the list, wiki tab open for the next page.
+	// Set after a page import: back to the list, page tab open for the next page.
 	if back, ok := c.GetQuery("back"); ok {
 		q, _ := url.ParseQuery(compendiumBack(back))
-		q.Set("import", views.ImportTabWikidot)
+		q.Set("import", views.ImportTabPage)
 		v.Back = "/compendium?" + q.Encode() + "#compendium-import"
 	}
 	a.render(c, http.StatusOK, views.EntryPage(a.layout(w, e.Name, views.NavCompendium, camp, false), v))
@@ -553,14 +553,14 @@ func (a *App) compendiumFolder(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// wikidotForm is a dnd5e.wikidot.com page to preview.
-type wikidotForm struct {
-	Page string `form:"page" validate:"required,max=300"`
+// pageForm is a link to a page of one of compendium.Sites to preview.
+type pageForm struct {
+	Page string `form:"page" validate:"required,max=500"`
 }
 
-// compendiumWikidotPreview fetches one wiki page and shows it in the
+// compendiumPagePreview fetches one site page and shows it in the
 // homebrew editor for review; nothing is saved yet.
-func (a *App) compendiumWikidotPreview(c *gin.Context) {
+func (a *App) compendiumPagePreview(c *gin.Context) {
 	w, ok := a.homebrewWriter(c)
 	if !ok {
 		return
@@ -572,17 +572,17 @@ func (a *App) compendiumWikidotPreview(c *gin.Context) {
 		back = ref.RawQuery
 	}
 	back = compendiumBack(back)
-	var f wikidotForm
+	var f pageForm
 	if err := c.ShouldBind(&f); err != nil {
-		a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabWikidot, Back: back, Msg: "Enter a page name, for example lineage:giff.", Failed: true})
+		a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabPage, Back: back, Msg: "Paste a link to a page of one of the sites below.", Failed: true})
 		return
 	}
-	page, book, e, err := compendium.FetchWikidot(c.Request.Context(), f.Page)
+	p, err := compendium.FetchPage(c.Request.Context(), f.Page)
 	if err != nil {
-		a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabWikidot, Back: back, Page: f.Page, Msg: "Import failed: " + err.Error(), Failed: true})
+		a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabPage, Back: back, Page: f.Page, Msg: "Import failed: " + err.Error(), Failed: true})
 		return
 	}
-	a.renderWikidotPreview(c, http.StatusOK, w, views.HomebrewView{Input: compendium.InputForEntry(e), Wikidot: page, Book: book, Back: back})
+	a.renderPagePreview(c, http.StatusOK, w, views.HomebrewView{Input: compendium.InputForEntry(p.Entry), Page: p, Back: back})
 }
 
 // compendiumBack keeps only the list filter (q, kind) of a query string, so
@@ -598,10 +598,10 @@ func compendiumBack(query string) string {
 	return out.Encode()
 }
 
-// renderWikidotPreview shows a page's review form, linking the entry an
+// renderPagePreview shows a page's review form, linking the entry an
 // earlier import of the page made, which saving replaces.
-func (a *App) renderWikidotPreview(c *gin.Context, status int, w who, v views.HomebrewView) {
-	rows, err := a.Store.ListCompendiumKeysBySource(c.Request.Context(), compendium.WikidotSourceKey(v.Wikidot))
+func (a *App) renderPagePreview(c *gin.Context, status int, w who, v views.HomebrewView) {
+	rows, err := a.Store.ListCompendiumKeysBySource(c.Request.Context(), compendium.PageSourceKey(v.Page.Site.Key, v.Page.ID))
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -612,25 +612,30 @@ func (a *App) renderWikidotPreview(c *gin.Context, status int, w who, v views.Ho
 	a.renderHomebrew(c, status, w, v)
 }
 
-// compendiumWikidot saves a reviewed wiki page and opens its entry.
-func (a *App) compendiumWikidot(c *gin.Context) {
+// compendiumPageSave saves a reviewed site page and opens its entry.
+func (a *App) compendiumPageSave(c *gin.Context) {
 	w, ok := a.homebrewWriter(c)
 	if !ok {
 		return
 	}
 	ctx := c.Request.Context()
+	site, ok := compendium.SiteByKey(c.PostForm("site"))
+	if !ok {
+		c.String(http.StatusBadRequest, "unknown site")
+		return
+	}
 	var in compendium.HomebrewInput
 	err := c.ShouldBind(&in)
-	page, book, back := c.PostForm("page"), c.PostForm("book"), compendiumBack(c.PostForm("back"))
+	p := compendium.Page{Site: site, ID: c.PostForm("page"), Book: c.PostForm("book"), Image: strings.TrimSpace(c.PostForm("image_url"))}
+	back := compendiumBack(c.PostForm("back"))
 	var key string
 	if err == nil {
-		var e compendium.Entry
-		if e, err = in.Entry(); err == nil {
-			key, err = compendium.SaveWikidot(ctx, a.Store, page, book, e)
+		if p.Entry, err = in.Entry(); err == nil {
+			key, err = compendium.SavePage(ctx, a.Store, p)
 		}
 	}
 	if err != nil {
-		a.renderWikidotPreview(c, http.StatusUnprocessableEntity, w, views.HomebrewView{Input: in, Wikidot: page, Book: book, Back: back, Error: err.Error()})
+		a.renderPagePreview(c, http.StatusUnprocessableEntity, w, views.HomebrewView{Input: in, Page: p, Back: back, Error: err.Error()})
 		return
 	}
 	rows, err := a.Store.ListCompendiumKeysBySource(ctx, key)

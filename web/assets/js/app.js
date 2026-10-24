@@ -601,13 +601,6 @@
     if (input) commandHint(input);
   });
 
-  // Inputs with data-strip-prefix keep only what follows the prefix when a
-  // whole URL is pasted (the prefix is shown beside the input).
-  document.addEventListener("input", (e) => {
-    const prefix = e.target.dataset && e.target.dataset.stripPrefix;
-    const i = prefix ? e.target.value.indexOf(prefix) : -1;
-    if (i >= 0) e.target.value = e.target.value.slice(i + prefix.length);
-  });
   document.addEventListener("keydown", (e) => {
     const input = document.getElementById("command-input");
     if (e.key !== "/" || !input || e.ctrlKey || e.metaKey || e.altKey) return;

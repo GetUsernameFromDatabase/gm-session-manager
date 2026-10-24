@@ -1,6 +1,7 @@
 package compendium
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,28 +13,67 @@ func wikiPage(title, content string) []byte {
 	return []byte(`<html><body><div id="page-title">` + title + `</div><div id="page-content">` + content + `</div></body></html>`)
 }
 
-func TestWikidotPage(t *testing.T) {
+// TestParsePageURL: the link's host picks the site, and only the known
+// sites' pages are accepted, since the server fetches them.
+func TestParsePageURL(t *testing.T) {
 	for _, tt := range []struct {
-		url, page string
-		ok        bool
+		url, site, page string
+		kind            Kind
+		err             error // checked when not nil
 	}{
-		{"https://dnd5e.wikidot.com/lineage:giff", "lineage:giff", true},
-		{"http://dnd5e.wikidot.com/monk:mercy/", "monk:mercy", true},
-		{"https://dnd5e.wikidot.com/artificer", "artificer", true},
-		{"lineage:giff", "lineage:giff", true},
-		{" /feat:mobile ", "feat:mobile", true},
-		{"lineage:giff/../../x", "", false},
-		{"@evil.example/feat:mobile", "", false},
-		{"https://dnd5e.wikidot.com/spell:fireball", "", false},
-		{"https://evil.example/lineage:giff", "", false},
-		{"https://dnd5e.wikidot.com.evil.example/feat:mobile", "", false},
-		{"https://dnd5e.wikidot.com:8080/feat:mobile", "", false},
-		{"file:///etc/passwd", "", false},
+		{"https://dnd5e.wikidot.com/lineage:giff", "wikidot", "lineage:giff", KindSpecies, nil},
+		{"http://dnd5e.wikidot.com/monk:mercy/", "wikidot", "monk:mercy", KindSubclass, nil},
+		{"https://dnd5e.wikidot.com/artificer", "wikidot", "artificer", KindClass, nil},
+		{"dnd5e.wikidot.com/feat:mobile", "wikidot", "feat:mobile", KindFeat, nil},
+		{"https://dnd5e.wikidot.com/spell:fireball", "wikidot", "spell:fireball", "", nil},
+		{"https://www.aidedd.org/dnd/monstres.php?vo=howler", "aidedd", "howler", KindMonster, nil},
+		{"www.aidedd.org/dnd/monstres.php?vo=adult-red-dragon", "aidedd", "adult-red-dragon", KindMonster, nil},
+		{"https://www.aidedd.org/dnd/sorts.php?vo=fireball", "aidedd", "dnd/sorts.php?vo=fireball", "", nil},
+		{"https://5e.tools/bestiary/howler-mtf.html", "5etools", "mtf/howler", KindMonster, nil},
+		{"https://5e.tools/bestiary/adult-red-dragon-mm.html", "5etools", "mm/adult-red-dragon", KindMonster, nil},
+		{"https://5e.tools/bestiary.html#adult%20red%20dragon_mm", "5etools", "mm/adult-red-dragon", KindMonster, nil},
+		{"asdasd", "", "", "", errNotASite},
+		{"lineage:giff", "", "", "", errNotASite},
+		{"@evil.example/feat:mobile", "", "", "", errNotASite},
+		{"https://evil.example/lineage:giff", "", "", "", errNotASite},
+		{"https://dnd5e.wikidot.com.evil.example/feat:mobile", "", "", "", errNotASite},
+		{"https://dnd5e.wikidot.com:8080/feat:mobile", "", "", "", errNotASite},
+		{"https://user@www.aidedd.org/dnd/monstres.php?vo=howler", "", "", "", errNotASite},
+		{"file:///etc/passwd", "", "", "", errNotASite},
+		{"https://dnd5e.wikidot.com/a/b", "", "", "", nil},
+		{"https://www.aidedd.org/", "", "", "", nil},
+		{"https://5e.tools/spells.html#fireball_phb", "", "", "", nil},
+		{"https://5e.tools/bestiary/howler.html", "", "", "", nil},
 	} {
-		page, err := WikidotPage(tt.url)
-		if (err == nil) != tt.ok || page != tt.page {
-			t.Errorf("%s: %q %v", tt.url, page, err)
+		s, page, err := ParsePageURL(tt.url)
+		if (err == nil) != (tt.site != "") || s.Key != tt.site || page != tt.page || tt.err != nil && !errors.Is(err, tt.err) {
+			t.Errorf("%s: %q %q %v", tt.url, s.Key, page, err)
 		}
+		if err == nil {
+			if kind := (Page{Site: s, ID: page}).Kind(); kind != tt.kind {
+				t.Errorf("%s: kind %q", tt.url, kind)
+			}
+		}
+	}
+}
+
+func TestParsePlainPage(t *testing.T) {
+	e, err := ParsePlainPage([]byte(`<html><head><title>Site</title></head><body><nav>x</nav><div><h1>Fireball</h1><p>A bright streak.</p><p>Each creature<br>takes damage.</p></div></body></html>`))
+	if err != nil || e.Name != "Fireball" || e.Kind != "" || e.Data.(TextData).Desc != "A bright streak.\n\nEach creature\ntakes damage." {
+		t.Errorf("%+v %v", e, err)
+	}
+	if e, err := ParsePlainPage([]byte(`<html><head><title>Only a title</title></head><body><p>Text.</p></body></html>`)); err != nil || e.Name != "Only a title" {
+		t.Errorf("%+v %v", e, err)
+	}
+	if _, err := ParsePlainPage([]byte(`<p>No name.</p>`)); err == nil {
+		t.Error("no error without a name")
+	}
+}
+
+func TestParseWikidotUnknownKind(t *testing.T) {
+	_, e, err := ParseWikidot("spell:fireball", wikiPage("Fireball", `<p>Source: Some Book</p><p>A bright streak.</p>`))
+	if err != nil || e.Kind != "" || e.Data.(TextData).Desc != "A bright streak." {
+		t.Errorf("%+v %v", e, err)
 	}
 }
 
@@ -62,7 +102,7 @@ func TestParseWikidotSpecies(t *testing.T) {
 		t.Errorf("%+v %+v", e, d)
 	}
 	roundTrip(t, e)
-	if src := wikidotSource("lineage:giff", book); src.Key != "wikidot:lineage:giff" || src.Attribution != "Some Book via https://dnd5e.wikidot.com/lineage:giff" {
+	if src := pageSource(Page{Site: wikidotSite, ID: "lineage:giff", Book: book}); src.Key != "wikidot:lineage:giff" || src.Attribution != "Some Book via https://dnd5e.wikidot.com/lineage:giff" {
 		t.Errorf("%+v", src)
 	}
 }

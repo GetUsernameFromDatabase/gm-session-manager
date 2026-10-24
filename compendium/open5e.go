@@ -268,15 +268,10 @@ func (n normalizer) monsters() ([]Entry, error) {
 		slices.SortStableFunc(acts, func(a, b o5eChild) int {
 			return cmp.Or(cmp.Compare(actionRank(a.ActionType), actionRank(b.ActionType)), cmp.Compare(a.Order, b.Order))
 		})
-		var text []string
 		for _, a := range acts {
 			d.Actions = append(d.Actions, MonsterAction{Name: a.Name, Desc: a.Desc, Type: strings.ToLower(a.ActionType)})
-			text = append(text, a.Name+". "+a.Desc)
 		}
-		out = append(out, Entry{
-			Kind: KindMonster, Slug: n.slug(r.pk()), Name: c.Name, Data: d,
-			Text: joinText(c.Size+" "+c.Type, partsText(d.Traits), strings.Join(text, "\n")),
-		})
+		out = append(out, Entry{Kind: KindMonster, Slug: n.slug(r.pk()), Name: c.Name, Data: d, Text: d.searchText()})
 	}
 	return out, nil
 }

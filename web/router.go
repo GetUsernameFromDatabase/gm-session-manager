@@ -184,8 +184,8 @@ func (a *App) Router() *gin.Engine {
 	r.POST("/compendium/homebrew", a.homebrewCreate)
 	r.POST("/compendium/import", gm, a.compendiumImport)
 	r.POST("/compendium/folder", gm, a.compendiumFolder)
-	r.POST("/compendium/wikidot/preview", gm, a.compendiumWikidotPreview)
-	r.POST("/compendium/wikidot", gm, a.compendiumWikidot)
+	r.POST("/compendium/page/preview", gm, a.compendiumPagePreview)
+	r.POST("/compendium/page", gm, a.compendiumPageSave)
 	return r
 }
 

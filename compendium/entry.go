@@ -47,8 +47,9 @@ func ValidKind(k string) bool {
 // HomebrewSource is the source_key of homebrew entries.
 const HomebrewSource = "homebrew"
 
-// MonsterImagePrefix + slug + ".png" is the first guess at a monster's
-// picture: a link only, never downloaded; misses are hidden by the page.
+// MonsterImagePrefix + slug + ".png" is the first guess at the picture of a
+// data folder's (open5e-api) monster: a link only, never downloaded; misses
+// are hidden by the page.
 // https://github.com/5e-bits/5e-srd-api/blob/main/apps/api/src/controllers/api/imageController.ts
 const MonsterImagePrefix = "https://dnd-5e-api-images.s3.us-west-1.amazonaws.com/monsters/"
 

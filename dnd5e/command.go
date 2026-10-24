@@ -146,6 +146,7 @@ var Help = []HelpEntry{
 	{"set ability <ab> <n>", "set ability str 16", "Set a base ability score"},
 	{"set name|species|background <text>", "set species Elf", "Change details"},
 	{"set ac|speed <n>", "set ac 1", "Set an AC bonus that always applies, or base speed"},
+	{"set size <size> | set vision <text>|none", "set vision Darkvision 60 ft", "Set size (Tiny…Gargantuan) or vision"},
 	{"set backstory <text>", "set backstory Raised by wolves", "Replace the backstory"},
 	{"prof add|remove skill|save|expertise|other|language <name>", "prof add skill athletics", "Add or remove a proficiency"},
 	{"prof set skill <skill> none|proficient|expertise", "prof set skill stealth expertise", "Set a skill's proficiency"},
@@ -770,12 +771,29 @@ func parseInspiration(args []string) (Command, error) {
 }
 
 func parseSet(args []string) (Command, error) {
-	const usage = "set name|species|background|backstory <text> | set ac|speed <n> | set ability <str..cha> <n>"
+	const usage = "set name|species|background|backstory|vision <text> | set ac|speed <n> | set size <size> | set ability <str..cha> <n>"
 	if len(args) < 2 {
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
 	field, value := strings.ToLower(args[0]), strings.Join(args[1:], " ")
 	switch field {
+	case "size":
+		size := SizeNamed(value)
+		if size == "" {
+			return Command{}, fmt.Errorf("size must be one of %s", strings.Join(Sizes, ", "))
+		}
+		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
+			c.Sheet.Size = size
+			return nil
+		}), nil
+	case "vision":
+		if strings.EqualFold(value, "none") {
+			value = ""
+		}
+		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
+			c.Sheet.Vision = value
+			return nil
+		}), nil
 	case "name", "species", "background", "backstory":
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			switch field {

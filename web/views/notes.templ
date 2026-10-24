@@ -171,6 +171,15 @@ func visibilityLabel(vis perm.Visibility) string {
 	return string(vis)
 }
 
+// visTint faintly colours a block's edge and header by visibility, so block
+// types stand apart without the colour taking over.
+var visTint = map[perm.Visibility]string{
+	perm.VisGM:      "border-l-rose-400/60 [&>header]:bg-rose-500/5",
+	perm.VisPlayers: "border-l-sky-400/60 [&>header]:bg-sky-500/5",
+	perm.VisListed:  "border-l-amber-400/60 [&>header]:bg-amber-500/5",
+	perm.VisOwner:   "border-l-violet-400/60 [&>header]:bg-violet-500/5",
+}
+
 templ NotePage(l Layout, v NoteView) {
 	@Page(l) {
 		@NoteMeta(v)
@@ -217,7 +226,7 @@ templ NoteMeta(v NoteView) {
 templ NoteBlocks(v NoteView) {
 	<div id={ fmt.Sprintf("note-%d-blocks", v.Note.ID) } hx-swap-oob="true" class="space-y-4" { live(LiveNote, v.Note.ID)... }>
 		for i, b := range v.Blocks {
-			<article id={ fmt.Sprintf("block-%d", b.ID) } class="rounded-lg border" data-block={ fmt.Sprint(b.ID) } data-editable={ fmt.Sprint(b.CanEdit) }>
+			<article id={ fmt.Sprintf("block-%d", b.ID) } class={ "rounded-lg border border-l-4", visTint[b.Visibility] } data-block={ fmt.Sprint(b.ID) } data-editable={ fmt.Sprint(b.CanEdit) }>
 				<header class="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
 					@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
 						{ visibilityLabel(b.Visibility) }

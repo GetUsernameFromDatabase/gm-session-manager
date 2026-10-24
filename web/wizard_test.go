@@ -58,7 +58,7 @@ func TestCreationWizard(t *testing.T) {
 		{"abilities", scores, "/background"},
 		{"background", url.Values{"pick": {"sage"}, "mode": {"two"}, "plus2": {"int"}, "plus1": {"con"}}, "/equipment"},
 		{"equipment", url.Values{"option_background": {"B"}}, "/details"},
-		{"details", url.Values{"name": {"Wren"}, "backstory": {"Raised in a library."}}, "/review"},
+		{"details", url.Values{"name": {"Wren"}, "backstory": {"Raised in a library."}, "size": {"medium"}, "vision": {"Darkvision 60 ft"}}, "/review"},
 		{"review", nil, fmt.Sprintf("/characters/%d", e.characterID)},
 	} {
 		w := e.do(t, http.MethodPost, base+"/"+step.step, player, step.form, false)
@@ -83,6 +83,9 @@ func TestCreationWizard(t *testing.T) {
 	if row.Name != "Wren" || sh.ClassSummary() != "Wizard 1" || row.MaxHp != 8 {
 		t.Errorf("name %q classes %q max hp %d", row.Name, sh.ClassSummary(), row.MaxHp)
 	}
+	if sh.Size != "Medium" || sh.Vision != "Darkvision 60 ft" {
+		t.Errorf("size %q vision %q", sh.Size, sh.Vision)
+	}
 	if sh.Species != "Goliath" || sh.Speed != 35 || sh.Background != "Sage" || sh.Scores["int"] != 17 || sh.Scores["con"] != 15 || sh.Coins.GP != 50 {
 		t.Errorf("species %q speed %d background %q int %d con %d gp %d", sh.Species, sh.Speed, sh.Background, sh.Scores["int"], sh.Scores["con"], sh.Coins.GP)
 	}
@@ -93,5 +96,27 @@ func TestCreationWizard(t *testing.T) {
 	}
 	if strings.Count(row.SheetJson, `"name":"Powerful Build"`) != 1 || !sh.SetUp("review") || !strings.Contains(strings.Join(sh.SkillProfs, ","), "arcana") {
 		t.Errorf("sheet after the wizard: %s", row.SheetJson)
+	}
+}
+
+// TestApplySpeciesSizeVision: a single size and a darkvision range are set;
+// "Medium or Small" leaves the size for the player.
+func TestApplySpeciesSizeVision(t *testing.T) {
+	tests := []struct {
+		size, wantSize string
+		parts          []compendium.NameDesc
+		wantVision     string
+	}{
+		{"Medium", "Medium", []compendium.NameDesc{{Name: "Darkvision", Desc: "You can see in dim light within 60 feet of you."}}, "Darkvision 60 ft"},
+		{"Medium or Small", "", nil, ""},
+		{"Small.", "Small", []compendium.NameDesc{{Name: "Superior Darkvision", Desc: "Your darkvision has a range of 120 feet."}}, "Darkvision 120 ft"},
+	}
+	for _, tt := range tests {
+		var s dnd5e.Sheet
+		parts := append([]compendium.NameDesc{{Name: "Size", Desc: tt.size, Type: "size"}}, tt.parts...)
+		applySpecies(&s, "Test", &compendium.TextData{Parts: parts})
+		if s.Size != tt.wantSize || s.Vision != tt.wantVision {
+			t.Errorf("%q: size %q vision %q", tt.size, s.Size, s.Vision)
+		}
 	}
 }

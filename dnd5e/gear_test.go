@@ -47,6 +47,10 @@ func TestGearCommands(t *testing.T) {
 		{"item set Dagger 0", Env{}, func(s Sheet) bool { return len(s.Weapons) == 0 }, false},
 		{"set ac 2", Env{}, func(s Sheet) bool { return s.ArmorClass() == 11+0+2 }, false},
 		{"set ac -1", Env{}, func(s Sheet) bool { return s.ArmorClass() == 10 }, false},
+		{"set size small", Env{}, func(s Sheet) bool { return s.Size == "Small" }, false},
+		{"set size tall", Env{}, nil, true},
+		{"set vision Darkvision 60 ft", Env{}, func(s Sheet) bool { return s.Vision == "Darkvision 60 ft" }, false},
+		{"set vision none", Env{}, func(s Sheet) bool { return s.Vision == "" }, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

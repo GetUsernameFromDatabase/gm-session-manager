@@ -101,8 +101,8 @@ func TestGMHomebrewClassAndWikidot(t *testing.T) {
 	}
 
 	// A reviewed page, as the preview form posts it back (no network).
-	review := url.Values{"page": {"lineage:giff"}, "book": {"Some Book"}, "kind": {"species"}, "name": {"Giff"}, "speed": {"30"}, "traits": {"Hippo Build. You are strong."}}
-	for _, path := range []string{"/compendium/wikidot/preview", "/compendium/wikidot", "/compendium/folder"} {
+	review := url.Values{"site": {"wikidot"}, "page": {"lineage:giff"}, "book": {"Some Book"}, "kind": {"species"}, "name": {"Giff"}, "speed": {"30"}, "traits": {"Hippo Build. You are strong."}}
+	for _, path := range []string{"/compendium/page/preview", "/compendium/page", "/compendium/folder"} {
 		if w := e.do(t, http.MethodPost, path, player, review, false); w.Code != http.StatusForbidden {
 			t.Errorf("player %s: %d", path, w.Code)
 		}
@@ -110,16 +110,16 @@ func TestGMHomebrewClassAndWikidot(t *testing.T) {
 	if w := e.do(t, http.MethodPost, "/compendium/folder", gm, nil, false); w.Code != http.StatusForbidden {
 		t.Errorf("folder from another device: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, "/compendium/wikidot/preview", gm, url.Values{"page": {"spell:fireball"}}, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Import failed") || !strings.Contains(w.Body.String(), `role="alert"`) {
-		t.Errorf("unsupported page: %d", w.Code)
+	if w := e.do(t, http.MethodPost, "/compendium/page/preview", gm, url.Values{"page": {"asdasd"}}, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "one of the sites listed below") || !strings.Contains(w.Body.String(), `role="alert"`) {
+		t.Errorf("not a link: %d", w.Code)
 	}
 	review.Set("back", "q=giff&kind=species&evil=1")
-	w := e.do(t, http.MethodPost, "/compendium/wikidot", gm, review, false)
+	w := e.do(t, http.MethodPost, "/compendium/page", gm, review, false)
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("save: %d %s", w.Code, w.Body)
 	}
 	// The entry links back to the filtered list, wiki tab open; other keys are dropped.
-	if w := e.do(t, http.MethodGet, w.Header().Get("Location"), gm, nil, false); !strings.Contains(w.Body.String(), `href="/compendium?import=wikidot&amp;kind=species&amp;q=giff#compendium-import"`) {
+	if w := e.do(t, http.MethodGet, w.Header().Get("Location"), gm, nil, false); !strings.Contains(w.Body.String(), `href="/compendium?import=page&amp;kind=species&amp;q=giff#compendium-import"`) {
 		t.Errorf("back link missing: %d %s", w.Code, w.Body)
 	}
 	review.Del("back")
@@ -131,7 +131,31 @@ func TestGMHomebrewClassAndWikidot(t *testing.T) {
 		t.Errorf("source %+v %v", src, err)
 	}
 	review.Set("kind", "feat")
-	if w := e.do(t, http.MethodPost, "/compendium/wikidot", gm, review, false); w.Code != http.StatusUnprocessableEntity {
+	if w := e.do(t, http.MethodPost, "/compendium/page", gm, review, false); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("kind changed: %d", w.Code)
+	}
+
+	// A page of no known kind takes the kind the GM picked.
+	spell := url.Values{"site": {"wikidot"}, "page": {"spell:fireball"}, "kind": {"spell"}, "name": {"Fireball"}, "level": {"3"}, "desc": {"A bright streak."}}
+	if w := e.do(t, http.MethodPost, "/compendium/page", gm, spell, false); w.Code != http.StatusSeeOther {
+		t.Fatalf("save spell: %d %s", w.Code, w.Body)
+	}
+	if fb, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "spell", Slug: "fireball"}); err != nil || fb.SourceKey != "wikidot:spell:fireball" {
+		t.Errorf("saved %+v %v", fb, err)
+	}
+
+	// A monster page keeps its statblock and picture.
+	monster := url.Values{"site": {"aidedd"}, "page": {"howler"}, "kind": {"monster"}, "name": {"Howler"}, "ac": {"16"}, "hp": {"90"},
+		"str": {"17"}, "monster_speed": {"walk 40"}, "actions": {"Rending Bite. Bites."}, "image_url": {"https://www.aidedd.org/dnd/images/howler.jpg"}}
+	if w := e.do(t, http.MethodPost, "/compendium/page", gm, monster, false); w.Code != http.StatusSeeOther {
+		t.Fatalf("save monster: %d %s", w.Code, w.Body)
+	}
+	howler, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "howler"})
+	if err != nil || howler.SourceKey != "aidedd:howler" || howler.ImageUrl.String != monster.Get("image_url") || !strings.Contains(howler.DataJson, `"Rending Bite"`) || !strings.Contains(howler.DataJson, `"str":17`) {
+		t.Errorf("saved %+v %v", howler, err)
+	}
+	monster.Set("site", "evil")
+	if w := e.do(t, http.MethodPost, "/compendium/page", gm, monster, false); w.Code != http.StatusBadRequest {
+		t.Errorf("unknown site: %d", w.Code)
 	}
 }

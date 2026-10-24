@@ -269,6 +269,28 @@ func TestMonsterImageBinding(t *testing.T) {
 		t.Errorf("spell bound %q", spell.ImageUrl.String)
 	}
 
+	// Monsters outside data folders get no guess, and keep a link the GM set.
+	var brews []int64
+	for _, slug := range []string{"goblin-boss", "goblin-hexer"} {
+		brew, err := store.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: string(KindMonster), Slug: slug, Name: slug, DataJson: "{}"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		brews = append(brews, brew.ID)
+	}
+	gmLink := MonsterImagePrefix + "goblin-hexer.png"
+	if _, err := store.SetCompendiumImage(ctx, sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: gmLink, Valid: true}, ID: brews[1]}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(ctx, store, dir); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []sql.NullString{{}, {String: gmLink, Valid: true}} {
+		if row, err := store.GetCompendiumEntry(ctx, brews[i]); err != nil || row.ImageUrl != want {
+			t.Errorf("homebrew %d image %+v, %v", i, row.ImageUrl, err)
+		}
+	}
+
 	// The GM's link, and a cleared one, survive a changed re-import.
 	for _, want := range []string{"https://example.com/goblin.png", ""} {
 		if _, err := store.SetCompendiumImage(ctx, sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: want, Valid: true}, ID: goblin.ID}); err != nil {

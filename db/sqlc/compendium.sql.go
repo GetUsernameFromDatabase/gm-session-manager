@@ -55,12 +55,18 @@ func (q *Queries) AddMonsterHabitat(ctx context.Context, arg AddMonsterHabitatPa
 
 const bindMonsterImages = `-- name: BindMonsterImages :exec
 UPDATE compendium_entries SET image_url = ?1 || slug || '.png'
-WHERE kind = 'monster' AND image_url IS NULL
+WHERE kind = 'monster' AND image_url IS NULL AND source_key = ?2
 `
 
-// BindMonsterImages guesses a link for monsters that never had one.
-func (q *Queries) BindMonsterImages(ctx context.Context, prefix string) error {
-	_, err := q.db.ExecContext(ctx, bindMonsterImages, prefix)
+type BindMonsterImagesParams struct {
+	Prefix    string
+	SourceKey string
+}
+
+// BindMonsterImages guesses a link for a data folder's monsters that never
+// had one; a link the GM set or cleared (”) is kept.
+func (q *Queries) BindMonsterImages(ctx context.Context, arg BindMonsterImagesParams) error {
+	_, err := q.db.ExecContext(ctx, bindMonsterImages, arg.Prefix, arg.SourceKey)
 	return err
 }
 

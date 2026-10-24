@@ -10,7 +10,6 @@ import (
 	"gm-session-manager/web/components/combobox"
 	"gm-session-manager/web/components/icon"
 	"gm-session-manager/web/components/input"
-	"gm-session-manager/web/components/inputgroup"
 	"gm-session-manager/web/components/label"
 	selectcomp "gm-session-manager/web/components/select"
 	"gm-session-manager/web/components/spinner"
@@ -47,8 +46,8 @@ type CompendiumView struct {
 
 // Import tabs of the compendium page.
 const (
-	ImportTabFolder  = "folder"
-	ImportTabWikidot = "wikidot"
+	ImportTabFolder = "folder"
+	ImportTabPage   = "page"
 )
 
 // ImportNotice is the Import section's state: the open tab and the last
@@ -57,9 +56,9 @@ type ImportNotice struct {
 	Tab    string
 	Msg    string
 	Failed bool
-	// Page is the wiki page name the GM typed, kept after an error.
+	// Page is the page link the GM pasted, kept after an error.
 	Page string
-	// Back is the compendium filter (q, kind) to return to after a wiki import.
+	// Back is the compendium filter (q, kind) to return to after a page import.
 	Back string
 	// Dir is DATA_DIR/compendium; OnHost is set when the browser runs on
 	// the host, which may open it in the file manager.
@@ -145,17 +144,17 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 }
 
 // importTabs are the GM's two ways to fill the compendium: data folders on
-// the host, and single pages of dnd5e.wikidot.com.
+// the host, and single pages of the compendium.Sites.
 templ importTabs(n ImportNotice) {
-	@tabs.Tabs(tabs.Props{ID: "compendium-import", DefaultValue: utils.IfElse(n.Tab == ImportTabFolder, ImportTabFolder, ImportTabWikidot)}) {
+	@tabs.Tabs(tabs.Props{ID: "compendium-import", DefaultValue: utils.IfElse(n.Tab == ImportTabFolder, ImportTabFolder, ImportTabPage)}) {
 		@tabs.List(tabs.ListProps{Class: "w-fit"}) {
 			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabFolder}) {
 				@icon.FolderOpen()
 				Data folder
 			}
-			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabWikidot}) {
+			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabPage}) {
 				@icon.Globe()
-				Wiki page
+				Web page
 			}
 		}
 		@tabs.Content(tabs.ContentProps{Value: ImportTabFolder, Class: "max-w-2xl space-y-3 text-sm"}) {
@@ -192,31 +191,36 @@ templ importTabs(n ImportNotice) {
 				@Notice(n.Msg, n.Failed, "")
 			}
 		}
-		@tabs.Content(tabs.ContentProps{Value: ImportTabWikidot, Class: "max-w-2xl space-y-3 text-sm"}) {
-			<form method="post" action="/compendium/wikidot/preview" class="group/busy flex flex-wrap items-center gap-2" data-busy>
+		@tabs.Content(tabs.ContentProps{Value: ImportTabPage, Class: "max-w-2xl space-y-3 text-sm"}) {
+			<form method="post" action="/compendium/page/preview" class="group/busy flex flex-wrap items-center gap-2" data-busy>
 				<input type="hidden" name="back" value={ n.Back }/>
-				@inputgroup.InputGroup(inputgroup.Props{Class: "max-w-md"}) {
-					@inputgroup.Addon() {
-						@inputgroup.Text() {
-							<a href={ templ.SafeURL(compendium.WikidotBase) } target="_blank" rel="noopener noreferrer" class="hover:text-foreground hover:underline">{ compendium.WikidotBase }</a>
-						}
-					}
-					// Focused when coming back from an import, ready for the next page.
-					@inputgroup.Input(inputgroup.InputProps{Name: "page", Value: n.Page, Placeholder: "lineage:giff", Attributes: templ.Attributes{"required": true, "aria-label": "Wiki page name", "autocomplete": "off", "data-strip-prefix": "wikidot.com/", "autofocus": n.Tab == ImportTabWikidot}})
-				}
+				// Focused when coming back from an import, ready for the next page.
+				@input.Input(input.Props{Name: "page", Value: n.Page, Placeholder: "Paste a page link", Class: "max-w-md", Attributes: templ.Attributes{"required": true, "aria-label": "Page link", "autocomplete": "off", "autofocus": n.Tab == ImportTabPage}})
 				@button.Button(button.Props{Type: button.TypeSubmit}) {
 					Preview
 				}
 				@busyIndicator("Fetching…")
 			</form>
-			<p class="text-muted-foreground">
-				One class (<code>artificer</code>), subclass (<code>monk:mercy</code>), lineage (<code>lineage:giff</code>), background (<code>background:outlander</code>) or feat (<code>feat:mobile</code>) page.
-				You review and edit it before it is saved; saving the same page again replaces it.
-			</p>
-			<p class="text-muted-foreground">The wiki has the 2014 rules. Entries are attributed to the book and the page they came from.</p>
-			if n.Msg != "" && n.Tab == ImportTabWikidot {
+			if n.Msg != "" && n.Tab == ImportTabPage {
 				@Notice(n.Msg, n.Failed, "")
 			}
+			<p class="text-muted-foreground">Pages can come from these sites only; open one, find the page and paste its link.</p>
+			<ul class="list-disc space-y-1 pl-5 text-muted-foreground">
+				for _, s := range compendium.Sites {
+					<li>
+						<a class="font-medium text-foreground underline" href={ templ.SafeURL(s.Home) } target="_blank" rel="noopener noreferrer">{ s.Host() }</a>: { s.Imports }.
+						if s.Note != "" {
+							<span class="text-amber-700 dark:text-amber-300">{ s.Note }</span>
+							<a class="underline" href={ templ.SafeURL(s.NoteURL) } target="_blank" rel="noopener noreferrer">Browse the mirror</a>.
+						}
+					</li>
+				}
+			</ul>
+			<p class="text-muted-foreground">
+				Other pages of these sites are tried too, as plain text whose kind you pick.
+				You review and edit it before it is saved; saving the same page again replaces it.
+				Entries are attributed to the book and the page they came from.
+			</p>
 		}
 	}
 }
@@ -932,10 +936,9 @@ type HomebrewView struct {
 	IsGM  bool
 	// AddToSheet adds the new entry to the player's character on save.
 	AddToSheet bool
-	// Wikidot is the wiki page under review (its kind is fixed) and Book
-	// the book it names; Replaces is the entry an earlier import made.
-	Wikidot  string
-	Book     string
+	// Page is the site page under review (its kind is fixed; ID "" when
+	// none); Replaces is the entry an earlier import of it made.
+	Page     compendium.Page
 	Replaces int64
 	// Back is the compendium filter the import started from.
 	Back string
@@ -946,7 +949,7 @@ type HomebrewView struct {
 templ HomebrewPage(l Layout, v HomebrewView) {
 	@Page(l) {
 		switch {
-			case v.Wikidot != "":
+			case v.Page.ID != "":
 				@PageHeader("Import preview", "Check and edit the page before saving it.")
 			case v.ID == 0:
 				@PageHeader("New homebrew", utils.IfElse(v.IsGM, "Shared by every campaign.", "Shown in your campaign's compendium; the GM may share it with other campaigns."))
@@ -956,11 +959,14 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 		if v.Error != "" {
 			@Notice(v.Error, true, "mb-4")
 		}
-		if v.Wikidot != "" {
+		if v.Page.ID != "" {
 			<div class="mb-4 max-w-2xl space-y-1 text-sm text-muted-foreground">
 				<p>
-					From <a class="underline" href={ templ.SafeURL(compendium.WikidotBase + v.Wikidot) } target="_blank" rel="noopener">{ compendium.WikidotBase + v.Wikidot }</a>{ utils.IfElse(v.Book != "", " ("+v.Book+")", "") }. Nothing is saved until you press Save.
+					From <a class="underline" href={ templ.SafeURL(v.Page.URL()) } target="_blank" rel="noopener">{ v.Page.URL() }</a>{ utils.IfElse(v.Page.Book != "", " ("+v.Page.Book+")", "") }. Nothing is saved until you press Save.
 				</p>
+				if v.Page.Site.Note != "" {
+					<p>{ v.Page.Site.Note }</p>
+				}
 				if v.Replaces != 0 {
 					<p>
 						Saving replaces the <a class="underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", v.Replaces)) }>entry imported from this page before</a>.
@@ -968,17 +974,19 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 				}
 			</div>
 		}
-		<form method="post" action={ templ.SafeURL(utils.IfElse(v.Wikidot != "", "/compendium/wikidot", homebrewAction(v.ID))) } class="group/busy max-w-2xl space-y-3" data-homebrew data-busy>
+		<form method="post" action={ templ.SafeURL(utils.IfElse(v.Page.ID != "", "/compendium/page", homebrewAction(v.ID))) } class="group/busy max-w-2xl space-y-3" data-homebrew data-busy>
 			if v.AddToSheet {
 				<input type="hidden" name="add" value="1"/>
 			}
-			if v.Wikidot != "" {
-				<input type="hidden" name="page" value={ v.Wikidot }/>
-				<input type="hidden" name="book" value={ v.Book }/>
+			if v.Page.ID != "" {
+				<input type="hidden" name="site" value={ v.Page.Site.Key }/>
+				<input type="hidden" name="page" value={ v.Page.ID }/>
+				<input type="hidden" name="book" value={ v.Page.Book }/>
 				<input type="hidden" name="back" value={ v.Back }/>
 			}
 			<div class="flex flex-wrap gap-2">
-				if v.ID == 0 && v.Wikidot == "" {
+				// A page no parser knows the kind of leaves it to the GM.
+				if v.ID == 0 && (v.Page.ID == "" || v.Page.Kind() == "") {
 					@kindSelect(v.Input.Kind, v.IsGM)
 				} else {
 					<input type="hidden" name="kind" value={ v.Input.Kind }/>
@@ -986,10 +994,55 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 				}
 				@input.Input(input.Props{Name: "name", Value: v.Input.Name, Placeholder: "Name", Required: true, Class: "max-w-sm"})
 			</div>
-			<div class="flex flex-wrap items-center gap-3 text-sm" data-kinds="monster">
-				@inlineField("AC", "ac", fmt.Sprint(v.Input.AC), "w-16", templ.Attributes{"type": "number", "min": "0"})
-				@inlineField("HP", "hp", fmt.Sprint(v.Input.HP), "w-20", templ.Attributes{"type": "number", "min": "0"})
-				@inlineField("CR", "cr", v.Input.CR, "w-16", nil)
+			<div class="space-y-3 text-sm" data-kinds="monster">
+				if v.Page.ID != "" {
+					<div class="flex flex-wrap items-center gap-3">
+						if v.Page.Image != "" {
+							<img src={ v.Page.Image } alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" class="max-h-32 rounded border object-contain"/>
+						}
+						@inlineField("Picture link", "image_url", v.Page.Image, "w-96 max-w-full", templ.Attributes{"type": "url", "pattern": "https://.*", "placeholder": "https://… (empty: no picture)"})
+					</div>
+				}
+				<div class="flex flex-wrap items-center gap-3">
+					@inlineField("Size", "size", v.Input.Size, "w-28", templ.Attributes{"placeholder": "Medium"})
+					@inlineField("Type", "monster_type", v.Input.MonsterType, "w-32", templ.Attributes{"placeholder": "fiend"})
+					@inlineField("Alignment", "alignment", v.Input.Alignment, "w-36", templ.Attributes{"placeholder": "chaotic evil"})
+				</div>
+				<div class="flex flex-wrap items-center gap-3">
+					@inlineField("AC", "ac", fmt.Sprint(v.Input.AC), "w-16", templ.Attributes{"type": "number", "min": "0"})
+					@inlineField("AC from", "ac_detail", v.Input.ACDetail, "w-36", templ.Attributes{"placeholder": "natural armor"})
+					@inlineField("HP", "hp", fmt.Sprint(v.Input.HP), "w-20", templ.Attributes{"type": "number", "min": "0"})
+					@inlineField("Hit dice", "hit_dice", v.Input.HitDice, "w-28", templ.Attributes{"placeholder": "12d10 + 24"})
+					@inlineField("Initiative", "initiative", fmt.Sprint(v.Input.Initiative), "w-16", templ.Attributes{"type": "number"})
+					@inlineField("CR", "cr", v.Input.CR, "w-16", nil)
+				</div>
+				<div class="flex flex-wrap items-center gap-3">
+					for _, a := range []struct {
+						key string
+						n   int
+					}{{"str", v.Input.Str}, {"dex", v.Input.Dex}, {"con", v.Input.Con}, {"int", v.Input.Int}, {"wis", v.Input.Wis}, {"cha", v.Input.Cha}} {
+						@inlineField(strings.ToUpper(a.key), a.key, fmt.Sprint(a.n), "w-16", templ.Attributes{"type": "number", "min": "0", "max": "30"})
+					}
+				</div>
+				<div class="grid gap-3 sm:grid-cols-2">
+					@inlineField("Speed", "monster_speed", v.Input.MonsterSpeed, "w-full", templ.Attributes{"placeholder": "walk 40, fly 60"})
+					@inlineField("Saves", "monster_saves", v.Input.MonsterSaves, "w-full", templ.Attributes{"placeholder": "dex +6, wis +8"})
+					@inlineField("Skills", "monster_skills", v.Input.MonsterSkills, "w-full", templ.Attributes{"placeholder": "perception +5, stealth +6"})
+					@inlineField("Senses", "senses", v.Input.Senses, "w-full", templ.Attributes{"placeholder": "Darkvision 60 ft., Passive Perception 15"})
+					@inlineField("Languages", "languages", v.Input.Languages, "w-full", templ.Attributes{"placeholder": "Common, Abyssal"})
+					@inlineField("Resistances", "resistances", v.Input.Resistances, "w-full", templ.Attributes{"placeholder": "cold, fire"})
+					@inlineField("Immunities", "immunities", v.Input.Immunities, "w-full", templ.Attributes{"placeholder": "poison; frightened"})
+				</div>
+				// Each section is one paragraph per entry, as "Name. What it does…".
+				for _, s := range []struct{ name, value, label string }{
+					{"traits", v.Input.Traits, "Traits"}, {"actions", v.Input.Actions, "Actions"}, {"bonus_actions", v.Input.BonusActions, "Bonus actions"},
+					{"reactions", v.Input.Reactions, "Reactions"}, {"legendary_actions", v.Input.Legendary, "Legendary actions"},
+				} {
+					@label.Label(label.Props{Class: "block space-y-1 font-normal"}) {
+						<span>{ s.label }</span>
+						@textarea.Textarea(textarea.Props{Name: s.name, Value: s.value, Rows: 4, Placeholder: "Name. What it does…\n\nNext name. …"})
+					}
+				}
 			</div>
 			<div class="grid gap-3 text-sm sm:grid-cols-2" data-kinds="spell">
 				@inlineField("Level (0 = cantrip)", "level", fmt.Sprint(v.Input.Level), "w-14", templ.Attributes{"type": "number", "min": "0", "max": "9"})

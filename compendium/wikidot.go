@@ -3,36 +3,46 @@ package compendium
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"golang.org/x/net/html"
-
-	"gm-session-manager/db"
 )
 
-// The GM imports single pages of dnd5e.wikidot.com (2014 rules) by URL.
-// Each page is its own source, so re-importing it updates it in place and
-// it never collides with an SRD entry of the same slug. The wiki's own
-// license does not cover the book text it copies, so none is claimed.
+// dnd5e.wikidot.com has the 2014 rules: classes, subclasses, lineages,
+// backgrounds and feats.
 
 const (
 	wikidotHost    = "dnd5e.wikidot.com"
 	wikidotMaxBody = 2 << 20
-	// WikidotSourcePrefix + page is a wikidot page's source_key.
-	WikidotSourcePrefix = "wikidot:"
 )
+
+var wikidotSite = Site{
+	Key: "wikidot", Name: "D&D 5e Wikidot", Home: WikidotBase,
+	Imports: "2014 classes, subclasses, lineages, backgrounds and feats",
+	hosts:   []string{wikidotHost},
+	page:    func(u *url.URL) string { return strings.ToLower(strings.Trim(u.Path, "/")) },
+	check: func(page string) (Kind, error) {
+		if !rePage.MatchString(page) {
+			return "", fmt.Errorf("%q is not a %s page", page, wikidotHost)
+		}
+		return wikidotKind(page), nil
+	},
+	link: func(page string) string { return WikidotBase + page },
+	load: func(ctx context.Context, page string) (string, string, Entry, error) {
+		body, err := fetch(ctx, WikidotBase+page, wikidotMaxBody)
+		if err != nil {
+			return "", "", Entry{}, err
+		}
+		book, e, err := ParseWikidot(page, body)
+		return book, "", e, err
+	},
+	edition: always("2014"),
+}
 
 var rePage = regexp.MustCompile(`^[a-z0-9-]+(?::[a-z0-9-]+)?$`)
 
@@ -45,123 +55,22 @@ var wikidotClasses = []string{
 // WikidotBase is the address every imported page name is relative to.
 const WikidotBase = "https://" + wikidotHost + "/"
 
-// WikidotPage checks a page name ("lineage:giff") or page URL and returns
-// the page name. Only pages of dnd5e.wikidot.com are accepted: the server
-// fetches them.
-func WikidotPage(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if !strings.Contains(raw, "://") {
-		raw = WikidotBase + strings.TrimPrefix(raw, "/")
-	}
-	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || !strings.EqualFold(u.Hostname(), wikidotHost) || u.Port() != "" {
-		return "", fmt.Errorf("give a page of https://%s", wikidotHost)
-	}
-	page := strings.ToLower(strings.Trim(u.Path, "/"))
-	if !rePage.MatchString(page) {
-		return "", fmt.Errorf("%q is not a wikidot page name", page)
-	}
-	if _, err := wikidotKind(page); err != nil {
-		return "", err
-	}
-	return page, nil
-}
-
-func wikidotKind(page string) (Kind, error) {
+// wikidotKind is the kind of a page, "" for pages read as plain text.
+func wikidotKind(page string) Kind {
 	prefix, _, sub := strings.Cut(page, ":")
 	switch {
 	case !sub && slices.Contains(wikidotClasses, prefix):
-		return KindClass, nil
+		return KindClass
 	case prefix == "lineage" || prefix == "race":
-		return KindSpecies, nil
+		return KindSpecies
 	case prefix == "background":
-		return KindBackground, nil
+		return KindBackground
 	case prefix == "feat":
-		return KindFeat, nil
+		return KindFeat
 	case sub && slices.Contains(wikidotClasses, prefix):
-		return KindSubclass, nil
+		return KindSubclass
 	}
-	return "", errors.New("only class, subclass, lineage, background and feat pages can be imported")
-}
-
-var wikidotClient = &http.Client{
-	Timeout: 15 * time.Second,
-	CheckRedirect: func(req *http.Request, _ []*http.Request) error {
-		if !strings.EqualFold(req.URL.Hostname(), wikidotHost) {
-			return errors.New("redirect off " + wikidotHost)
-		}
-		return nil
-	},
-}
-
-func fetchWikidot(ctx context.Context, page string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+wikidotHost+"/"+page, nil)
-	if err != nil {
-		return nil, err
-	}
-	res, err := wikidotClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", page, err)
-	}
-	defer func() { _ = res.Body.Close() }()
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch %s: %s", page, res.Status)
-	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, wikidotMaxBody+1))
-	if err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", page, err)
-	}
-	if len(body) > wikidotMaxBody {
-		return nil, fmt.Errorf("fetch %s: page too large", page)
-	}
-	return body, nil
-}
-
-// FetchWikidot fetches and parses one page (a name or URL) without saving
-// it, for the GM to review: it returns the page name, its book and entry.
-func FetchWikidot(ctx context.Context, raw string) (page, book string, e Entry, err error) {
-	if page, err = WikidotPage(raw); err != nil {
-		return "", "", Entry{}, err
-	}
-	body, err := fetchWikidot(ctx, page)
-	if err != nil {
-		return "", "", Entry{}, err
-	}
-	book, e, err = ParseWikidot(page, body)
-	return page, book, e, err
-}
-
-// SaveWikidot stores a reviewed page entry as the page's own source and
-// returns that source's key. The slug comes from the page name, so saving
-// the same page again replaces its entry.
-func SaveWikidot(ctx context.Context, store *db.Store, page, book string, e Entry) (string, error) {
-	page, err := WikidotPage(page)
-	if err != nil {
-		return "", err
-	}
-	if kind, _ := wikidotKind(page); e.Kind != kind {
-		return "", fmt.Errorf("%s is a %s page, not a %s", page, kind, e.Kind)
-	}
-	_, sub, _ := strings.Cut(page, ":")
-	e.Slug = Slugify(cmp.Or(sub, page))
-	src := wikidotSource(page, book)
-	body, err := json.Marshal(e)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(body)
-	_, err = storeSource(ctx, store, src, WikidotBase+page, hex.EncodeToString(sum[:]), []Entry{e})
-	return src.Key, err
-}
-
-// WikidotSourceKey is the source key of a page.
-func WikidotSourceKey(page string) string { return WikidotSourcePrefix + page }
-
-func wikidotSource(page, book string) Source {
-	return Source{
-		Key: WikidotSourceKey(page), Edition: "2014", License: "Unverified (third-party wiki copy)",
-		Attribution: strings.TrimSpace(strings.TrimSpace(book) + " via " + WikidotBase + page),
-	}
+	return ""
 }
 
 // block is one piece of page content: a heading, a paragraph or list item
@@ -184,12 +93,9 @@ func (b block) markdown() string {
 }
 
 // ParseWikidot normalizes a fetched page into an entry and returns the book
-// its "Source:" line names.
+// its "Source:" line names. A page of no known kind is read as text.
 func ParseWikidot(page string, body []byte) (string, Entry, error) {
-	kind, err := wikidotKind(page)
-	if err != nil {
-		return "", Entry{}, err
-	}
+	kind := wikidotKind(page)
 	doc, err := html.Parse(strings.NewReader(string(body)))
 	if err != nil {
 		return "", Entry{}, fmt.Errorf("wikidot %s: %w", page, err)

@@ -50,9 +50,13 @@ func Import(ctx context.Context, store *db.Store, dir string) ([]Report, error) 
 		}
 		r := importSource(ctx, store, d.Name(), filepath.Join(dir, d.Name()))
 		reports = append(reports, r)
-	}
-	if err := store.BindMonsterImages(ctx, MonsterImagePrefix); err != nil {
-		return reports, fmt.Errorf("compendium: bind monster images: %w", err)
+		// Only data folders get the guessed picture, also when unchanged.
+		if r.Err != nil {
+			continue
+		}
+		if err := store.BindMonsterImages(ctx, sqlc.BindMonsterImagesParams{Prefix: MonsterImagePrefix, SourceKey: d.Name()}); err != nil {
+			return reports, fmt.Errorf("compendium: bind monster images: %w", err)
+		}
 	}
 	return reports, nil
 }
@@ -201,7 +205,7 @@ func Search(ctx context.Context, q *sqlc.Queries, query, kind, habitat string, c
 }
 
 // HomebrewInput is the homebrew editor form. Each kind uses its own
-// fields: monsters AC, HP and CR; spells the spell fields; items the item,
+// fields: monsters the statblock; spells the spell fields; items the item,
 // weapon and armor fields.
 type HomebrewInput struct {
 	Kind  string `form:"kind"  validate:"required"`
@@ -211,6 +215,31 @@ type HomebrewInput struct {
 	HP    int    `form:"hp"    validate:"min=0,max=10000"`
 	CR    string `form:"cr"    validate:"max=10"`
 	Level int    `form:"level" validate:"min=0,max=9"`
+
+	// Monsters; Speed, Saves and Skills use the text of speedText and
+	// bonusText, the action sections that of ParseTraits. Size, Languages
+	// and Traits are shared with species.
+	MonsterType   string `form:"monster_type"      validate:"max=100"`
+	Alignment     string `form:"alignment"         validate:"max=100"`
+	ACDetail      string `form:"ac_detail"         validate:"max=200"`
+	HitDice       string `form:"hit_dice"          validate:"max=50"`
+	Initiative    int    `form:"initiative"        validate:"min=-10,max=30"`
+	MonsterSpeed  string `form:"monster_speed"     validate:"max=200"`
+	Str           int    `form:"str"               validate:"min=0,max=30"`
+	Dex           int    `form:"dex"               validate:"min=0,max=30"`
+	Con           int    `form:"con"               validate:"min=0,max=30"`
+	Int           int    `form:"int"               validate:"min=0,max=30"`
+	Wis           int    `form:"wis"               validate:"min=0,max=30"`
+	Cha           int    `form:"cha"               validate:"min=0,max=30"`
+	MonsterSaves  string `form:"monster_saves"     validate:"max=300"`
+	MonsterSkills string `form:"monster_skills"   validate:"max=500"`
+	Senses        string `form:"senses"            validate:"max=300"`
+	Resistances   string `form:"resistances"       validate:"max=500"`
+	Immunities    string `form:"immunities"        validate:"max=500"`
+	Actions       string `form:"actions"           validate:"max=100000"`
+	BonusActions  string `form:"bonus_actions"     validate:"max=50000"`
+	Reactions     string `form:"reactions"         validate:"max=50000"`
+	Legendary     string `form:"legendary_actions" validate:"max=50000"`
 
 	School        string `form:"school"         validate:"max=50"`
 	CastingTime   string `form:"casting_time"   validate:"max=100"`
@@ -264,6 +293,12 @@ func HomebrewInputFor(kind, name, desc string, data any) HomebrewInput {
 	switch d := data.(type) {
 	case *MonsterData:
 		in.AC, in.HP, in.CR, in.Desc = d.AC, d.HP, d.CR, d.Desc
+		in.Size, in.MonsterType, in.Alignment, in.ACDetail, in.HitDice, in.Initiative = d.Size, d.Type, d.Alignment, d.ACDetail, d.HitDice, d.Initiative
+		in.MonsterSpeed, in.MonsterSaves, in.MonsterSkills = speedText(d.Speed), bonusText(d.Saves), bonusText(d.Skills)
+		in.Str, in.Dex, in.Con, in.Int, in.Wis, in.Cha = d.Abilities["str"], d.Abilities["dex"], d.Abilities["con"], d.Abilities["int"], d.Abilities["wis"], d.Abilities["cha"]
+		in.Senses, in.Languages, in.Resistances, in.Immunities, in.Traits = d.Senses, d.Languages, d.Resistance, d.Immunity, TraitsText(d.Traits)
+		in.Actions, in.BonusActions = actionsText(d.Actions, actionTypes[0]), actionsText(d.Actions, actionTypes[1])
+		in.Reactions, in.Legendary = actionsText(d.Actions, actionTypes[2]), actionsText(d.Actions, actionTypes[3])
 	case *SpellData:
 		in.Level, in.School, in.CastingTime, in.Range, in.Components, in.Duration = d.Level, d.School, d.CastingTime, d.Range, d.Components, d.Duration
 		in.Concentration, in.Ritual, in.HigherLevel, in.Classes, in.Desc = d.Concentration, d.Ritual, d.HigherLevel, strings.Join(d.Classes, ", "), d.Desc
@@ -309,6 +344,8 @@ func InputForEntry(e Entry) HomebrewInput {
 	case ClassData:
 		data = &d
 	case TextData:
+		data = &d
+	case MonsterData:
 		data = &d
 	}
 	return HomebrewInputFor(string(e.Kind), e.Name, e.Text, data)
@@ -367,7 +404,20 @@ func (in HomebrewInput) Entry() (Entry, error) {
 	}
 	switch e.Kind {
 	case KindMonster:
-		e.Data = MonsterData{AC: in.AC, HP: in.HP, CR: in.CR, Desc: in.Desc}
+		d := MonsterData{
+			Size: strings.TrimSpace(in.Size), Type: strings.TrimSpace(in.MonsterType), Alignment: strings.TrimSpace(in.Alignment),
+			AC: in.AC, ACDetail: strings.TrimSpace(in.ACDetail), HP: in.HP, HitDice: strings.TrimSpace(in.HitDice), Initiative: in.Initiative,
+			Speed: parseSpeed(in.MonsterSpeed), Abilities: map[string]int{}, Saves: parseBonuses(in.MonsterSaves, true), Skills: parseBonuses(in.MonsterSkills, false),
+			CR: in.CR, Senses: in.Senses, Languages: in.Languages, Resistance: in.Resistances, Immunity: in.Immunities,
+			Traits: ParseTraits(in.Traits), Actions: parseActions(in.Actions, in.BonusActions, in.Reactions, in.Legendary), Desc: in.Desc,
+		}
+		for k, v := range map[string]int{"str": in.Str, "dex": in.Dex, "con": in.Con, "int": in.Int, "wis": in.Wis, "cha": in.Cha} {
+			if v > 0 {
+				d.Abilities[k] = v
+			}
+		}
+		e.Data = d
+		e.Text = joinText(in.Desc, d.searchText())
 	case KindSpell:
 		var classes []string
 		for _, c := range strings.Split(in.Classes, ",") {
