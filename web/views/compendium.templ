@@ -15,6 +15,7 @@ import (
 	"gm-session-manager/web/components/spinner"
 	"gm-session-manager/web/components/tabs"
 	"gm-session-manager/web/components/textarea"
+	"gm-session-manager/web/components/tooltip"
 	"gm-session-manager/web/utils"
 	"net/url"
 	"slices"
@@ -559,17 +560,17 @@ templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
 					{ r.Name }
 				}
 			</li>
+		} else if t.CharacterID != 0 {
+			@pickRow(r.ID, templ.Attributes{
+				"hx-post": fmt.Sprintf("/characters/%d/cmd", t.CharacterID), "hx-vals": cmdVals("spell add " + r.Slug),
+				"hx-on::after-request": "if (event.detail.successful) this.disabled = true",
+			}) {
+				{ r.Name }
+			}
 		} else {
 			<li class="flex items-center justify-between gap-2 py-0.5">
 				<a class="truncate hover:underline" { pickerLinkAttrs(t)... } href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", r.ID)) }>{ r.Name }</a>
 				switch  {
-					case t.CharacterID != 0:
-						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{
-							"hx-post": fmt.Sprintf("/characters/%d/cmd", t.CharacterID), "hx-vals": cmdVals("spell add " + r.Slug),
-							"hx-on::after-request": "if (event.detail.successful) { this.disabled = true; this.textContent = 'Added' }",
-						}}) {
-							Add
-						}
 					case t.EntityID != 0:
 						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", t.EntityID), "hx-vals": fmt.Sprintf(`{"entry":"%d"}`, r.ID)}}) {
 							Link
@@ -577,6 +578,25 @@ templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
 				}
 			</li>
 		}
+}
+
+// pickRow is a compendium result that acts when clicked (attrs post the
+// action); hovering it shows the entry, loaded the first time the tooltip
+// shows. The loader sits inside the tooltip: on the row, its hx-target would
+// be inherited by the button.
+templ pickRow(entryID int64, attrs templ.Attributes) {
+	<li>
+		@tooltip.Tooltip() {
+			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start gap-2 truncate disabled:opacity-60", Attributes: with(attrs, tooltip.Trigger(ctx))}) {
+				@icon.Plus(icon.Props{Class: "in-disabled:hidden"})
+				@icon.Check(icon.Props{Class: "hidden in-disabled:block"})
+				{ children... }
+			}
+			@tooltip.Content(tooltip.ContentProps{Class: "flex max-h-80 max-w-sm flex-col overflow-hidden border bg-popover p-0 text-left text-popover-foreground [&>[aria-hidden]]:hidden"}) {
+				<div class="p-2" hx-get={ fmt.Sprintf("/compendium/entries/%d?preview=1", entryID) } hx-trigger="intersect once" hx-swap="outerHTML">Loading…</div>
+			}
+		}
+	</li>
 }
 
 // pickerLinkAttrs opens entries in a new tab from pickers embedded in

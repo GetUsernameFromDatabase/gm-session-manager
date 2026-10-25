@@ -131,3 +131,38 @@ func TestCompendiumWeapon(t *testing.T) {
 		}
 	}
 }
+
+// TestItemLookupByName checks an inventory item finds its compendium entry by
+// name in any case, and a name the compendium lacks gets an empty answer.
+func TestItemLookupByName(t *testing.T) {
+	e := newTestEnv(t)
+	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
+		Kind: "item", Slug: "rapier", Name: "Rapier", SourceKey: "test", BodyText: "rapier",
+		DataJson: `{"category":"weapon","damage":"1d8 piercing","properties":"Finesse, Vex","desc":""}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, auth.RolePlayer)
+	for _, tt := range []struct{ name, want string }{{"rapier", "1d8 piercing"}, {"Lucky pebble", ""}} {
+		w := e.do(t, http.MethodGet, "/compendium/lookup?kind=item&name="+url.QueryEscape(tt.name), player, nil, true)
+		if body := w.Body.String(); w.Code != http.StatusOK || (tt.want == "") != (body == "") || !strings.Contains(body, tt.want) {
+			t.Errorf("%s: %d %q, want %q", tt.name, w.Code, body, tt.want)
+		}
+	}
+}
+
+// TestLanguagesForm checks the languages tab lists each language with its
+// own remove button above the add field, with no separate remove form.
+func TestLanguagesForm(t *testing.T) {
+	e := newTestEnv(t)
+	player := e.token(t, auth.RolePlayer)
+	body := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/builder?verb=profs&op=lang-add", e.characterID), player, nil, true).Body.String()
+	for _, want := range []string{`aria-label="Remove Common"`, "prof remove language", "Add a language"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(body, "Remove language") {
+		t.Error("the separate remove form is still offered")
+	}
+}

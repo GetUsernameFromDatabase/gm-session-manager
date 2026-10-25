@@ -247,15 +247,35 @@ func (a *App) compendiumEntry(c *gin.Context) {
 }
 
 // compendiumLookup is one entry's body found by kind and slug, as a
-// character sheet links them (a spell's details when its row is opened).
+// character sheet links them (a spell's details when its row is opened), or
+// by name, as an inventory names its items. A name that matches nothing
+// gets an empty answer: most items are not in the compendium.
 func (a *App) compendiumLookup(c *gin.Context) {
-	if _, _, ok := a.compendiumReader(c); !ok {
+	_, camp, ok := a.compendiumReader(c)
+	if !ok {
 		return
 	}
-	e, err := a.Store.GetCompendiumEntryBySlug(c.Request.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: c.Query("kind"), Slug: c.Query("slug")})
-	if errors.Is(err, sql.ErrNoRows) {
-		c.String(http.StatusOK, "Not in the compendium.")
-		return
+	ctx := c.Request.Context()
+	kind, name := c.Query("kind"), strings.TrimSpace(c.Query("name"))
+	var e sqlc.CompendiumEntry
+	var err error
+	if name != "" {
+		e, err = a.Store.GetCompendiumEntryByName(ctx, sqlc.GetCompendiumEntryByNameParams{Kind: kind, Name: name})
+		if err == nil {
+			if visible, verr := a.entryVisible(ctx, e, viewerCampaign(camp)); verr != nil || !visible {
+				err = cmp.Or(verr, sql.ErrNoRows)
+			}
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			c.Status(http.StatusOK)
+			return
+		}
+	} else {
+		e, err = a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: c.Query("slug")})
+		if errors.Is(err, sql.ErrNoRows) {
+			c.String(http.StatusOK, "Not in the compendium.")
+			return
+		}
 	}
 	if err != nil {
 		a.serverError(c, err)

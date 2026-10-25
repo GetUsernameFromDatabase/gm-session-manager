@@ -94,7 +94,6 @@ func (s SheetView) builderVerbs() []builderVerb {
 			{"other-add", "Add other", "prof add other", ""},
 			{"other-remove", "Remove other", "prof remove other", ""},
 			{"lang-add", "Add language", "prof add language", ""},
-			{"lang-remove", "Remove language", "prof remove language", ""},
 		}},
 		{"details", "Details", []builderOp{
 			{"set-name", "Name", "set name", ""},
@@ -476,9 +475,44 @@ templ builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) {
 	</form>
 }
 
+// itemDetails shows the chosen inventory item's compendium entry, when one
+// has its name, and follows the item select.
+templ itemDetails() {
+	<div
+		class="max-h-60 overflow-y-auto rounded-md border p-2 text-xs empty:hidden"
+		hx-get="/compendium/lookup?kind=item"
+		hx-vals="js:{name: this.closest('form').elements.subject?.value || ''}"
+		hx-trigger="load, change[target.name==='subject'] from:closest form"
+		hx-swap="innerHTML"
+	></div>
+}
+
 // stayOpen are forms (op key to verb) used several times in a row: after a
 // submit they reload with the sheet's new choices instead of closing the dialog.
-var stayOpen = map[string]string{"feature-remove": "features"}
+var stayOpen = map[string]string{"feature-remove": "features", "lang-add": "profs"}
+
+// removableList shows what a form adds, each name with a button that
+// removes it at once (prefix plus the name as subject).
+templ removableList(s SheetView, prefix string, names []string) {
+	<ul class="flex flex-wrap gap-2">
+		for _, n := range names {
+			<li class="inline-flex items-center gap-1 rounded-full border bg-background py-0.5 pr-0.5 pl-2.5 text-sm">
+				{ n }
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{
+					"aria-label": "Remove " + n, "hx-post": s.cmdURL(),
+					"hx-params":            "prefix,subject",
+					"hx-vals":              toJSON(map[string]string{"prefix": prefix, "subject": n}),
+					"hx-on::after-request": "if (event.detail.successful) this.closest('li').remove()",
+				}}) {
+					@icon.X(icon.Props{Size: 12})
+				}
+			</li>
+		}
+		if len(names) == 0 {
+			<li class="text-sm text-muted-foreground">None yet.</li>
+		}
+	</ul>
+}
 
 // builderDoneJS closes the dialog (or reloads a stayOpen form) after the
 // form's own submit, not after requests from fields inside it.
@@ -576,9 +610,11 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 			@numberField("Quantity", 1, 0, 1, false)
 		case "item-edit":
 			@subjectField("Item", items, "")
+			@itemDetails()
 			@numberField("Count (0 removes it)", 0, 0, values[first], true)
 		case "item-note":
 			@subjectField("Item", items, "")
+			@itemDetails()
 			@textField("Note", "", "", false)
 		case "feature-add":
 			{{ f, mods, suggested := s.featureToEdit(subject, x) }}
@@ -598,7 +634,8 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 		case "other-add":
 			@nameField("Proficiency", "", false)
 		case "lang-add":
-			@nameField("Language", "", false)
+			@removableList(s, "prof remove language", s.C.Sheet.Languages)
+			@nameField("Add a language", "", false)
 		case "weapon-add":
 			if w := s.weapon(subject); w != nil {
 				@weaponFields(s, *w, true)
@@ -967,22 +1004,23 @@ templ compendiumLookup(s SheetView, pick, placeholder string) {
 	</div>
 }
 
-// BuilderPicks are compendium look-up results. Use fills the form in; for
-// armor it puts the armor on at once.
+// BuilderPicks are compendium look-up results. Use fills the form in; a
+// click on armor puts it on at once.
 templ BuilderPicks(characterID int64, pick string, picks []BuilderPick) {
 	for _, p := range picks {
-		<li class="flex items-center justify-between gap-2 py-0.5">
-			<span class="min-w-0 truncate">
-				{ p.Name }
+		if pick == "armor" {
+			@pickRow(p.EntryID, closeAfter(templ.Attributes{
+				"hx-post": fmt.Sprintf("/characters/%d/cmd", characterID), "hx-vals": cmdVals("armor wear " + p.Slug),
+			})) {
+				<span class="truncate">{ p.Name }</span>
 				<span class="text-xs text-muted-foreground">{ p.Detail }</span>
-			</span>
-			if pick == "armor" {
-				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: closeAfter(templ.Attributes{
-					"hx-post": fmt.Sprintf("/characters/%d/cmd", characterID), "hx-vals": cmdVals("armor wear " + p.Slug),
-				})}) {
-					Wear
-				}
-			} else {
+			}
+		} else {
+			<li class="flex items-center justify-between gap-2 py-0.5">
+				<span class="min-w-0 truncate">
+					{ p.Name }
+					<span class="text-xs text-muted-foreground">{ p.Detail }</span>
+				</span>
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{
 					"hx-get":    pickURL(characterID, "weapons", "weapon-add", p),
 					"hx-target": "#builder",
@@ -990,8 +1028,8 @@ templ BuilderPicks(characterID int64, pick string, picks []BuilderPick) {
 				}}) {
 					Use
 				}
-			}
-		</li>
+			</li>
+		}
 	}
 	if len(picks) == 0 {
 		<li class="py-0.5 text-muted-foreground">
@@ -1025,7 +1063,7 @@ templ featurePicker(characterID int64, value string) {
 					"hx-get": fmt.Sprintf("/characters/%d/picks?pick=feature&format=combobox", characterID), "hx-vals": "js:{q: this.value}",
 					"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-list", "hx-swap": "innerHTML",
 				}})
-				@combobox.Content() {
+				@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {
 					@createButton(id)
 					@combobox.List(combobox.ListProps{ID: id + "-list"}) {
 						<template data-combobox-create-item>
@@ -1209,10 +1247,6 @@ func (s SheetView) builderSubjects(key string) ([]selectcomp.ItemData, map[strin
 	case "other-remove":
 		for _, p := range sh.OtherProfs {
 			add(p, p)
-		}
-	case "lang-remove":
-		for _, l := range sh.Languages {
-			add(l, l)
 		}
 	case "slot-use", "slot-restore", "slot-max":
 		for i, sl := range sh.Slots {

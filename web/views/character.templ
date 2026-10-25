@@ -38,6 +38,8 @@ type SheetView struct {
 	Looks []perm.Look
 	// What the viewer may change (see perm.CanCharacter).
 	CanHP, CanConditions, CanSheet bool
+	// CanRevert is set while a level-up can be undone.
+	CanRevert bool
 	// SpellData are the compendium details of the sheet's spells, by slug.
 	SpellData map[string]*compendium.SpellData
 }
@@ -98,6 +100,14 @@ templ CharacterSheet(s SheetView) {
 			if s.CanSheet {
 				<div class="flex items-center gap-3">
 					<a class="text-sm underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d/levelup", s.ID)) }>Level up</a>
+					if s.CanRevert {
+						@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Attributes: templ.Attributes{
+							"hx-post":    fmt.Sprintf("/characters/%d/levelup/revert", s.ID),
+							"hx-confirm": "Revert the last level-up? The sheet goes back to how it was before it: other changes made since (items, spells, slots, notes on the sheet) are lost too. Current HP is kept, up to the old maximum.",
+						}}) {
+							Revert level-up
+						}
+					}
 					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: templ.Attributes{
 						"hx-post":    fmt.Sprintf("/characters/%d/remove", s.ID),
 						"hx-confirm": "Delete " + s.C.Name + "? This logs out every device playing it. The GM can restore it.",
@@ -209,18 +219,7 @@ templ hpCard(s SheetView) {
 					</div>
 				</div>
 				if s.CanHP {
-					<form class="flex items-center gap-2" hx-post={ s.cmdURL() } hx-on::after-request="this.reset()">
-						@input.Input(input.Props{Name: "hp_amount", Type: "number", Class: "w-20", Placeholder: "0", Required: true, Attributes: templ.Attributes{"min": "1", "inputmode": "numeric", "aria-label": "Hit points"}})
-						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "hp_op", "value": "damage"}}) {
-							Damage
-						}
-						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Attributes: templ.Attributes{"name": "hp_op", "value": "heal"}}) {
-							Heal
-						}
-						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "hp_op", "value": "temp"}}) {
-							Temp
-						}
-					</form>
+					@hpQuickForm(s.cmdURL(), false)
 				}
 				<dl class="grid grid-cols-3 gap-x-6 gap-y-1 text-sm sm:grid-cols-4 lg:grid-cols-8">
 					@stat(s, "AC", fmt.Sprint(s.C.Sheet.ArmorClass()), "", edit{"details", "set-ac", ""}) {
@@ -975,7 +974,7 @@ templ itemPicker(id, name, placeholder string, autofocus bool) {
 			"hx-get": "/compendium/search?kind=item&format=combobox", "hx-vals": "js:{q: this.value}",
 			"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-list", "hx-swap": "innerHTML",
 		}})
-		@combobox.Content() {
+		@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {
 			@createButton(id)
 			@combobox.List(combobox.ListProps{ID: id + "-list"}) {
 				<template data-combobox-create-item>

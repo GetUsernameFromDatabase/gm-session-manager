@@ -409,7 +409,7 @@ templ addFieldInput(entityID int64, keys []string) {
 	<div class="max-w-sm" data-add-field>
 		@combobox.Combobox() {
 			@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: "Add a field…", Attributes: templ.Attributes{"maxlength": "100", "aria-label": "Add a field", "data-combobox-create-input": ""}})
-			@combobox.Content() {
+			@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {
 				@createButton(id)
 				@combobox.List() {
 					for _, k := range missingSuggestions(keys) {

@@ -233,6 +233,41 @@ func (q *Queries) GetCompendiumEntry(ctx context.Context, id int64) (CompendiumE
 	return i, err
 }
 
+const getCompendiumEntryByName = `-- name: GetCompendiumEntryByName :one
+SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, is_homebrew, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries
+WHERE kind = ? AND lower(name) = lower(?2)
+ORDER BY scoped, is_homebrew DESC
+LIMIT 1
+`
+
+type GetCompendiumEntryByNameParams struct {
+	Kind string
+	Name string
+}
+
+// GetCompendiumEntryByName finds an entry by name in any case, as an
+// inventory names its items.
+func (q *Queries) GetCompendiumEntryByName(ctx context.Context, arg GetCompendiumEntryByNameParams) (CompendiumEntry, error) {
+	row := q.db.QueryRowContext(ctx, getCompendiumEntryByName, arg.Kind, arg.Name)
+	var i CompendiumEntry
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Slug,
+		&i.Name,
+		&i.SourceKey,
+		&i.DataJson,
+		&i.BodyText,
+		&i.ImageUrl,
+		&i.IsHomebrew,
+		&i.ContentHash,
+		&i.ImportedAt,
+		&i.OwnerCharacterID,
+		&i.Scoped,
+	)
+	return i, err
+}
+
 const getCompendiumEntryBySlug = `-- name: GetCompendiumEntryBySlug :one
 SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, is_homebrew, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries
 WHERE kind = ? AND slug = ?

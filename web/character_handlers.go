@@ -664,11 +664,16 @@ func (a *App) levelUp(c *gin.Context) {
 		choice.Spells = append(choice.Spells, sp)
 	}
 
-	err = a.updateCharacter(ctx, ch.ID, func(_ *sqlc.Queries, dc *dnd5e.Character) error {
+	err = a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
+		before, err := dc.Sheet.JSON()
+		if err != nil {
+			return err
+		}
+		maxHP := dc.MaxHP
 		if err := dc.LevelUp(choice); err != nil {
 			return userError{err}
 		}
-		return nil
+		return q.CreateLevelUp(ctx, sqlc.CreateLevelUpParams{CharacterID: ch.ID, MaxHp: int64(maxHP), SheetJson: before})
 	})
 	var ue userError
 	if errors.As(err, &ue) {
@@ -688,4 +693,37 @@ func (a *App) levelUp(c *gin.Context) {
 	}
 	a.Hub.Publish(ch.CampaignID, hub.Topic{Kind: hub.TopicCharacter, ID: ch.ID})
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/characters/%d", ch.ID))
+}
+
+// revertLevelUp puts back the sheet and max HP from before the latest
+// level-up. Current HP is kept, up to that max.
+func (a *App) revertLevelUp(c *gin.Context) {
+	w, ch, ok := a.characterAccess(c)
+	if !ok {
+		return
+	}
+	if !perm.CanCharacter(w.viewer, ch.ID, perm.ScopeSheet) {
+		a.fail(c, http.StatusForbidden, "Only the player reverts a level-up.")
+		return
+	}
+	ctx := c.Request.Context()
+	err := a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
+		snap, err := q.LatestLevelUp(ctx, ch.ID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return userError{errors.New("there is no level-up to revert")}
+		}
+		if err != nil {
+			return err
+		}
+		if dc.Sheet, err = dnd5e.ParseSheet(snap.SheetJson); err != nil {
+			return err
+		}
+		dc.MaxHP = int(snap.MaxHp)
+		dc.HP = min(dc.HP, dc.MaxHP)
+		return q.DeleteLevelUp(ctx, snap.ID)
+	})
+	if a.commandFailed(c, err) {
+		return
+	}
+	a.characterChanged(c, ch)
 }

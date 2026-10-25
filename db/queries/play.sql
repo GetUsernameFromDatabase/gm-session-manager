@@ -86,10 +86,10 @@ WHERE id = ?;
 -- name: CreateCombatant :one
 INSERT INTO combatants (
     encounter_id, character_id, entity_id, monster_ref, name, initiative,
-    hp, max_hp, ac, sort_order
+    hp, max_hp, ac, hp_visible, sort_order
 ) VALUES (
     sqlc.arg(encounter_id), sqlc.narg(character_id), sqlc.narg(entity_id), sqlc.narg(monster_ref),
-    sqlc.arg(name), sqlc.narg(initiative), sqlc.arg(hp), sqlc.arg(max_hp), sqlc.arg(ac),
+    sqlc.arg(name), sqlc.narg(initiative), sqlc.arg(hp), sqlc.arg(max_hp), sqlc.arg(ac), sqlc.arg(hp_visible),
     (SELECT coalesce(max(o.sort_order), 0) + 1 FROM combatants AS o WHERE o.encounter_id = sqlc.arg(encounter_id))
 )
 RETURNING *;
@@ -107,7 +107,8 @@ SELECT cb.id, cb.encounter_id, cb.character_id, cb.entity_id, cb.monster_ref,
        CAST(coalesce(ch.hp, cb.hp) AS INTEGER)           AS hp,
        CAST(coalesce(ch.max_hp, cb.max_hp) AS INTEGER)   AS max_hp,
        CAST(coalesce(ch.temp_hp, cb.temp_hp) AS INTEGER) AS temp_hp,
-       m.image_url AS monster_image
+       m.image_url AS monster_image, m.data_json AS monster_data,
+       ch.sheet_json, en.is_revealed AS entity_revealed
 FROM combatants AS cb
 LEFT JOIN characters AS ch ON ch.id = cb.character_id
 LEFT JOIN entities AS en ON en.id = cb.entity_id

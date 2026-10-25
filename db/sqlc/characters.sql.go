@@ -9,6 +9,18 @@ import (
 	"context"
 )
 
+const countLevelUps = `-- name: CountLevelUps :one
+SELECT count(*) FROM level_ups
+WHERE character_id = ?
+`
+
+func (q *Queries) CountLevelUps(ctx context.Context, characterID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLevelUps, characterID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCharacter = `-- name: CreateCharacter :one
 INSERT INTO characters (campaign_id, name, system)
 VALUES (?, ?, ?)
@@ -81,6 +93,24 @@ func (q *Queries) CreateCharacterWithSheet(ctx context.Context, arg CreateCharac
 	return i, err
 }
 
+const createLevelUp = `-- name: CreateLevelUp :exec
+
+INSERT INTO level_ups (character_id, max_hp, sheet_json)
+VALUES (?, ?, ?)
+`
+
+type CreateLevelUpParams struct {
+	CharacterID int64
+	MaxHp       int64
+	SheetJson   string
+}
+
+// Level-up snapshots, newest reverted first.
+func (q *Queries) CreateLevelUp(ctx context.Context, arg CreateLevelUpParams) error {
+	_, err := q.db.ExecContext(ctx, createLevelUp, arg.CharacterID, arg.MaxHp, arg.SheetJson)
+	return err
+}
+
 const deleteCharacter = `-- name: DeleteCharacter :exec
 DELETE FROM characters
 WHERE id = ?
@@ -88,6 +118,16 @@ WHERE id = ?
 
 func (q *Queries) DeleteCharacter(ctx context.Context, id int64) error {
 	_, err := q.db.ExecContext(ctx, deleteCharacter, id)
+	return err
+}
+
+const deleteLevelUp = `-- name: DeleteLevelUp :exec
+DELETE FROM level_ups
+WHERE id = ?
+`
+
+func (q *Queries) DeleteLevelUp(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteLevelUp, id)
 	return err
 }
 
@@ -137,6 +177,26 @@ func (q *Queries) GetCharacterAny(ctx context.Context, id int64) (Character, err
 		&i.SheetJson,
 		&i.CreatedAt,
 		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const latestLevelUp = `-- name: LatestLevelUp :one
+SELECT id, character_id, max_hp, sheet_json, created_at FROM level_ups
+WHERE character_id = ?
+ORDER BY id DESC
+LIMIT 1
+`
+
+func (q *Queries) LatestLevelUp(ctx context.Context, characterID int64) (LevelUp, error) {
+	row := q.db.QueryRowContext(ctx, latestLevelUp, characterID)
+	var i LevelUp
+	err := row.Scan(
+		&i.ID,
+		&i.CharacterID,
+		&i.MaxHp,
+		&i.SheetJson,
+		&i.CreatedAt,
 	)
 	return i, err
 }

@@ -109,6 +109,7 @@ func (a *App) Router() *gin.Engine {
 	r.POST("/characters/:character/create/:step", a.wizardSave)
 	r.GET("/characters/:character/levelup", a.levelUpForm)
 	r.POST("/characters/:character/levelup", a.levelUp)
+	r.POST("/characters/:character/levelup/revert", a.revertLevelUp)
 	r.POST("/conditions/:condition/delete", a.deleteCondition)
 
 	// Combat.

@@ -41,6 +41,14 @@ WHERE kind = ? AND slug = ?
 ORDER BY scoped, is_homebrew DESC
 LIMIT 1;
 
+-- GetCompendiumEntryByName finds an entry by name in any case, as an
+-- inventory names its items.
+-- name: GetCompendiumEntryByName :one
+SELECT * FROM compendium_entries
+WHERE kind = ? AND lower(name) = lower(sqlc.arg(name))
+ORDER BY scoped, is_homebrew DESC
+LIMIT 1;
+
 -- Browse, random and search show player homebrew (scoped) only in the
 -- campaigns it is linked to; campaign_id 0 is the GM, who sees it all
 -- (perm.CanSeeEntry).

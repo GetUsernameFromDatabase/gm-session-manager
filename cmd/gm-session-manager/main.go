@@ -109,6 +109,7 @@ func run() error {
 	// Websockets would otherwise keep Shutdown waiting until its timeout.
 	srv.RegisterOnShutdown(app.Close)
 
+	go keepAwake(ctx)
 	errc := make(chan error, 1)
 	go func() {
 		slog.Info("listening", "url", fmt.Sprintf("https://localhost:%d", cfg.Port), "data_dir", cfg.DataDir)

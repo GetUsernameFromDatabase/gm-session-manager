@@ -129,12 +129,13 @@ func (e EncounterView) Hot(st hub.State) {
 	}
 	if e.Encounter.Status == "active" {
 		st["round"] = roundLabel(e.Encounter.Round)
+		st["turn.prev"], st["turn.cur"], st["turn.next"] = e.turnNames()
 	}
 	for _, c := range e.Combatants {
 		st[combatantKey(c, "on")] = c.Active
+		st[combatantKey(c, "down")] = c.down()
 		if c.ShowHP {
 			st[combatantKey(c, "hp")] = fmt.Sprintf("%d/%d", c.HP, c.MaxHP)
-			st[combatantKey(c, "down")] = c.down()
 			if c.TempHP > 0 {
 				st[combatantKey(c, "temp")] = fmt.Sprintf("+%d", c.TempHP)
 			}
@@ -151,7 +152,7 @@ func (e EncounterView) Shape() EncounterView {
 	e.Encounter.Round = 0
 	e.Combatants = slices.Clone(e.Combatants)
 	for i := range e.Combatants {
-		e.Combatants[i].HP, e.Combatants[i].TempHP, e.Combatants[i].Active = 0, 0, false
+		e.Combatants[i].HP, e.Combatants[i].TempHP, e.Combatants[i].Active, e.Combatants[i].Down = 0, 0, false, false
 	}
 	return e
 }
@@ -186,8 +187,7 @@ const exhaustion = "exhaustion"
 
 func dying(s SheetView) bool { return s.C.HP <= 0 && s.C.MaxHP > 0 }
 
-// down reports a combatant at 0 HP or below; one without max HP has no stats.
-func (c CombatantView) down() bool { return c.HP <= 0 && c.MaxHP > 0 }
+func (c CombatantView) down() bool { return c.Down }
 
 func isToggle(slug string) bool { return slices.Contains(dnd5e.Conditions, slug) }
 

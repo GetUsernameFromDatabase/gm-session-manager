@@ -58,3 +58,23 @@ WHERE id = ?;
 -- name: DeleteCharacter :exec
 DELETE FROM characters
 WHERE id = ?;
+
+-- Level-up snapshots, newest reverted first.
+
+-- name: CreateLevelUp :exec
+INSERT INTO level_ups (character_id, max_hp, sheet_json)
+VALUES (?, ?, ?);
+
+-- name: LatestLevelUp :one
+SELECT * FROM level_ups
+WHERE character_id = ?
+ORDER BY id DESC
+LIMIT 1;
+
+-- name: CountLevelUps :one
+SELECT count(*) FROM level_ups
+WHERE character_id = ?;
+
+-- name: DeleteLevelUp :exec
+DELETE FROM level_ups
+WHERE id = ?;

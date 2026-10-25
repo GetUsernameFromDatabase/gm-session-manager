@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"slices"
 	"strconv"
@@ -97,10 +98,20 @@ func (a *App) encounterParam(c *gin.Context) (sqlc.Encounter, bool) {
 }
 
 func (a *App) encounterChanged(c *gin.Context, enc sqlc.Encounter, extra ...hub.Topic) {
-	a.changed(c, enc.CampaignID, append([]hub.Topic{{Kind: hub.TopicEncounter, ID: enc.ID}}, extra...)...)
+	a.encounterNotice(c, enc, "", extra...)
 }
 
-// addCombatant adds a PC, a compendium monster or an NPC entity.
+func (a *App) encounterNotice(c *gin.Context, enc sqlc.Encounter, msg string, extra ...hub.Topic) {
+	a.changedNotice(c, enc.CampaignID, msg, append([]hub.Topic{{Kind: hub.TopicEncounter, ID: enc.ID}}, extra...)...)
+}
+
+// addCombatantForm is the add form's options; count applies to monsters.
+type addCombatantForm struct {
+	Count     int  `form:"count"      validate:"omitempty,min=1,max=20"`
+	HPVisible bool `form:"hp_visible"`
+}
+
+// addCombatant adds a PC, an NPC entity, or one or more compendium monsters.
 func (a *App) addCombatant(c *gin.Context) {
 	enc, ok := a.encounterParam(c)
 	if !ok {
@@ -111,8 +122,13 @@ func (a *App) addCombatant(c *gin.Context) {
 		a.fail(c, http.StatusUnprocessableEntity, "Choose who to add.")
 		return
 	}
+	var form addCombatantForm
+	if !a.bindForm(c, &form) {
+		return
+	}
 	ctx := c.Request.Context()
-	p := sqlc.CreateCombatantParams{EncounterID: enc.ID, Ac: 10}
+	p := sqlc.CreateCombatantParams{EncounterID: enc.ID, Ac: 10, HpVisible: form.HPVisible}
+	count := 1
 	switch c.PostForm("kind") {
 	case "pc":
 		ch, err := a.Store.GetCharacter(ctx, refID)
@@ -124,7 +140,7 @@ func (a *App) addCombatant(c *gin.Context) {
 			a.serverError(c, err)
 			return
 		}
-		p.CharacterID, p.Name, p.Ac = nullID(ch.ID), ch.Name, int64(sheet.AC)
+		p.CharacterID, p.Name, p.Ac = nullID(ch.ID), ch.Name, int64(sheet.ArmorClass())
 	case "entity":
 		e, err := a.Store.GetEntity(ctx, refID)
 		if !a.found(c, err) || !a.sameCampaign(c, e.CampaignID, enc.CampaignID) {
@@ -146,12 +162,27 @@ func (a *App) addCombatant(c *gin.Context) {
 			a.serverError(c, err)
 			return
 		}
-		p.Name = a.uniqueName(ctx, enc.ID, p.Name)
+		count = max(form.Count, 1)
 	default:
 		a.fail(c, http.StatusUnprocessableEntity, "Unknown combatant kind.")
 		return
 	}
-	if _, err := a.Store.CreateCombatant(ctx, p); err != nil {
+	base := p.Name
+	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		for range count {
+			if p.MonsterRef.Valid && !p.EntityID.Valid {
+				var err error
+				if p.Name, err = uniqueName(ctx, q, enc.ID, base); err != nil {
+					return err
+				}
+			}
+			if _, err := q.CreateCombatant(ctx, p); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		a.serverError(c, err)
 		return
 	}
@@ -185,25 +216,89 @@ func (a *App) monsterStats(ctx context.Context, entryID int64, p *sqlc.CreateCom
 }
 
 // uniqueName numbers repeated monsters: Goblin, Goblin 2, Goblin 3.
-func (a *App) uniqueName(ctx context.Context, encounterID int64, name string) string {
-	rows, err := a.Store.ListCombatants(ctx, encounterID)
+func uniqueName(ctx context.Context, q *sqlc.Queries, encounterID int64, name string) (string, error) {
+	rows, err := q.ListCombatants(ctx, encounterID)
 	if err != nil {
-		return name
+		return "", err
 	}
 	taken := func(n string) bool {
 		return slices.ContainsFunc(rows, func(r sqlc.ListCombatantsRow) bool { return r.Name == n })
 	}
 	if !taken(name) {
-		return name
+		return name, nil
 	}
 	for i := 2; ; i++ {
 		if n := fmt.Sprintf("%s %d", name, i); !taken(n) {
-			return n
+			return n, nil
 		}
 	}
 }
 
-// encounterAction runs start, next, end and delete.
+// pcSheet is a PC row's live sheet; ok is false for other combatants.
+func pcSheet(r sqlc.ListCombatantsRow) (dnd5e.Sheet, bool) {
+	if !r.SheetJson.Valid {
+		return dnd5e.Sheet{}, false
+	}
+	s, err := dnd5e.ParseSheet(r.SheetJson.String)
+	return s, err == nil
+}
+
+// initiativeMod is the bonus a combatant adds to its initiative roll: a PC's
+// from the sheet, a monster's (or a statted NPC's) from its statblock.
+func initiativeMod(r sqlc.ListCombatantsRow) int {
+	if s, ok := pcSheet(r); ok {
+		return s.Initiative()
+	}
+	if r.MonsterData.Valid {
+		if d, err := compendium.DecodeData(compendium.KindMonster, r.MonsterData.String); err == nil {
+			return d.(*compendium.MonsterData).Initiative
+		}
+	}
+	return 0
+}
+
+// outOfFight reports a combatant whose turn is skipped: a monster or NPC at
+// 0 HP, or a PC who failed three death saves (a PC at 0 HP still rolls them).
+func outOfFight(r sqlc.ListCombatantsRow) bool {
+	if s, ok := pcSheet(r); ok {
+		return s.DeathSaves.Failures >= 3
+	}
+	return !r.CharacterID.Valid && r.Hp <= 0 && r.MaxHp > 0
+}
+
+// stepTurn moves the turn from index i by dir (1 or -1), past combatants out
+// of the fight, wrapping into the next or previous round. It returns the new
+// index and round and the names it skipped.
+func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int) (int, int64, []string, error) {
+	var skipped []string
+	for range rows {
+		i += dir
+		switch {
+		case i >= len(rows):
+			i, round = 0, round+1
+		case i < 0:
+			i, round = len(rows)-1, round-1
+		}
+		if round < 1 {
+			return 0, 0, nil, userError{errors.New("this is the first turn")}
+		}
+		if !outOfFight(rows[i]) {
+			return i, round, skipped, nil
+		}
+		skipped = append(skipped, rows[i].Name)
+	}
+	return 0, 0, nil, userError{errors.New("everyone is out of the fight")}
+}
+
+// skippedNotice tells the GM whose turns were skipped, and why.
+func skippedNotice(names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("Skipped %d (out of the fight): %s", len(names), strings.Join(names, ", "))
+}
+
+// encounterAction runs start, next, prev, end and delete.
 func (a *App) encounterAction(c *gin.Context) {
 	enc, ok := a.encounterParam(c)
 	if !ok {
@@ -219,19 +314,20 @@ func (a *App) encounterAction(c *gin.Context) {
 		redirect(c, fmt.Sprintf("/campaigns/%d/combat", enc.CampaignID))
 		return
 	}
+	var skipped []string
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		rows, err := q.ListCombatants(ctx, enc.ID)
 		if err != nil {
 			return err
 		}
 		next := sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: enc.Status, Round: enc.Round, ActiveCombatantID: enc.ActiveCombatantID}
-		switch c.Param("action") {
+		switch action := c.Param("action"); action {
 		case "start":
 			if len(rows) == 0 {
 				return userError{errors.New("add combatants first")}
 			}
 			next.Status, next.Round, next.ActiveCombatantID = statusActive, 1, nullID(rows[0].ID)
-		case "next":
+		case "next", "prev":
 			if enc.Status != statusActive || len(rows) == 0 {
 				return userError{errors.New("the encounter is not running")}
 			}
@@ -239,15 +335,20 @@ func (a *App) encounterAction(c *gin.Context) {
 				return userError{errors.New("set everyone's initiative first")}
 			}
 			i := slices.IndexFunc(rows, func(r sqlc.ListCombatantsRow) bool { return r.ID == enc.ActiveCombatantID.Int64 })
-			i++
-			if i >= len(rows) {
-				i = 0
-				next.Round++
+			dir := 1
+			if action == "prev" {
+				dir = -1
+			}
+			if i, next.Round, skipped, err = stepTurn(rows, i, enc.Round, dir); err != nil {
+				return err
 			}
 			next.ActiveCombatantID = nullID(rows[i].ID)
-			// Timed effects end at the start of their creature's turn.
-			if err := q.ExpireTurnConditions(ctx, sqlc.ExpireTurnConditionsParams{Round: sql.NullInt64{Int64: next.Round, Valid: true}, CombatantID: nullID(rows[i].ID)}); err != nil {
-				return err
+			// Timed effects end at the start of their creature's turn; going back
+			// does not restore them.
+			if action == "next" {
+				if err := q.ExpireTurnConditions(ctx, sqlc.ExpireTurnConditionsParams{Round: sql.NullInt64{Int64: next.Round, Valid: true}, CombatantID: nullID(rows[i].ID)}); err != nil {
+					return err
+				}
 			}
 		case "end":
 			next.Status, next.ActiveCombatantID = statusEnded, sql.NullInt64{}
@@ -259,7 +360,7 @@ func (a *App) encounterAction(c *gin.Context) {
 	if a.commandFailed(c, err) {
 		return
 	}
-	a.encounterChanged(c, enc, a.pcTopics(ctx, enc.ID)...)
+	a.encounterNotice(c, enc, skippedNotice(skipped), a.pcTopics(ctx, enc.ID)...)
 }
 
 // pcTopics lists the characters in an encounter, whose sheets show
@@ -301,10 +402,14 @@ func (a *App) combatantAction(c *gin.Context) {
 	switch c.Param("action") {
 	case "initiative":
 		init := sql.NullInt64{}
-		if n, ok := formInt(c, "initiative"); ok {
+		if c.PostForm("roll") != "" {
+			init, err = a.rollInitiative(ctx, cb)
+		} else if n, ok := formInt(c, "initiative"); ok {
 			init = sql.NullInt64{Int64: n, Valid: true}
 		}
-		err = a.Store.SetCombatantInitiative(ctx, sqlc.SetCombatantInitiativeParams{ID: id, Initiative: init})
+		if err == nil {
+			err = a.Store.SetCombatantInitiative(ctx, sqlc.SetCombatantInitiativeParams{ID: id, Initiative: init})
+		}
 	case "hp":
 		err = a.combatantHP(c, cb)
 	case "marker":
@@ -327,6 +432,20 @@ func (a *App) combatantAction(c *gin.Context) {
 		return
 	}
 	a.encounterChanged(c, enc, extra...)
+}
+
+// rollInitiative rolls d20 plus the combatant's initiative bonus: the one
+// roll the app makes, so the GM can set up a fight quickly.
+func (a *App) rollInitiative(ctx context.Context, cb sqlc.Combatant) (sql.NullInt64, error) {
+	rows, err := a.Store.ListCombatants(ctx, cb.EncounterID)
+	if err != nil {
+		return sql.NullInt64{}, err
+	}
+	i := slices.IndexFunc(rows, func(r sqlc.ListCombatantsRow) bool { return r.ID == cb.ID })
+	if i < 0 {
+		return sql.NullInt64{}, sql.ErrNoRows
+	}
+	return sql.NullInt64{Int64: int64(rand.IntN(20) + 1 + initiativeMod(rows[i])), Valid: true}, nil //nolint:gosec // a game die, not a secret
 }
 
 // combatantHP applies damage or healing, or sets HP, temporary HP and a

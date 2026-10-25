@@ -177,6 +177,14 @@ type ImageCategory struct {
 	Name       string
 }
 
+type LevelUp struct {
+	ID          int64
+	CharacterID int64
+	MaxHp       int64
+	SheetJson   string
+	CreatedAt   time.Time
+}
+
 type MonsterHabitat struct {
 	EntryID int64
 	Habitat string

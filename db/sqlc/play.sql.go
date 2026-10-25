@@ -14,10 +14,10 @@ const createCombatant = `-- name: CreateCombatant :one
 
 INSERT INTO combatants (
     encounter_id, character_id, entity_id, monster_ref, name, initiative,
-    hp, max_hp, ac, sort_order
+    hp, max_hp, ac, hp_visible, sort_order
 ) VALUES (
     ?1, ?2, ?3, ?4,
-    ?5, ?6, ?7, ?8, ?9,
+    ?5, ?6, ?7, ?8, ?9, ?10,
     (SELECT coalesce(max(o.sort_order), 0) + 1 FROM combatants AS o WHERE o.encounter_id = ?1)
 )
 RETURNING id, encounter_id, character_id, entity_id, monster_ref, name, initiative, hp, max_hp, temp_hp, ac, hp_visible, sort_order, marker
@@ -33,6 +33,7 @@ type CreateCombatantParams struct {
 	Hp          int64
 	MaxHp       int64
 	Ac          int64
+	HpVisible   bool
 }
 
 // Combatants
@@ -47,6 +48,7 @@ func (q *Queries) CreateCombatant(ctx context.Context, arg CreateCombatantParams
 		arg.Hp,
 		arg.MaxHp,
 		arg.Ac,
+		arg.HpVisible,
 	)
 	var i Combatant
 	err := row.Scan(
@@ -383,7 +385,8 @@ SELECT cb.id, cb.encounter_id, cb.character_id, cb.entity_id, cb.monster_ref,
        CAST(coalesce(ch.hp, cb.hp) AS INTEGER)           AS hp,
        CAST(coalesce(ch.max_hp, cb.max_hp) AS INTEGER)   AS max_hp,
        CAST(coalesce(ch.temp_hp, cb.temp_hp) AS INTEGER) AS temp_hp,
-       m.image_url AS monster_image
+       m.image_url AS monster_image, m.data_json AS monster_data,
+       ch.sheet_json, en.is_revealed AS entity_revealed
 FROM combatants AS cb
 LEFT JOIN characters AS ch ON ch.id = cb.character_id
 LEFT JOIN entities AS en ON en.id = cb.entity_id
@@ -393,21 +396,24 @@ ORDER BY cb.initiative IS NULL, cb.initiative DESC, cb.sort_order
 `
 
 type ListCombatantsRow struct {
-	ID           int64
-	EncounterID  int64
-	CharacterID  sql.NullInt64
-	EntityID     sql.NullInt64
-	MonsterRef   sql.NullInt64
-	Name         string
-	Initiative   sql.NullInt64
-	Ac           int64
-	HpVisible    bool
-	SortOrder    int64
-	Marker       string
-	Hp           int64
-	MaxHp        int64
-	TempHp       int64
-	MonsterImage sql.NullString
+	ID             int64
+	EncounterID    int64
+	CharacterID    sql.NullInt64
+	EntityID       sql.NullInt64
+	MonsterRef     sql.NullInt64
+	Name           string
+	Initiative     sql.NullInt64
+	Ac             int64
+	HpVisible      bool
+	SortOrder      int64
+	Marker         string
+	Hp             int64
+	MaxHp          int64
+	TempHp         int64
+	MonsterImage   sql.NullString
+	MonsterData    sql.NullString
+	SheetJson      sql.NullString
+	EntityRevealed sql.NullBool
 }
 
 // ListCombatants returns the turn order. PC rows carry the character's live
@@ -437,6 +443,9 @@ func (q *Queries) ListCombatants(ctx context.Context, encounterID int64) ([]List
 			&i.MaxHp,
 			&i.TempHp,
 			&i.MonsterImage,
+			&i.MonsterData,
+			&i.SheetJson,
+			&i.EntityRevealed,
 		); err != nil {
 			return nil, err
 		}

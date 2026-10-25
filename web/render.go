@@ -120,12 +120,18 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 	if err != nil {
 		return views.SheetView{}, err
 	}
+	levelUps, err := a.Store.CountLevelUps(ctx, row.ID)
+	if err != nil {
+		return views.SheetView{}, err
+	}
+	canSheet := perm.CanCharacter(v, row.ID, perm.ScopeSheet)
 	return views.SheetView{
 		ID: row.ID, CampaignID: row.CampaignID, Conditions: conds, Looks: perm.VisibleLooks(v, row.ID, looks), SpellData: spells,
 		C:             dnd5e.Character{Name: row.Name, HP: int(row.Hp), MaxHP: int(row.MaxHp), TempHP: int(row.TempHp), Sheet: sheet},
 		CanHP:         perm.CanCharacter(v, row.ID, perm.ScopeHP),
 		CanConditions: perm.CanCharacter(v, row.ID, perm.ScopeConditions),
-		CanSheet:      perm.CanCharacter(v, row.ID, perm.ScopeSheet),
+		CanSheet:      canSheet,
+		CanRevert:     canSheet && levelUps > 0,
 	}, nil
 }
 
@@ -193,9 +199,14 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 	ev := views.EncounterView{Encounter: enc, IsGM: v.IsGM}
 	for _, r := range rows {
 		cv := views.CombatantView{
-			ID: r.ID, Name: r.Name, AC: r.Ac, HPVisible: r.HpVisible, CharacterID: r.CharacterID.Int64,
+			ID: r.ID, Name: r.Name, AC: r.Ac, HPVisible: r.HpVisible, CharacterID: r.CharacterID.Int64, EntityID: r.EntityID.Int64,
+			Kind:   combatantKind(r),
 			IsOwn:  v.IsPlayer() && r.CharacterID.Int64 == v.CharacterID,
 			Active: enc.Status == "active" && enc.ActiveCombatantID.Int64 == r.ID,
+			Out:    outOfFight(r),
+		}
+		if s, ok := pcSheet(r); ok { // the stored AC is from when they joined
+			cv.AC = int64(s.ArmorClass())
 		}
 		if r.Initiative.Valid {
 			cv.Initiative = fmt.Sprint(r.Initiative.Int64)
@@ -204,10 +215,12 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 		if cv.ShowHP {
 			cv.HP, cv.MaxHP, cv.TempHP = r.Hp, r.MaxHp, r.TempHp
 		}
-		if !v.IsGM {
-			cv.AC = 0
+		// One without max HP has no stats, so is never down.
+		cv.Marker, cv.Down = r.Marker, r.Hp <= 0 && r.MaxHp > 0
+		if v.IsGM {
+			cv.Link, cv.InitMod = combatantLink(r), initiativeMod(r)
 		} else {
-			cv.Link, cv.Marker = combatantLink(r), r.Marker
+			cv.AC, cv.Link = 0, playerCombatantLink(v, r, cv.ShowHP)
 		}
 		// The compendium is open to everyone; a visible look below overrides it.
 		cv.Portrait = r.MonsterImage.String
@@ -262,6 +275,34 @@ func combatantLink(r sqlc.ListCombatantsRow) string {
 		return fmt.Sprintf("/compendium/entries/%d", r.MonsterRef.Int64)
 	}
 	return ""
+}
+
+// playerCombatantLink is the page a player may open for a combatant: a sheet
+// they may view, a revealed NPC, or a monster whose HP the GM shows.
+func playerCombatantLink(v perm.Viewer, r sqlc.ListCombatantsRow, showHP bool) string {
+	switch {
+	case r.CharacterID.Valid:
+		if perm.CanCharacter(v, r.CharacterID.Int64, perm.ScopeView) {
+			return combatantLink(r)
+		}
+	case r.EntityID.Valid:
+		if r.EntityRevealed.Bool {
+			return combatantLink(r)
+		}
+	case showHP:
+		return combatantLink(r)
+	}
+	return ""
+}
+
+func combatantKind(r sqlc.ListCombatantsRow) string {
+	switch {
+	case r.CharacterID.Valid:
+		return views.KindPC
+	case r.EntityID.Valid:
+		return views.KindNPC
+	}
+	return views.KindMonster
 }
 
 func (a *App) readableNotes(ctx context.Context, v perm.Viewer, campaignID int64) ([]sqlc.Note, error) {

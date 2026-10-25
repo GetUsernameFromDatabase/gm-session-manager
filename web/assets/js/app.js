@@ -663,6 +663,25 @@
     queueSummary();
   });
 
+  // Switches marked data-remember keep their last setting in this browser,
+  // also across the live refetches that render them afresh.
+  htmx.onLoad((el) =>
+    el.querySelectorAll("[data-remember]").forEach((sw) => {
+      let on = null;
+      try {
+        on = localStorage.getItem("gsm-" + sw.dataset.remember);
+      } catch (_) {}
+      if (on !== null && String(sw.getAttribute("aria-checked") === "true") !== on) sw.click();
+    }),
+  );
+  document.addEventListener("switch-change", (e) => {
+    const key = e.target.dataset && e.target.dataset.remember;
+    if (!key) return;
+    try {
+      localStorage.setItem("gsm-" + key, String(e.detail.checked));
+    } catch (_) {}
+  });
+
   // Times arrive in UTC; show them in this browser's timezone and locale.
   const localTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
   htmx.onLoad((el) =>
@@ -775,6 +794,30 @@
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-combobox-create]");
     if (btn) pickCreate(document.getElementById(btn.dataset.comboboxCreate));
+  });
+  // Closing the list (a click on Add, Tab away) would revert typed text that
+  // names no selection; take it as the name to create instead.
+  let creating = false;
+  document.addEventListener("combobox-open-change", (e) => {
+    if (e.detail.open || creating) return;
+    const sel = "[data-combobox-create-input]";
+    const input = e.target.matches?.(sel) ? e.target : e.target.querySelector?.(sel);
+    const btn = input && createButton(input);
+    const name = input?.value.trim();
+    if (!btn || !name || createItem(btn, name)?.hasAttribute("data-selected")) return;
+    creating = true;
+    try {
+      pickCreate(input); // selects the item, which closes the list itself
+    } finally {
+      creating = false;
+    }
+    e.preventDefault();
+  });
+  // The list opens as soon as the input has focus, not only on a click.
+  document.addEventListener("focusin", (e) => {
+    if (e.target.matches?.("[data-combobox-create-input]")) {
+      e.target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    }
   });
   // Item pickers load their options as the text is typed; once they arrive,
   // filter them against the text and update the create button.

@@ -224,6 +224,11 @@ func redirect(c *gin.Context, url string) {
 // clears the flash (live.js refetches the page's views itself when its
 // websocket is down).
 func (a *App) changed(c *gin.Context, campaignID int64, topics ...hub.Topic) {
+	a.changedNotice(c, campaignID, "", topics...)
+}
+
+// changedNotice is changed with a success message in the flash.
+func (a *App) changedNotice(c *gin.Context, campaignID int64, msg string, topics ...hub.Topic) {
 	a.Hub.Publish(campaignID, topics...)
 	if !isHTMX(c) {
 		back := c.GetHeader("Referer")
@@ -233,7 +238,7 @@ func (a *App) changed(c *gin.Context, campaignID int64, topics ...hub.Topic) {
 		c.Redirect(http.StatusSeeOther, back)
 		return
 	}
-	a.render(c, http.StatusOK, views.Flash("", false))
+	a.render(c, http.StatusOK, views.Flash(msg, false))
 }
 
 // layout fills the frame for a page. Pages that show live data pass a

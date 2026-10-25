@@ -115,10 +115,11 @@ templ ImageResults(v ImagesView) {
 	<div id={ ImageResultsID } class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
 		for _, img := range v.Images {
 			<div class="flex flex-col overflow-hidden rounded-lg border">
-				<a href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ID)) } class="block aspect-video bg-muted">
+				<a href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ID)) } class="relative block aspect-video overflow-hidden bg-muted">
+					// Pinned inside the box, so a tall picture cannot stretch it (Chromium).
 					// flex on an img centers its alt text when the link is broken (Firefox);
 					// a loaded image is unaffected.
-					<img src={ img.Src() } alt={ img.Name } loading="lazy" class="flex items-center justify-center text-center size-full object-contain text-sm text-muted-foreground"/>
+					<img src={ img.Src() } alt={ img.Name } loading="lazy" class="absolute inset-0 flex items-center justify-center text-center size-full object-contain text-sm text-muted-foreground"/>
 				</a>
 				<div class="flex flex-1 flex-col gap-2 p-2">
 					<div class="flex items-start justify-between gap-1">
@@ -323,6 +324,11 @@ templ imageForm(v ImageView) {
 	</form>
 }
 
+// comboEmptyHidden hides a combobox popup with nothing to show (no items, no
+// create button), which would otherwise be a bare ring around the input.
+// invisible, not hidden, so its close transition still ends.
+const comboEmptyHidden = "data-empty:has-[[data-combobox-create][hidden]]:invisible"
+
 // createButton is a create-as-you-type combobox's button: while the text of
 // input inputID names no item, app.js shows it; it adds the text as an item
 // (from the list's template[data-combobox-create-item]) and selects it.
@@ -352,7 +358,7 @@ templ categoryInput(cats []sqlc.ImageCategory, value string) {
 templ createCombobox(id, name, value, placeholder string, maxLen int, names []string) {
 	@combobox.Combobox(combobox.Props{Name: name, DefaultValue: value, Items: comboItems(value, names)}) {
 		@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: placeholder, ShowClear: true, Attributes: templ.Attributes{"maxlength": fmt.Sprint(maxLen), "autocomplete": "off", "data-combobox-create-input": ""}})
-		@combobox.Content() {
+		@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {
 			@createButton(id)
 			@combobox.List() {
 				for _, n := range names {
@@ -440,7 +446,7 @@ templ DisplayPage(campaignID int64) {
 			<script src="/assets/js/app.js"></script>
 		</head>
 		<body class="h-screen overflow-hidden bg-black" data-campaign={ fmt.Sprint(campaignID) }>
-			<img id="display-image" hidden alt="" class="flex items-center justify-center text-center size-full object-contain text-2xl text-white/70"/>
+			<img id="display-image" hidden alt="" class="absolute inset-0 flex items-center justify-center text-center size-full object-contain text-2xl text-white/70"/>
 		</body>
 	</html>
 }

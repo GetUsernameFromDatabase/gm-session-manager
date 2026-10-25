@@ -3,16 +3,22 @@ package views
 import (
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 
 	"gm-session-manager/db/sqlc"
 	"gm-session-manager/dnd5e"
+	"gm-session-manager/web/components/alert"
 	"gm-session-manager/web/components/badge"
 	"gm-session-manager/web/components/button"
 	"gm-session-manager/web/components/dialog"
 	"gm-session-manager/web/components/field"
 	"gm-session-manager/web/components/icon"
 	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/inputgroup"
 	selectcomp "gm-session-manager/web/components/select"
+	switchcomp "gm-session-manager/web/components/switch"
+	"gm-session-manager/web/components/tabs"
 	"gm-session-manager/web/components/tooltip"
 	"gm-session-manager/web/utils"
 )
@@ -35,10 +41,19 @@ type CombatantView struct {
 	ShowHP      bool
 	HPVisible   bool
 	CharacterID int64
-	IsOwn       bool
-	Active      bool
-	Conditions  []sqlc.Condition
-	// Link is the combatant's source page, GM only.
+	EntityID    int64
+	// Kind is the type of being: KindPC, KindNPC or KindMonster.
+	Kind       string
+	IsOwn      bool
+	Active     bool
+	Conditions []sqlc.Condition
+	// Out is a combatant out of the fight, whose turn is skipped.
+	Out bool
+	// Down is at 0 HP, shown to everyone even when the HP is hidden.
+	Down bool
+	// InitMod is the initiative roll's bonus, GM only.
+	InitMod int
+	// Link is the combatant's source page, when the viewer may open it.
 	Link string
 	// Portrait is a character's or NPC's current look, when the viewer may see
 	// it, else the compendium monster's picture.
@@ -57,6 +72,22 @@ type EncounterView struct {
 	Entities   []sqlc.Entity
 }
 
+// Combatant kinds, the type of being shown on each row.
+const (
+	KindPC      = "pc"
+	KindNPC     = "npc"
+	KindMonster = "monster"
+)
+
+// kindLabel and kindTint set the kinds apart, as visibility does note blocks.
+var (
+	kindLabel = map[string]string{KindPC: "PC", KindNPC: "NPC", KindMonster: "Monster"}
+	kindTint  = map[string]string{KindPC: "border-l-sky-400/60", KindNPC: "border-l-amber-400/60", KindMonster: "border-l-rose-400/60"}
+	kindGroup = map[string]string{KindPC: "PCs", KindNPC: "NPCs", KindMonster: "Monsters"}
+	kindBorder = map[string]string{KindPC: "border-sky-400/60", KindNPC: "border-amber-400/60", KindMonster: "border-rose-400/60"}
+	kindDot   = map[string]string{KindPC: "bg-sky-400/60", KindNPC: "bg-amber-400/60", KindMonster: "bg-rose-400/60"}
+)
+
 // CombatView is the combat page.
 type CombatView struct {
 	CampaignID int64
@@ -69,7 +100,8 @@ type CombatView struct {
 
 templ CombatPage(l Layout, v CombatView) {
 	@Page(l) {
-		@PageHeader("Combat", "")
+		// The navbar already says where we are; the list needs the room.
+		<h1 class="sr-only">Combat</h1>
 		if v.IsGM {
 			@EncounterList(v.CampaignID, v.Encounters, currentID(v))
 		}
@@ -170,9 +202,6 @@ templ Encounter(e EncounterView) {
 									Start
 								}
 							case "active":
-								@button.Button(button.Props{Size: button.SizeSm, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("next"), "title": utils.IfElse(e.initiativeSet(), "", "Set everyone's initiative first")}}) {
-									Next turn
-								}
 								@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": e.url("end")}}) {
 									End
 								}
@@ -187,75 +216,72 @@ templ Encounter(e EncounterView) {
 					</div>
 				}
 			</div>
-			<ol class="divide-y rounded-lg border">
-				for _, c := range e.Combatants {
-					@combatantRow(e, c)
+			if e.IsGM && e.Encounter.Status != "ended" && !e.initiativeSet() {
+				@alert.Alert(alert.Props{Class: "*:[svg]:translate-y-0 *:[svg]:self-center border-amber-500/50 bg-amber-500/10 text-amber-800 *:data-[slot=alert-description]:text-amber-800/90 dark:text-amber-300 dark:*:data-[slot=alert-description]:text-amber-300/90"}) {
+					@icon.TriangleAlert()
+					@alert.Title() {
+						Next turn needs everyone's initiative
+					}
+					@alert.Description() {
+						Missing: { strings.Join(e.missingInitiative(), ", ") }
+					}
 				}
-				if len(e.Combatants) == 0 {
-					<li class="p-3 text-sm text-muted-foreground">No combatants yet.</li>
-				}
-			</ol>
+			}
+			if e.Encounter.Status == "active" {
+				@turnCard(e)
+			}
 			if e.IsGM {
+				<ol class="max-h-[max(14rem,calc(100dvh-26rem))] divide-y overflow-y-auto rounded-lg border">
+					for _, c := range e.Combatants {
+						@combatantRow(e, c)
+					}
+					if len(e.Combatants) == 0 {
+						<li class="p-3 text-sm text-muted-foreground">No combatants yet.</li>
+					}
+				</ol>
 				@addCombatants(e)
+			} else {
+				for _, c := range e.Combatants {
+					if c.IsOwn {
+						@ownCombatant(c)
+					}
+				}
+				for _, g := range e.playerGroups() {
+					<section class="space-y-2">
+						<h3 class="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+							<span class={ "size-2 rounded-full", kindDot[g.Kind] }></span>
+							{ g.Label }
+						</h3>
+						<ul class="flex flex-wrap gap-2">
+							for _, c := range g.Cards {
+								@combatantChip(c)
+							}
+						</ul>
+					</section>
+				}
 			}
 		}
 	</section>
 }
 
+// combatantRow is one line of the GM's turn order.
 templ combatantRow(e EncounterView, c CombatantView) {
-	<li
-		class="group/row space-y-2 p-3 data-[active=true]:bg-accent data-[down=true]:bg-rose-500/10"
-		data-active={ fmt.Sprint(c.Active) }
-		if c.ShowHP {
-			data-down={ fmt.Sprint(c.down()) }
-			{ bind("data-active="+combatantKey(c, "on"), "data-down="+combatantKey(c, "down"))... }
-		} else {
-			{ bind("data-active="+combatantKey(c, "on"))... }
-		}
-	>
+	<li class={ "group/row space-y-2 border-l-4 p-3 data-[active=true]:bg-accent data-[down=true]:bg-rose-500/10", kindTint[c.Kind] } { combatantState(c)... }>
 		<div class="flex items-center gap-3">
-			<span class="w-10 text-center font-mono tabular-nums">
-				if e.IsGM {
-					@input.Input(input.Props{Name: "initiative", Value: c.Initiative, Class: "h-7 w-10 px-1 text-center", Attributes: templ.Attributes{
-						"inputmode": "numeric", "aria-label": "Initiative",
-						"hx-post": fmt.Sprintf("/combatants/%d/initiative", c.ID), "hx-trigger": "change",
-					}})
-				} else {
-					{ c.Initiative }
-				}
-			</span>
-			if c.Portrait != "" {
-				<img src={ c.Portrait } alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" class="size-6 shrink-0 rounded-full border object-cover"/>
-			}
+			@initiativeInput(c)
+			@portrait(c, "size-6")
 			<span class="min-w-0 flex-1">
-				if c.Link != "" {
-					<a href={ templ.SafeURL(c.Link) } target="_blank" class="hover:underline group-data-[active=true]/row:font-semibold">{ c.Name }</a>
-				} else {
-					<span class={ "group-data-[active=true]/row:font-semibold", templ.KV("font-semibold", c.IsOwn) }>{ c.Name }</span>
-				}
-				<span hidden?={ !c.Active } { bind("show="+combatantKey(c, "on"))... }>
-					@badge.Badge() {
-						Turn
-					}
-				</span>
-				if c.ShowHP {
-					<span hidden?={ !c.down() } { bind("show="+combatantKey(c, "down"))... }>
-						@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
-							@icon.Skull()
-							Down
-						}
-					</span>
-				}
+				@combatantName(c)
+				@beingBadge(c)
+				@turnBadges(c)
 			</span>
-			if e.IsGM {
-				@input.Input(input.Props{Name: "marker", Value: c.Marker, Placeholder: "Marker", Class: "h-7 w-28", Attributes: templ.Attributes{
-					"aria-label": "Table marker", "title": "Which piece on the table, e.g. mini 5", "maxlength": fmt.Sprint(MaxMarker),
-					"hx-post": fmt.Sprintf("/combatants/%d/marker", c.ID), "hx-trigger": "change",
-				}})
-				<span class="text-sm text-muted-foreground">AC { fmt.Sprint(c.AC) }</span>
-				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{"aria-label": "Remove combatant", "hx-post": fmt.Sprintf("/combatants/%d/delete", c.ID)}}) {
-					@icon.X()
-				}
+			@input.Input(input.Props{Name: "marker", Value: c.Marker, Placeholder: "Marker", Class: "h-7 w-28", Attributes: templ.Attributes{
+				"aria-label": "Table marker", "title": "Which piece on the table, e.g. mini 5", "maxlength": fmt.Sprint(MaxMarker),
+				"hx-post": fmt.Sprintf("/combatants/%d/marker", c.ID), "hx-trigger": "change",
+			}})
+			<span class="text-sm text-muted-foreground">AC { fmt.Sprint(c.AC) }</span>
+			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{"aria-label": "Remove combatant", "hx-post": fmt.Sprintf("/combatants/%d/delete", c.ID)}}) {
+				@icon.X()
 			}
 		</div>
 		<div class="grid gap-2 sm:ml-13 sm:grid-cols-[auto_1fr]">
@@ -264,22 +290,18 @@ templ combatantRow(e EncounterView, c CombatantView) {
 					@icon.Heart(icon.Props{Size: 14})
 					HP
 				</span>
-				if e.IsGM {
-					@hpDialog(c)
-					@tooltip.Tooltip() {
-						@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: with(templ.Attributes{"aria-label": visibleTitle(c.HPVisible), "hx-post": fmt.Sprintf("/combatants/%d/visible", c.ID)}, tooltip.Trigger(ctx))}) {
-							if c.HPVisible {
-								@icon.Eye()
-							} else {
-								@icon.EyeOff()
-							}
-						}
-						@tooltip.Content() {
-							{ visibleTitle(c.HPVisible) }
+				@hpDialog(c)
+				@tooltip.Tooltip() {
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: with(templ.Attributes{"aria-label": visibleTitle(c.HPVisible), "hx-post": fmt.Sprintf("/combatants/%d/visible", c.ID)}, tooltip.Trigger(ctx))}) {
+						if c.HPVisible {
+							@icon.Eye()
+						} else {
+							@icon.EyeOff()
 						}
 					}
-				} else {
-					@hpText(c)
+					@tooltip.Content() {
+						{ visibleTitle(c.HPVisible) }
+					}
 				}
 			</div>
 			<div class="flex flex-wrap items-center gap-2 rounded-md border border-l-4 border-l-violet-500 bg-violet-500/5 px-2 py-1.5">
@@ -288,25 +310,151 @@ templ combatantRow(e EncounterView, c CombatantView) {
 					Conditions
 				</span>
 				for _, cond := range c.Conditions {
-					@tooltip.Tooltip() {
-						<span class="inline-flex items-center gap-1 rounded-full border bg-background px-1.5 text-xs capitalize" { tooltip.Trigger(ctx)... }>
-							{ conditionLabel(cond) }
-							if e.IsGM || c.IsOwn {
-								@removeButton(fmt.Sprintf("/conditions/%d/delete", cond.ID))
-							}
-						</span>
-						@conditionTip(cond.Slug)
-					}
+					@combatCondition(cond, true)
 				}
-				if len(c.Conditions) == 0 && !e.IsGM {
-					<span class="text-xs text-muted-foreground">None</span>
-				}
-				if e.IsGM {
-					@conditionDialog(c)
-				}
+				@conditionDialog(c)
 			</div>
 		</div>
 	</li>
+}
+
+// ownCombatant is the player's own character in the fight: HP to change
+// and conditions to end, above everyone else.
+templ ownCombatant(c CombatantView) {
+	<div class={ "group/row space-y-3 rounded-lg border border-l-4 p-3 data-[active=true]:bg-accent data-[down=true]:bg-rose-500/10", kindTint[c.Kind] } { combatantState(c)... }>
+		<div class="flex items-center gap-3">
+			@portrait(c, "size-10")
+			<div class="min-w-0 flex-1">
+				<div class="flex flex-wrap items-center gap-1">
+					@combatantName(c)
+					@markerText(c)
+					@turnBadges(c)
+				</div>
+				<div class="text-lg">
+					@hpText(c)
+				</div>
+			</div>
+		</div>
+		@hpQuickForm(fmt.Sprintf("/characters/%d/cmd", c.CharacterID), true)
+		@conditionList(c.Conditions, true)
+	</div>
+}
+
+// combatantChip is someone else in the fight as a player sees it: one pill
+// in a wrapping row, coloured by type, with no initiative.
+templ combatantChip(c CombatantView) {
+	<li class={ "group/row inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-2xl border py-0.5 pr-2.5 pl-0.5 text-sm data-[active=true]:bg-accent data-[down=true]:bg-rose-500/10", kindBorder[c.Kind], templ.KV("pl-2.5", c.Portrait == "") } { combatantState(c)... }>
+		@portrait(c, "size-6")
+		<span class="min-w-0 truncate">
+			@combatantName(c)
+		</span>
+		@turnBadge(c)
+		@markerText(c)
+		@hpShort(c)
+		@downBadge(c)
+		for _, cond := range c.Conditions {
+			@combatCondition(cond, false)
+		}
+	</li>
+}
+
+// markerText names the piece on the table that stands for the combatant.
+templ markerText(c CombatantView) {
+	if c.Marker != "" {
+		<span class="inline-flex items-center gap-0.5 text-xs text-muted-foreground" title="Table marker">
+			@icon.Tag(icon.Props{Size: 12})
+			{ c.Marker }
+		</span>
+	}
+}
+
+// hpShort is HP with a heart, when the viewer may see it.
+templ hpShort(c CombatantView) {
+	if c.ShowHP {
+		<span class="inline-flex items-center gap-0.5 text-xs">
+			@icon.Heart(icon.Props{Size: 12, Class: "text-rose-600"})
+			@hpText(c)
+		</span>
+	}
+}
+
+// conditionList marks a combatant's conditions as such, in the violet the
+// GM's conditions box uses.
+templ conditionList(conds []sqlc.Condition, removable bool) {
+	if len(conds) > 0 {
+		<div class="flex flex-wrap items-center gap-1">
+			@icon.Sparkles(icon.Props{Size: 14, Class: "text-violet-600", Attributes: templ.Attributes{"role": "img", "aria-label": "Conditions"}})
+			for _, cond := range conds {
+				@combatCondition(cond, removable)
+			}
+		</div>
+	}
+}
+
+// combatantState marks whose turn it is and who is down; live updates flip
+// these attributes.
+func combatantState(c CombatantView) templ.Attributes {
+	a := templ.Attributes{"data-active": fmt.Sprint(c.Active), "data-down": fmt.Sprint(c.down())}
+	return with(a, bind("data-active="+combatantKey(c, "on"), "data-down="+combatantKey(c, "down")))
+}
+
+templ portrait(c CombatantView, size string) {
+	if c.Portrait != "" {
+		<img src={ c.Portrait } alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" class={ "shrink-0 rounded-full border object-cover", size }/>
+	}
+}
+
+// combatantName links the combatant's page when the viewer may open it.
+templ combatantName(c CombatantView) {
+	if c.Link != "" {
+		<a href={ templ.SafeURL(c.Link) } target="_blank" class="hover:underline group-data-[active=true]/row:font-semibold">{ c.Name }</a>
+	} else {
+		<span class={ "group-data-[active=true]/row:font-semibold", templ.KV("font-semibold", c.IsOwn) }>{ c.Name }</span>
+	}
+}
+
+templ beingBadge(c CombatantView) {
+	@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+		{ kindLabel[c.Kind] }
+	}
+}
+
+// turnBadges show whose turn it is and who is down.
+templ turnBadges(c CombatantView) {
+	@turnBadge(c)
+	@downBadge(c)
+}
+
+templ turnBadge(c CombatantView) {
+	<span hidden?={ !c.Active } { bind("show="+combatantKey(c, "on"))... }>
+		@badge.Badge() {
+			Turn
+		}
+	</span>
+}
+
+// downBadge shows to everyone, as being down is no secret even when HP is.
+templ downBadge(c CombatantView) {
+	<span hidden?={ !c.down() } { bind("show="+combatantKey(c, "down"))... }>
+		@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
+			@icon.Skull()
+			Down
+		}
+	</span>
+}
+
+// combatCondition is a condition with its summary on hover, and a remove
+// button for those who may end it.
+templ combatCondition(cond sqlc.Condition, removable bool) {
+	@tooltip.Tooltip() {
+		<span class="inline-flex items-center gap-1 rounded-full border border-violet-500/40 bg-violet-500/10 px-1.5 text-xs capitalize" { tooltip.Trigger(ctx)... }>
+			{ conditionLabel(cond) }
+			if removable {
+				@removeButton(fmt.Sprintf("/conditions/%d/delete", cond.ID))
+			}
+		</span>
+		@conditionTip(cond.Slug)
+	}
 }
 
 // conditionDialog is the GM's add-condition button and form for one
@@ -380,6 +528,79 @@ templ hpText(c CombatantView) {
 			<span class="text-muted-foreground" title="HP hidden">—</span>
 		}
 	</span>
+}
+
+// hpQuickForm damages, heals or adds temporary HP through a character's
+// commands: on the sheet, and on the player's own row in combat (compact).
+templ hpQuickForm(cmdURL string, compact bool) {
+	{{ size := utils.IfElse(compact, button.SizeXs, button.SizeSm) }}
+	<form class="flex items-center gap-2" hx-post={ cmdURL } hx-on::after-request="this.reset()">
+		@input.Input(input.Props{Name: "hp_amount", Type: "number", Class: utils.IfElse(compact, "h-6 w-16", "w-20"), Placeholder: "0", Required: true, Attributes: templ.Attributes{"min": "1", "inputmode": "numeric", "aria-label": "Hit points"}})
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: size, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "hp_op", "value": "damage"}}) {
+			Damage
+		}
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: size, Attributes: templ.Attributes{"name": "hp_op", "value": "heal"}}) {
+			Heal
+		}
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: size, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "hp_op", "value": "temp"}}) {
+			Temp
+		}
+	</form>
+}
+
+// initiativeInput is the GM's initiative field, with a button that rolls
+// d20 plus the combatant's bonus.
+templ initiativeInput(c CombatantView) {
+	{{ url := fmt.Sprintf("/combatants/%d/initiative", c.ID) }}
+	@inputgroup.InputGroup(inputgroup.Props{Class: utils.CN("h-7 w-24 shrink-0", utils.IfElse(c.Initiative == "", "ring-2 ring-amber-500/60", ""))}) {
+		@inputgroup.Input(inputgroup.InputProps{Name: "initiative", Value: c.Initiative, Class: "px-1 text-center font-mono tabular-nums", Attributes: templ.Attributes{
+			"inputmode": "numeric", "aria-label": "Initiative", "hx-post": url, "hx-trigger": "change",
+		}})
+		// Rolling is for setting it; a set initiative is changed by typing.
+		if c.Initiative == "" {
+			@inputgroup.Addon(inputgroup.AddonProps{Align: inputgroup.AlignInlineEnd}) {
+				@inputgroup.Button(inputgroup.ButtonProps{Size: inputgroup.ButtonSizeXs, Variant: button.VariantGhost, Attributes: templ.Attributes{
+					"aria-label": fmt.Sprintf("Roll initiative (d20%+d)", c.InitMod), "title": fmt.Sprintf("Roll d20%+d", c.InitMod),
+					"hx-post": url, "hx-vals": `{"roll":"1"}`,
+				}}) {
+					@icon.Dices()
+					<span class="font-mono text-xs">{ fmt.Sprintf("%+d", c.InitMod) }</span>
+				}
+			}
+		}
+	}
+}
+
+// turnCard shows whose turn it was, is and comes next, with the GM's
+// buttons to move it. The names are bound, so a turn change patches them.
+templ turnCard(e EncounterView) {
+	{{ prev, cur, next := e.turnNames() }}
+	<div class="flex items-center gap-2 rounded-lg border p-2">
+		if e.IsGM {
+			@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("prev"), "aria-label": "Previous turn"}}) {
+				@icon.ChevronLeft()
+				<span class="max-sm:hidden">Previous</span>
+			}
+		}
+		<div class="grid min-w-0 flex-1 grid-cols-3 gap-2 text-center text-sm">
+			@turnSlot("Previous", prev, "turn.prev", "text-muted-foreground")
+			@turnSlot("Now", cur, "turn.cur", "font-semibold")
+			@turnSlot("Next", next, "turn.next", "text-muted-foreground")
+		</div>
+		if e.IsGM {
+			@button.Button(button.Props{Size: button.SizeSm, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("next"), "aria-label": "Next turn"}}) {
+				<span class="max-sm:hidden">Next turn</span>
+				@icon.ChevronRight()
+			}
+		}
+	</div>
+}
+
+templ turnSlot(label, name, key, class string) {
+	<div class="min-w-0">
+		<div class="text-xs text-muted-foreground">{ label }</div>
+		<div class={ "truncate", class } { bind("text="+key)... }>{ name }</div>
+	</div>
 }
 
 // hpDialog is the GM's HP button: it opens a form to set HP, max HP (a
@@ -477,8 +698,83 @@ func (c CombatantView) hpCap() int64 {
 
 // initiativeSet reports whether every combatant has an initiative, which
 // next turn needs to follow the order.
-func (e EncounterView) initiativeSet() bool {
-	return !slices.ContainsFunc(e.Combatants, func(c CombatantView) bool { return c.Initiative == "" })
+func (e EncounterView) initiativeSet() bool { return len(e.missingInitiative()) == 0 }
+
+// missingInitiative names the combatants without an initiative.
+func (e EncounterView) missingInitiative() []string {
+	var names []string
+	for _, c := range e.Combatants {
+		if c.Initiative == "" {
+			names = append(names, c.Name)
+		}
+	}
+	return names
+}
+
+// turnNames are the previous, current and next combatants in the fight,
+// passing over those out of it as next turn does.
+func (e EncounterView) turnNames() (prev, cur, next string) {
+	n := len(e.Combatants)
+	i := slices.IndexFunc(e.Combatants, func(c CombatantView) bool { return c.Active })
+	if i < 0 {
+		return "", "", ""
+	}
+	near := func(dir int) string {
+		for k := 1; k < n; k++ {
+			if c := e.Combatants[((i+dir*k)%n+n)%n]; !c.Out {
+				return c.Name
+			}
+		}
+		return ""
+	}
+	return near(-1), e.Combatants[i].Name, near(1)
+}
+
+// combatantGroup is one kind of being in a player's grid.
+type combatantGroup struct {
+	Kind, Label string
+	Cards       []CombatantView
+}
+
+// playerGroups are the others in the fight grouped by kind and sorted by
+// name, so the grid does not give the initiative order away.
+func (e EncounterView) playerGroups() []combatantGroup {
+	var groups []combatantGroup
+	for _, kind := range []string{KindPC, KindNPC, KindMonster} {
+		g := combatantGroup{Kind: kind, Label: kindGroup[kind]}
+		for _, c := range e.Combatants {
+			if c.Kind == kind && !c.IsOwn {
+				g.Cards = append(g.Cards, c)
+			}
+		}
+		if len(g.Cards) == 0 {
+			continue
+		}
+		slices.SortStableFunc(g.Cards, func(a, b CombatantView) int {
+			ab, an := nameKey(a.Name)
+			bb, bn := nameKey(b.Name)
+			if c := strings.Compare(strings.ToLower(ab), strings.ToLower(bb)); c != 0 {
+				return c
+			}
+			return an - bn
+		})
+		groups = append(groups, g)
+	}
+	return groups
+}
+
+// nameKey splits a trailing number off a name, so "Bandit 2" sorts before
+// "Bandit 10".
+func nameKey(name string) (string, int) {
+	i := strings.LastIndexByte(name, ' ')
+	if i < 0 {
+		return name, 0
+	}
+	n, err := strconv.Atoi(name[i+1:])
+	if err != nil {
+		return name, 0
+	}
+	return name[:i], n
 }
 
 // customToggleJS makes the note required, and says why, while "custom…" is
@@ -559,38 +855,88 @@ func conditionLabel(c sqlc.Condition) string {
 	return label
 }
 
+// addCombatants is the GM's add form, a tab per type of being. PCs and NPCs
+// already in the fight are marked but may be added again.
 templ addCombatants(e EncounterView) {
 	{{ var pcs, npcs []selectcomp.ItemData }}
 	for _, ch := range e.Characters {
-		{{ pcs = append(pcs, selectcomp.ItemData{Value: fmt.Sprint(ch.ID), Label: ch.Name}) }}
+		{{ pcs = append(pcs, selectcomp.ItemData{Value: fmt.Sprint(ch.ID), Label: ch.Name + inFightSuffix(e.inFight(func(c CombatantView) bool { return c.CharacterID == ch.ID }))}) }}
 	}
 	for _, en := range e.Entities {
-		{{ npcs = append(npcs, selectcomp.ItemData{Value: fmt.Sprint(en.ID), Label: en.Name}) }}
+		{{ npcs = append(npcs, selectcomp.ItemData{Value: fmt.Sprint(en.ID), Label: en.Name + inFightSuffix(e.inFight(func(c CombatantView) bool { return c.EntityID == en.ID }))}) }}
 	}
-	<div class="grid gap-3 md:grid-cols-3">
-		@addCombatantForm(e, "pc", "Add PC", pcs)
-		@addCombatantForm(e, "entity", "Add NPC", npcs)
-		// Results float above the input while it (or a result) has focus; the
-		// list is focusable so a click on a result keeps focus inside (Safari).
-		<div class="group/monster relative">
-			@input.Input(input.Props{Type: "search", Name: "q", Placeholder: "Add a monster…", Attributes: templ.Attributes{
-				"autocomplete": "off",
-				"hx-get":       fmt.Sprintf("/compendium/search?kind=monster&encounter=%d", e.Encounter.ID),
-				"hx-trigger":   "input changed delay:200ms, search",
-				"hx-target":    "next ul",
-				"hx-swap":      "innerHTML",
-			}})
-			<ul tabindex="-1" class="absolute bottom-full z-10 mb-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow outline-none empty:hidden not-group-focus-within/monster:hidden"></ul>
-		</div>
-	</div>
+	@tabs.Tabs(tabs.Props{ID: fmt.Sprintf("add-combatant-%d", e.Encounter.ID), DefaultValue: KindMonster}) {
+		@tabs.List(tabs.ListProps{Class: "w-fit"}) {
+			@tabs.Trigger(tabs.TriggerProps{Value: KindPC}) {
+				PC
+			}
+			@tabs.Trigger(tabs.TriggerProps{Value: KindNPC}) {
+				NPC
+			}
+			@tabs.Trigger(tabs.TriggerProps{Value: KindMonster}) {
+				Monster
+			}
+		}
+		@tabs.Content(tabs.ContentProps{Value: KindPC}) {
+			@addCombatantForm(e, "pc", KindPC, "Add PC", pcs)
+		}
+		@tabs.Content(tabs.ContentProps{Value: KindNPC}) {
+			@addCombatantForm(e, "entity", KindNPC, "Add NPC", npcs)
+		}
+		@tabs.Content(tabs.ContentProps{Value: KindMonster}) {
+			// The result buttons post this form's count and HP switch with the
+			// monster; Enter in the search must not submit it.
+			<form class="flex flex-wrap items-center gap-3" onsubmit="event.preventDefault()">
+				// Results float above the input while it (or a result) has focus; the
+				// list is focusable so a click on a result keeps focus inside (Safari).
+				<div class="group/monster relative min-w-0 flex-1">
+					@input.Input(input.Props{Type: "search", Name: "q", Placeholder: "Search monsters…", Attributes: templ.Attributes{
+						"autocomplete": "off",
+						"hx-get":       fmt.Sprintf("/compendium/search?kind=monster&encounter=%d", e.Encounter.ID),
+						"hx-trigger":   "input changed delay:200ms, search",
+						"hx-target":    "next ul",
+						"hx-swap":      "innerHTML",
+					}})
+					<ul tabindex="-1" class="absolute bottom-full z-10 mb-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow outline-none empty:hidden not-group-focus-within/monster:hidden"></ul>
+				</div>
+				@field.Field(field.Props{Orientation: field.OrientationHorizontal, Class: "w-auto"}) {
+					@field.Label(field.LabelProps{For: fmt.Sprintf("add-count-%d", e.Encounter.ID)}) {
+						Count
+					}
+					@input.Input(input.Props{ID: fmt.Sprintf("add-count-%d", e.Encounter.ID), Name: "count", Type: "number", Value: "1", Class: "w-16", Attributes: templ.Attributes{"min": "1", "max": "20", "inputmode": "numeric"}})
+				}
+				@hpVisibleSwitch(e, KindMonster)
+			</form>
+		}
+	}
 }
 
-templ addCombatantForm(e EncounterView, kind, label string, items []selectcomp.ItemData) {
-	<form class="flex gap-2" hx-post={ e.url("combatants") }>
+templ addCombatantForm(e EncounterView, kind, tab, label string, items []selectcomp.ItemData) {
+	<form class="flex flex-wrap items-center gap-3" hx-post={ e.url("combatants") }>
 		<input type="hidden" name="kind" value={ kind }/>
-		@formSelect(fmt.Sprintf("add-%s-%d", kind, e.Encounter.ID), "id", items, "", "min-w-0 flex-1", "")
+		@formSelect(fmt.Sprintf("add-%s-%d", kind, e.Encounter.ID), "id", items, "", "min-w-48 flex-1", "")
+		@hpVisibleSwitch(e, tab)
 		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
 			{ label }
 		}
 	</form>
 }
+
+// hpVisibleSwitch picks whether players see a new combatant's HP; app.js
+// remembers the choice per tab in this browser.
+templ hpVisibleSwitch(e EncounterView, tab string) {
+	{{ id := fmt.Sprintf("add-hp-%s-%d", tab, e.Encounter.ID) }}
+	@field.Field(field.Props{Orientation: field.OrientationHorizontal, Class: "w-auto"}) {
+		@switchcomp.Switch(switchcomp.Props{ID: id, Name: "hp_visible", Value: "true", Attributes: templ.Attributes{"data-remember": "add-hp-visible-" + tab}})
+		@field.Label(field.LabelProps{For: id}) {
+			HP visible to players
+		}
+	}
+}
+
+// inFight reports whether a combatant matching f is already in the fight.
+func (e EncounterView) inFight(f func(CombatantView) bool) bool {
+	return slices.ContainsFunc(e.Combatants, f)
+}
+
+func inFightSuffix(in bool) string { return utils.IfElse(in, " (already in fight)", "") }
