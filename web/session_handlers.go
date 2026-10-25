@@ -339,11 +339,11 @@ func (a *App) completeRequest(c *gin.Context) {
 		id, err = a.createAndLogin(c, p.CampaignID, p.Name)
 		next = wizardPath(id, wizardSteps[0].Key)
 	} else {
-		var ch sqlc.Character
-		ch, err = a.Store.GetCharacter(c.Request.Context(), p.CharacterID)
-		if err == nil {
-			err = a.login(c, ch)
+		ch, gerr := a.Store.GetCharacter(c.Request.Context(), p.CharacterID)
+		if !a.found(c, gerr) { // deleted while the request waited
+			return
 		}
+		err = a.login(c, ch)
 	}
 	if err != nil {
 		a.serverError(c, err)

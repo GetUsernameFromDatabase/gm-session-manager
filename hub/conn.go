@@ -37,10 +37,7 @@ type clientMessage struct {
 // connection ends. The caller has already authenticated the request; the
 // default origin check rejects cross-site pages.
 func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, c *Client) {
-	// Fragments repeat the same long Tailwind classes, so deflate with a
-	// shared window cuts them ~90%; the per-connection cost (~1.2 MB) is
-	// fine for a table of devices.
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{CompressionMode: websocket.CompressionContextTakeover})
+	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		slog.Debug("websocket accept", "err", err)
 		return

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"gm-session-manager/perm"
 )
@@ -330,7 +331,7 @@ func parseHP(args []string) (Command, error) {
 	if err := want(args, 1, "hp -5 | hp +3 | hp =20"); err != nil {
 		return Command{}, err
 	}
-	if !strings.ContainsAny(args[0][:1], "+-=") {
+	if args[0] == "" || !strings.ContainsAny(args[0][:1], "+-=") {
 		return Command{}, errors.New("use -n for damage, +n for healing or =n to set")
 	}
 	a, err := parseAmount(args[0], false)
@@ -1314,15 +1315,23 @@ func findMod(c *Character, target, note string) int {
 }
 
 // tokenize splits on whitespace, keeping "double quoted" runs together.
+// Quoted runs read Go escapes, as the server quotes names with strconv.Quote.
 func tokenize(s string) ([]string, error) {
 	var out []string
 	var cur strings.Builder
-	inQuote, have := false, false
-	for _, r := range s {
+	have := false
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
 		switch {
 		case r == '"':
-			inQuote, have = !inQuote, true
-		case unicode.IsSpace(r) && !inQuote:
+			q, err := strconv.QuotedPrefix(s[i:])
+			if err != nil {
+				return nil, errors.New("unclosed quote")
+			}
+			u, _ := strconv.Unquote(q)
+			cur.WriteString(u)
+			have, size = true, len(q)
+		case unicode.IsSpace(r):
 			if have {
 				out = append(out, cur.String())
 				cur.Reset()
@@ -1332,9 +1341,7 @@ func tokenize(s string) ([]string, error) {
 			cur.WriteRune(r)
 			have = true
 		}
-	}
-	if inQuote {
-		return nil, errors.New("unclosed quote")
+		i += size
 	}
 	if have {
 		out = append(out, cur.String())

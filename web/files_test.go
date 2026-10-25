@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -132,5 +133,76 @@ func TestAttachmentToImage(t *testing.T) {
 	// Players of the block see the new image before the editor's next snapshot links it.
 	if w := e.do(t, http.MethodGet, fmt.Sprintf("/images/%d/file", img.ID), e.token(t, auth.RolePlayer), nil, false); w.Code != http.StatusOK {
 		t.Errorf("player reading the converted image: %d", w.Code)
+	}
+}
+
+// TestAttachmentAccess: a file is readable exactly when its block is, only
+// in its campaign, and a file with no block is the GM's.
+func TestAttachmentAccess(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	player := func(campaignID int64, name string) string {
+		t.Helper()
+		ch, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: campaignID, Name: name, System: "dnd5e"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		tok, _, err := e.mgr.IssuePlayer(ctx, ch.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tok
+	}
+	other, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewers := map[string]string{
+		"gm": e.token(t, auth.RoleAdmin), "alice": e.token(t, auth.RolePlayer),
+		"bob": player(e.campaignID, "Bob"), "carol": player(other.ID, "Carol"),
+	}
+	block := func(owner int64, vis string) int64 {
+		t.Helper()
+		note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: vis, OwnerCharacterID: nullID(owner)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: vis})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b.ID
+	}
+	listed := block(0, "listed")
+	if err := e.q().AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: listed, CharacterID: e.characterID}); err != nil {
+		t.Fatal(err)
+	}
+	gone := block(0, "players")
+	orphan := e.attachFile(t, gone, "orphan.png")
+	if err := e.q().DeleteBlock(ctx, gone); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		att     sqlc.Attachment
+		readers []string
+	}{
+		{"gm block", e.attachFile(t, block(0, "gm"), "a.png"), []string{"gm"}},
+		{"listed for alice", e.attachFile(t, listed, "b.png"), []string{"gm", "alice"}},
+		{"players block", e.attachFile(t, block(0, "players"), "c.png"), []string{"gm", "alice", "bob"}},
+		{"alice's own block", e.attachFile(t, block(e.characterID, "owner"), "d.png"), []string{"alice"}},
+		{"block deleted", orphan, []string{"gm"}},
+	}
+	for _, tt := range tests {
+		for who, tok := range viewers {
+			want := http.StatusNotFound
+			if slices.Contains(tt.readers, who) {
+				want = http.StatusOK
+			}
+			if w := e.do(t, http.MethodGet, fmt.Sprintf("/attachments/%d", tt.att.ID), tok, nil, false); w.Code != want {
+				t.Errorf("%s, %s: %d, want %d", tt.name, who, w.Code, want)
+			}
+		}
 	}
 }

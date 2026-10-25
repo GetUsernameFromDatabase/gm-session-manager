@@ -61,6 +61,32 @@ func TestPlayerHomebrew(t *testing.T) {
 	if w := e.do(t, http.MethodGet, entryPath, other, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("other campaign opened the entry: %d", w.Code)
 	}
+	// By slug too: neither the lookup nor a command reaches it.
+	lookup := func(cookie string) bool {
+		return strings.Contains(e.do(t, http.MethodGet, "/compendium/lookup?kind=spell&slug="+slug, cookie, nil, true).Body.String(), "sparkly")
+	}
+	if !lookup(player) || lookup(other) {
+		t.Errorf("lookup by slug: author %v other %v", lookup(player), lookup(other))
+	}
+	if w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", ch2.ID), other, url.Values{"cmd": {"spell add " + slug}}, true); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("other campaign added the spell by slug: %d", w.Code)
+	}
+	// Nor by entry number, through the command builder.
+	blade := url.Values{"kind": {"item"}, "name": {"Moon Blade"}, "damage": {"1d8 radiant"}, "properties": {"Moonlit"}}
+	if w := e.do(t, http.MethodPost, "/compendium/homebrew", player, blade, false); w.Code != http.StatusSeeOther {
+		t.Fatalf("create item: %d %s", w.Code, w.Body)
+	}
+	item, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "item", Slug: fmt.Sprintf("moon-blade-%d", e.characterID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	builder := func(cookie string, characterID int64) bool {
+		path := fmt.Sprintf("/characters/%d/builder?verb=weapons&op=weapon-add&entry=%d", characterID, item.ID)
+		return strings.Contains(e.do(t, http.MethodGet, path, cookie, nil, true).Body.String(), "Moonlit")
+	}
+	if !builder(player, e.characterID) || builder(other, ch2.ID) {
+		t.Errorf("builder by entry: author %v other %v", builder(player, e.characterID), builder(other, ch2.ID))
+	}
 
 	if w := e.do(t, http.MethodPost, entryPath+"/campaigns", gm, url.Values{"campaign_id": {fmt.Sprint(camp2.ID)}}, true); w.Code >= 400 {
 		t.Fatalf("link: %d %s", w.Code, w.Body)

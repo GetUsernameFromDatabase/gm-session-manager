@@ -661,22 +661,6 @@ func (q *Queries) SetCombatantHP(ctx context.Context, arg SetCombatantHPParams) 
 	return err
 }
 
-const setCombatantHPVisible = `-- name: SetCombatantHPVisible :exec
-UPDATE combatants
-SET hp_visible = ?
-WHERE id = ?
-`
-
-type SetCombatantHPVisibleParams struct {
-	HpVisible bool
-	ID        int64
-}
-
-func (q *Queries) SetCombatantHPVisible(ctx context.Context, arg SetCombatantHPVisibleParams) error {
-	_, err := q.db.ExecContext(ctx, setCombatantHPVisible, arg.HpVisible, arg.ID)
-	return err
-}
-
 const setCombatantInitiative = `-- name: SetCombatantInitiative :exec
 UPDATE combatants
 SET initiative = ?
@@ -706,6 +690,17 @@ type SetCombatantMarkerParams struct {
 
 func (q *Queries) SetCombatantMarker(ctx context.Context, arg SetCombatantMarkerParams) error {
 	_, err := q.db.ExecContext(ctx, setCombatantMarker, arg.Marker, arg.ID)
+	return err
+}
+
+const toggleCombatantHPVisible = `-- name: ToggleCombatantHPVisible :exec
+UPDATE combatants
+SET hp_visible = NOT hp_visible
+WHERE id = ?
+`
+
+func (q *Queries) ToggleCombatantHPVisible(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, toggleCombatantHPVisible, id)
 	return err
 }
 

@@ -137,9 +137,9 @@ UPDATE combatants
 SET hp = ?, max_hp = ?, temp_hp = ?
 WHERE id = ?;
 
--- name: SetCombatantHPVisible :exec
+-- name: ToggleCombatantHPVisible :exec
 UPDATE combatants
-SET hp_visible = ?
+SET hp_visible = NOT hp_visible
 WHERE id = ?;
 
 -- name: SetCombatantMarker :exec

@@ -250,7 +250,7 @@ func (a *App) wizardSave(c *gin.Context) {
 	ctx := c.Request.Context()
 	cmd, err := a.wizardCommand(c, ch, step)
 	if err == nil && cmd != nil {
-		err = a.runCommand(ctx, ch.ID, *cmd)
+		err = a.runCommand(ctx, ch, *cmd)
 	}
 	var ue userError
 	if errors.As(err, &ue) {

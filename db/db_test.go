@@ -3,6 +3,7 @@ package db
 import (
 	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -163,5 +164,74 @@ func TestFTS5Available(t *testing.T) {
 	conn := openTemp(t)
 	if _, err := conn.ExecContext(t.Context(), "CREATE VIRTUAL TABLE temp.fts_probe USING fts5(body)"); err != nil {
 		t.Fatalf("fts5 not available: %v", err)
+	}
+}
+
+// TestAttachmentOutlivesBlock: deleting the block a file was uploaded to
+// keeps the file (as the GM's) and the image made from it.
+func TestAttachmentOutlivesBlock(t *testing.T) {
+	ctx := t.Context()
+	q := sqlc.New(openTemp(t))
+	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	note, err := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "N"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := q.CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "gm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	att, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{
+		CampaignID: camp.ID, BlockID: sql.NullInt64{Int64: block.ID, Valid: true}, Path: "f", Name: "map.png", Mime: "image/png", Size: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := q.CreateImage(ctx, sqlc.CreateImageParams{CampaignID: camp.ID, Name: "Map", AttachmentID: sql.NullInt64{Int64: att.ID, Valid: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := q.DeleteBlock(ctx, block.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := q.GetAttachment(ctx, att.ID)
+	if err != nil {
+		t.Fatalf("attachment deleted with its block: %v", err)
+	}
+	if got.BlockID.Valid {
+		t.Errorf("block_id = %d, want NULL", got.BlockID.Int64)
+	}
+	ids, err := q.ListImageAttachmentIDs(ctx)
+	if err != nil || len(ids) != 1 || ids[0].Int64 != att.ID {
+		t.Errorf("image %d lost its attachment: %v %v", img.ID, ids, err)
+	}
+
+	// A private block's file goes with it, even through a cascade.
+	ch, err := q.CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: camp.ID, Name: "A", System: "dnd5e"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	own, err := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "Mine", OwnerCharacterID: sql.NullInt64{Int64: ch.ID, Valid: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownBlock, err := q.CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: own.ID, Visibility: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	private, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{
+		CampaignID: camp.ID, BlockID: sql.NullInt64{Int64: ownBlock.ID, Valid: true}, Path: "p", Name: "diary.png", Mime: "image/png", Size: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := q.DeleteCharacter(ctx, ch.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.GetAttachment(ctx, private.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("private attachment survived its block: %v", err)
 	}
 }

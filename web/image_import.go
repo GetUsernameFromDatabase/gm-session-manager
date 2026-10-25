@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/csv"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -47,12 +46,8 @@ type csvImports struct {
 	m  map[string]csvImport
 }
 
-func (s *csvImports) put(imp csvImport) (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	token := hex.EncodeToString(b)
+func (s *csvImports) put(imp csvImport) string {
+	token := rand.Text()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.m == nil {
@@ -75,7 +70,7 @@ func (s *csvImports) put(imp csvImport) (string, error) {
 	}
 	imp.expires = now.Add(importLifetime)
 	s.m[token] = imp
-	return token, nil
+	return token
 }
 
 func (s *csvImports) get(token string, campaignID int64) (csvImport, bool) {
@@ -468,11 +463,7 @@ func (a *App) importUpload(c *gin.Context) {
 		a.fail(c, http.StatusUnprocessableEntity, "Could not read the CSV: "+err.Error())
 		return
 	}
-	token, err := a.imports.put(csvImport{campaignID: id, header: header, rows: rows})
-	if err != nil {
-		a.serverError(c, err)
-		return
-	}
+	token := a.imports.put(csvImport{campaignID: id, header: header, rows: rows})
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/campaigns/%d/images/import/%s", id, token))
 }
 

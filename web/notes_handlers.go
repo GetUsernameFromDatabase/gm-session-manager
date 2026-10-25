@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -578,7 +577,7 @@ type snapshotBody struct {
 // stored one, trims the steps behind it and records its links. Trusting
 // the client here is accepted for a LAN of friends.
 func (a *App) blockSnapshot(c *gin.Context) {
-	_, b, _, ok := a.blockFor(c, needEdit)
+	w, b, _, ok := a.blockFor(c, needEdit)
 	if !ok {
 		return
 	}
@@ -597,10 +596,19 @@ func (a *App) blockSnapshot(c *gin.Context) {
 		if err := q.TrimBlockSteps(ctx, sqlc.TrimBlockStepsParams{BlockID: b.ID, Version: body.Version}); err != nil {
 			return err
 		}
+		// An image link lets the block's readers see the image, so only the
+		// GM adds them; a player's snapshot keeps the ones already there.
+		images, err := q.ListBlockImageLinks(ctx, b.ID)
+		if err != nil {
+			return err
+		}
 		if err := q.ClearBlockLinks(ctx, b.ID); err != nil {
 			return err
 		}
 		for _, l := range body.Links {
+			if l.Type == linkImage && !w.isGM() && !slices.Contains(images, l.ID) {
+				continue
+			}
 			if err := q.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetType: l.Type, TargetID: l.ID}); err != nil {
 				return err
 			}
@@ -665,10 +673,7 @@ func (a *App) storeUpload(ctx context.Context, campaignID int64, blockID sql.Nul
 
 // storeFile saves src under a random name and records it as fileName.
 func (a *App) storeFile(ctx context.Context, campaignID int64, blockID sql.NullInt64, fileName string, src io.Reader) (sqlc.Attachment, error) {
-	name, err := randomFileName()
-	if err != nil {
-		return sqlc.Attachment{}, err
-	}
+	name := rand.Text()
 	dir := a.attachmentsDir()
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return sqlc.Attachment{}, err
@@ -686,14 +691,6 @@ func (a *App) storeFile(ctx context.Context, campaignID int64, blockID sql.NullI
 		_ = os.Remove(path)
 	}
 	return att, err
-}
-
-func randomFileName() (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
 }
 
 // saveSniffed writes src to path and returns the content type sniffed from
@@ -783,7 +780,7 @@ func (a *App) serveAttachment(c *gin.Context, att sqlc.Attachment, cacheControl 
 }
 
 // CleanAttachments removes files no attachments row refers to any more
-// (their notes or blocks were deleted). Run at startup.
+// (their campaign or private block was deleted). Run at startup.
 func (a *App) CleanAttachments(ctx context.Context) error {
 	entries, err := os.ReadDir(a.attachmentsDir())
 	if errors.Is(err, os.ErrNotExist) {

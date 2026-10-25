@@ -74,7 +74,7 @@ func TestImageAccess(t *testing.T) {
 	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Lore"})
 	hidden, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "gm"})
 	shared, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players"})
-	snapshot := func(blockID int64) {
+	snapshot := func(blockID int64, cookie string) {
 		t.Helper()
 		snap := map[string]any{
 			"version": 1, "doc": json.RawMessage(`{"type":"doc","content":[]}`), "text": "",
@@ -84,16 +84,34 @@ func TestImageAccess(t *testing.T) {
 		if err := e.q().SetBlockVersion(ctx, sqlc.SetBlockVersionParams{ID: blockID, Version: 1}); err != nil {
 			t.Fatal(err)
 		}
-		if w := e.doJSON(t, fmt.Sprintf("/blocks/%d/snapshot", blockID), gm, snap); w.Code != http.StatusNoContent {
+		if w := e.doJSON(t, fmt.Sprintf("/blocks/%d/snapshot", blockID), cookie, snap); w.Code != http.StatusNoContent {
 			t.Fatalf("snapshot with an image link: %d %s", w.Code, w.Body)
 		}
 	}
 
-	snapshot(hidden.ID)
+	snapshot(hidden.ID, gm)
 	if w := e.do(t, http.MethodGet, page, player, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("linked from a gm block: %d", w.Code)
 	}
-	snapshot(shared.ID)
+	// A player cannot link an image into their own block to see it.
+	own, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Mine", OwnerCharacterID: nullID(e.characterID)})
+	ownBlock, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: own.ID, Visibility: "owner"})
+	snapshot(ownBlock.ID, player)
+	if w := e.do(t, http.MethodGet, page, player, nil, false); w.Code != http.StatusNotFound {
+		t.Errorf("linked by the player's own snapshot: %d", w.Code)
+	}
+	// In a block both edit, the player's snapshot of a version may land
+	// before the GM's: the GM's link still lands.
+	both, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
+	snapshot(both.ID, player)
+	if w := e.do(t, http.MethodGet, page, player, nil, false); w.Code != http.StatusNotFound {
+		t.Errorf("linked by the player's snapshot of a shared block: %d", w.Code)
+	}
+	snapshot(both.ID, gm)
+	if w := e.do(t, http.MethodGet, page, player, nil, false); w.Code != http.StatusOK {
+		t.Errorf("gm snapshot of the same version: %d", w.Code)
+	}
+	snapshot(shared.ID, gm)
 	w = e.do(t, http.MethodGet, page, player, nil, false)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Red dragon") {
 		t.Fatalf("linked from a players block: %d", w.Code)

@@ -67,6 +67,20 @@ func (a *App) entryVisible(ctx context.Context, e sqlc.CompendiumEntry, campaign
 	return perm.CanSeeEntry(campaignID, e.Scoped, linked), err
 }
 
+// entryBySlug finds an entry by kind and slug that a player in campaignID
+// may see; sql.ErrNoRows otherwise.
+func (a *App) entryBySlug(ctx context.Context, kind compendium.Kind, slug string, campaignID int64) (sqlc.CompendiumEntry, error) {
+	e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(kind), Slug: slug})
+	if err != nil {
+		return e, err
+	}
+	visible, err := a.entryVisible(ctx, e, campaignID)
+	if err == nil && !visible {
+		err = sql.ErrNoRows
+	}
+	return e, err
+}
+
 // compendiumBatch is how many rows one search or scroll step loads; the
 // after_* query keys are the browse cursor.
 const (
@@ -271,7 +285,7 @@ func (a *App) compendiumLookup(c *gin.Context) {
 			return
 		}
 	} else {
-		e, err = a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: c.Query("slug")})
+		e, err = a.entryBySlug(ctx, compendium.Kind(kind), c.Query("slug"), viewerCampaign(camp))
 		if errors.Is(err, sql.ErrNoRows) {
 			c.String(http.StatusOK, "Not in the compendium.")
 			return
@@ -474,7 +488,7 @@ func (a *App) addHomebrewToSheet(ctx context.Context, ch sqlc.Character, id int6
 	if err != nil {
 		return err
 	}
-	return a.runCommand(ctx, ch.ID, cmd)
+	return a.runCommand(ctx, ch, cmd)
 }
 
 func (a *App) homebrewDelete(c *gin.Context) {

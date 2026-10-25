@@ -316,6 +316,12 @@ func (a *App) encounterAction(c *gin.Context) {
 	}
 	var skipped []string
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		// Re-read inside the transaction, so turns sent from two devices
+		// at once both count.
+		enc, err := q.GetEncounter(ctx, enc.ID)
+		if err != nil {
+			return err
+		}
 		rows, err := q.ListCombatants(ctx, enc.ID)
 		if err != nil {
 			return err
@@ -420,7 +426,7 @@ func (a *App) combatantAction(c *gin.Context) {
 		}
 		err = a.Store.SetCombatantMarker(ctx, sqlc.SetCombatantMarkerParams{ID: id, Marker: marker})
 	case "visible":
-		err = a.Store.SetCombatantHPVisible(ctx, sqlc.SetCombatantHPVisibleParams{ID: id, HpVisible: !cb.HpVisible})
+		err = a.Store.ToggleCombatantHPVisible(ctx, id)
 	case "condition":
 		err = a.combatantCondition(c, cb, enc)
 	case "delete":
@@ -470,9 +476,21 @@ func (a *App) combatantHP(c *gin.Context, cb sqlc.Combatant) error {
 			return nil
 		})
 	}
-	m := dnd5e.Character{HP: int(cb.Hp), MaxHP: int(cb.MaxHp), TempHP: int(cb.TempHp)}
-	m.ApplyHP(amount)
-	return a.Store.SetCombatantHP(ctx, sqlc.SetCombatantHPParams{ID: cb.ID, Hp: int64(m.HP), MaxHp: cb.MaxHp, TempHp: int64(m.TempHP)})
+	return a.updateMonster(ctx, cb.ID, func(m *dnd5e.Character) { m.ApplyHP(amount) })
+}
+
+// updateMonster reads, changes and writes a monster's HP in one
+// transaction, so changes sent from two devices at once both land.
+func (a *App) updateMonster(ctx context.Context, id int64, fn func(m *dnd5e.Character)) error {
+	return a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		cb, err := q.GetCombatant(ctx, id)
+		if err != nil {
+			return err
+		}
+		m := dnd5e.Character{HP: int(cb.Hp), MaxHP: int(cb.MaxHp), TempHP: int(cb.TempHp)}
+		fn(&m)
+		return q.SetCombatantHP(ctx, sqlc.SetCombatantHPParams{ID: id, Hp: int64(m.HP), MaxHp: int64(m.MaxHP), TempHp: int64(m.TempHP)})
+	})
 }
 
 // combatantSetHP sets the fields the HP dialog sends: only those the GM
@@ -521,9 +539,7 @@ func (a *App) combatantSetHP(c *gin.Context, cb sqlc.Combatant) error {
 			return nil
 		})
 	}
-	m := dnd5e.Character{HP: int(cb.Hp), MaxHP: int(cb.MaxHp), TempHP: int(cb.TempHp)}
-	set(&m)
-	return a.Store.SetCombatantHP(c.Request.Context(), sqlc.SetCombatantHPParams{ID: cb.ID, Hp: int64(m.HP), MaxHp: int64(m.MaxHP), TempHp: int64(m.TempHP)})
+	return a.updateMonster(c.Request.Context(), cb.ID, set)
 }
 
 func (a *App) combatantCondition(c *gin.Context, cb sqlc.Combatant, enc sqlc.Encounter) error {

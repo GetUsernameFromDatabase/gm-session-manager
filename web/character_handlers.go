@@ -163,7 +163,7 @@ func (a *App) commandBuilder(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	x, err := a.builderExtra(c)
+	x, err := a.builderExtra(c, ch.CampaignID)
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -187,7 +187,7 @@ func (a *App) characterCommand(c *gin.Context) {
 		a.fail(c, http.StatusForbidden, "The GM may change HP and conditions only.")
 		return
 	}
-	if a.commandFailed(c, a.runCommand(c.Request.Context(), ch.ID, cmd)) {
+	if a.commandFailed(c, a.runCommand(c.Request.Context(), ch, cmd)) {
 		return
 	}
 	a.characterChanged(c, ch)
@@ -195,31 +195,31 @@ func (a *App) characterCommand(c *gin.Context) {
 
 // runCommand looks up what cmd needs from the compendium and applies it to
 // the character in one transaction. Errors the user caused are userErrors.
-func (a *App) runCommand(ctx context.Context, characterID int64, cmd dnd5e.Command) error {
+func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Command) error {
 	var env dnd5e.Env
 	var err error
 	if cmd.SpellSlug != "" {
-		if env.Spell, err = a.compendiumSpell(ctx, cmd.SpellSlug); err != nil {
+		if env.Spell, err = a.compendiumSpell(ctx, cmd.SpellSlug, ch.CampaignID); err != nil {
 			return userError{err}
 		}
 	}
 	if cmd.ArmorSlug != "" {
-		inInventory, err := a.hasArmorItem(ctx, characterID, cmd.ArmorSlug)
+		inInventory, err := a.hasArmorItem(ctx, ch.ID, cmd.ArmorSlug)
 		if err != nil {
 			return err
 		}
 		if !inInventory {
-			if env.Armor, env.IsShield, err = a.compendiumArmor(ctx, cmd.ArmorSlug); err != nil {
+			if env.Armor, env.IsShield, err = a.compendiumArmor(ctx, cmd.ArmorSlug, ch.CampaignID); err != nil {
 				return userError{err}
 			}
 		}
 	}
-	return a.updateCharacter(ctx, characterID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
+	return a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
 		fx, err := cmd.Apply(dc, env)
 		if err != nil {
 			return userError{err}
 		}
-		return applyCondOps(ctx, q, condOwner{characterID: characterID}, fx.Conditions, sql.NullInt64{})
+		return applyCondOps(ctx, q, condOwner{characterID: ch.ID}, fx.Conditions, sql.NullInt64{})
 	})
 }
 
@@ -300,8 +300,8 @@ func (a *App) hasArmorItem(ctx context.Context, characterID int64, name string) 
 }
 
 // compendiumArmor finds armor (or a shield) in the compendium by slug.
-func (a *App) compendiumArmor(ctx context.Context, slug string) (dnd5e.WornArmor, bool, error) {
-	row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindItem), Slug: slug})
+func (a *App) compendiumArmor(ctx context.Context, slug string, campaignID int64) (dnd5e.WornArmor, bool, error) {
+	row, err := a.entryBySlug(ctx, compendium.KindItem, slug, campaignID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return dnd5e.WornArmor{}, false, fmt.Errorf("no item %q in the compendium", slug)
 	}
@@ -322,8 +322,8 @@ func (a *App) compendiumArmor(ctx context.Context, slug string) (dnd5e.WornArmor
 	return dnd5e.WornArmor{Slug: row.Slug, Name: row.Name, Type: ar.Type, Base: ar.Base, AddDex: ar.AddDex, DexCap: ar.DexCap, StrReq: ar.StrReq, Stealth: ar.Stealth}, false, nil
 }
 
-func (a *App) compendiumSpell(ctx context.Context, slug string) (dnd5e.Spell, error) {
-	row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindSpell), Slug: slug})
+func (a *App) compendiumSpell(ctx context.Context, slug string, campaignID int64) (dnd5e.Spell, error) {
+	row, err := a.entryBySlug(ctx, compendium.KindSpell, slug, campaignID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return dnd5e.Spell{}, fmt.Errorf("no spell %q in the compendium", slug)
 	}
@@ -656,7 +656,7 @@ func (a *App) levelUp(c *gin.Context) {
 		choice.Feat, choice.FeatDesc = feat.Name, feat.BodyText
 	}
 	for _, slug := range c.PostFormArray("spell") {
-		sp, err := a.compendiumSpell(ctx, slug)
+		sp, err := a.compendiumSpell(ctx, slug, ch.CampaignID)
 		if err != nil {
 			a.fail(c, http.StatusUnprocessableEntity, err.Error())
 			return

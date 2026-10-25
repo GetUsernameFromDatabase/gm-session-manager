@@ -31,6 +31,7 @@ func TestCommands(t *testing.T) {
 		{"hp +100", perm.ScopeHP, func(c Character, _ Effects) bool { return c.HP == 28 }, false},
 		{"hp =7", perm.ScopeHP, func(c Character, _ Effects) bool { return c.HP == 7 }, false},
 		{"hp 5", 0, nil, true},
+		{`hp ""`, 0, nil, true},
 		{"hp", 0, nil, true},
 		{"temp 8", perm.ScopeHP, func(c Character, _ Effects) bool { return c.TempHP == 8 }, false},
 		{"temp -10", perm.ScopeHP, func(c Character, _ Effects) bool { return c.TempHP == 0 }, false},
@@ -64,6 +65,10 @@ func TestCommands(t *testing.T) {
 		{"item remove Torch 3", perm.ScopeSheet, func(c Character, _ Effects) bool { return len(c.Sheet.Inventory) == 0 }, false},
 		{"item remove Shield", 0, nil, true},
 		{`item add "unclosed`, 0, nil, true},
+		// Names quoted by strconv.Quote, as the sheet's buttons send them.
+		{`item add "Ring of \"Luck\" \\ x y"`, perm.ScopeSheet, func(c Character, _ Effects) bool {
+			return c.Sheet.Inventory[1].Name == "Ring of \"Luck\" \\ x y"
+		}, false},
 		{"coin gp +10", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Coins.GP == 10 }, false},
 		{"coin gp -1", 0, nil, true},
 		{"coin gp +10 SP =3", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Coins.GP == 10 && c.Sheet.Coins.SP == 3 }, false},

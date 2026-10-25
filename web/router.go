@@ -3,6 +3,7 @@ package web
 
 import (
 	"net"
+	"net/http"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -64,7 +65,7 @@ func (a *App) Router() *gin.Engine {
 	if err := r.SetTrustedProxies(nil); err != nil {
 		panic(err) // nil is always a valid proxy list
 	}
-	r.Use(securityHeaders)
+	r.Use(securityHeaders, sameOriginOnly(http.NewCrossOriginProtection()))
 	a.mountAssets(r)
 	r.Use(a.Auth.Middleware())
 
@@ -208,6 +209,18 @@ func useValidateTag() {
 		}
 		v.SetTagName("validate")
 	})
+}
+
+// sameOriginOnly refuses state-changing requests sent by other sites. The
+// host's browser is admin without a cookie, so SameSite cannot protect it.
+func sameOriginOnly(cop *http.CrossOriginProtection) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := cop.Check(c.Request); err != nil {
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+		c.Next()
+	}
 }
 
 // securityHeaders applies to every response. Pages only load scripts and

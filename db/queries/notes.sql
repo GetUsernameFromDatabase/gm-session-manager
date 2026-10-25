@@ -152,10 +152,12 @@ SELECT version, client_id, step_json FROM block_steps
 WHERE block_id = ? AND version > ?
 ORDER BY version;
 
+-- SaveBlockSnapshot also takes the stored version again (the same document),
+-- so the GM's links land after a player's snapshot of that version.
 -- name: SaveBlockSnapshot :execrows
 UPDATE note_blocks
 SET doc_json = sqlc.arg(doc_json), doc_version = sqlc.arg(doc_version), text = sqlc.arg(text)
-WHERE id = sqlc.arg(id) AND sqlc.arg(doc_version) > doc_version AND sqlc.arg(doc_version) <= version;
+WHERE id = sqlc.arg(id) AND sqlc.arg(doc_version) >= doc_version AND sqlc.arg(doc_version) <= version;
 
 -- name: TrimBlockSteps :exec
 DELETE FROM block_steps
@@ -166,6 +168,10 @@ WHERE block_id = ? AND version <= ?;
 -- name: ClearBlockLinks :exec
 DELETE FROM note_links
 WHERE source_block_id = ?;
+
+-- name: ListBlockImageLinks :many
+SELECT target_id FROM note_links
+WHERE source_block_id = ? AND target_type = 'image';
 
 -- name: AddBlockLink :exec
 INSERT OR IGNORE INTO note_links (source_note_id, source_block_id, target_type, target_id)

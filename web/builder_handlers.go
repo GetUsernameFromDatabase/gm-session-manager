@@ -25,7 +25,7 @@ const maxPicks = 15
 // builderExtra is what a builder form takes from the compendium: a weapon
 // or feature to prefill (?entry=, plus ?feature= for a class feature) and
 // the names a details field suggests.
-func (a *App) builderExtra(c *gin.Context) (views.BuilderExtra, error) {
+func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra, error) {
 	ctx := c.Request.Context()
 	var x views.BuilderExtra
 	switch c.Query("op") {
@@ -43,6 +43,9 @@ func (a *App) builderExtra(c *gin.Context) (views.BuilderExtra, error) {
 	}
 	e, err := a.Store.GetCompendiumEntry(ctx, id)
 	if err != nil {
+		return x, err
+	}
+	if visible, err := a.entryVisible(ctx, e, campaignID); err != nil || !visible {
 		return x, err
 	}
 	data, err := compendium.DecodeData(compendium.Kind(e.Kind), e.DataJson)
@@ -274,6 +277,9 @@ func featureCommand(c *gin.Context) (dnd5e.Command, error) {
 		f.Uses.Ability = u
 	}
 	targets, values, whens := c.PostFormArray("mod_target"), c.PostFormArray("mod_value"), c.PostFormArray("mod_when")
+	if len(targets) > 0 && (len(values) == 0 || len(whens) == 0) {
+		return dnd5e.Command{}, errors.New("give each change a value")
+	}
 	var mods []dnd5e.CustomMod
 	for i, t := range targets {
 		t = strings.TrimSpace(t)

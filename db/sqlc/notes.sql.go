@@ -479,6 +479,34 @@ func (q *Queries) ListBlockAudience(ctx context.Context, blockID int64) ([]int64
 	return items, nil
 }
 
+const listBlockImageLinks = `-- name: ListBlockImageLinks :many
+SELECT target_id FROM note_links
+WHERE source_block_id = ? AND target_type = 'image'
+`
+
+func (q *Queries) ListBlockImageLinks(ctx context.Context, sourceBlockID int64) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listBlockImageLinks, sourceBlockID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var target_id int64
+		if err := rows.Scan(&target_id); err != nil {
+			return nil, err
+		}
+		items = append(items, target_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listBlockStepsSince = `-- name: ListBlockStepsSince :many
 SELECT version, client_id, step_json FROM block_steps
 WHERE block_id = ? AND version > ?
@@ -753,7 +781,7 @@ func (q *Queries) RenameNote(ctx context.Context, arg RenameNoteParams) error {
 const saveBlockSnapshot = `-- name: SaveBlockSnapshot :execrows
 UPDATE note_blocks
 SET doc_json = ?1, doc_version = ?2, text = ?3
-WHERE id = ?4 AND ?2 > doc_version AND ?2 <= version
+WHERE id = ?4 AND ?2 >= doc_version AND ?2 <= version
 `
 
 type SaveBlockSnapshotParams struct {
@@ -763,6 +791,8 @@ type SaveBlockSnapshotParams struct {
 	ID         int64
 }
 
+// SaveBlockSnapshot also takes the stored version again (the same document),
+// so the GM's links land after a player's snapshot of that version.
 func (q *Queries) SaveBlockSnapshot(ctx context.Context, arg SaveBlockSnapshotParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, saveBlockSnapshot,
 		arg.DocJson,

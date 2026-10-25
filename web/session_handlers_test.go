@@ -178,6 +178,24 @@ func TestLogout(t *testing.T) {
 	}
 }
 
+// TestCrossSiteRefused: another site in the host's browser must not act as
+// the cookie-less localhost admin.
+func TestCrossSiteRefused(t *testing.T) {
+	e := newTestEnv(t)
+	for site, want := range map[string]int{"cross-site": http.StatusForbidden, "same-origin": http.StatusSeeOther, "": http.StatusSeeOther} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, fmt.Sprintf("/campaigns/%d/open-join", e.campaignID), nil)
+		req.RemoteAddr = loopbackAddr
+		if site != "" {
+			req.Header.Set("Sec-Fetch-Site", site)
+		}
+		w := httptest.NewRecorder()
+		e.router.ServeHTTP(w, req)
+		if w.Code != want {
+			t.Errorf("Sec-Fetch-Site %q: status %d, want %d", site, w.Code, want)
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
 	m.Run()
