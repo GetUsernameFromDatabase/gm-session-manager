@@ -324,7 +324,7 @@ func (a *App) noteList(ctx context.Context, v perm.Viewer, campaignID int64) ([]
 	}
 	items := make([]views.NoteItem, len(notes))
 	for i, n := range notes {
-		items[i] = views.NoteItem{Note: n, Author: author(v, names, n.OwnerCharacterID.Int64)}
+		items[i] = views.NoteItem{Note: n, Author: author(v, names, n.OwnerCharacterID.Int64), CanManage: perm.CanManageNote(v, n.OwnerCharacterID.Int64)}
 	}
 	return items, nil
 }

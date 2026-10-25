@@ -1,0 +1,119 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/table"
+	"time"
+)
+
+// PathFiles is the admin page of attachments nothing uses any more.
+const PathFiles = "/files"
+
+// FilesView is the admin's list of attachments nothing uses any more.
+type FilesView struct {
+	Files []FileRow
+}
+
+// FileRow is one unused attachment. A private one (from a player's own
+// block) shows neither its name nor its picture.
+type FileRow struct {
+	ID        int64
+	Name      string
+	Campaign  string
+	Size      int64
+	CreatedAt time.Time
+	IsImage   bool
+	Private   bool
+}
+
+templ FilesPage(l Layout, v FilesView) {
+	@Page(l) {
+		@PageHeader("Files", "Pictures and files uploaded to notes that no note or image uses any more. Removing one from a note keeps its file; delete it here.")
+		if len(v.Files) == 0 {
+			<p class="text-sm text-muted-foreground">Every uploaded file is still in use.</p>
+		} else {
+			<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+				<p class="text-sm text-muted-foreground">{ fmt.Sprintf("%d unused, %s in all.", len(v.Files), fileSize(totalSize(v.Files))) }</p>
+				@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Attributes: templ.Attributes{
+					"hx-post": PathFiles + "/delete-unused", "hx-confirm": "Delete every unused file from this computer?",
+				}}) {
+					@icon.Trash2()
+					Delete all
+				}
+			</div>
+			@table.Table() {
+				@table.Header() {
+					@table.Row() {
+						@table.Head() {
+							File
+						}
+						@table.Head() {
+							Campaign
+						}
+						@table.Head(table.HeadProps{Class: "text-right"}) {
+							Size
+						}
+						@table.Head() {
+							Uploaded
+						}
+						@table.Head() {
+							<span class="sr-only">Delete</span>
+						}
+					}
+				}
+				@table.Body() {
+					for _, f := range v.Files {
+						@table.Row() {
+							@table.Cell() {
+								<span class="flex items-center gap-3">
+									if f.IsImage && !f.Private {
+										<img class="size-10 shrink-0 rounded object-cover" src={ fmt.Sprintf("/attachments/%d", f.ID) } alt="" loading="lazy"/>
+									}
+									if f.Private {
+										<span class="text-muted-foreground italic">A player's private file</span>
+									} else {
+										<a class="hover:underline" href={ templ.SafeURL(fmt.Sprintf("/attachments/%d", f.ID)) } target="_blank">{ f.Name }</a>
+									}
+								</span>
+							}
+							@table.Cell() {
+								{ f.Campaign }
+							}
+							@table.Cell(table.CellProps{Class: "text-right tabular-nums"}) {
+								{ fileSize(f.Size) }
+							}
+							@table.Cell() {
+								@localTime(f.CreatedAt)
+							}
+							@table.Cell(table.CellProps{Class: "text-right"}) {
+								@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{
+									"hx-post": fmt.Sprintf("%s/%d/delete", PathFiles, f.ID), "hx-confirm": "Delete this file from this computer?", "aria-label": "Delete file",
+								}}) {
+									@icon.Trash2()
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func totalSize(files []FileRow) int64 {
+	var n int64
+	for _, f := range files {
+		n += f.Size
+	}
+	return n
+}
+
+// fileSize is a byte count in KB or MB.
+func fileSize(n int64) string {
+	if n < 1<<20 {
+		return fmt.Sprintf("%.0f KB", float64(n)/(1<<10))
+	}
+	return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+}

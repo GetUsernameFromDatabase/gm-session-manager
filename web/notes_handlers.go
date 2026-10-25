@@ -660,6 +660,11 @@ func (a *App) storeUpload(ctx context.Context, campaignID int64, blockID sql.Nul
 		return sqlc.Attachment{}, err
 	}
 	defer func() { _ = src.Close() }()
+	return a.storeFile(ctx, campaignID, blockID, filepath.Base(fh.Filename), src)
+}
+
+// storeFile saves src under a random name and records it as fileName.
+func (a *App) storeFile(ctx context.Context, campaignID int64, blockID sql.NullInt64, fileName string, src io.Reader) (sqlc.Attachment, error) {
 	name, err := randomFileName()
 	if err != nil {
 		return sqlc.Attachment{}, err
@@ -675,7 +680,7 @@ func (a *App) storeUpload(ctx context.Context, campaignID int64, blockID sql.Nul
 		return sqlc.Attachment{}, err
 	}
 	att, err := a.Store.CreateAttachment(ctx, sqlc.CreateAttachmentParams{
-		CampaignID: campaignID, BlockID: blockID, Path: name, Name: filepath.Base(fh.Filename), Mime: mime, Size: size,
+		CampaignID: campaignID, BlockID: blockID, Path: name, Name: fileName, Mime: mime, Size: size,
 	})
 	if err != nil {
 		_ = os.Remove(path)
@@ -714,34 +719,42 @@ func saveSniffed(path string, src io.Reader) (string, int64, error) {
 
 // attachment serves a file to viewers who may read its block.
 func (a *App) attachment(c *gin.Context) {
+	if att, ok := a.readableAttachment(c); ok {
+		a.serveAttachment(c, att, cacheAttachment)
+	}
+}
+
+// readableAttachment loads :attachment for viewers who may read its block,
+// answering 404 itself otherwise.
+func (a *App) readableAttachment(c *gin.Context) (sqlc.Attachment, bool) {
 	id, ok := a.idParam(c, "attachment")
 	if !ok {
-		return
+		return sqlc.Attachment{}, false
 	}
 	w, err := a.whoami(c)
 	if err != nil {
 		a.serverError(c, err)
-		return
+		return sqlc.Attachment{}, false
 	}
 	ctx := c.Request.Context()
 	att, err := a.Store.GetAttachment(ctx, id)
 	if !a.found(c, err) {
-		return
+		return att, false
 	}
 	var block *perm.Block
 	if att.BlockID.Valid {
 		_, pb, err := a.loadBlock(ctx, att.BlockID.Int64)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			a.serverError(c, err)
-			return
+			return att, false
 		}
 		block = &pb
 	}
 	if (!w.isGM() && w.campaignID() != att.CampaignID) || !perm.CanReadAttachment(w.viewer, block) {
 		a.fail(c, http.StatusNotFound, "Not found.")
-		return
+		return att, false
 	}
-	a.serveAttachment(c, att, cacheAttachment)
+	return att, true
 }
 
 // serveAttachment sends a file the caller has already authorized, sandboxed

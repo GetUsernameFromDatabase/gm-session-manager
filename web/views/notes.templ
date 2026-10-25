@@ -7,6 +7,8 @@ import (
 	"gm-session-manager/web/components/badge"
 	"gm-session-manager/web/components/button"
 	"gm-session-manager/web/components/checkbox"
+	"gm-session-manager/web/components/dialog"
+	"gm-session-manager/web/components/field"
 	"gm-session-manager/web/components/icon"
 	"gm-session-manager/web/components/input"
 	"gm-session-manager/web/components/label"
@@ -76,7 +78,7 @@ templ NoteList(campaignID int64, notes []NoteItem) {
 						@authorRef(n.Author)
 					</span>
 				</span>
-				<span class="flex gap-1">
+				<span class="flex items-center gap-1">
 					if n.Kind == KindGameSession {
 						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 							Game session
@@ -87,6 +89,9 @@ templ NoteList(campaignID int64, notes []NoteItem) {
 							Player note
 						}
 					}
+					if n.CanManage {
+						@noteEditDialog(n)
+					}
 				</span>
 			</li>
 		}
@@ -94,6 +99,57 @@ templ NoteList(campaignID int64, notes []NoteItem) {
 			<li class="p-3 text-sm text-muted-foreground">No notes yet.</li>
 		}
 	</ul>
+}
+
+// noteEditDialog renames, retypes or deletes a note from the index; it
+// closes only when the server accepts the change.
+templ noteEditDialog(n NoteItem) {
+	{{ id := fmt.Sprintf("note-%d", n.ID) }}
+	@dialog.Dialog() {
+		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: with(dialog.Trigger(ctx), templ.Attributes{"aria-label": "Edit note"})}) {
+			@icon.Pencil()
+		}
+		@dialog.Content() {
+			<form
+				class="grid gap-4"
+				hx-post={ fmt.Sprintf("/notes/%d/rename", n.ID) }
+				hx-on::after-request="if (event.detail.successful) this.querySelector('[data-slot=dialog-close]').click()"
+			>
+				@dialog.Header() {
+					@dialog.Title() {
+						Edit note
+					}
+				}
+				@field.Group(field.GroupProps{Class: "gap-4"}) {
+					@field.Field() {
+						@field.Label(field.LabelProps{For: id + "-title"}) {
+							Title
+						}
+						@input.Input(input.Props{ID: id + "-title", Name: "title", Value: n.Title, Required: true})
+					}
+					@field.Field() {
+						@field.Label(field.LabelProps{For: id + "-kind-trigger"}) {
+							Type
+						}
+						@formSelect(id+"-kind", "kind", noteKindItems, n.Kind, "", "")
+					}
+				}
+				@dialog.Footer() {
+					@button.Button(button.Props{Variant: button.VariantDestructive, Class: "sm:mr-auto", Attributes: templ.Attributes{
+						"hx-post": fmt.Sprintf("/notes/%d/delete", n.ID), "hx-confirm": "Delete this note and all its blocks?",
+					}}) {
+						Delete
+					}
+					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.Close(ctx)}) {
+						Cancel
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Save
+					}
+				}
+			</form>
+		}
+	}
 }
 
 // BlockView is one note block as a viewer sees it. The document itself is
@@ -122,6 +178,8 @@ type Author struct {
 type NoteItem struct {
 	sqlc.Note
 	Author Author
+	// CanManage is true for the note's manager.
+	CanManage bool
 }
 
 templ authorRef(a Author) {

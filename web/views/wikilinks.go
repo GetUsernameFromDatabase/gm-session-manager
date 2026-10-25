@@ -8,16 +8,16 @@ import (
 )
 
 // wikiLinkPattern is a [[kind:id|label]] link in plain text (NPC fields),
-// with an optional |left, |right or |inline float for images (default left); notes keep theirs as
+// with an optional |left, |right, |inline or |break layout for images (default left); notes keep theirs as
 // editor nodes. fields.js writes them.
-var wikiLinkPattern = regexp.MustCompile(`\[\[(note|entity|image):(\d+)\|([^\]|]*)(?:\|(left|right|inline))?\]\]`)
+var wikiLinkPattern = regexp.MustCompile(`\[\[(note|entity|image):(\d+)\|([^\]|]*)(?:\|(left|right|inline|break))?\]\]`)
 
 // WikiLink is one [[link]] in a text.
 type WikiLink struct {
 	Kind  string // note, entity or image (note_links.target_type)
 	ID    int64
 	Label string
-	Float string // left, right, inline or "" (left)
+	Float string // left, right, inline, break or "" (left)
 }
 
 // Key is the link's target as the [[ picker names it, e.g. "image:5".

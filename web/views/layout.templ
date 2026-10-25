@@ -23,6 +23,7 @@ const (
 	NavEntities   = "entities"
 	NavCompendium = "compendium"
 	NavImages     = "images"
+	NavFiles      = "files"
 )
 
 // Layout is the frame around every page.
@@ -200,6 +201,9 @@ templ navLinks(l Layout) {
 			}
 		}
 	}
+	if l.IsGM {
+		@navLink(PathFiles, "Files", l.Active == NavFiles, nil)
+	}
 }
 
 // compendiumLinkAttrs opens the compendium in a new tab inside a campaign, since the compendium page has no campaign navbar.
@@ -229,6 +233,8 @@ templ menuIcons() {
 		@icon.PanelLeft()
 		@icon.PanelRight()
 		@icon.Type()
+		@icon.SeparatorHorizontal()
+		@icon.ImagePlus()
 		@icon.Pencil()
 		@icon.Trash2()
 	</template>

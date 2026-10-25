@@ -29,6 +29,9 @@ func TestMarkdown(t *testing.T) {
 			Links{Mention: func(id string) string { return map[string]string{"note:3": "3-inn.md"}[id] }, Image: noLinks.Image}},
 		{"mention unresolved", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"entity:3","label":"Mira"}}]}]}`, "Mira\n", noLinks},
 		{"image dropped when not exported", `{"type":"doc","content":[{"type":"image","attrs":{"src":"/attachments/9","alt":"map"}}]}`, "\n", noLinks},
+		{"attached picture exported as image", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"attachment:9","label":"map","float":"break"}}]}]}`, "![map](../attachments/ab12)\n",
+			Links{Mention: noLinks.Mention, Image: func(src string) string { return map[string]string{"/attachments/9": "../attachments/ab12"}[src] }}},
+		{"attached picture dropped when not exported", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"attachment:9","label":"map"}}]}]}`, "\n", noLinks},
 		{"empty doc", `{"type":"doc","content":[{"type":"paragraph"}]}`, "\n", noLinks},
 	}
 	for _, tt := range tests {

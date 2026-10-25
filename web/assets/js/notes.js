@@ -7,7 +7,7 @@ import { StarterKit } from "/assets/vendor/tiptap-starter.js";
 import { Image } from "/assets/vendor/tiptap-image.js";
 import { collab, getVersion, receiveTransaction, sendableSteps } from "/assets/vendor/pm-collab.js";
 import { Step } from "/assets/vendor/pm-transform.js";
-import { LINK_PATHS, WikiLink, keepCaretBeside, linkClick, mentionActions, showMenu } from "/assets/js/wikilink.js";
+import { KEEP_IMAGES, KeepImages, LINK_PATHS, WikiLink, keepCaretBeside, linkClick, mentionActions, mentionMenu, pickFile, showMenu, touchDrag } from "/assets/js/wikilink.js";
 
 const SNAPSHOT_EVERY_MS = 10000;
 const campaign = document.body.dataset.campaign;
@@ -32,14 +32,15 @@ const Collab = Extension.create({
   },
 });
 
-// links lists the [[mentions]] in a document for backlinks.
+// links lists the [[mentions]] in a document for backlinks (attached
+// pictures are not link targets).
 function links(doc) {
   const out = [];
   const walk = (n) => {
     if (n.type === "mention" && n.attrs && n.attrs.id) {
       const [type, id] = String(n.attrs.id).split(":");
       const num = Number(id);
-      if (LINK_PATHS[type] && num > 0 && !out.some((l) => l.type === type && l.id === num)) {
+      if (LINK_PATHS[type] && type !== "attachment" && num > 0 && !out.some((l) => l.type === type && l.id === num)) {
         out.push({ type, id: num });
       }
     }
@@ -69,8 +70,10 @@ class BlockEditor {
       content: data.doc,
       extensions: [
         StarterKit.configure({ link: { openOnClick: false } }),
+        // Attached pictures from before they became [[links]] (attachedPicture).
         Image,
         WikiLink,
+        KeepImages,
         Collab.configure({ version: data.docVersion, clientID: this.clientID }),
       ],
       onUpdate: () => this.send(),
@@ -190,7 +193,7 @@ class BlockEditor {
     const data = await this.upload(file);
     if (!data) return;
     const chain = this.editor.chain().focus();
-    if (data.image) chain.setImage({ src: data.url, alt: data.name }).run();
+    if (data.image) chain.insertContent(attachedPicture(data.id, data.name, "break")).run();
     else chain.insertContent({ type: "text", text: data.name, marks: [{ type: "link", attrs: { href: data.url } }] }).run();
   }
 
@@ -250,14 +253,8 @@ document.addEventListener("change", (e) => {
   input.value = "";
 });
 
-// pickFile asks for one file and calls done with it.
-function pickFile(accept, done) {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = accept;
-  input.addEventListener("change", () => input.files.length && done(input.files[0]));
-  input.click();
-}
+// attachedPicture is the [[link]] node of a picture uploaded to a block.
+const attachedPicture = (id, name, float) => ({ type: "mention", attrs: { id: `attachment:${id}`, label: name, float } });
 
 // nodeActions offers what can be done to the [[link]], attached image or
 // file link that was clicked in an editable block.
@@ -266,24 +263,26 @@ function nodeActions(ed, target, e) {
   const hit = view.posAtCoords({ left: e.clientX, top: e.clientY });
   if (!hit) return;
   const chain = () => ed.editor.chain().focus();
-  if (mentionActions(ed.editor, target, e)) return;
+  const upload = (file) => ed.upload(file);
+  if (mentionActions(ed.editor, target, e, { upload })) return;
   const pos = hit.inside;
   const node = pos >= 0 ? view.state.doc.nodeAt(pos) : null;
-  const removeNode = () => chain().deleteRange({ from: pos, to: pos + node.nodeSize }).run();
   if (target.closest("img") && node && node.type.name === "image") {
-    // Images can be large, so open at the click rather than below the image.
-    showMenu({ left: e.clientX, bottom: e.clientY }, [
-      ["Open", () => window.open(node.attrs.src, "_blank")],
-      [
-        "Replace…",
-        () =>
-          pickFile("image/*", async (file) => {
-            const data = await ed.upload(file);
-            if (data) ed.editor.view.dispatch(ed.editor.state.tr.setNodeMarkup(pos, null, { ...node.attrs, src: data.url, alt: data.name }));
-          }),
-      ],
-      ["Remove", removeNode],
-    ]);
+    const point = { left: e.clientX, top: e.clientY, bottom: e.clientY };
+    const attached = /^\/attachments\/(\d+)$/.exec(node.attrs.src);
+    if (!attached) {
+      showMenu(point, [
+        ["Open", () => window.open(node.attrs.src, "_blank"), "external-link"],
+        null,
+        ["Remove", () => chain().setMeta(KEEP_IMAGES, false).deleteRange({ from: pos, to: pos + node.nodeSize }).run(), "trash-2", true],
+      ]);
+      return;
+    }
+    // An attached picture from before they became [[links]]: make it one, on its own line as it was, then show that menu.
+    const { schema, tr } = view.state;
+    const picture = schema.nodeFromJSON(attachedPicture(attached[1], node.attrs.alt || "", "break"));
+    view.dispatch(tr.replaceWith(pos, pos + node.nodeSize, schema.nodes.paragraph.create(null, picture)));
+    mentionMenu(ed.editor, pos + 1, point, { upload });
     return;
   }
   const link = target.closest("a[href]");
@@ -292,17 +291,19 @@ function nodeActions(ed, target, e) {
   // Select the whole link so Replace and Remove act on all of its text.
   const select = () => chain().setTextSelection(hit.pos).extendMarkRange("link");
   const actions = [
-    ["Open", () => window.open(href, "_blank")],
-    ["Remove", () => select().deleteSelection().run()],
+    ["Open", () => window.open(href, "_blank"), "external-link"],
+    null,
+    ["Remove", () => select().deleteSelection().run(), "trash-2", true],
   ];
   if (href.startsWith("/attachments/")) {
-    actions.splice(1, 0, [
+    actions.splice(2, 0, [
       "Replace…",
       () =>
         pickFile("", async (file) => {
           const data = await ed.upload(file);
           if (data) select().insertContent({ type: "text", text: data.name, marks: [{ type: "link", attrs: { href: data.url } }] }).run();
         }),
+      "pencil",
     ]);
   }
   showMenu(link.getBoundingClientRect(), actions);
@@ -315,6 +316,8 @@ document.addEventListener("click", (e) => {
   const ed = [...editors.values()].find((x) => x.el.contains(e.target));
   linkClick(e, ed?.editor, () => nodeActions(ed, e.target, e));
 });
+
+touchDrag((el) => [...editors.values()].find((x) => x.el.contains(el))?.editor);
 
 document.addEventListener("click", (e) => {
   // A tap or click outside an open access popover closes it.

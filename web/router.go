@@ -12,6 +12,7 @@ import (
 	"gm-session-manager/auth"
 	"gm-session-manager/db"
 	"gm-session-manager/hub"
+	"gm-session-manager/web/views"
 )
 
 // Route paths used in more than one place.
@@ -97,6 +98,10 @@ func (a *App) Router() *gin.Engine {
 	r.GET("/characters/:character/download", gm, a.downloadCharacter)
 	r.POST("/characters/:character/remove", a.removeCharacter)
 	r.POST("/campaigns/:campaign/characters/import", gm, a.importCharacter)
+	r.GET(views.PathFiles, gm, a.filesPage)
+	r.POST(views.PathFiles+"/delete-unused", gm, a.deleteUnusedFiles)
+	r.POST(views.PathFiles+"/:attachment/delete", gm, a.deleteFile)
+	r.POST("/attachments/:attachment/to-image", gm, a.attachmentToImage)
 
 	// Characters.
 	r.GET("/characters/:character", a.characterPage)

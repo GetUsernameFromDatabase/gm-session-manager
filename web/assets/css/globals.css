@@ -185,16 +185,35 @@
   .wikilink > img {
     @apply max-h-96 rounded;
   }
+  /* A shown [[image]] drops the link chip, which would show through transparent images. */
+  .wikilink:has(> img:not([hidden])) {
+    @apply bg-transparent p-0;
+  }
   /* A floated [[image]] lets text wrap beside it; its block contains the float.
      One the viewer may not see shows its name inline. */
   .wikilink[data-float="left"]:has(> img:not([hidden])) {
-    @apply float-left mr-3 mb-2 max-w-1/2 bg-transparent p-0;
+    @apply float-left mr-3 mb-2 max-w-1/2;
   }
   .wikilink[data-float="right"]:has(> img:not([hidden])) {
-    @apply float-right mb-2 ml-3 max-w-1/2 bg-transparent p-0;
+    @apply float-right mb-2 ml-3 max-w-1/2;
+  }
+  /* Break text: on its own line, only as wide as the image (and its click area). */
+  .wikilink[data-float="break"]:has(> img:not([hidden])) {
+    @apply clear-both block w-fit max-w-full;
   }
   .wikilink[data-float] > img {
     @apply max-w-full;
+  }
+  /* Held on a phone to be moved (touchDrag in wikilink.js); no callout menu over it. */
+  .tiptap .wikilink > img {
+    -webkit-touch-callout: none;
+  }
+  .wikilink[data-dragging] {
+    @apply opacity-50;
+  }
+  /* Preflight's block img would stretch an inline [[image]]'s link, and its click area, across the line. */
+  .wikilink[data-float="inline"] > img {
+    @apply inline-block align-bottom;
   }
   .note-editor .tiptap,
   .field-editor .tiptap {
@@ -203,6 +222,15 @@
   /* ProseMirror's caret helper after an [[image]] ending a line; must stay in the DOM. */
   .tiptap img.ProseMirror-separator {
     @apply inline size-0;
+  }
+  /* ProseMirror's caret helpers beside a Break text image would each show as an empty line.
+     Important to beat TipTap's injected display: inline !important. */
+  .tiptap img.ProseMirror-separator:has(+ .wikilink[data-float="break"] > img:not([hidden])),
+  .tiptap .wikilink[data-float="break"]:has(> img:not([hidden])) + img.ProseMirror-separator {
+    @apply block! h-0!;
+  }
+  .tiptap .wikilink[data-float="break"]:has(> img:not([hidden])) + br.ProseMirror-trailingBreak {
+    @apply hidden;
   }
   /* An NPC field's editor (fields.js). */
   .field-editor {

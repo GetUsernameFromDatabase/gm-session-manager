@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -9,6 +10,8 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -208,6 +211,50 @@ func (a *App) storeImageFile(c *gin.Context, campaignID int64, fh *multipart.Fil
 		return att, false
 	}
 	return att, true
+}
+
+// attachmentToImage copies a picture attached to a note block into its
+// campaign's images (the GM's). The attachment stays, since other notes may
+// still show it; the Files page deletes it once nothing does.
+func (a *App) attachmentToImage(c *gin.Context) {
+	att, ok := a.readableAttachment(c)
+	if !ok {
+		return
+	}
+	if !slices.Contains(inlineTypes, att.Mime) {
+		a.fail(c, http.StatusUnprocessableEntity, "Only pictures can become campaign images.")
+		return
+	}
+	src, err := os.Open(filepath.Join(a.attachmentsDir(), filepath.Base(att.Path)))
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	defer func() { _ = src.Close() }()
+	ctx := c.Request.Context()
+	file, err := a.storeFile(ctx, att.CampaignID, sql.NullInt64{}, att.Name, src)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	name := cmp.Or(strings.TrimSuffix(att.Name, filepath.Ext(att.Name)), att.Name, "Picture")
+	img, err := a.Store.CreateImage(ctx, sqlc.CreateImageParams{CampaignID: att.CampaignID, Name: name, AttachmentID: nullID(file.ID)})
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	// The block links the image now, not at its next snapshot, so its readers can load it as soon as the link shows.
+	if att.BlockID.Valid {
+		b, _, err := a.loadBlock(ctx, att.BlockID.Int64)
+		if err == nil {
+			err = a.Store.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetType: linkImage, TargetID: img.ID})
+		}
+		if err != nil {
+			a.serverError(c, err)
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"id": img.ID, "name": img.Name})
 }
 
 // ensureCategory returns the category named name exactly, creating it,

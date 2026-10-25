@@ -160,6 +160,14 @@ func TestLiveRefetchStrips(t *testing.T) {
 			t.Errorf("player combat asking for %d shows another fight or misses their own", want)
 		}
 	}
+	// A player reads the GM's shared note but may not manage it from the index.
+	shared, _ := f.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: f.campaignID, Kind: "generic", Title: "Rumours"})
+	if _, err := f.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: shared.ID, Visibility: "players"}); err != nil {
+		t.Fatal(err)
+	}
+	if b := body(views.LiveKey(views.LiveNotes, f.campaignID)); !strings.Contains(b, "Rumours") || strings.Contains(b, fmt.Sprintf("/notes/%d/rename", shared.ID)) {
+		t.Errorf("notes refetch misses the shared note or lets the player manage it")
+	}
 	for _, view := range []string{views.LiveKey(views.LiveNote, f.gmNote), views.LiveKey(views.LiveRoster, f.campaignID), views.LiveKey(views.LiveEncounter, f.encounter)} {
 		if w := get(view); w.Code != http.StatusNoContent {
 			t.Errorf("%s: %d, want nothing", view, w.Code)

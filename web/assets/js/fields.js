@@ -5,10 +5,10 @@
 // on, as stored in its textarea[data-field-raw]. Both write to the input.
 import { Editor } from "/assets/vendor/tiptap-core.js";
 import { StarterKit } from "/assets/vendor/tiptap-starter.js";
-import { WikiLink, keepCaretBeside, linkClick } from "/assets/js/wikilink.js";
+import { WikiLink, keepCaretBeside, linkClick, touchDrag } from "/assets/js/wikilink.js";
 
 // The same token as wikiLinkPattern in web/views/wikilinks.go.
-const TOKEN = /\[\[(note|entity|image):(\d+)\|([^\]|]*)(?:\|(left|right|inline))?\]\]/g;
+const TOKEN = /\[\[(note|entity|image):(\d+)\|([^\]|]*)(?:\|(left|right|inline|break))?\]\]/g;
 
 // toDoc turns field text into a document: a paragraph per line, a mention
 // per token.
@@ -120,3 +120,5 @@ document.addEventListener("click", (e) => {
   const row = e.target.closest("[data-field-key]");
   linkClick(e, editors.get(row));
 });
+
+touchDrag((el) => editors.get(el.closest("[data-field-key]")));

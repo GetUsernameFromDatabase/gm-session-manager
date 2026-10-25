@@ -139,6 +139,11 @@ func (w writer) inline(nodes []pmNode) string {
 			if label == "" {
 				label = id
 			}
+			// An attached picture is an image of the block's own file.
+			if num, ok := strings.CutPrefix(id, "attachment:"); ok {
+				b.WriteString(w.inline([]pmNode{{Type: "image", Attrs: map[string]any{"src": "/attachments/" + num, "alt": label}}}))
+				continue
+			}
 			if target := w.links.Mention(id); target != "" {
 				fmt.Fprintf(&b, "[%s](%s)", escape(label), target)
 			} else {
