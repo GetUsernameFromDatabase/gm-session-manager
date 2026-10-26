@@ -412,10 +412,20 @@ func (a *App) entityList(ctx context.Context, v perm.Viewer, campaignID int64) (
 	if err != nil {
 		return list, err
 	}
+	looks, err := a.Store.CurrentCampaignEntityLooks(ctx, campaignID)
+	if err != nil {
+		return list, err
+	}
 	for _, r := range rows {
 		e, err := toEntity(r)
 		if err != nil {
 			return list, err
+		}
+		// Only the portrait: VisibleEntity drops it for players unless revealed.
+		for _, l := range looks {
+			if l.EntityID == e.ID {
+				e.Images = []perm.Look{toLook(l.ID, l.Name, l.Url, l.AttachmentID, l.IsRevealed, true)}
+			}
 		}
 		if visible, ok := perm.VisibleEntity(v, e); ok {
 			list.Entities = append(list.Entities, visible)

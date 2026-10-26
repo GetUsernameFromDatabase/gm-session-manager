@@ -96,3 +96,11 @@ JOIN entities AS e ON e.id = l.entity_id
 WHERE l.is_current AND l.entity_id IN (
     SELECT cb.entity_id FROM combatants AS cb WHERE cb.encounter_id = ? AND cb.entity_id IS NOT NULL
 );
+
+-- CurrentCampaignEntityLooks is each NPC's current look, for the NPC list.
+-- name: CurrentCampaignEntityLooks :many
+SELECT l.entity_id, i.id, i.name, i.url, i.attachment_id, l.is_revealed
+FROM entity_images AS l
+JOIN images AS i ON i.id = l.image_id
+JOIN entities AS e ON e.id = l.entity_id
+WHERE l.is_current AND e.campaign_id = ?;

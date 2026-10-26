@@ -148,7 +148,8 @@ func (a *App) updateEntity(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	a.entityChanged(c, e)
+	// A toast, as the page flash is far above the Save bar.
+	a.changedWith(c, e.CampaignID, views.Toast("Saved "+strings.TrimSpace(form.Name)+"."), entityTopics(e)...)
 }
 
 // saveFieldLinks replaces an NPC's field [[links]] with those in fields.
@@ -169,7 +170,12 @@ func saveFieldLinks(ctx context.Context, q *sqlc.Queries, entityID int64, fields
 }
 
 func (a *App) entityChanged(c *gin.Context, e sqlc.Entity) {
-	a.changed(c, e.CampaignID, hub.Topic{Kind: hub.TopicEntity, ID: e.ID}, hub.Topic{Kind: hub.TopicEntities, ID: e.CampaignID})
+	a.changed(c, e.CampaignID, entityTopics(e)...)
+}
+
+// entityTopics are the live views an NPC change touches: its page and the list.
+func entityTopics(e sqlc.Entity) []hub.Topic {
+	return []hub.Topic{{Kind: hub.TopicEntity, ID: e.ID}, {Kind: hub.TopicEntities, ID: e.CampaignID}}
 }
 
 func (a *App) deleteEntity(c *gin.Context) {
@@ -181,7 +187,7 @@ func (a *App) deleteEntity(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	a.Hub.Publish(e.CampaignID, hub.Topic{Kind: hub.TopicEntity, ID: e.ID}, hub.Topic{Kind: hub.TopicEntities, ID: e.CampaignID})
+	a.Hub.Publish(e.CampaignID, entityTopics(e)...)
 	redirect(c, fmt.Sprintf("/campaigns/%d/entities", e.CampaignID))
 }
 

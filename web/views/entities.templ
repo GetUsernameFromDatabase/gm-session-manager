@@ -8,6 +8,8 @@ import (
 	"gm-session-manager/web/components/badge"
 	"gm-session-manager/web/components/button"
 	"gm-session-manager/web/components/combobox"
+	"gm-session-manager/web/components/dialog"
+	"gm-session-manager/web/components/empty"
 	"gm-session-manager/web/components/icon"
 	switchcomp "gm-session-manager/web/components/switch"
 	"gm-session-manager/web/components/input"
@@ -52,47 +54,123 @@ type EntityListView struct {
 
 templ EntitiesPage(l Layout, v EntityListView) {
 	@Page(l) {
-		@PageHeader("NPCs", "")
+		<div class="mb-6 flex flex-wrap items-center gap-2">
+			<h1 class="mr-auto text-2xl font-semibold">NPCs</h1>
+			if v.IsGM {
+				@newEntityDialog(v.CampaignID)
+			}
+		</div>
 		@EntityList(v)
-		if v.IsGM {
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/entities", v.CampaignID)) } class="mt-6 flex gap-2">
-				@input.Input(input.Props{Name: "name", Placeholder: "New NPC name", Required: true, Class: "max-w-xs"})
-				@button.Button(button.Props{Type: button.TypeSubmit}) {
-					Create
+	}
+}
+
+const newEntityID = "new-npc"
+
+templ newEntityDialog(campaignID int64) {
+	@dialog.Dialog(dialog.Props{ID: newEntityID}) {
+		@button.Button(button.Props{Attributes: dialog.Trigger(ctx)}) {
+			@icon.Plus()
+			New NPC
+		}
+		@dialog.Content() {
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/entities", campaignID)) } class="grid gap-4">
+				@dialog.Header() {
+					@dialog.Title() {
+						New NPC
+					}
+					@dialog.Description() {
+						Players see a new NPC only once you reveal it.
+					}
+				}
+				@input.Input(input.Props{Name: "name", Placeholder: "Name", Required: true, Attributes: templ.Attributes{"aria-label": "Name"}})
+				@dialog.Footer() {
+					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.Close(ctx)}) {
+						Cancel
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Create NPC
+					}
 				}
 			</form>
 		}
 	}
 }
 
+// EntityList is the cast: a portrait card per NPC. The GM's hidden NPCs wait
+// in the wings, greyed out.
 templ EntityList(v EntityListView) {
-	<ul id="entities-list" hx-swap-oob="true" class="divide-y rounded-lg border" { live(LiveEntities, v.CampaignID)... }>
-		for _, e := range v.Entities {
-			<li class="flex items-center justify-between gap-2 p-3">
-				<a class="font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/entities/%d", e.ID)) }>{ e.Name }</a>
-				if v.IsGM {
-					if e.IsRevealed {
-						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-							Revealed
-						}
-					} else {
-						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-							Hidden
+	<div id="entities-list" hx-swap-oob="true" { live(LiveEntities, v.CampaignID)... }>
+		if len(v.Entities) == 0 {
+			@empty.Empty(empty.Props{Class: "border border-dashed"}) {
+				@empty.Header() {
+					@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+						@icon.Drama()
+					}
+					@empty.Title() {
+						No NPCs yet
+					}
+					@empty.Description() {
+						if v.IsGM {
+							Add the people the party will meet: an innkeeper, a rival, a patron. Players see each one only once you reveal it.
+						} else {
+							The GM has not revealed any NPCs yet.
 						}
 					}
 				}
-			</li>
-		}
-		if len(v.Entities) == 0 {
-			<li class="p-3 text-sm text-muted-foreground">
 				if v.IsGM {
-					No NPCs yet.
-				} else {
-					The GM has not revealed any NPCs yet.
+					@empty.Content() {
+						// Opens the header's dialog, so its id stays unique.
+						@button.Button(button.Props{Attributes: dialog.TriggerFor(newEntityID)}) {
+							@icon.Plus()
+							New NPC
+						}
+					}
 				}
-			</li>
+			}
+		} else {
+			<ul class="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 lg:grid-cols-5">
+				for _, e := range v.Entities {
+					<li class="group/npc min-w-0" data-hidden?={ v.IsGM && !e.IsRevealed }>
+						<a class="block rounded-lg ring-offset-2 ring-offset-background outline-none focus-visible:ring-3 focus-visible:ring-ring/50" href={ templ.SafeURL(fmt.Sprintf("/entities/%d", e.ID)) }>
+							<div class="relative">
+								@npcPortrait(e, "group-data-[hidden]/npc:opacity-60 group-data-[hidden]/npc:grayscale")
+								if v.IsGM && !e.IsRevealed {
+									<span class="absolute top-2 left-2">
+										@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+											@icon.EyeOff()
+											Hidden
+										}
+									</span>
+								}
+							</div>
+							<p class="mt-1.5 truncate text-sm font-medium" title={ e.Name }>{ e.Name }</p>
+							if role := e.Fields["role"].Value; role != "" {
+								<p class="line-clamp-1 text-xs text-muted-foreground">{ role }</p>
+							}
+						</a>
+					</li>
+				}
+			</ul>
 		}
-	</ul>
+	</div>
+}
+
+// currentLook is the look shown as the portrait.
+func currentLook(looks []perm.Look) (perm.Look, bool) {
+	i := slices.IndexFunc(looks, func(l perm.Look) bool { return l.IsCurrent })
+	if i < 0 {
+		return perm.Look{}, false
+	}
+	return looks[i], true
+}
+
+// npcPortrait is the NPC's current look, or their initials without one.
+templ npcPortrait(e perm.Entity, class string) {
+	if look, ok := currentLook(e.Images); ok {
+		<img src={ LookItem(look).Src() } alt={ e.Name } loading="lazy" class={ utils.CN("aspect-square w-full rounded-lg border bg-muted object-cover transition", class) }/>
+	} else {
+		<div aria-hidden="true" class={ utils.CN("flex aspect-square w-full items-center justify-center rounded-lg border bg-muted font-serif text-4xl text-muted-foreground select-none transition", class) }>{ initials(e.Name) }</div>
+	}
 }
 
 // EntityView is one entity page.
@@ -115,52 +193,68 @@ type EntityView struct {
 
 func (v EntityView) canOpen(l WikiLink) bool { return v.IsGM || v.Readable[l.Key()] }
 
+// entityGrid is the page's two columns: looks, then fields or mentions.
+const entityGrid = "grid gap-6 md:grid-cols-[2fr_3fr] md:gap-8"
+
 templ EntityPage(l Layout, v EntityView) {
 	@Page(l) {
 		@EntityDetail(v)
-		<section class="mt-10">
-			<h2 class="mb-2 text-sm font-semibold text-muted-foreground uppercase">Linked mentions</h2>
-			<ul class="space-y-1 text-sm">
-				if v.IsGM {
-					for _, img := range v.E.Images {
-						<li>Image · <a class="underline" href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ImageID)) }>{ img.Name }</a></li>
+		<div class={ entityGrid, "mt-10" }>
+			<section class="md:col-start-2">
+				<h2 class={ sectionHeading }>Linked mentions</h2>
+				<ul class="space-y-1.5 text-sm">
+					if v.IsGM {
+						for _, img := range v.E.Images {
+							@mention(icon.Image, fmt.Sprintf("/images/%d", img.ImageID), img.Name)
+						}
 					}
-				}
-				@npcMentions(v.EntityLinks)
-				for _, b := range v.Backlinks {
-					<li><a class="underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", b.ID)) }>{ b.Title }</a></li>
-				}
-				if len(v.Backlinks) == 0 && len(v.EntityLinks) == 0 && (!v.IsGM || len(v.E.Images) == 0) {
-					<li class="text-muted-foreground">No notes mention this NPC yet.</li>
-				}
-			</ul>
-		</section>
+					@npcMentions(v.EntityLinks)
+					for _, b := range v.Backlinks {
+						@mention(icon.NotebookPen, fmt.Sprintf("/notes/%d", b.ID), b.Title)
+					}
+					if len(v.Backlinks) == 0 && len(v.EntityLinks) == 0 && (!v.IsGM || len(v.E.Images) == 0) {
+						<li class="text-muted-foreground">No notes mention this NPC yet.</li>
+					}
+				</ul>
+			</section>
+		</div>
 	}
 }
 
 templ EntityDetail(v EntityView) {
-	<div id={ fmt.Sprintf("entity-%d", v.E.ID) } hx-swap-oob="true" { live(LiveEntity, v.E.ID)... }>
-		if v.IsGM {
-			@entityForm(v)
-		} else {
-			@PageHeader(v.E.Name, "")
-			<dl class="space-y-3">
-				for _, k := range OrderedFieldKeys(v.E.Fields) {
-					<div>
-						<dt class="text-xs font-semibold text-muted-foreground uppercase">{ k }</dt>
-						<dd class="flow-root whitespace-pre-line">
-							@wikiText(v.E.Fields[k].Value, v.canOpen)
-						</dd>
-					</div>
-				}
-			</dl>
-		}
-		@entityLooks(v)
+	<div id={ fmt.Sprintf("entity-%d", v.E.ID) } hx-swap-oob="true" class={ entityGrid } { live(LiveEntity, v.E.ID)... }>
+		// The face leads; on phones the fields follow it.
+		<div class="md:sticky md:top-20 md:self-start">
+			@entityLooks(v)
+		</div>
+		<div class="min-w-0">
+			if v.IsGM {
+				@entityForm(v)
+			} else {
+				<h1 class="mb-6 text-2xl font-semibold">{ v.E.Name }</h1>
+				<dl class="max-w-prose space-y-5">
+					for _, k := range OrderedFieldKeys(v.E.Fields) {
+						<div>
+							<dt class="text-sm font-medium text-muted-foreground first-letter:uppercase">{ k }</dt>
+							<dd class="flow-root font-serif text-base leading-relaxed whitespace-pre-line">
+								@wikiText(v.E.Fields[k].Value, v.canOpen)
+							</dd>
+						</div>
+					}
+				</dl>
+			}
+		</div>
 	</div>
 }
 
-// entityLooks is the NPC's looks; the GM manages them.
+// entityLooks is the NPC's looks, the current one as the portrait; the GM
+// manages them.
 templ entityLooks(v EntityView) {
+	if len(v.E.Images) == 0 {
+		<div class="max-w-64 md:max-w-none">
+			@npcPortrait(v.E, "")
+		</div>
+	}
 	if v.IsGM || len(v.E.Images) > 0 {
 		@looksSection(v.E.Images, utils.IfElse(v.IsGM, fmt.Sprintf("/entities/%d/images/", v.E.ID), ""),
 			utils.IfElse(v.IsGM, "The current look is the NPC's portrait. Players see only revealed looks.", "")) {
@@ -181,27 +275,25 @@ templ entityLooks(v EntityView) {
 }
 
 // looksSection shows looks (an NPC's or a character's), the current one
-// first and larger as the portrait. It only ever gets the looks the viewer
-// may see. base is where the look actions live, empty when read-only;
-// children add more looks.
+// first, larger and ringed as the portrait. It only ever gets the looks the
+// viewer may see. base is where the look actions live, empty when
+// read-only; children add more looks.
 templ looksSection(looks []perm.Look, base, hint string) {
-	<section class="mt-8 space-y-3">
-		<h2 class="text-sm font-semibold text-muted-foreground uppercase">Looks</h2>
+	<section class="mt-8 space-y-3 first:mt-0">
+		<h2 class={ sectionHeading }>Looks</h2>
 		if hint != "" {
 			<p class="text-xs text-muted-foreground">{ hint }</p>
 		}
 		<div class="flex flex-wrap items-start gap-4">
 			for _, img := range looks {
 				<figure class={ "space-y-1", utils.IfElse(img.IsCurrent, "w-64", "w-32") }>
-					<a href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ImageID)) }>
-						<img src={ LookItem(img).Src() } alt={ img.Name } loading="lazy" class="aspect-square w-full rounded-lg border bg-muted object-cover"/>
+					<a href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ImageID)) } class="block rounded-lg">
+						<img src={ LookItem(img).Src() } alt={ img.Name } loading="lazy" class={ "aspect-square w-full rounded-lg border bg-muted object-cover", templ.KV("ring-2 ring-primary ring-offset-2 ring-offset-background", img.IsCurrent) }/>
 					</a>
-					<figcaption class="flex flex-wrap items-center gap-1 text-xs">
-						<span class="truncate">{ img.Name }</span>
+					<figcaption class="truncate text-xs" title={ img.Name }>
+						{ img.Name }
 						if img.IsCurrent {
-							@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-								Current
-							}
+							<span class="sr-only">(current)</span>
 						}
 					</figcaption>
 					if base != "" {
@@ -247,21 +339,40 @@ func LookItem(img perm.Look) ImageItem {
 // deleted while a player is looking at it.
 templ EntityGone(id int64) {
 	<div id={ fmt.Sprintf("entity-%d", id) } hx-swap-oob="true" { live(LiveEntity, id)... }>
-		<p class="text-muted-foreground">This NPC is not available.</p>
+		@empty.Empty(empty.Props{Class: "border border-dashed"}) {
+			@empty.Header() {
+				@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+					@icon.EyeOff()
+				}
+				@empty.Title() {
+					This NPC is not available
+				}
+			}
+		}
 	</div>
 }
 
 templ entityForm(v EntityView) {
 	{{ keys := OrderedFieldKeys(v.E.Fields) }}
-	<form hx-post={ fmt.Sprintf("/entities/%d", v.E.ID) } class="group/fields space-y-4">
-		<div class="flex flex-wrap items-center gap-3">
-			@input.Input(input.Props{Name: "name", Value: v.E.Name, Required: true, Class: "max-w-sm text-lg font-semibold"})
+	<form hx-post={ fmt.Sprintf("/entities/%d", v.E.ID) } class="group/fields space-y-5">
+		<div class="space-y-2">
+			<div class="flex items-center gap-2">
+				@input.Input(input.Props{Name: "name", Value: v.E.Name, Required: true, Class: "-ml-2.5 h-auto border-transparent py-0.5 text-2xl font-semibold shadow-none hover:border-input md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Name"}})
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Class: quietDestructive, Attributes: templ.Attributes{
+					"hx-post": fmt.Sprintf("/entities/%d/delete", v.E.ID), "hx-confirm": "Delete " + v.E.Name + "?", "aria-label": "Delete " + v.E.Name, "title": "Delete",
+				}}) {
+					@icon.Trash2()
+				}
+			</div>
 			@checkField("revealed", "true", v.E.IsRevealed) {
 				Players can see this NPC
 			}
 		</div>
 		<div class="flex flex-wrap items-center justify-between gap-2">
-			<p class="text-xs text-muted-foreground">Tick a field to reveal it. Unrevealed fields never reach players' devices. <span class="text-amber-600 dark:text-amber-500">Fields left empty are not saved.</span></p>
+			<p class="text-xs text-muted-foreground">
+				Players get only the fields marked <span class="text-sky-700 dark:text-sky-300">Players see</span>; the rest never reach their devices.
+				<span class="text-amber-600 dark:text-amber-500">Empty fields are not saved.</span>
+			</p>
 			// Shows the fields as stored, [[links]] as text; it submits nothing.
 			<label class="flex items-center gap-2 text-xs text-muted-foreground" data-raw-switch>
 				@switchcomp.Switch(switchcomp.Props{Size: switchcomp.SizeSm})
@@ -269,8 +380,7 @@ templ entityForm(v EntityView) {
 			</label>
 		</div>
 		<input type="hidden" name="count" value={ fmt.Sprint(len(keys)) }/>
-		// A long list scrolls in place, keeping Save and the sections below close.
-		<div data-field-rows class="peer max-h-[50vh] space-y-3 overflow-y-auto pr-1">
+		<div data-field-rows class="peer max-w-prose space-y-5">
 			for i, k := range keys {
 				@fieldRow(i, k, v.E.Fields[k])
 			}
@@ -280,40 +390,42 @@ templ entityForm(v EntityView) {
 			@fieldRow(0, "", perm.Field{})
 		</template>
 		@addFieldInput(v.E.ID, keys)
-		<div class="flex flex-wrap gap-2">
-			@button.Button(button.Props{Type: button.TypeSubmit}) {
-				Save
-			}
-			if v.ActiveEncounterID != 0 {
-				@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{
-					"hx-post": fmt.Sprintf("/encounters/%d/combatants", v.ActiveEncounterID), "hx-vals": fmt.Sprintf(`{"kind":"entity","id":"%d"}`, v.E.ID),
-				}}) {
-					Add to current fight
+		<section class="space-y-1 pt-3 text-sm">
+			<h2 class={ sectionHeading }>Statblock</h2>
+			<p class="flex items-center gap-1">
+				if v.Compendium != nil {
+					@icon.BookOpen(icon.Props{Size: 16, Class: "text-muted-foreground"})
+					<a class="underline underline-offset-4" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", v.Compendium.ID)) }>{ v.Compendium.Name }</a>
+					@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeXs, Class: "text-muted-foreground", Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", v.E.ID), "hx-vals": `{"entry":"0"}`}}) {
+						Unlink
+					}
+				} else {
+					<span class="text-muted-foreground">None linked.</span>
 				}
-			}
-			@button.Button(button.Props{Variant: button.VariantDestructive, Attributes: templ.Attributes{
-				"hx-post": fmt.Sprintf("/entities/%d/delete", v.E.ID), "hx-confirm": "Delete " + v.E.Name + "?",
-			}}) {
-				Delete
-			}
-		</div>
-		<div class="text-sm">
-			<span class="font-medium">Statblock:</span>
-			if v.Compendium != nil {
-				<a class="underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", v.Compendium.ID)) }>{ v.Compendium.Name }</a>
-				@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeXs, Class: "text-muted-foreground", Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", v.E.ID), "hx-vals": `{"entry":"0"}`}}) {
-					unlink
-				}
-			} else {
-				<span class="text-muted-foreground">none</span>
-			}
-			@input.Input(input.Props{Name: "q", Type: "search", Placeholder: "Link a compendium monster…", Class: "mt-1 max-w-sm", Attributes: templ.Attributes{
+			</p>
+			@input.Input(input.Props{Name: "q", Type: "search", Placeholder: "Link a compendium monster…", Class: "max-w-sm", Attributes: templ.Attributes{
+				"aria-label": "Link a compendium monster",
 				"hx-get":     fmt.Sprintf("/compendium/search?kind=monster&entity=%d", v.E.ID),
 				"hx-trigger": "input changed delay:200ms, search",
 				"hx-target":  "next ul",
 				"hx-swap":    "innerHTML",
 			}})
 			<ul class="mt-1"></ul>
+		</section>
+		// Sticky, so a long list of fields need not be scrolled to its end to save.
+		<div class="sticky bottom-3 z-30 flex flex-wrap items-center gap-2 rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur">
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				@icon.Save()
+				Save
+			}
+			if v.ActiveEncounterID != 0 {
+				@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{
+					"hx-post": fmt.Sprintf("/encounters/%d/combatants", v.ActiveEncounterID), "hx-vals": fmt.Sprintf(`{"kind":"entity","id":"%d"}`, v.E.ID),
+				}}) {
+					@icon.Swords()
+					Add to current fight
+				}
+			}
 		</div>
 	</form>
 }
@@ -329,12 +441,13 @@ func missingSuggestions(keys []string) []string {
 }
 
 // fieldRow is one stored field: its key, value and whether players see it.
-// app.js clones a blank one for each field added and removes rows; Save
-// stores what is left.
+// Its rail is rose while only the GM sees it and sky once players do, as on
+// note blocks; the checkbox flips it, no script needed. app.js clones a blank
+// one for each field added and removes rows; Save stores what is left.
 templ fieldRow(i int, key string, f perm.Field) {
-	<div class="group/field space-y-1" data-field-key={ key } data-empty?={ f.Value == "" }>
+	<div class="group/field space-y-1 border-l-[3px] border-l-rose-500 pl-3 has-[[data-reveal]_[data-checked]]:border-l-sky-500" data-field-key={ key } data-empty?={ f.Value == "" }>
 		<div class="flex items-center gap-2">
-			<span class="text-sm font-medium" data-field-label>{ key }</span>
+			<span class="text-sm font-medium first-letter:uppercase" data-field-label>{ key }</span>
 			// Shown while the value is empty (fields.js keeps data-empty).
 			<span class="hidden group-data-[empty]/field:inline-flex">
 				@tooltip.Tooltip() {
@@ -347,9 +460,9 @@ templ fieldRow(i int, key string, f perm.Field) {
 				}
 			</span>
 			<input type="hidden" name={ fmt.Sprintf("key_%d", i) } value={ key }/>
-			<span class="ml-auto">
+			<span class="ml-auto text-xs" data-reveal>
 				@checkField(fmt.Sprintf("revealed_%d", i), "true", f.IsRevealed) {
-					revealed
+					Players see
 				}
 			</span>
 			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-4 " + quietDestructive, Attributes: templ.Attributes{"aria-label": "Remove field", "data-remove-field": ""}}) {
@@ -360,7 +473,7 @@ templ fieldRow(i int, key string, f perm.Field) {
 		// form control. fields.js shows it in an editor that renders [[links]]
 		// as notes do, or with Raw text on, as stored in the textarea.
 		<input type="hidden" name={ fmt.Sprintf("value_%d", i) } value={ f.Value } data-field-value/>
-		<div class="group-data-[raw]/fields:hidden" data-field-editor></div>
+		<div class="font-serif group-data-[raw]/fields:hidden" data-field-editor></div>
 		<div class="hidden group-data-[raw]/fields:block">
 			@textarea.Textarea(textarea.Props{Value: f.Value, Rows: 2, Placeholder: "Value", Attributes: templ.Attributes{"aria-label": "Value as stored", "data-field-raw": ""}})
 		</div>
@@ -398,7 +511,7 @@ templ wikiLink(l WikiLink) {
 // npcMentions are the linked-mentions rows for NPCs whose fields link here.
 templ npcMentions(rows []sqlc.ListEntityFieldBacklinksRow) {
 	for _, e := range rows {
-		<li>NPC · <a class="underline" href={ templ.SafeURL(fmt.Sprintf("/entities/%d", e.ID)) }>{ e.Name }</a></li>
+		@mention(icon.Drama, fmt.Sprintf("/entities/%d", e.ID), e.Name)
 	}
 }
 

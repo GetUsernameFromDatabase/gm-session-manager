@@ -3,6 +3,8 @@
 *.exe
 # Downloaded by `go run ./cmd/vendorjs`
 /web/assets/vendor/
+# Built by `go tool shadcn-templ bundle` (go generate ./web); scripts_bundle.go is committed
+/web/assets/js/shadcn-templ-*.js
 
 ### AI agent, Claude
 # Personal Claude Code settings and backups

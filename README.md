@@ -106,7 +106,8 @@ Homebrew is written in the Compendium page and is shared by all campaigns.
 
 - [Go](https://go.dev/dl/) at the version in `go.mod`. That is all you need
   to build and run: generated code and built assets are committed, except the
-  browser libraries: run `go run ./cmd/vendorjs` once after cloning.
+  browser libraries and the component script bundle: run
+  `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` once after cloning.
 - Only for changing sources:
   - [sqlc](https://docs.sqlc.dev/en/latest/overview/install.html) on PATH
     (migrations and queries),
@@ -129,7 +130,7 @@ cp .env.example .env    # then set ADMIN_USERNAME and ADMIN_PASSWORD
 | Change | Command |
 | --- | --- |
 | `db/migrations`, `db/queries` | `go generate ./db` (sqlc) |
-| `*.templ`, Tailwind classes | `go generate ./web` (templ + Tailwind) |
+| `*.templ`, Tailwind classes | `go generate ./web` (script bundle + templ + Tailwind) |
 | shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./web` |
 | browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |
 

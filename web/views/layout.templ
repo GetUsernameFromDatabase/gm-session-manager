@@ -10,6 +10,7 @@ import (
 	"gm-session-manager/web/components/kbd"
 	"gm-session-manager/web/components/separator"
 	"gm-session-manager/web/components/spinner"
+	"gm-session-manager/web/components/toast"
 	"gm-session-manager/web/utils"
 	"time"
 )
@@ -98,6 +99,7 @@ templ Page(l Layout) {
 				<div id="flash"></div>
 				{ children... }
 			</main>
+			@toast.Toaster()
 			if l.IsGM && l.WS != nil {
 				@PendingRequests(l.Requests)
 			}
@@ -262,6 +264,13 @@ templ Flash(msg string, isError bool) {
 		if msg != "" {
 			@Notice(msg, isError, "mb-4")
 		}
+	</div>
+}
+
+// Toast confirms a change where the user is looking; it also clears the flash.
+templ Toast(msg string) {
+	<div id="flash" hx-swap-oob="true">
+		@toast.Toast(toast.Props{Title: msg, Type: toast.TypeSuccess})
 	</div>
 }
 

@@ -98,12 +98,12 @@ A page region that updates in real time is a live view.
 
 ## Commands
 
-Generated code and built assets are committed, except `web/assets/vendor` (gitignored): run `go run ./cmd/vendorjs` once after cloning, then `go build` alone works. After changing sources:
+Generated code and built assets are committed, except `web/assets/vendor` and the shadcn-templ script bundle `web/assets/js/shadcn-templ-*.js` (both gitignored; `web/components/scripts_bundle.go` is committed): run `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` once after cloning, then `go build` alone works. After changing sources:
 
 | Change | Command |
 |---|---|
 | `db/migrations`, `db/queries` | `go generate ./db` (sqlc on PATH) |
-| `*.templ`, Tailwind classes | `go generate ./web` (templ + Tailwind standalone CLI on PATH) |
+| `*.templ`, Tailwind classes | `go generate ./web` (script bundle + templ + Tailwind standalone CLI on PATH) |
 | shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./web` |
 | browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |
 

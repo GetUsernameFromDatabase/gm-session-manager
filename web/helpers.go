@@ -229,6 +229,11 @@ func (a *App) changed(c *gin.Context, campaignID int64, topics ...hub.Topic) {
 
 // changedNotice is changed with a success message in the flash.
 func (a *App) changedNotice(c *gin.Context, campaignID int64, msg string, topics ...hub.Topic) {
+	a.changedWith(c, campaignID, views.Flash(msg, false), topics...)
+}
+
+// changedWith is changed answering htmx with res, such as a views.Toast.
+func (a *App) changedWith(c *gin.Context, campaignID int64, res templ.Component, topics ...hub.Topic) {
 	a.Hub.Publish(campaignID, topics...)
 	if !isHTMX(c) {
 		back := c.GetHeader("Referer")
@@ -238,7 +243,7 @@ func (a *App) changedNotice(c *gin.Context, campaignID int64, msg string, topics
 		c.Redirect(http.StatusSeeOther, back)
 		return
 	}
-	a.render(c, http.StatusOK, views.Flash(msg, false))
+	a.render(c, http.StatusOK, res)
 }
 
 // layout fills the frame for a page. Pages that show live data pass a

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -138,6 +139,22 @@ func TestLiveRefetchStrips(t *testing.T) {
 	body := func(view string) string { return get(view).Body.String() }
 	if b := body(views.LiveKey(views.LiveEntity, f.entity)); !strings.Contains(b, "Innkeeper") || strings.Contains(b, "lich") {
 		t.Errorf("NPC refetch leaks or misses fields: %s", b)
+	}
+	// The NPC list shows a portrait only once its look is revealed.
+	mask, _ := f.q().CreateImage(t.Context(), sqlc.CreateImageParams{CampaignID: f.campaignID, Name: "mask", Url: sql.NullString{String: "https://example.com/mask.png", Valid: true}})
+	look := sqlc.ToggleEntityImageRevealedParams{EntityID: f.entity, ImageID: mask.ID}
+	if err := f.q().LinkEntityImage(t.Context(), sqlc.LinkEntityImageParams{EntityID: f.entity, ImageID: mask.ID}); err != nil {
+		t.Fatal(err)
+	}
+	src := views.ImageSrc(mask.ID)
+	if b := body(views.LiveKey(views.LiveEntities, f.campaignID)); !strings.Contains(b, "Innkeeper") || strings.Contains(b, src) {
+		t.Errorf("NPC list leaks a hidden portrait or misses the role: %s", b)
+	}
+	if err := f.q().ToggleEntityImageRevealed(t.Context(), look); err != nil {
+		t.Fatal(err)
+	}
+	if b := body(views.LiveKey(views.LiveEntities, f.campaignID)); !strings.Contains(b, src) {
+		t.Errorf("NPC list misses a revealed portrait: %s", b)
 	}
 	if err := f.q().SetCombatantMarker(t.Context(), sqlc.SetCombatantMarkerParams{ID: f.ogre, Marker: "mini 5"}); err != nil {
 		t.Fatal(err)

@@ -85,6 +85,54 @@ func (q *Queries) CreateEntity(ctx context.Context, arg CreateEntityParams) (Ent
 	return i, err
 }
 
+const currentCampaignEntityLooks = `-- name: CurrentCampaignEntityLooks :many
+SELECT l.entity_id, i.id, i.name, i.url, i.attachment_id, l.is_revealed
+FROM entity_images AS l
+JOIN images AS i ON i.id = l.image_id
+JOIN entities AS e ON e.id = l.entity_id
+WHERE l.is_current AND e.campaign_id = ?
+`
+
+type CurrentCampaignEntityLooksRow struct {
+	EntityID     int64
+	ID           int64
+	Name         string
+	Url          sql.NullString
+	AttachmentID sql.NullInt64
+	IsRevealed   bool
+}
+
+// CurrentCampaignEntityLooks is each NPC's current look, for the NPC list.
+func (q *Queries) CurrentCampaignEntityLooks(ctx context.Context, campaignID int64) ([]CurrentCampaignEntityLooksRow, error) {
+	rows, err := q.db.QueryContext(ctx, currentCampaignEntityLooks, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CurrentCampaignEntityLooksRow{}
+	for rows.Next() {
+		var i CurrentCampaignEntityLooksRow
+		if err := rows.Scan(
+			&i.EntityID,
+			&i.ID,
+			&i.Name,
+			&i.Url,
+			&i.AttachmentID,
+			&i.IsRevealed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const currentEntityLooks = `-- name: CurrentEntityLooks :many
 SELECT l.entity_id, e.is_revealed AS entity_revealed, i.id, i.name, i.url, i.attachment_id, l.is_revealed
 FROM entity_images AS l
