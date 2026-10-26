@@ -1,5 +1,6 @@
-// Package join covers how devices reach the host: LAN address detection and
-// the self-signed TLS certificate that names those addresses.
+// Package join covers how devices reach the host: LAN address detection, the
+// self-signed TLS certificate that names those addresses, and the redirect of
+// plain HTTP to HTTPS on the same port.
 package join
 
 import (

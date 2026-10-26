@@ -750,6 +750,55 @@
     if (e.target.closest?.('[data-source-field] [data-slot="tabs-trigger"]')) syncImagePreview();
   });
 
+  // The GM's turn buttons bring the combatant whose turn it now is to the
+  // middle of the list (its own scroll box), without moving the page.
+  // The turn arrives later, over the websocket or a refetch, so a press
+  // watches for the row marked active (data-active) to change, for a few
+  // seconds at most.
+  const activeRow = () => document.querySelector('li[data-active="true"]');
+  let turnWatch = null;
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest?.("[data-turn-button]")) return;
+    turnWatch?.disconnect();
+    const from = activeRow();
+    const watch = (turnWatch = new MutationObserver(() => {
+      const row = activeRow();
+      if (!row || row === from) return;
+      watch.disconnect();
+      const list = row.closest("[data-keep-scroll]");
+      if (!list) return;
+      const r = row.getBoundingClientRect();
+      const box = list.getBoundingClientRect();
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // The browser clamps at the ends, so the first and last rows sit as near the middle as they can.
+      const top = list.scrollTop + r.top - box.top - list.clientTop - (list.clientHeight - r.height) / 2;
+      list.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
+    }));
+    watch.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-active"] });
+    setTimeout(() => watch.disconnect(), 3000);
+  });
+
+  // Page tabs (data-url-param, one group per page) keep their value in the
+  // address, so a link shares the view. Each tab keeps its own query: Browse's
+  // search does not follow the GM to Homebrew, and comes back with Browse.
+  // Replaced, not pushed: Back still leaves the page.
+  const tabQueries = new WeakMap(); // tab root -> {tab value: query string}
+  document.addEventListener("tabs-value-change", (e) => {
+    const root = e.target;
+    const param = root.dataset?.urlParam;
+    if (!param) return;
+    const saved = tabQueries.get(root) ?? {};
+    tabQueries.set(root, saved);
+    const url = new URL(location.href);
+    url.searchParams.delete(param);
+    // Fired before tabs.js switches, so the active trigger is the tab being left.
+    const left = root.querySelector('[data-slot="tabs-trigger"][data-active]')?.dataset.templValue;
+    if (left) saved[left] = url.search;
+    url.search = saved[e.detail.value] ?? "";
+    url.searchParams.set(param, e.detail.value);
+    history.replaceState(history.state, "", url);
+  });
+
   // Create-as-you-type comboboxes (image category, NPC field keys) take new
   // names: a create button shows while the text names no item and adds it as
   // an item, which it selects. Closing the list reverts the text to the

@@ -30,14 +30,8 @@ func TestAttachmentRefs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := attachmentRefs([]string{tt.text})
-			if len(got) != len(tt.want) {
-				t.Fatalf("got %v, want %v", got, tt.want)
-			}
-			for _, id := range tt.want {
-				if !got[id] {
-					t.Errorf("missing %d in %v", id, got)
-				}
+			if got := attachmentRefs(tt.text); !slices.Equal(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -83,9 +77,16 @@ func TestFilesCleanup(t *testing.T) {
 	if w := e.do(t, http.MethodGet, views.PathFiles, player, nil, false); w.Code == http.StatusOK {
 		t.Fatal("a player may not open the Files page")
 	}
+	uses, err := e.app.attachmentUses(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := uses[kept.ID]; len(got) != 1 || got[0].Label != "Maps" || len(uses[stray.ID]) != 0 {
+		t.Errorf("uses of kept %v, of stray %v", got, uses[stray.ID])
+	}
 	page := e.do(t, http.MethodGet, views.PathFiles, gm, nil, false).Body.String()
-	if !strings.Contains(page, "stray.png") || strings.Contains(page, "kept.png") {
-		t.Errorf("Files page should list only the unused file")
+	if !strings.Contains(page, "stray.png") || !strings.Contains(page, "kept.png") || !strings.Contains(page, ">Maps<") {
+		t.Errorf("Files page should list every file and the note using it")
 	}
 
 	e.do(t, http.MethodPost, fmt.Sprintf("%s/%d/delete", views.PathFiles, kept.ID), gm, nil, true)
@@ -204,5 +205,48 @@ func TestAttachmentAccess(t *testing.T) {
 				t.Errorf("%s, %s: %d, want %d", tt.name, who, w.Code, want)
 			}
 		}
+	}
+}
+
+// TestFileUsePrivacy: the Files page names the notes using a file, except a
+// player's own block, which shows neither its note's title nor a link.
+func TestFileUsePrivacy(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	tests := []struct {
+		vis   string
+		owner int64
+		want  views.FileUse
+	}{
+		{"players", 0, views.FileUse{Kind: views.FileUseNote, Label: "Secret plans"}},
+		{"gm", 0, views.FileUse{Kind: views.FileUseNote, Label: "Secret plans"}},
+		{"owner", e.characterID, views.FileUse{Kind: views.FileUseNote, Private: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.vis, func(t *testing.T) {
+			note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Secret plans", OwnerCharacterID: nullID(tt.owner)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: tt.vis})
+			if err != nil {
+				t.Fatal(err)
+			}
+			att := e.attachFile(t, b.ID, "plan.png")
+			step := fmt.Sprintf(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"mention","attrs":{"id":"attachment:%d"}}]}}`, att.ID)
+			if err := e.q().InsertBlockStep(ctx, sqlc.InsertBlockStepParams{BlockID: b.ID, Version: 1, ClientID: "c", StepJson: step}); err != nil {
+				t.Fatal(err)
+			}
+			uses, err := e.app.attachmentUses(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.want.Label != "" {
+				tt.want.URL = fmt.Sprintf("/notes/%d", note.ID)
+			}
+			if got := uses[att.ID]; len(got) != 1 || got[0] != tt.want {
+				t.Errorf("uses %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

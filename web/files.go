@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,25 +22,21 @@ import (
 // picture ("attachment:N") or the src or href of an older picture or file link.
 var attachmentRef = regexp.MustCompile(`"attachment:(\d+)"|/attachments/(\d+)"`)
 
-// attachmentRefs collects the attachments the texts use.
-func attachmentRefs(texts ...[]string) map[int64]bool {
-	used := map[int64]bool{}
-	for _, list := range texts {
-		for _, s := range list {
-			for _, m := range attachmentRef.FindAllStringSubmatch(s, -1) {
-				if id, err := strconv.ParseInt(m[1]+m[2], 10, 64); err == nil {
-					used[id] = true
-				}
-			}
+// attachmentRefs lists the attachments a text uses.
+func attachmentRefs(s string) []int64 {
+	var ids []int64
+	for _, m := range attachmentRef.FindAllStringSubmatch(s, -1) {
+		if id, err := strconv.ParseInt(m[1]+m[2], 10, 64); err == nil {
+			ids = append(ids, id)
 		}
 	}
-	return used
+	return ids
 }
 
-// unusedAttachments lists the attachments no note block (saved or in an
-// edit not yet saved) and no image uses, newest first.
-func (a *App) unusedAttachments(ctx context.Context) ([]sqlc.ListAttachmentFilesRow, error) {
-	docs, err := a.Store.ListBlockDocs(ctx)
+// attachmentUses maps each attachment to the notes (saved or in an edit not
+// yet saved) and images that use it, each once.
+func (a *App) attachmentUses(ctx context.Context) (map[int64][]views.FileUse, error) {
+	blocks, err := a.Store.ListBlockDocs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -47,16 +44,53 @@ func (a *App) unusedAttachments(ctx context.Context) ([]sqlc.ListAttachmentFiles
 	if err != nil {
 		return nil, err
 	}
-	images, err := a.Store.ListImageAttachmentIDs(ctx)
+	images, err := a.Store.ListImageAttachments(ctx)
 	if err != nil {
 		return nil, err
 	}
-	used := attachmentRefs(docs, steps)
-	for _, id := range images {
-		used[id.Int64] = true
+	type use struct {
+		id int64
+		u  views.FileUse
+	}
+	uses := map[int64][]views.FileUse{}
+	seen := map[use]bool{}
+	add := func(id int64, u views.FileUse) {
+		if k := (use{id, u}); !seen[k] {
+			seen[k] = true
+			uses[id] = append(uses[id], u)
+		}
+	}
+	byBlock := map[int64]views.FileUse{}
+	for _, b := range blocks {
+		u := views.FileUse{Kind: views.FileUseNote, URL: fmt.Sprintf("/notes/%d", b.NoteID), Label: b.Title}
+		if b.Visibility == string(perm.VisOwner) {
+			// The GM never reads a player's own blocks, so not even the note's title.
+			u = views.FileUse{Kind: views.FileUseNote, Private: true}
+		}
+		byBlock[b.ID] = u
+		for _, id := range attachmentRefs(b.DocJson) {
+			add(id, u)
+		}
+	}
+	for _, s := range steps {
+		for _, id := range attachmentRefs(s.StepJson) {
+			add(id, byBlock[s.BlockID])
+		}
+	}
+	for _, img := range images {
+		add(img.AttachmentID.Int64, views.FileUse{Kind: views.FileUseImage, URL: fmt.Sprintf("/images/%d", img.ID), Label: img.Name})
+	}
+	return uses, nil
+}
+
+// unusedAttachments lists the attachments nothing uses, newest first.
+func (a *App) unusedAttachments(ctx context.Context) ([]sqlc.ListAttachmentFilesRow, error) {
+	uses, err := a.attachmentUses(ctx)
+	if err != nil {
+		return nil, err
 	}
 	files, err := a.Store.ListAttachmentFiles(ctx)
-	return slices.DeleteFunc(files, func(f sqlc.ListAttachmentFilesRow) bool { return used[f.ID] }), err
+	return slices.DeleteFunc(files, func(f sqlc.ListAttachmentFilesRow) bool { return len(uses[f.ID]) > 0 }), err
 }
 
 func (a *App) filesPage(c *gin.Context) {
@@ -65,18 +99,25 @@ func (a *App) filesPage(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	files, err := a.unusedAttachments(c.Request.Context())
+	ctx := c.Request.Context()
+	uses, err := a.attachmentUses(ctx)
 	if err != nil {
 		a.serverError(c, err)
 		return
 	}
-	v := views.FilesView{}
+	files, err := a.Store.ListAttachmentFiles(ctx)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	v := views.FilesView{Tab: c.Query("tab")}
 	for _, f := range files {
 		v.Files = append(v.Files, views.FileRow{
-			ID: f.ID, Name: f.Name, Campaign: f.CampaignName, Size: f.Size, CreatedAt: f.CreatedAt,
+			ID: f.ID, Name: f.Name, CampaignID: f.CampaignID, Campaign: f.CampaignName, Size: f.Size, CreatedAt: f.CreatedAt,
 			IsImage: slices.Contains(inlineTypes, f.Mime),
 			// The GM never reads a player's own blocks, so not even the name.
 			Private: f.BlockVisibility.String == string(perm.VisOwner),
+			Uses:    uses[f.ID],
 		})
 	}
 	a.render(c, http.StatusOK, views.FilesPage(a.layout(w, "Files", views.NavFiles, nil, false), v))
@@ -118,5 +159,10 @@ func (a *App) deleteUnused(c *gin.Context, pick func(sqlc.ListAttachmentFilesRow
 			return
 		}
 	}
-	redirect(c, views.PathFiles)
+	// Back to the tab the delete came from; Delete unused only shows in Unused.
+	tab := views.FilesTabUnused
+	if c.PostForm("tab") == views.FilesTabAll {
+		tab = views.FilesTabAll
+	}
+	redirect(c, views.PathFiles+"?tab="+tab)
 }

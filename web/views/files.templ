@@ -2,104 +2,239 @@ package views
 
 import (
 	"fmt"
+	"gm-session-manager/web/components/badge"
 	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/empty"
 	"gm-session-manager/web/components/icon"
-	"gm-session-manager/web/components/table"
+	"gm-session-manager/web/components/tabs"
+	"gm-session-manager/web/utils"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
-// PathFiles is the admin page of attachments nothing uses any more.
+// PathFiles is the admin page of every attachment and where it is used.
 const PathFiles = "/files"
 
-// FilesView is the admin's list of attachments nothing uses any more.
+// Tabs of the Files page.
+const (
+	FilesTabAll    = "all"
+	FilesTabUnused = "unused"
+)
+
+// FilesView is the admin's list of attachments, newest first.
 type FilesView struct {
 	Files []FileRow
+	// Tab is the tab to open (FilesTab*); "" is All.
+	Tab string
 }
 
-// FileRow is one unused attachment. A private one (from a player's own
-// block) shows neither its name nor its picture.
+// FileRow is one attachment. A private one (from a player's own block)
+// shows neither its name nor its picture.
 type FileRow struct {
-	ID        int64
-	Name      string
-	Campaign  string
-	Size      int64
-	CreatedAt time.Time
-	IsImage   bool
-	Private   bool
+	ID         int64
+	Name       string
+	CampaignID int64
+	Campaign   string
+	Size       int64
+	CreatedAt  time.Time
+	IsImage    bool
+	Private    bool
+	Uses       []FileUse
+}
+
+// Kinds of FileUse.
+const (
+	FileUseNote  = "note"
+	FileUseImage = "image"
+)
+
+// FileUse is a note or image that uses a file. A private use is a player's
+// own block, shown without its note's title or a link.
+type FileUse struct {
+	Kind    string
+	URL     string
+	Label   string
+	Private bool
 }
 
 templ FilesPage(l Layout, v FilesView) {
 	@Page(l) {
-		@PageHeader("Files", "Pictures and files uploaded to notes that no note or image uses any more. Removing one from a note keeps its file; delete it here.")
+		@PageHeader("Files", "Everything uploaded to notes and images, and where it is used. Removing a file from a note keeps it here until you delete it.")
 		if len(v.Files) == 0 {
-			<p class="text-sm text-muted-foreground">Every uploaded file is still in use.</p>
+			@filesEmpty(icon.Paperclip, "No files yet", "Pictures and files added to notes and images show here.")
 		} else {
-			<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-				<p class="text-sm text-muted-foreground">{ fmt.Sprintf("%d unused, %s in all.", len(v.Files), fileSize(totalSize(v.Files))) }</p>
-				@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Attributes: templ.Attributes{
-					"hx-post": PathFiles + "/delete-unused", "hx-confirm": "Delete every unused file from this computer?",
-				}}) {
-					@icon.Trash2()
-					Delete all
-				}
-			</div>
-			@table.Table() {
-				@table.Header() {
-					@table.Row() {
-						@table.Head() {
-							File
-						}
-						@table.Head() {
-							Campaign
-						}
-						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Size
-						}
-						@table.Head() {
-							Uploaded
-						}
-						@table.Head() {
-							<span class="sr-only">Delete</span>
+			{{ idle := unusedFiles(v.Files) }}
+			@tabs.Tabs(tabs.Props{ID: "files-tabs", DefaultValue: utils.IfElse(v.Tab == FilesTabUnused, FilesTabUnused, FilesTabAll), Attributes: templ.Attributes{"data-url-param": "tab"}}) {
+				@tabs.List(tabs.ListProps{Class: "mb-6 w-fit"}) {
+					@tabs.Trigger(tabs.TriggerProps{Value: FilesTabAll}) {
+						@icon.Files()
+						All
+						<span class="text-xs text-muted-foreground tabular-nums">{ fmt.Sprint(len(v.Files)) }</span>
+					}
+					@tabs.Trigger(tabs.TriggerProps{Value: FilesTabUnused}) {
+						@icon.FileX()
+						Unused
+						if len(idle) > 0 {
+							<span class="text-xs text-muted-foreground tabular-nums">{ fmt.Sprint(len(idle)) }</span>
 						}
 					}
 				}
-				@table.Body() {
-					for _, f := range v.Files {
-						@table.Row() {
-							@table.Cell() {
-								<span class="flex items-center gap-3">
-									if f.IsImage && !f.Private {
-										<img class="size-10 shrink-0 rounded object-cover" src={ fmt.Sprintf("/attachments/%d", f.ID) } alt="" loading="lazy"/>
-									}
-									if f.Private {
-										<span class="text-muted-foreground italic">A player's private file</span>
-									} else {
-										<a class="hover:underline" href={ templ.SafeURL(fmt.Sprintf("/attachments/%d", f.ID)) } target="_blank">{ f.Name }</a>
-									}
-								</span>
+				@tabs.Content(tabs.ContentProps{Value: FilesTabAll}) {
+					@filesGrid(v.Files, FilesTabAll)
+				}
+				@tabs.Content(tabs.ContentProps{Value: FilesTabUnused}) {
+					if len(idle) == 0 {
+						@filesEmpty(icon.CircleCheck, "Nothing to clean up", "Every file is used by a note or an image.")
+					} else {
+						<div class="mb-6 flex flex-wrap items-center justify-between gap-2">
+							<p class="text-sm text-muted-foreground">No note or image uses these. Delete them to free { fileSize(totalSize(idle)) }.</p>
+							@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Attributes: templ.Attributes{
+								"hx-post": PathFiles + "/delete-unused", "hx-confirm": "Delete every unused file from this computer?",
+							}}) {
+								@icon.Trash2()
+								Delete unused
 							}
-							@table.Cell() {
-								{ f.Campaign }
-							}
-							@table.Cell(table.CellProps{Class: "text-right tabular-nums"}) {
-								{ fileSize(f.Size) }
-							}
-							@table.Cell() {
-								@localTime(f.CreatedAt)
-							}
-							@table.Cell(table.CellProps{Class: "text-right"}) {
-								@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{
-									"hx-post": fmt.Sprintf("%s/%d/delete", PathFiles, f.ID), "hx-confirm": "Delete this file from this computer?", "aria-label": "Delete file",
-								}}) {
-									@icon.Trash2()
-								}
-							}
-						}
+						</div>
+						@filesGrid(idle, FilesTabUnused)
 					}
 				}
 			}
 		}
 	}
+}
+
+templ filesEmpty(ic func(...icon.Props) templ.Component, title, description string) {
+	@empty.Empty(empty.Props{Class: "border border-dashed"}) {
+		@empty.Header() {
+			@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+				@ic()
+			}
+			@empty.Title() {
+				{ title }
+			}
+			@empty.Description() {
+				{ description }
+			}
+		}
+	}
+}
+
+// filesGrid shows the files in a grid per campaign, in tab (FilesTab*).
+templ filesGrid(files []FileRow, tab string) {
+	for _, g := range filesByCampaign(files) {
+		<section class="mb-8">
+			<div class="mb-3 flex items-baseline gap-3 border-b pb-2">
+				<h2 class="min-w-0 truncate text-lg font-semibold">{ g[0].Campaign }</h2>
+				<span class="ml-auto shrink-0 text-sm text-muted-foreground tabular-nums">
+					{ fmt.Sprintf("%d %s, %s", len(g), utils.IfElse(len(g) == 1, "file", "files"), fileSize(totalSize(g))) }
+				</span>
+			</div>
+			<ul class="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
+				for _, f := range g {
+					@fileTile(f, tab)
+				}
+			</ul>
+		</section>
+	}
+}
+
+// fileTile shows a file as what it is: a picture on the display's black box,
+// any other file as its type. An unused one can be deleted from its corner,
+// which returns to tab.
+templ fileTile(f FileRow, tab string) {
+	{{ src := fmt.Sprintf("/attachments/%d", f.ID) }}
+	<li class="relative min-w-0">
+		if f.Private {
+			<div class="flex aspect-video items-center justify-center rounded-lg bg-muted text-muted-foreground">
+				@icon.Lock(icon.Props{Size: 28})
+			</div>
+		} else if f.IsImage {
+			<a href={ templ.SafeURL(src) } target="_blank" class="block rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50" aria-label={ "Open " + f.Name }>
+				@stage("aspect-video") {
+					// Pinned inside the box, as in the image library.
+					<img src={ src } alt="" loading="lazy" class="absolute inset-0 size-full object-contain"/>
+				}
+			</a>
+		} else {
+			<a href={ templ.SafeURL(src) } target="_blank" class="flex aspect-video flex-col items-center justify-center gap-1 rounded-lg bg-muted text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50" aria-label={ "Open " + f.Name }>
+				@icon.FileText(icon.Props{Size: 28})
+				if ext := fileExt(f.Name); ext != "" {
+					<span class="text-sm font-semibold">{ ext }</span>
+				}
+			</a>
+		}
+		if len(f.Uses) == 0 {
+			<span class="pointer-events-none absolute top-2 left-2">
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+					Unused
+				}
+			</span>
+			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: "absolute top-1.5 right-1.5 bg-background/85 " + quietDestructive, Attributes: templ.Attributes{
+				"hx-post": fmt.Sprintf("%s/%d/delete", PathFiles, f.ID), "hx-vals": toJSON(map[string]string{"tab": tab}), "hx-confirm": "Delete this file from this computer?", "aria-label": "Delete " + utils.IfElse(f.Private, "this file", f.Name),
+			}}) {
+				@icon.Trash2()
+			}
+		}
+		if f.Private {
+			<p class="mt-2 truncate text-sm text-muted-foreground italic">A player's private file</p>
+		} else {
+			<p class="mt-2 truncate text-sm font-medium" title={ f.Name }>{ f.Name }</p>
+		}
+		<p class="text-xs text-muted-foreground tabular-nums">
+			{ fileSize(f.Size) + ", uploaded " }
+			@localTime(f.CreatedAt)
+		</p>
+		if len(f.Uses) == 0 {
+			<p class="mt-2 text-sm text-muted-foreground">Not used anywhere</p>
+		} else {
+			<ul class="mt-2 grid gap-1 text-sm" aria-label="Used in">
+				for _, u := range f.Uses {
+					if u.Private {
+						<li class="flex items-center gap-2 text-muted-foreground italic">
+							<span aria-hidden="true">
+								@icon.Lock(icon.Props{Size: 16})
+							</span>
+							A player's private block
+						</li>
+					} else {
+						@mention(utils.IfElse(u.Kind == FileUseImage, icon.Image, icon.NotebookPen), u.URL, u.Label)
+					}
+				}
+			</ul>
+		}
+	</li>
+}
+
+func unusedFiles(files []FileRow) []FileRow {
+	var idle []FileRow
+	for _, f := range files {
+		if len(f.Uses) == 0 {
+			idle = append(idle, f)
+		}
+	}
+	return idle
+}
+
+// filesByCampaign groups the files by campaign, in the order each first appears.
+func filesByCampaign(files []FileRow) [][]FileRow {
+	var groups [][]FileRow
+	at := map[int64]int{}
+	for _, f := range files {
+		i, ok := at[f.CampaignID]
+		if !ok {
+			i = len(groups)
+			at[f.CampaignID] = i
+			groups = append(groups, nil)
+		}
+		groups[i] = append(groups[i], f)
+	}
+	return groups
+}
+
+// fileExt is a file name's extension in capitals, as "PDF".
+func fileExt(name string) string {
+	return strings.ToUpper(strings.TrimPrefix(filepath.Ext(name), "."))
 }
 
 func totalSize(files []FileRow) int64 {

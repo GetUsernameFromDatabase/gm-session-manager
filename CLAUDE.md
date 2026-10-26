@@ -28,7 +28,7 @@ hub/                      websocket hub: (epoch, seq) events, catch-up ring, liv
 dnd5e/                    5e sheet, commands (Parse/Apply), slots, level-up
 compendium/               Open5e importer, search, homebrew
 export/                   campaign zip (notes as Markdown, characters as JSON)
-join/                     LAN addresses, TLS certificate, QR code
+join/                     LAN addresses, TLS certificate, HTTP→HTTPS redirect on the same port, QR code
 web/                      router, *_handlers.go, render.go (view models), live.go (live views, /live)
 web/views/                templ pages and components; live.go holds live-view keys and binds
 web/components/, utils/   shadcn-templ CLI output: never edit by hand

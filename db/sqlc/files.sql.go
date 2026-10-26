@@ -34,7 +34,7 @@ type ListAttachmentFilesRow struct {
 	BlockVisibility sql.NullString
 }
 
-// The admin Files page: which attachments nothing uses any more. Uses are
+// The admin Files page: every attachment and where it is used. Uses are
 // found in Go (web/files.go) from the texts below.
 // ListAttachmentFiles lists every attachment with its campaign and, for one
 // in a note block, that block's visibility.
@@ -73,22 +73,39 @@ func (q *Queries) ListAttachmentFiles(ctx context.Context) ([]ListAttachmentFile
 }
 
 const listBlockDocs = `-- name: ListBlockDocs :many
-SELECT doc_json FROM note_blocks
+SELECT b.id, b.note_id, b.visibility, n.title, b.doc_json
+FROM note_blocks AS b
+JOIN notes AS n ON n.id = b.note_id
+ORDER BY n.title, b.position
 `
 
-func (q *Queries) ListBlockDocs(ctx context.Context) ([]string, error) {
+type ListBlockDocsRow struct {
+	ID         int64
+	NoteID     int64
+	Visibility string
+	Title      string
+	DocJson    string
+}
+
+func (q *Queries) ListBlockDocs(ctx context.Context) ([]ListBlockDocsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listBlockDocs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []ListBlockDocsRow{}
 	for rows.Next() {
-		var doc_json string
-		if err := rows.Scan(&doc_json); err != nil {
+		var i ListBlockDocsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NoteID,
+			&i.Visibility,
+			&i.Title,
+			&i.DocJson,
+		); err != nil {
 			return nil, err
 		}
-		items = append(items, doc_json)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -99,24 +116,31 @@ func (q *Queries) ListBlockDocs(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
-const listImageAttachmentIDs = `-- name: ListImageAttachmentIDs :many
-SELECT attachment_id FROM images
+const listImageAttachments = `-- name: ListImageAttachments :many
+SELECT id, name, attachment_id FROM images
 WHERE attachment_id IS NOT NULL
+ORDER BY name
 `
 
-func (q *Queries) ListImageAttachmentIDs(ctx context.Context) ([]sql.NullInt64, error) {
-	rows, err := q.db.QueryContext(ctx, listImageAttachmentIDs)
+type ListImageAttachmentsRow struct {
+	ID           int64
+	Name         string
+	AttachmentID sql.NullInt64
+}
+
+func (q *Queries) ListImageAttachments(ctx context.Context) ([]ListImageAttachmentsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listImageAttachments)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []sql.NullInt64{}
+	items := []ListImageAttachmentsRow{}
 	for rows.Next() {
-		var attachment_id sql.NullInt64
-		if err := rows.Scan(&attachment_id); err != nil {
+		var i ListImageAttachmentsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.AttachmentID); err != nil {
 			return nil, err
 		}
-		items = append(items, attachment_id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -128,23 +152,28 @@ func (q *Queries) ListImageAttachmentIDs(ctx context.Context) ([]sql.NullInt64, 
 }
 
 const listStepJSON = `-- name: ListStepJSON :many
-SELECT step_json FROM block_steps
+SELECT block_id, step_json FROM block_steps
 `
 
+type ListStepJSONRow struct {
+	BlockID  int64
+	StepJson string
+}
+
 // ListStepJSON covers edits not yet in a block's snapshot.
-func (q *Queries) ListStepJSON(ctx context.Context) ([]string, error) {
+func (q *Queries) ListStepJSON(ctx context.Context) ([]ListStepJSONRow, error) {
 	rows, err := q.db.QueryContext(ctx, listStepJSON)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []ListStepJSONRow{}
 	for rows.Next() {
-		var step_json string
-		if err := rows.Scan(&step_json); err != nil {
+		var i ListStepJSONRow
+		if err := rows.Scan(&i.BlockID, &i.StepJson); err != nil {
 			return nil, err
 		}
-		items = append(items, step_json)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

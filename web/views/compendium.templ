@@ -99,7 +99,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 				New homebrew
 			}
 		</div>
-		@tabs.Tabs(tabs.Props{ID: "compendium-tabs", DefaultValue: v.openTab(), Attributes: templ.Attributes{"data-fit": true}}) {
+		@tabs.Tabs(tabs.Props{ID: "compendium-tabs", DefaultValue: v.openTab(), Attributes: templ.Attributes{"data-fit": true, "data-url-param": "tab"}}) {
 			@tabs.List(tabs.ListProps{Class: "mb-4 w-fit"}) {
 				@tabs.Trigger(tabs.TriggerProps{Value: CompendiumTabBrowse}) {
 					@icon.Search()

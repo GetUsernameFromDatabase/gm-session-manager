@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -109,11 +110,22 @@ func run() error {
 	// Websockets would otherwise keep Shutdown waiting until its timeout.
 	srv.RegisterOnShutdown(app.Close)
 
+	// Browsers try http:// for an address typed without a scheme, so the same
+	// port redirects plain HTTP to HTTPS.
+	base, err := (&net.ListenConfig{}).Listen(ctx, "tcp", srv.Addr)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = base.Close() }()
+	tlsL, plainL := join.SplitTLS(base)
+	redirect := &http.Server{Handler: join.RedirectHTTPS, ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = redirect.Serve(plainL) }()
+
 	go keepAwake(ctx)
 	errc := make(chan error, 1)
 	go func() {
 		slog.Info("listening", "url", fmt.Sprintf("https://localhost:%d", cfg.Port), "data_dir", cfg.DataDir)
-		errc <- srv.ListenAndServeTLS("", "")
+		errc <- srv.ServeTLS(tlsL, "", "")
 	}()
 
 	select {
@@ -124,6 +136,7 @@ func run() error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
+	_ = redirect.Shutdown(shutdownCtx)
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

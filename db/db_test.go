@@ -204,8 +204,8 @@ func TestAttachmentOutlivesBlock(t *testing.T) {
 	if got.BlockID.Valid {
 		t.Errorf("block_id = %d, want NULL", got.BlockID.Int64)
 	}
-	ids, err := q.ListImageAttachmentIDs(ctx)
-	if err != nil || len(ids) != 1 || ids[0].Int64 != att.ID {
+	ids, err := q.ListImageAttachments(ctx)
+	if err != nil || len(ids) != 1 || ids[0].AttachmentID.Int64 != att.ID {
 		t.Errorf("image %d lost its attachment: %v %v", img.ID, ids, err)
 	}
 

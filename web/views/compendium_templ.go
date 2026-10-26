@@ -404,7 +404,7 @@ func CompendiumPage(l Layout, v CompendiumView) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = tabs.Tabs(tabs.Props{ID: "compendium-tabs", DefaultValue: v.openTab(), Attributes: templ.Attributes{"data-fit": true}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var4), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = tabs.Tabs(tabs.Props{ID: "compendium-tabs", DefaultValue: v.openTab(), Attributes: templ.Attributes{"data-fit": true, "data-url-param": "tab"}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var4), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -681,7 +681,7 @@ templ turnCard(e EncounterView) {
 
 templ turnControls(e EncounterView, prev, cur, next string) {
 	if e.IsGM {
-		@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantGhost, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("prev"), "aria-label": "Previous turn"}}) {
+		@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantGhost, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("prev"), "aria-label": "Previous turn", "data-turn-button": true}}) {
 			@icon.ChevronLeft()
 			<span class="max-sm:hidden">Previous</span>
 		}
@@ -692,7 +692,7 @@ templ turnControls(e EncounterView, prev, cur, next string) {
 		@turnSlot("Next", next, "turn.next", "text-muted-foreground")
 	</div>
 	if e.IsGM {
-		@button.Button(button.Props{Size: button.SizeLg, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("next"), "aria-label": "Next turn"}}) {
+		@button.Button(button.Props{Size: button.SizeLg, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("next"), "aria-label": "Next turn", "data-turn-button": true}}) {
 			<span class="max-sm:hidden">Next turn</span>
 			@icon.ChevronRight()
 		}
