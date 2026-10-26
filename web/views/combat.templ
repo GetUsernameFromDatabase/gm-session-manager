@@ -349,7 +349,7 @@ templ ownCombatant(c CombatantView) {
 // the radius is half a line's height, so a phone's wrapped chip clips nothing.
 // Downed ones fade.
 templ combatantChip(c CombatantView) {
-	<li class={ "group/row inline-flex max-w-[min(100%,22rem)] flex-wrap items-center gap-1 rounded-lg border py-0.5 pr-2.5 text-sm data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[down=true]:opacity-60", kindBorder[c.Kind], utils.IfElse(c.Portrait == "", "pl-2.5", "pl-0.5") } { combatantState(c)... }>
+	<li class={ "group/row inline-flex max-w-[min(100%,22rem)] flex-wrap items-center gap-1 rounded-lg border py-0.5 pr-2.5 pl-0.5 text-sm data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[down=true]:opacity-60", kindBorder[c.Kind] } { combatantState(c)... }>
 		@portrait(c, "size-6 group-data-[down=true]/row:grayscale")
 		<span class="min-w-0 truncate">
 			@combatantName(c)
@@ -457,8 +457,19 @@ func combatantState(c CombatantView) templ.Attributes {
 
 templ portrait(c CombatantView, size string) {
 	if c.Portrait != "" {
-		<img src={ c.Portrait } alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" class={ "shrink-0 rounded-full border object-cover", size }/>
+		<img src={ c.Portrait } alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false" class={ "shrink-0 rounded-full border object-cover", size }/>
 	}
+	<span aria-hidden="true" hidden?={ c.Portrait != "" } class={ "shrink-0 rounded-full border bg-muted text-muted-foreground text-xs font-medium flex items-center justify-center select-none", size }>{ initials(c.Name) }</span>
+}
+
+// initials is the first letter of the name's first two words ("Goblin 2" → "G2").
+func initials(name string) string {
+	words := strings.Fields(name)
+	var b strings.Builder
+	for _, w := range words[:min(2, len(words))] {
+		b.WriteString(strings.ToUpper(string([]rune(w)[0])))
+	}
+	return b.String()
 }
 
 // combatantName links the combatant's page when the viewer may open it.
