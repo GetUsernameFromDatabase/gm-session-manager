@@ -192,7 +192,7 @@ class BlockEditor {
   async attach(file) {
     const data = await this.upload(file);
     if (!data) return;
-    const chain = this.editor.chain().focus();
+    const chain = this.editor.chain().focus("end");
     if (data.image) chain.insertContent(attachedPicture(data.id, data.name, "break")).run();
     else chain.insertContent({ type: "text", text: data.name, marks: [{ type: "link", attrs: { href: data.url } }] }).run();
   }
@@ -318,13 +318,6 @@ document.addEventListener("click", (e) => {
 });
 
 touchDrag((el) => [...editors.values()].find((x) => x.el.contains(el))?.editor);
-
-document.addEventListener("click", (e) => {
-  // A tap or click outside an open access popover closes it.
-  document.querySelectorAll("details[data-popover][open]").forEach((d) => {
-    if (!d.contains(e.target)) d.open = false;
-  });
-});
 
 
 document.addEventListener("visibilitychange", () => {

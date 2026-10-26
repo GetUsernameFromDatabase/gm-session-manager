@@ -136,8 +136,9 @@
    give them document styling here instead of utility classes. */
 
 @layer components {
+  /* Notes are read more than written: a serif reading face at a book's measure. */
   .note-editor .tiptap {
-    @apply min-h-12 outline-none;
+    @apply min-h-12 max-w-[68ch] font-serif text-[1.0625rem] leading-[1.7] outline-none;
   }
   .note-editor .tiptap > * + *,
   .markdown > * + * {

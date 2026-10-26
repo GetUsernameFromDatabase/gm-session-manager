@@ -8,6 +8,7 @@ import (
 	"gm-session-manager/web/components/button"
 	"gm-session-manager/web/components/checkbox"
 	"gm-session-manager/web/components/dialog"
+	"gm-session-manager/web/components/empty"
 	"gm-session-manager/web/components/field"
 	"gm-session-manager/web/components/icon"
 	"gm-session-manager/web/components/input"
@@ -35,105 +36,170 @@ type NoteListView struct {
 
 templ NotesPage(l Layout, v NoteListView) {
 	@Page(l) {
-		@PageHeader("Notes", "Game session logs, handouts, secrets and your own notes.")
-		<form method="get" class="mb-4 flex gap-2">
-			@input.Input(input.Props{Name: "q", Type: "search", Value: v.Query, Placeholder: "Search notes"})
-			@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-				Search
+		<div class="mx-auto max-w-3xl">
+			<div class="mb-6 flex flex-wrap items-end justify-between gap-3">
+				<div>
+					<h1 class="text-3xl leading-tight font-semibold">Notes</h1>
+					<p class="text-sm text-muted-foreground">Game session logs, handouts, secrets and your own notes.</p>
+				</div>
+				if v.CanCreate {
+					@newNoteDialog(v.CampaignID)
+				}
+			</div>
+			<form method="get" class="mb-8 flex gap-2">
+				@input.Input(input.Props{Name: "q", Type: "search", Value: v.Query, Placeholder: "Search notes", Attributes: templ.Attributes{"aria-label": "Search notes"}})
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+					Search
+				}
+			</form>
+			if v.Query != "" {
+				<section class="mb-8">
+					<h2 class={ sectionHeading }>Search results</h2>
+					<ul class="divide-y border-y">
+						for _, h := range v.Hits {
+							<li class="py-2.5">
+								<a class="font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d#block-%d", h.NoteID, h.BlockID)) }>{ h.Title }</a>
+								<p class="line-clamp-2 font-serif text-sm text-muted-foreground">{ h.Text }</p>
+							</li>
+						}
+						if len(v.Hits) == 0 {
+							<li class="py-2.5 text-sm text-muted-foreground">Nothing found. Try fewer or different words.</li>
+						}
+					</ul>
+				</section>
 			}
-		</form>
-		if v.Query != "" {
-			<ul class="mb-6 space-y-2">
-				for _, h := range v.Hits {
-					<li class="rounded-md border p-2 text-sm">
-						<a class="font-medium underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d#block-%d", h.NoteID, h.BlockID)) }>{ h.Title }</a>
-						<p class="line-clamp-2 text-muted-foreground">{ h.Text }</p>
+			@NoteList(v.CampaignID, v.Notes)
+		</div>
+	}
+}
+
+// sectionHeading is the quiet heading over a list on the notes pages.
+const sectionHeading = "mb-2 text-sm font-medium text-muted-foreground"
+
+// NoteList lists game sessions apart from other notes, newest change first.
+templ NoteList(campaignID int64, notes []NoteItem) {
+	<div id="notes-list" hx-swap-oob="true" class="space-y-8" { live(LiveNotes, campaignID)... }>
+		@noteSection("Game sessions", notesOfKind(notes, true))
+		@noteSection("Notes", notesOfKind(notes, false))
+		if len(notes) == 0 {
+			@empty.Empty(empty.Props{Class: "border border-dashed"}) {
+				@empty.Header() {
+					@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+						@icon.NotebookPen()
+					}
+					@empty.Title() {
+						No notes yet
+					}
+					@empty.Description() {
+						Start one with New note: a game session log, a handout, or something only you can read.
+					}
+				}
+			}
+		}
+	</div>
+}
+
+func notesOfKind(notes []NoteItem, sessions bool) []NoteItem {
+	var out []NoteItem
+	for _, n := range notes {
+		if (n.Kind == KindGameSession) == sessions {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+templ noteSection(title string, notes []NoteItem) {
+	if len(notes) > 0 {
+		<section>
+			<h2 class={ sectionHeading }>{ title }</h2>
+			<ul class="divide-y border-y">
+				for _, n := range notes {
+					<li class="flex items-center gap-3 py-2.5">
+						<a class="min-w-0 flex-1 truncate font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", n.ID)) }>{ n.Title }</a>
+						if n.OwnerCharacterID.Valid {
+							<span class="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+								@authorRef(n.Author)
+							</span>
+						}
+						<span class="shrink-0 text-xs text-muted-foreground tabular-nums">
+							@localTime(n.UpdatedAt)
+						</span>
+						if n.CanManage {
+							@noteEditDialog(n)
+						}
 					</li>
 				}
-				if len(v.Hits) == 0 {
-					<li class="text-sm text-muted-foreground">Nothing found.</li>
-				}
 			</ul>
+		</section>
+	}
+}
+
+// closeDialogJS closes the dialog around an htmx request's element once the
+// server accepts it.
+const closeDialogJS = "if (event.detail.successful) this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click()"
+
+// noteFields are a note's title and type, for creating or editing it.
+templ noteFields(id, title, kind string) {
+	@field.Group(field.GroupProps{Class: "gap-4"}) {
+		@field.Field() {
+			@field.Label(field.LabelProps{For: id + "-title"}) {
+				Title
+			}
+			@input.Input(input.Props{ID: id + "-title", Name: "title", Value: title, Required: true})
 		}
-		@NoteList(v.CampaignID, v.Notes)
-		if v.CanCreate {
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/notes", v.CampaignID)) } class="mt-6 flex flex-wrap gap-2">
-				@input.Input(input.Props{Name: "title", Placeholder: "New note title", Required: true, Class: "max-w-xs"})
-				@formSelect("", "kind", noteKindItems, "", "", "")
-				@button.Button(button.Props{Type: button.TypeSubmit}) {
-					Create
+		@field.Field() {
+			@field.Label(field.LabelProps{For: id + "-kind-trigger"}) {
+				Type
+			}
+			@formSelect(id+"-kind", "kind", noteKindItems, kind, "", "")
+		}
+	}
+}
+
+templ newNoteDialog(campaignID int64) {
+	@dialog.Dialog(dialog.Props{ID: "new-note"}) {
+		@button.Button(button.Props{Attributes: dialog.Trigger(ctx)}) {
+			@icon.Plus()
+			New note
+		}
+		@dialog.Content() {
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/notes", campaignID)) } class="grid gap-4">
+				@dialog.Header() {
+					@dialog.Title() {
+						New note
+					}
+				}
+				@noteFields("new-note", "", KindGeneric)
+				@dialog.Footer() {
+					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.Close(ctx)}) {
+						Cancel
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Create note
+					}
 				}
 			</form>
 		}
 	}
 }
 
-templ NoteList(campaignID int64, notes []NoteItem) {
-	<ul id="notes-list" hx-swap-oob="true" class="divide-y rounded-lg border" { live(LiveNotes, campaignID)... }>
-		for _, n := range notes {
-			<li class="flex items-center justify-between gap-2 p-3">
-				<span class="flex min-w-0 items-baseline gap-2">
-					<a class="font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", n.ID)) }>{ n.Title }</a>
-					<span class="text-xs text-muted-foreground">
-						@authorRef(n.Author)
-					</span>
-				</span>
-				<span class="flex items-center gap-1">
-					if n.Kind == KindGameSession {
-						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-							Game session
-						}
-					}
-					if n.OwnerCharacterID.Valid {
-						@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-							Player note
-						}
-					}
-					if n.CanManage {
-						@noteEditDialog(n)
-					}
-				</span>
-			</li>
-		}
-		if len(notes) == 0 {
-			<li class="p-3 text-sm text-muted-foreground">No notes yet.</li>
-		}
-	</ul>
-}
-
-// noteEditDialog renames, retypes or deletes a note from the index; it
-// closes only when the server accepts the change.
+// noteEditDialog renames, retypes or deletes a note; it closes only when the
+// server accepts the change.
 templ noteEditDialog(n NoteItem) {
 	{{ id := fmt.Sprintf("note-%d", n.ID) }}
-	@dialog.Dialog() {
+	@dialog.Dialog(dialog.Props{ID: id + "-edit"}) {
 		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: with(dialog.Trigger(ctx), templ.Attributes{"aria-label": "Edit note"})}) {
 			@icon.Pencil()
 		}
 		@dialog.Content() {
-			<form
-				class="grid gap-4"
-				hx-post={ fmt.Sprintf("/notes/%d/rename", n.ID) }
-				hx-on::after-request="if (event.detail.successful) this.querySelector('[data-slot=dialog-close]').click()"
-			>
+			<form class="grid gap-4" hx-post={ fmt.Sprintf("/notes/%d/rename", n.ID) } { templ.Attributes{"hx-on::after-request": closeDialogJS}... }>
 				@dialog.Header() {
 					@dialog.Title() {
 						Edit note
 					}
 				}
-				@field.Group(field.GroupProps{Class: "gap-4"}) {
-					@field.Field() {
-						@field.Label(field.LabelProps{For: id + "-title"}) {
-							Title
-						}
-						@input.Input(input.Props{ID: id + "-title", Name: "title", Value: n.Title, Required: true})
-					}
-					@field.Field() {
-						@field.Label(field.LabelProps{For: id + "-kind-trigger"}) {
-							Type
-						}
-						@formSelect(id+"-kind", "kind", noteKindItems, n.Kind, "", "")
-					}
-				}
+				@noteFields(id, n.Title, n.Kind)
 				@dialog.Footer() {
 					@button.Button(button.Props{Variant: button.VariantDestructive, Class: "sm:mr-auto", Attributes: templ.Attributes{
 						"hx-post": fmt.Sprintf("/notes/%d/delete", n.ID), "hx-confirm": "Delete this note and all its blocks?",
@@ -229,107 +295,96 @@ func visibilityLabel(vis perm.Visibility) string {
 	return string(vis)
 }
 
-// visTint faintly colours a block's edge and header by visibility, so block
-// types stand apart without the colour taking over.
-var visTint = map[perm.Visibility]string{
-	perm.VisGM:      "border-l-rose-400/60 [&>header]:bg-rose-500/5",
-	perm.VisPlayers: "border-l-sky-400/60 [&>header]:bg-sky-500/5",
-	perm.VisListed:  "border-l-amber-400/60 [&>header]:bg-amber-500/5",
-	perm.VisOwner:   "border-l-violet-400/60 [&>header]:bg-violet-500/5",
+// visRail colours a block's left rail and its access label by visibility:
+// the colour is how a reader tells who else can read a passage.
+var visRail = map[perm.Visibility]struct{ rail, label string }{
+	perm.VisGM:      {"border-l-rose-500", "text-rose-700 dark:text-rose-300"},
+	perm.VisPlayers: {"border-l-sky-500", "text-sky-700 dark:text-sky-300"},
+	perm.VisListed:  {"border-l-amber-500", "text-amber-700 dark:text-amber-300"},
+	perm.VisOwner:   {"border-l-violet-500", "text-violet-700 dark:text-violet-300"},
 }
 
 templ NotePage(l Layout, v NoteView) {
 	@Page(l) {
-		@NoteMeta(v)
-		@NoteBlocks(v)
-		if len(v.Visibilities) > 0 {
-			@addBlockForm(v)
-		}
-		<section class="mt-10">
-			<h2 class="mb-2 text-sm font-semibold text-muted-foreground uppercase">Linked mentions</h2>
-			<ul class="space-y-1 text-sm">
-				@npcMentions(v.EntityLinks)
-				for _, b := range v.Backlinks {
-					<li><a class="underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", b.ID)) }>{ b.Title }</a></li>
-				}
-				if len(v.Backlinks) == 0 && len(v.EntityLinks) == 0 {
-					<li class="text-muted-foreground">No other note links here yet. Type [[ in a block to link.</li>
-				}
-			</ul>
-		</section>
+		<div class="mx-auto max-w-3xl">
+			@NoteMeta(v)
+			@NoteBlocks(v)
+			if len(v.Visibilities) > 0 {
+				@addBlockForm(v)
+			}
+			<section class="mt-12">
+				<h2 class={ sectionHeading }>Linked mentions</h2>
+				<ul class="space-y-1 text-sm">
+					@npcMentions(v.EntityLinks)
+					for _, b := range v.Backlinks {
+						<li><a class="underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", b.ID)) }>{ b.Title }</a></li>
+					}
+					if len(v.Backlinks) == 0 && len(v.EntityLinks) == 0 {
+						<li class="text-muted-foreground">No other note links here yet. Type [[ in a block to link.</li>
+					}
+				</ul>
+			</section>
+		</div>
 	}
 }
 
 templ NoteMeta(v NoteView) {
-	<div id={ fmt.Sprintf("note-%d-meta", v.Note.ID) } hx-swap-oob="true" class="mb-6" { live(LiveNote, v.Note.ID)... }>
-		if v.CanManage {
-			<form class="flex flex-wrap items-center gap-2" hx-post={ fmt.Sprintf("/notes/%d/rename", v.Note.ID) } hx-trigger="change">
-				@input.Input(input.Props{Name: "title", Value: v.Note.Title, Class: "h-auto min-w-0 flex-1 border-transparent px-1 text-2xl font-semibold md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Title"}})
-				@formSelect("", "kind", noteKindItems, v.Note.Kind, "", "")
-				@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{
-					"hx-post": fmt.Sprintf("/notes/%d/delete", v.Note.ID), "hx-confirm": "Delete this note and all its blocks?",
-				}}) {
-					Delete
+	<div id={ fmt.Sprintf("note-%d-meta", v.Note.ID) } hx-swap-oob="true" class="mb-8 border-b pb-4" { live(LiveNote, v.Note.ID)... }>
+		<div class="flex items-start gap-2">
+			if v.CanManage {
+				<form class="min-w-0 flex-1" hx-post={ fmt.Sprintf("/notes/%d/rename", v.Note.ID) } hx-trigger="change">
+					<input type="hidden" name="kind" value={ v.Note.Kind }/>
+					@input.Input(input.Props{Name: "title", Value: v.Note.Title, Class: "-ml-1 h-auto border-transparent px-1 text-3xl leading-tight font-semibold md:text-3xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Title"}})
+				</form>
+			} else {
+				<h1 class="min-w-0 flex-1 text-3xl leading-tight font-semibold">{ v.Note.Title }</h1>
+			}
+			<div class="flex shrink-0 items-center gap-1 pt-2">
+				if v.Note.Kind == KindGameSession {
+					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+						Game session
+					}
 				}
-			</form>
-		} else {
-			<h1 class="text-2xl font-semibold">{ v.Note.Title }</h1>
-		}
-		if v.Note.Kind == KindGameSession {
-			<p class="text-sm text-muted-foreground">Game session</p>
-		}
+				if v.CanManage {
+					@noteEditDialog(NoteItem{Note: v.Note, CanManage: true})
+				}
+			</div>
+		</div>
+		<p class="mt-1 text-xs text-muted-foreground">
+			{ "Updated " }
+			@localTime(v.Note.UpdatedAt)
+		</p>
 	</div>
 }
 
 templ NoteBlocks(v NoteView) {
-	<div id={ fmt.Sprintf("note-%d-blocks", v.Note.ID) } hx-swap-oob="true" class="space-y-4" { live(LiveNote, v.Note.ID)... }>
+	<div id={ fmt.Sprintf("note-%d-blocks", v.Note.ID) } hx-swap-oob="true" class="space-y-8" { live(LiveNote, v.Note.ID)... }>
 		for i, b := range v.Blocks {
-			<article id={ fmt.Sprintf("block-%d", b.ID) } class={ "rounded-lg border border-l-4", visTint[b.Visibility] } data-block={ fmt.Sprint(b.ID) } data-editable={ fmt.Sprint(b.CanEdit) }>
-				<header class="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
-					@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
-						{ visibilityLabel(b.Visibility) }
-					}
-					@authorRef(b.Author)
-					if b.Visibility == perm.VisListed && b.ForYou {
-						<span>{ "for you" }</span>
-					} else if b.Visibility == perm.VisListed {
-						<span>{ "for " + v.characterNames(b.Audience) }</span>
-					}
-					if b.Visibility == perm.VisPlayers && b.PlayersCanEdit {
-						<span>players can edit</span>
-					}
+			<article id={ fmt.Sprintf("block-%d", b.ID) } class={ "scroll-mt-16 border-l-[3px] pl-4", visRail[b.Visibility].rail } data-block={ fmt.Sprint(b.ID) } data-editable={ fmt.Sprint(b.CanEdit) }>
+				<header class="flex min-h-6 items-center gap-2 text-xs text-muted-foreground">
+					<span class={ "font-medium", visRail[b.Visibility].label }>{ visibilityLabel(b.Visibility) }</span>
+					<span class="min-w-0 truncate">
+						@authorRef(b.Author)
+						if b.Visibility == perm.VisListed && b.ForYou {
+							{ ", for you" }
+						} else if b.Visibility == perm.VisListed {
+							{ ", for " + v.characterNames(b.Audience) }
+						}
+						if b.Visibility == perm.VisPlayers && b.PlayersCanEdit {
+							{ ", players can edit" }
+						}
+					</span>
 					if !b.CanEdit {
-						<span>read only</span>
+						<span title="Read only" class="shrink-0">
+							@icon.Lock(icon.Props{Size: 12, Attributes: templ.Attributes{"aria-label": "Read only", "role": "img"}})
+						</span>
 					}
 					<span class="flex-1"></span>
-					if b.CanEdit {
-						@label.Label(label.Props{Class: "cursor-pointer text-xs font-normal underline"}) {
-							Attach file
-							<input type="file" class="hidden" data-attach={ fmt.Sprint(b.ID) }/>
-						}
-					}
-					if v.CanManage {
-						if i > 0 {
-							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/move", b.ID), "hx-vals": `{"dir":"up"}`, "aria-label": "Move up"}}) {
-								@icon.ArrowUp()
-							}
-						}
-						if i < len(v.Blocks)-1 {
-							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/move", b.ID), "hx-vals": `{"dir":"down"}`, "aria-label": "Move down"}}) {
-								@icon.ArrowDown()
-							}
-						}
-					}
-					if b.CanManage {
-						if len(v.Visibilities) > 0 {
-							@blockAccess(v, b)
-						}
-						@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/delete", b.ID), "hx-confirm": "Delete this block?", "aria-label": "Delete block"}}) {
-							@icon.X()
-						}
+					if b.CanEdit || v.CanManage || b.CanManage {
+						@blockMenu(v, b, i)
 					}
 				</header>
-				<div id={ fmt.Sprintf("editor-%d", b.ID) } hx-preserve="true" class="note-editor px-3 py-2" data-editor={ fmt.Sprint(b.ID) }></div>
+				<div id={ fmt.Sprintf("editor-%d", b.ID) } hx-preserve="true" class="note-editor pt-1" data-editor={ fmt.Sprint(b.ID) }></div>
 			</article>
 		}
 		if len(v.Blocks) == 0 {
@@ -338,16 +393,73 @@ templ NoteBlocks(v NoteView) {
 	</div>
 }
 
-templ blockAccess(v NoteView, b BlockView) {
-	<details class="relative" data-popover>
-		<summary class="cursor-pointer underline">Access</summary>
-		<form class="absolute right-0 z-10 mt-1 w-64 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow" hx-post={ fmt.Sprintf("/blocks/%d/access", b.ID) }>
-			@visibilityFields(v, b.Visibility, b.PlayersCanEdit, b.Audience)
-			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs}) {
-				Save
+// blockMenu holds a block's controls, so its header stays one line on a
+// phone. Each change closes it once the server accepts it.
+templ blockMenu(v NoteView, b BlockView, i int) {
+	@dialog.Dialog(dialog.Props{ID: fmt.Sprintf("block-%d-menu", b.ID)}) {
+		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: with(dialog.Trigger(ctx), templ.Attributes{"aria-label": "Block options"})}) {
+			@icon.Ellipsis()
+		}
+		@dialog.Content(dialog.ContentProps{Attributes: templ.Attributes{"hx-on::after-request": closeDialogJS}}) {
+			@dialog.Header() {
+				@dialog.Title() {
+					Block options
+				}
 			}
-		</form>
-	</details>
+			if b.CanEdit || v.CanManage {
+				<div class="flex flex-wrap gap-2">
+					if b.CanEdit {
+						// A label, so the button opens the file picker; notes.js uploads on change.
+						@label.Label(label.Props{Class: buttonLike}) {
+							@icon.Paperclip()
+							Attach a file
+							<input type="file" class="hidden" data-attach={ fmt.Sprint(b.ID) } onchange={ templ.JSUnsafeFuncCall(closeOnPickJS) }/>
+						}
+					}
+					if v.CanManage && i > 0 {
+						@moveButton(b.ID, "up") {
+							@icon.ArrowUp()
+							Move up
+						}
+					}
+					if v.CanManage && i < len(v.Blocks)-1 {
+						@moveButton(b.ID, "down") {
+							@icon.ArrowDown()
+							Move down
+						}
+					}
+				</div>
+			}
+			if b.CanManage && len(v.Visibilities) > 0 {
+				<form class="space-y-3 text-sm" hx-post={ fmt.Sprintf("/blocks/%d/access", b.ID) }>
+					@visibilityFields(v, b.Visibility, b.PlayersCanEdit, b.Audience)
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+						Save access
+					}
+				</form>
+			}
+			if b.CanManage {
+				@dialog.Footer() {
+					@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Class: "sm:mr-auto", Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/delete", b.ID), "hx-confirm": "Delete this block?"}}) {
+						@icon.Trash2()
+						Delete block
+					}
+				}
+			}
+		}
+	}
+}
+
+// buttonLike styles a label as an outline button.
+const buttonLike = "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent dark:border-input dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:size-4"
+
+// closeOnPickJS closes the block menu once a file is picked.
+const closeOnPickJS = "this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click()"
+
+templ moveButton(blockID int64, dir string) {
+	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/move", blockID), "hx-vals": fmt.Sprintf(`{"dir":%q}`, dir)}}) {
+		{ children... }
+	}
 }
 
 templ visibilityFields(v NoteView, current perm.Visibility, editable bool, audience []int64) {
@@ -389,11 +501,12 @@ templ checkField(name, value string, checked bool) {
 }
 
 templ addBlockForm(v NoteView) {
-	<form class="mt-4 flex flex-wrap items-start gap-3 rounded-lg border border-dashed p-3 text-sm" hx-post={ fmt.Sprintf("/notes/%d/blocks", v.Note.ID) }>
-		<div class="w-64 space-y-2">
+	<form class="mt-8 flex flex-wrap items-start gap-2 border-t pt-4 text-sm" hx-post={ fmt.Sprintf("/notes/%d/blocks", v.Note.ID) }>
+		<div class="w-full space-y-2 sm:w-64">
 			@visibilityFields(v, v.Visibilities[0], false, nil)
 		</div>
-		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+			@icon.Plus()
 			Add block
 		}
 	</form>
