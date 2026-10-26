@@ -10,6 +10,7 @@ import (
 	"gm-session-manager/web/components/input"
 	"gm-session-manager/web/components/label"
 	selectcomp "gm-session-manager/web/components/select"
+	"gm-session-manager/web/utils"
 	"slices"
 	"strings"
 )
@@ -221,15 +222,30 @@ func rowFilterCategory(r ImportRow) string {
 
 templ ImportUploadPage(l Layout, campaignID int64) {
 	@Page(l) {
-		@PageHeader("Import images", "Give a link to a CSV with a header row, or upload one. Next you choose the columns, the rows to bring in and how categories merge.")
-		<form method="post" enctype="multipart/form-data" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/images/import", campaignID)) } class="group/busy max-w-lg space-y-5" data-busy>
+		@PageHeader("Import images", "Bring in many image links at once from a spreadsheet.")
+		<form method="post" enctype="multipart/form-data" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/images/import", campaignID)) } class="group/busy max-w-lg" data-busy>
 			@busyIndicator("Reading the CSV…")
-			@sourceTabs(sourceField{ID: "csv-source", Label: "CSV file", Placeholder: "https://…/images.csv", Accept: ".csv,text/csv", FileHint: "A CSV with a header row."})
-			@button.Button(button.Props{Type: button.TypeSubmit}) {
-				Continue
+			@importStep(1, "Choose a CSV") {
+				<div class="space-y-5">
+					@sourceTabs(sourceField{ID: "csv-source", Label: "CSV file", Placeholder: "https://…/images.csv", Accept: ".csv,text/csv", FileHint: "A CSV with a header row."})
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Continue
+					}
+				</div>
 			}
+			<p class="pl-11 text-sm text-muted-foreground">Next you choose the columns, the rows to bring in and how categories merge.</p>
 		</form>
 	}
+}
+
+// importStep is one numbered step of an import; a rail joins it to the next.
+templ importStep(n int, title string) {
+	<section class="relative pb-8 pl-11">
+		<span class="absolute top-0 left-0 flex size-7 items-center justify-center rounded-full border-2 border-primary text-sm font-semibold tabular-nums" aria-hidden="true">{ fmt.Sprint(n) }</span>
+		<span class="absolute top-9 bottom-1 left-3.5 w-px bg-border" aria-hidden="true"></span>
+		<h2 class="mb-3 text-lg leading-7 font-semibold"><span class="sr-only">Step { fmt.Sprint(n) }: </span>{ title }</h2>
+		{ children... }
+	</section>
 }
 
 templ ImportReviewPage(l Layout, v ImportView) {
@@ -246,9 +262,10 @@ templ ImportReview(v ImportView) {
 	<form id="import-review" method="post" action={ templ.SafeURL(v.url()) } class="group/busy space-y-6" data-busy>
 		@busyIndicator("Working…")
 		// Dimmed while busy; the delay keeps quick refreshes from flashing.
-		<div class="space-y-6 transition-opacity delay-150 group-aria-busy/busy:opacity-60">
+		// Step 1 was choosing the CSV.
+		<div class="transition-opacity delay-150 group-aria-busy/busy:opacity-60">
 		<input type="hidden" name={ ImportRowsField }/>
-		@Section("Columns") {
+		@importStep(2, "Columns") {
 			<p class="mb-2 text-sm text-muted-foreground">These are guesses from the headers and values. Change any of them.</p>
 			<div
 				class="grid gap-3 sm:grid-cols-2 md:grid-cols-4"
@@ -265,11 +282,11 @@ templ ImportReview(v ImportView) {
 			</div>
 			@columnOverview(v)
 		}
-		@Section("Keep only") {
+		@importStep(3, "Keep only") {
 			@keepSection(v)
 		}
 		if len(v.Cats) > 0 {
-			@Section("Categories") {
+			@importStep(4, "Categories") {
 				<p class="mb-2 text-sm text-muted-foreground">
 					Each value keeps its own category unless you give several the same name: type the same name to merge them, or clear it for no category.
 					Values that differ only in case start out merged.
@@ -293,7 +310,7 @@ templ ImportReview(v ImportView) {
 							<div class="rounded-lg border-2 border-primary/50 bg-primary/5" data-merged>
 								<div class="flex items-center gap-2 px-2 pt-2 text-xs font-medium text-primary">
 									@icon.Merge(icon.Props{Size: 14})
-									Merged into { group[0].Target } · { fmt.Sprint(len(group)) } values
+									Merged into { group[0].Target } ({ fmt.Sprint(len(group)) } values)
 								</div>
 								<div class="divide-y divide-primary/20">
 									for _, cat := range group {
@@ -310,11 +327,13 @@ templ ImportReview(v ImportView) {
 				</div>
 			}
 		}
-		@Section("Rows") {
+		@importStep(utils.IfElse(len(v.Cats) > 0, 5, 4), "Rows") {
 			@importRows(v)
 		}
-		<div class="flex flex-wrap items-center gap-3">
+		// Sticky, so the list need not be scrolled to its end to submit.
+		<div class="sticky bottom-3 z-30 flex flex-wrap items-center gap-3 rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur">
 			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				@icon.Upload()
 				Import ticked rows
 			}
 			// Filled and kept current by app.js as rows are ticked.
@@ -486,9 +505,10 @@ templ importRows(v ImportView) {
 					</tbody>
 				</table>
 			</div>
-			<div class="hidden h-[60vh] items-center justify-center overflow-hidden rounded-lg border bg-muted md:flex">
-				<img id="import-preview" hidden alt="" class="flex items-center justify-center text-center size-full object-contain text-sm text-muted-foreground"/>
-				<p class="p-3 text-sm text-muted-foreground" data-import-hint>Hover a row to preview its image.</p>
+			// The same black stage as the display window.
+			<div class="hidden h-[60vh] items-center justify-center overflow-hidden rounded-lg bg-black md:flex">
+				<img id="import-preview" hidden alt="" class="flex items-center justify-center text-center size-full object-contain text-sm text-white/60"/>
+				<p class="p-3 text-sm text-white/60" data-import-hint>Hover a row to preview its image.</p>
 			</div>
 		</div>
 	</div>
