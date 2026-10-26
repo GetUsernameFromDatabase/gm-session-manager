@@ -9,7 +9,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 - Go, no CGO; tools (`templ`, `shadcn-templ`) are `tool` deps in `go.mod`. Router: gin.
 - SQLite via `modernc.org/sqlite`, WAL mode, `PRAGMA foreign_keys = ON` on every connection. All queries through `sqlc`; the migrations in `db/migrations` are the schema. FTS5 tables live in a migration, with a stub for sqlc in `db/sqlc_stubs.sql`.
 - Views: `templ` with [shadcn-templ](https://shadcn-templ.com/llms.txt) components, Tailwind (standalone CLI), `htmx` with the websocket extension.
-- Notes: TipTap/ProseMirror with the collab plugin, the one JS island (`web/assets/js/notes.js`).
+- Notes: TipTap/ProseMirror with the collab plugin (`web/assets/js/notes.js`). NPC fields reuse TipTap (`fields.js`); both share `wikilink.js`, which renders `[[kind:id|label]]` tokens (parsed server-side in `web/views/wikilinks.go`).
 - **No node or npm.** Browser libraries are vendored into `web/assets/vendor` by `cmd/vendorjs`. Everything ships in one binary via `go:embed`.
 - HTTPS only, with a self-signed certificate generated in `DATA_DIR/tls` (`join/`).
 
@@ -32,7 +32,7 @@ join/                     LAN addresses, TLS certificate, QR code
 web/                      router, *_handlers.go, render.go (view models), live.go (live views, /live)
 web/views/                templ pages and components; live.go holds live-view keys and binds
 web/components/, utils/   shadcn-templ CLI output: never edit by hand
-web/assets/               js/ (app.js, live.js, notes.js), css/ (globals.css → output.css), vendor/
+web/assets/               js/ (app.js, live.js, notes.js, fields.js, wikilink.js), css/ (globals.css → output.css), vendor/
 data/                     DATA_DIR at runtime (database, tls, attachments, compendium); not code
 ```
 
@@ -102,7 +102,7 @@ Generated code and built assets are committed, except `web/assets/vendor` (gitig
 
 | Change | Command |
 |---|---|
-| `db/migrations`, `db/queries` | `go generate ./db` (sqlc) |
+| `db/migrations`, `db/queries` | `go generate ./db` (sqlc on PATH) |
 | `*.templ`, Tailwind classes | `go generate ./web` (templ + Tailwind standalone CLI on PATH) |
 | shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./web` |
 | browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |

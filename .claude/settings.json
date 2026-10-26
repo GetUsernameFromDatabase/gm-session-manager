@@ -39,8 +39,7 @@
       "Bash(wget * | sh)",
       "Bash(eval *)",
       "Bash(sqlc push *)"
-    ],
-    "defaultMode": "plan"
+    ]
   },
   "hooks": {
     "PreToolUse": [
