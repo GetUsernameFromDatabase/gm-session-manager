@@ -16,6 +16,7 @@ import (
 	"gm-session-manager/web/components/icon"
 	"gm-session-manager/web/components/input"
 	"gm-session-manager/web/components/inputgroup"
+	"gm-session-manager/web/components/popover"
 	selectcomp "gm-session-manager/web/components/select"
 	switchcomp "gm-session-manager/web/components/switch"
 	"gm-session-manager/web/components/tabs"
@@ -28,6 +29,9 @@ const MaxHPInput = 9999
 
 // MaxMarker bounds a combatant's table marker, in characters.
 const MaxMarker = 40
+
+// chipConditions is how many conditions a player's chip shows before "+N".
+const chipConditions = 2
 
 // CombatantView is one row of the turn order as a viewer sees it.
 type CombatantView struct {
@@ -81,11 +85,11 @@ const (
 
 // kindLabel and kindTint set the kinds apart, as visibility does note blocks.
 var (
-	kindLabel = map[string]string{KindPC: "PC", KindNPC: "NPC", KindMonster: "Monster"}
-	kindTint  = map[string]string{KindPC: "border-l-sky-400/60", KindNPC: "border-l-amber-400/60", KindMonster: "border-l-rose-400/60"}
-	kindGroup = map[string]string{KindPC: "PCs", KindNPC: "NPCs", KindMonster: "Monsters"}
+	kindLabel  = map[string]string{KindPC: "PC", KindNPC: "NPC", KindMonster: "Monster"}
+	kindTint   = map[string]string{KindPC: "border-l-sky-400/60", KindNPC: "border-l-amber-400/60", KindMonster: "border-l-rose-400/60"}
+	kindGroup  = map[string]string{KindPC: "PCs", KindNPC: "NPCs", KindMonster: "Monsters"}
 	kindBorder = map[string]string{KindPC: "border-sky-400/60", KindNPC: "border-amber-400/60", KindMonster: "border-rose-400/60"}
-	kindDot   = map[string]string{KindPC: "bg-sky-400/60", KindNPC: "bg-amber-400/60", KindMonster: "bg-rose-400/60"}
+	kindDot    = map[string]string{KindPC: "bg-sky-400/60", KindNPC: "bg-amber-400/60", KindMonster: "bg-rose-400/60"}
 )
 
 // CombatView is the combat page.
@@ -158,7 +162,10 @@ templ encounterLinks(campaignID int64, encounters []sqlc.Encounter, current int6
 	for _, e := range encounters {
 		<a
 			href={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/combat?encounter=%d", campaignID, e.ID)) }
-			class={ "inline-flex h-8 items-center gap-1 rounded-md border px-3 text-sm", templ.KV("bg-accent font-medium", e.ID == current) }
+			class="inline-flex h-8 items-center gap-1 rounded-md border px-3 text-sm aria-[current=page]:border-primary/60 aria-[current=page]:bg-accent aria-[current=page]:font-medium"
+			if e.ID == current {
+				aria-current="page"
+			}
 		>
 			{ e.Name }
 			if e.Status == "active" {
@@ -216,7 +223,8 @@ templ Encounter(e EncounterView) {
 					</div>
 				}
 			</div>
-			if e.IsGM && e.Encounter.Status != "ended" && !e.initiativeSet() {
+			// A running fight shows this inside its turn card.
+			if e.IsGM && e.Encounter.Status == "preparing" && !e.initiativeSet() {
 				@alert.Alert(alert.Props{Class: "*:[svg]:translate-y-0 *:[svg]:self-center border-amber-500/50 bg-amber-500/10 text-amber-800 *:data-[slot=alert-description]:text-amber-800/90 dark:text-amber-300 dark:*:data-[slot=alert-description]:text-amber-300/90"}) {
 					@icon.TriangleAlert()
 					@alert.Title() {
@@ -231,7 +239,7 @@ templ Encounter(e EncounterView) {
 				@turnCard(e)
 			}
 			if e.IsGM {
-				<ol class="max-h-[max(14rem,calc(100dvh-26rem))] divide-y overflow-y-auto rounded-lg border">
+				<ol id={ fmt.Sprintf("combatants-%d", e.Encounter.ID) } data-keep-scroll class="max-h-[max(14rem,calc(100dvh-26rem))] divide-y overflow-y-auto rounded-lg border">
 					for _, c := range e.Combatants {
 						@combatantRow(e, c)
 					}
@@ -252,7 +260,7 @@ templ Encounter(e EncounterView) {
 							<span class={ "size-2 rounded-full", kindDot[g.Kind] }></span>
 							{ g.Label }
 						</h3>
-						<ul class="flex flex-wrap gap-2">
+						<ul class="flex flex-wrap items-start gap-2">
 							for _, c := range g.Cards {
 								@combatantChip(c)
 							}
@@ -266,33 +274,27 @@ templ Encounter(e EncounterView) {
 
 // combatantRow is one line of the GM's turn order.
 templ combatantRow(e EncounterView, c CombatantView) {
-	<li class={ "group/row space-y-2 border-l-4 p-3 data-[active=true]:bg-accent data-[down=true]:bg-rose-500/10", kindTint[c.Kind] } { combatantState(c)... }>
-		<div class="flex items-center gap-3">
-			@initiativeInput(c)
-			@portrait(c, "size-6")
-			<span class="min-w-0 flex-1">
-				@combatantName(c)
-				@beingBadge(c)
-				@turnBadges(c)
-			</span>
-			@input.Input(input.Props{Name: "marker", Value: c.Marker, Placeholder: "Marker", Class: "h-7 w-28", Attributes: templ.Attributes{
+	// One rung of the initiative ladder: amber marks whose turn it is, rose who
+	// is down; the controls wrap under the name on narrow screens.
+	<li class={ "group/row flex flex-wrap items-center gap-x-3 gap-y-2 border-l-4 py-2 pr-2 pl-1 data-[active=true]:border-l-primary data-[active=true]:bg-primary/10 data-[down=true]:bg-rose-500/10", kindTint[c.Kind], templ.KV("opacity-60", c.Out) } { combatantState(c)... }>
+		@initiativeInput(c)
+		@portrait(c, "size-8")
+		<span class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+			@combatantName(c)
+			@beingBadge(c)
+			@turnBadges(c)
+		</span>
+		<div class="flex flex-wrap items-center gap-2 max-md:basis-full max-md:pl-[6.75rem]">
+			@input.Input(input.Props{Name: "marker", Value: c.Marker, Placeholder: "Marker", Class: "h-7 w-24", Attributes: templ.Attributes{
 				"aria-label": "Table marker", "title": "Which piece on the table, e.g. mini 5", "maxlength": fmt.Sprint(MaxMarker),
 				"hx-post": fmt.Sprintf("/combatants/%d/marker", c.ID), "hx-trigger": "change",
 			}})
-			<span class="text-sm text-muted-foreground">AC { fmt.Sprint(c.AC) }</span>
-			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{"aria-label": "Remove combatant", "hx-post": fmt.Sprintf("/combatants/%d/delete", c.ID)}}) {
-				@icon.X()
-			}
-		</div>
-		<div class="grid gap-2 sm:ml-13 sm:grid-cols-[auto_1fr]">
-			<div class="flex flex-wrap items-center gap-2 rounded-md border border-l-4 border-l-rose-500 bg-rose-500/5 px-2 py-1.5">
-				<span class="flex items-center gap-1 text-xs font-medium text-rose-600">
-					@icon.Heart(icon.Props{Size: 14})
-					HP
-				</span>
+			<span class="w-11 text-sm text-muted-foreground tabular-nums">AC { fmt.Sprint(c.AC) }</span>
+			<span class="flex items-center gap-1.5">
 				@hpDialog(c)
+				@hpMeter(c, "w-14")
 				@tooltip.Tooltip() {
-					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: with(templ.Attributes{"aria-label": visibleTitle(c.HPVisible), "hx-post": fmt.Sprintf("/combatants/%d/visible", c.ID)}, tooltip.Trigger(ctx))}) {
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "text-muted-foreground", Attributes: with(templ.Attributes{"aria-label": visibleTitle(c.HPVisible), "hx-post": fmt.Sprintf("/combatants/%d/visible", c.ID)}, tooltip.Trigger(ctx))}) {
 						if c.HPVisible {
 							@icon.Eye()
 						} else {
@@ -303,48 +305,52 @@ templ combatantRow(e EncounterView, c CombatantView) {
 						{ visibleTitle(c.HPVisible) }
 					}
 				}
-			</div>
-			<div class="flex flex-wrap items-center gap-2 rounded-md border border-l-4 border-l-violet-500 bg-violet-500/5 px-2 py-1.5">
-				<span class="flex items-center gap-1 text-xs font-medium text-violet-600">
-					@icon.Sparkles(icon.Props{Size: 14})
-					Conditions
-				</span>
+			</span>
+			@conditionDialog(c)
+			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{"aria-label": "Remove combatant", "hx-post": fmt.Sprintf("/combatants/%d/delete", c.ID)}}) {
+				@icon.X()
+			}
+		</div>
+		// Conditions get their own line, so adding one moves no control.
+		if len(c.Conditions) > 0 {
+			<div class="flex basis-full flex-wrap items-center gap-1 pl-[6.75rem]">
 				for _, cond := range c.Conditions {
 					@combatCondition(cond, true)
 				}
-				@conditionDialog(c)
 			</div>
-		</div>
+		}
 	</li>
 }
 
 // ownCombatant is the player's own character in the fight: HP to change
 // and conditions to end, above everyone else.
 templ ownCombatant(c CombatantView) {
-	<div class={ "group/row space-y-3 rounded-lg border border-l-4 p-3 data-[active=true]:bg-accent data-[down=true]:bg-rose-500/10", kindTint[c.Kind] } { combatantState(c)... }>
+	<div class={ "group/row space-y-3 rounded-lg border border-l-4 p-3 data-[active=true]:border-l-primary data-[active=true]:bg-primary/10 data-[down=true]:bg-rose-500/10", kindTint[c.Kind] } { combatantState(c)... }>
 		<div class="flex items-center gap-3">
 			@portrait(c, "size-10")
-			<div class="min-w-0 flex-1">
-				<div class="flex flex-wrap items-center gap-1">
-					@combatantName(c)
-					@markerText(c)
-					@turnBadges(c)
-				</div>
-				<div class="text-lg">
-					@hpText(c)
-				</div>
+			<div class="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+				@combatantName(c)
+				@markerText(c)
+				@turnBadges(c)
+			</div>
+			<div class="text-3xl font-semibold">
+				@hpText(c)
 			</div>
 		</div>
+		@hpMeter(c, "w-full")
 		@hpQuickForm(fmt.Sprintf("/characters/%d/cmd", c.CharacterID), true)
 		@conditionList(c.Conditions, true)
 	</div>
 }
 
 // combatantChip is someone else in the fight as a player sees it: one pill
-// in a wrapping row, coloured by type, with no initiative.
+// in a wrapping row, coloured by type, with no initiative. It shows its first
+// conditions and a "+N" for the rest, so it stays one line beside the others;
+// the radius is half a line's height, so a phone's wrapped chip clips nothing.
+// Downed ones fade.
 templ combatantChip(c CombatantView) {
-	<li class={ "group/row inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-2xl border py-0.5 pr-2.5 pl-0.5 text-sm data-[active=true]:bg-accent data-[down=true]:bg-rose-500/10", kindBorder[c.Kind], templ.KV("pl-2.5", c.Portrait == "") } { combatantState(c)... }>
-		@portrait(c, "size-6")
+	<li class={ "group/row inline-flex max-w-[min(100%,22rem)] flex-wrap items-center gap-1 rounded-lg border py-0.5 pr-2.5 text-sm data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[down=true]:opacity-60", kindBorder[c.Kind], utils.IfElse(c.Portrait == "", "pl-2.5", "pl-0.5") } { combatantState(c)... }>
+		@portrait(c, "size-6 group-data-[down=true]/row:grayscale")
 		<span class="min-w-0 truncate">
 			@combatantName(c)
 		</span>
@@ -352,10 +358,41 @@ templ combatantChip(c CombatantView) {
 		@markerText(c)
 		@hpShort(c)
 		@downBadge(c)
-		for _, cond := range c.Conditions {
+		for _, cond := range c.Conditions[:min(len(c.Conditions), chipConditions)] {
 			@combatCondition(cond, false)
 		}
+		if len(c.Conditions) > chipConditions {
+			@conditionsPopover(c)
+		}
 	</li>
+}
+
+// conditionsPopover is a chip's "+N": it opens every condition with its
+// summary written out, as tooltips are hard to reach on a phone.
+templ conditionsPopover(c CombatantView) {
+	@popover.Popover(popover.Props{ID: fmt.Sprintf("conds-%d", c.ID)}) {
+		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeXs, Class: "h-[18px] rounded-full border border-violet-500/40 bg-violet-500/10 px-1.5 text-xs font-normal", Attributes: with(popover.Trigger(ctx), templ.Attributes{"aria-label": fmt.Sprintf("All %d conditions", len(c.Conditions))})}) {
+			{ fmt.Sprintf("+%d", len(c.Conditions)-chipConditions) }
+		}
+		// Never taller than the room on its side (--available-height), scrolling inside.
+		@popover.Content(popover.ContentProps{Class: "w-72 max-h-[min(24rem,var(--available-height,24rem))] overflow-y-auto overscroll-contain text-sm"}) {
+			@popover.Header() {
+				@popover.Title() {
+					{ c.Name }
+				}
+			}
+			<ul class="space-y-1.5">
+				for _, cond := range c.Conditions {
+					<li>
+						<span class="font-medium capitalize">{ conditionLabel(cond) }</span>
+						if tip, ok := dnd5e.ConditionSummaries[cond.Slug]; ok {
+							<p class="text-xs text-muted-foreground">{ tip }</p>
+						}
+					</li>
+				}
+			</ul>
+		}
+	}
 }
 
 // markerText names the piece on the table that stands for the combatant.
@@ -374,9 +411,29 @@ templ hpShort(c CombatantView) {
 		<span class="inline-flex items-center gap-0.5 text-xs">
 			@icon.Heart(icon.Props{Size: 12, Class: "text-rose-600"})
 			@hpText(c)
+			@hpMeter(c, "w-8")
 		</span>
 	}
 }
+
+// hpMeter is HP as a bar, red once at half or below; only when the viewer
+// sees the HP and there is a max to measure against.
+templ hpMeter(c CombatantView, class string) {
+	if c.hasMeter() {
+		<meter
+			class={ "hp-meter", class }
+			min="0"
+			max={ fmt.Sprint(c.MaxHP) }
+			low={ fmt.Sprint(c.MaxHP/2 + 1) }
+			optimum={ fmt.Sprint(c.MaxHP) }
+			value={ fmt.Sprint(c.HP) }
+			aria-hidden="true"
+			{ bind("value="+combatantKey(c, "hpval"))... }
+		></meter>
+	}
+}
+
+func (c CombatantView) hasMeter() bool { return c.ShowHP && c.MaxHP > 0 }
 
 // conditionList marks a combatant's conditions as such, in the violet the
 // GM's conditions box uses.
@@ -443,18 +500,32 @@ templ downBadge(c CombatantView) {
 	</span>
 }
 
-// combatCondition is a condition with its summary on hover, and a remove
-// button for those who may end it.
+// combatCondition is a condition whose summary opens on click, as phones
+// cannot hover, and a remove button beside it for those who may end it. A
+// custom condition has no summary: its note is the description.
 templ combatCondition(cond sqlc.Condition, removable bool) {
-	@tooltip.Tooltip() {
-		<span class="inline-flex items-center gap-1 rounded-full border border-violet-500/40 bg-violet-500/10 px-1.5 text-xs capitalize" { tooltip.Trigger(ctx)... }>
-			{ conditionLabel(cond) }
-			if removable {
-				@removeButton(fmt.Sprintf("/conditions/%d/delete", cond.ID))
+	<span class={ "inline-flex items-center rounded-full border border-violet-500/40 bg-violet-500/10 text-xs capitalize", templ.KV("pr-0.5", removable) }>
+		if tip, ok := dnd5e.ConditionSummaries[cond.Slug]; ok {
+			@popover.Popover(popover.Props{ID: fmt.Sprintf("condinfo-%d", cond.ID)}) {
+				@button.Button(button.Props{Variant: button.VariantGhost, Class: "h-auto rounded-full px-1.5 py-0 text-xs font-normal capitalize hover:bg-violet-500/20 dark:hover:bg-violet-500/20", Attributes: popover.Trigger(ctx)}) {
+					{ conditionLabel(cond) }
+				}
+				@popover.Content(popover.ContentProps{Class: "w-64 text-sm"}) {
+					@popover.Header() {
+						@popover.Title(popover.TitleProps{Class: "capitalize"}) {
+							{ conditionLabel(cond) }
+						}
+					}
+					<p class="text-muted-foreground">{ tip }</p>
+				}
 			}
-		</span>
-		@conditionTip(cond.Slug)
-	}
+		} else {
+			<span class="px-1.5">{ conditionLabel(cond) }</span>
+		}
+		if removable {
+			@removeButton(fmt.Sprintf("/conditions/%d/delete", cond.ID))
+		}
+	</span>
 }
 
 // conditionDialog is the GM's add-condition button and form for one
@@ -462,9 +533,9 @@ templ combatCondition(cond sqlc.Condition, removable bool) {
 templ conditionDialog(c CombatantView) {
 	{{ id := fmt.Sprintf("cond-%d", c.ID) }}
 	@dialog.Dialog() {
-		@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Class: "ml-auto", Attributes: dialog.Trigger(ctx)}) {
+		@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Attributes: dialog.Trigger(ctx)}) {
 			@icon.Plus()
-			Add
+			Condition
 		}
 		@dialog.Content() {
 			<form
@@ -552,8 +623,9 @@ templ hpQuickForm(cmdURL string, compact bool) {
 // d20 plus the combatant's bonus.
 templ initiativeInput(c CombatantView) {
 	{{ url := fmt.Sprintf("/combatants/%d/initiative", c.ID) }}
-	@inputgroup.InputGroup(inputgroup.Props{Class: utils.CN("h-7 w-24 shrink-0", utils.IfElse(c.Initiative == "", "ring-2 ring-amber-500/60", ""))}) {
-		@inputgroup.Input(inputgroup.InputProps{Name: "initiative", Value: c.Initiative, Class: "px-1 text-center font-mono tabular-nums", Attributes: templ.Attributes{
+	// A set initiative reads as the ladder's rung number, still editable in place.
+	@inputgroup.InputGroup(inputgroup.Props{Class: utils.CN("h-9 w-24 shrink-0", utils.IfElse(c.Initiative == "", "ring-2 ring-amber-500/60", "border-transparent bg-transparent shadow-none dark:bg-transparent"))}) {
+		@inputgroup.Input(inputgroup.InputProps{Name: "initiative", Value: c.Initiative, Class: utils.CN("px-1 text-center tabular-nums", utils.IfElse(c.Initiative == "", "", "text-2xl font-semibold md:text-2xl")), Attributes: templ.Attributes{
 			"inputmode": "numeric", "aria-label": "Initiative", "hx-post": url, "hx-trigger": "change",
 		}})
 		// Rolling is for setting it; a set initiative is changed by typing.
@@ -564,7 +636,7 @@ templ initiativeInput(c CombatantView) {
 					"hx-post": url, "hx-vals": `{"roll":"1"}`,
 				}}) {
 					@icon.Dices()
-					<span class="font-mono text-xs">{ fmt.Sprintf("%+d", c.InitMod) }</span>
+					<span class="text-xs tabular-nums">{ fmt.Sprintf("%+d", c.InitMod) }</span>
 				}
 			}
 		}
@@ -573,27 +645,47 @@ templ initiativeInput(c CombatantView) {
 
 // turnCard shows whose turn it was, is and comes next, with the GM's
 // buttons to move it. The names are bound, so a turn change patches them.
+// Below, the GM sees whose turns were skipped and whose initiative is missing.
 templ turnCard(e EncounterView) {
 	{{ prev, cur, next := e.turnNames() }}
-	<div class="flex items-center gap-2 rounded-lg border p-2">
-		if e.IsGM {
-			@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("prev"), "aria-label": "Previous turn"}}) {
-				@icon.ChevronLeft()
-				<span class="max-sm:hidden">Previous</span>
-			}
-		}
-		<div class="grid min-w-0 flex-1 grid-cols-3 gap-2 text-center text-sm">
-			@turnSlot("Previous", prev, "turn.prev", "text-muted-foreground")
-			@turnSlot("Now", cur, "turn.cur", "font-semibold")
-			@turnSlot("Next", next, "turn.next", "text-muted-foreground")
+	<div class="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-2 sm:p-3">
+		<div class="flex items-center gap-2 sm:gap-4">
+			@turnControls(e, prev, cur, next)
 		</div>
 		if e.IsGM {
-			@button.Button(button.Props{Size: button.SizeSm, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("next"), "aria-label": "Next turn"}}) {
-				<span class="max-sm:hidden">Next turn</span>
-				@icon.ChevronRight()
+			{{ skipped := e.turnSkipped() }}
+			<p class="flex items-center gap-1.5 border-t border-primary/20 pt-2 text-xs text-muted-foreground" hidden?={ skipped == "" } { bind("show=turn.skipped")... }>
+				@icon.Info(icon.Props{Size: 14, Class: "shrink-0"})
+				<span { bind("text=turn.skipped")... }>{ skipped }</span>
+			</p>
+			if !e.initiativeSet() {
+				<p class="flex items-center gap-1.5 border-t border-primary/20 pt-2 text-xs text-amber-700 dark:text-amber-300">
+					@icon.TriangleAlert(icon.Props{Size: 14, Class: "shrink-0"})
+					Next turn needs everyone's initiative. Missing: { strings.Join(e.missingInitiative(), ", ") }
+				</p>
 			}
 		}
 	</div>
+}
+
+templ turnControls(e EncounterView, prev, cur, next string) {
+	if e.IsGM {
+		@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantGhost, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("prev"), "aria-label": "Previous turn"}}) {
+			@icon.ChevronLeft()
+			<span class="max-sm:hidden">Previous</span>
+		}
+	}
+	<div class="grid min-w-0 flex-1 grid-cols-[1fr_2fr_1fr] items-end gap-2 text-center text-sm">
+		@turnSlot("Previous", prev, "turn.prev", "text-muted-foreground")
+		@turnSlot("Now", cur, "turn.cur", "text-xl font-semibold sm:text-2xl")
+		@turnSlot("Next", next, "turn.next", "text-muted-foreground")
+	</div>
+	if e.IsGM {
+		@button.Button(button.Props{Size: button.SizeLg, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("next"), "aria-label": "Next turn"}}) {
+			<span class="max-sm:hidden">Next turn</span>
+			@icon.ChevronRight()
+		}
+	}
 }
 
 templ turnSlot(label, name, key, class string) {
@@ -728,6 +820,29 @@ func (e EncounterView) turnNames() (prev, cur, next string) {
 		return ""
 	}
 	return near(-1), e.Combatants[i].Name, near(1)
+}
+
+// turnSkipped names those out of the fight between the previous turn and
+// this one, whose turns next turn passed over; empty when there are none.
+func (e EncounterView) turnSkipped() string {
+	n := len(e.Combatants)
+	i := slices.IndexFunc(e.Combatants, func(c CombatantView) bool { return c.Active })
+	if i < 0 {
+		return ""
+	}
+	var names []string
+	for k := 1; k < n; k++ {
+		c := e.Combatants[((i-k)%n+n)%n]
+		if !c.Out {
+			break
+		}
+		names = append(names, c.Name)
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	slices.Reverse(names)
+	return fmt.Sprintf("Skipped %d (out of the fight): %s", len(names), strings.Join(names, ", "))
 }
 
 // combatantGroup is one kind of being in a player's grid.

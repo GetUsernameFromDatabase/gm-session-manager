@@ -130,6 +130,9 @@ func (e EncounterView) Hot(st hub.State) {
 	if e.Encounter.Status == "active" {
 		st["round"] = roundLabel(e.Encounter.Round)
 		st["turn.prev"], st["turn.cur"], st["turn.next"] = e.turnNames()
+		if e.IsGM {
+			st["turn.skipped"] = e.turnSkipped()
+		}
 	}
 	for _, c := range e.Combatants {
 		st[combatantKey(c, "on")] = c.Active
@@ -140,8 +143,10 @@ func (e EncounterView) Hot(st hub.State) {
 				st[combatantKey(c, "temp")] = fmt.Sprintf("+%d", c.TempHP)
 			}
 		}
-		if e.IsGM { // the HP dialog's inputs
+		if e.IsGM || c.hasMeter() { // the HP dialog's inputs and the HP meter
 			st[combatantKey(c, "hpval")] = c.HP
+		}
+		if e.IsGM {
 			st[combatantKey(c, "tempval")] = c.TempHP
 		}
 	}

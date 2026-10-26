@@ -265,6 +265,26 @@
   .markdown td {
     @apply px-2 py-1;
   }
+  /* Combat HP bars (hpMeter): foreground while healthy, rose at half or below. */
+  .hp-meter {
+    @apply h-1.5 appearance-none overflow-hidden rounded-full bg-muted;
+  }
+  .hp-meter::-webkit-meter-bar {
+    @apply h-1.5 rounded-full border-0 bg-muted;
+  }
+  .hp-meter::-webkit-meter-optimum-value {
+    @apply bg-foreground/70;
+  }
+  .hp-meter::-webkit-meter-suboptimum-value,
+  .hp-meter::-webkit-meter-even-less-good-value {
+    @apply bg-rose-500;
+  }
+  .hp-meter::-moz-meter-bar {
+    @apply bg-rose-500;
+  }
+  .hp-meter:-moz-meter-optimum::-moz-meter-bar {
+    @apply bg-foreground/70;
+  }
   .note-editor .tiptap p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
     @apply pointer-events-none float-left h-0 text-muted-foreground;

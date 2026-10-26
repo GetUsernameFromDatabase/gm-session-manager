@@ -290,14 +290,6 @@ func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int) (int, 
 	return 0, 0, nil, userError{errors.New("everyone is out of the fight")}
 }
 
-// skippedNotice tells the GM whose turns were skipped, and why.
-func skippedNotice(names []string) string {
-	if len(names) == 0 {
-		return ""
-	}
-	return fmt.Sprintf("Skipped %d (out of the fight): %s", len(names), strings.Join(names, ", "))
-}
-
 // encounterAction runs start, next, prev, end and delete.
 func (a *App) encounterAction(c *gin.Context) {
 	enc, ok := a.encounterParam(c)
@@ -314,7 +306,6 @@ func (a *App) encounterAction(c *gin.Context) {
 		redirect(c, fmt.Sprintf("/campaigns/%d/combat", enc.CampaignID))
 		return
 	}
-	var skipped []string
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		// Re-read inside the transaction, so turns sent from two devices
 		// at once both count.
@@ -345,7 +336,8 @@ func (a *App) encounterAction(c *gin.Context) {
 			if action == "prev" {
 				dir = -1
 			}
-			if i, next.Round, skipped, err = stepTurn(rows, i, enc.Round, dir); err != nil {
+			// The turn card names whom this skipped (turnSkipped).
+			if i, next.Round, _, err = stepTurn(rows, i, enc.Round, dir); err != nil {
 				return err
 			}
 			next.ActiveCombatantID = nullID(rows[i].ID)
@@ -366,7 +358,7 @@ func (a *App) encounterAction(c *gin.Context) {
 	if a.commandFailed(c, err) {
 		return
 	}
-	a.encounterNotice(c, enc, skippedNotice(skipped), a.pcTopics(ctx, enc.ID)...)
+	a.encounterNotice(c, enc, "", a.pcTopics(ctx, enc.ID)...)
 }
 
 // pcTopics lists the characters in an encounter, whose sheets show

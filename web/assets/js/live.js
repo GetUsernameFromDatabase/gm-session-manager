@@ -63,6 +63,19 @@
     });
   };
 
+  // A refetched view replaces its markup; scrolled lists inside it keep
+  // their place (data-keep-scroll, matched by id). The old target is still
+  // in the document here, and the microtask runs after the swap, before paint.
+  document.addEventListener("htmx:oobBeforeSwap", (e) => {
+    for (const el of e.detail.target.querySelectorAll("[data-keep-scroll][id]")) {
+      const { id, scrollTop } = el;
+      queueMicrotask(() => {
+        const now = document.getElementById(id);
+        if (now) now.scrollTop = scrollTop;
+      });
+    }
+  });
+
   gsm.applyPatch = (m) => {
     const st = document.getElementById("ws-state");
     if (st) {
