@@ -3,6 +3,51 @@
 (function () {
   "use strict";
 
+  // The tab's recent console and uncaught errors go with a bug report. Kept
+  // in sessionStorage so they survive page loads; first, to catch the most.
+  const CONSOLE_KEY = "gsm-console";
+  const CONSOLE_SIZE = 50;
+  const CONSOLE_MSG = 500;
+  let consoleLog = [];
+  try {
+    consoleLog = JSON.parse(sessionStorage.getItem(CONSOLE_KEY)) || [];
+  } catch (_) {}
+  const consoleArg = (v) => {
+    if (typeof v === "string") return v;
+    if (v instanceof Error) return v.stack || `${v.name}: ${v.message}`;
+    try {
+      return JSON.stringify(v);
+    } catch (_) {
+      return String(v);
+    }
+  };
+  const keepConsole = (level, args) => {
+    const msg = args.map(consoleArg).join(" ").slice(0, CONSOLE_MSG);
+    consoleLog = [...consoleLog, { at: new Date().toISOString(), level, msg, page: location.pathname.slice(0, 512) }].slice(-CONSOLE_SIZE);
+    try {
+      sessionStorage.setItem(CONSOLE_KEY, JSON.stringify(consoleLog));
+    } catch (_) {}
+  };
+  for (const level of ["log", "info", "warn", "error"]) {
+    const original = console[level].bind(console);
+    console[level] = (...args) => {
+      keepConsole(level, args);
+      original(...args);
+    };
+  }
+  // Uncaught errors and failed loads (an image, a script) are logged like any
+  // other error. Capture: load errors do not bubble.
+  addEventListener(
+    "error",
+    (e) => {
+      const el = e.target;
+      if (el instanceof Element) console.error(`Failed to load ${el.tagName.toLowerCase()}:`, el.currentSrc || el.src || el.href);
+      else console.error(e.error || `${e.message} (${e.filename}:${e.lineno})`);
+    },
+    true,
+  );
+  addEventListener("unhandledrejection", (e) => console.error("Unhandled rejection:", e.reason));
+
   // Responses are out-of-band fragments (flash messages, refetched live
   // views); nothing swaps into the element that made the request unless it
   // asks with hx-swap.
@@ -352,6 +397,70 @@
   // A joining visitor's name goes with each join form and is remembered on
   // this device only.
   const PLAYER_KEY = "gsm-player";
+  // A feedback report says where it was sent from and who sent it, and shows
+  // the reporter those values. Filled on open and again on submit (capture
+  // runs before htmx reads the form), since the screen may have turned.
+  const fillFeedback = (form) => {
+    const values = {
+      page: location.pathname + location.search,
+      viewport: `${innerWidth}×${innerHeight}`,
+      dark: document.documentElement.classList.contains("dark"),
+      console: JSON.stringify(consoleLog),
+    };
+    try {
+      values.player = localStorage.getItem(PLAYER_KEY) || "";
+    } catch (_) {}
+    for (const [name, value] of Object.entries(values)) {
+      form.elements.namedItem(name).value = value;
+      const shown = form.querySelector(`[data-feedback-show="${name}"]`);
+      if (shown) shown.textContent = value;
+    }
+  };
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-feedback-open]")) document.querySelectorAll("form[data-feedback]").forEach(fillFeedback);
+  });
+  document.addEventListener(
+    "submit",
+    (e) => {
+      const form = e.target;
+      if (!form.matches("form[data-feedback]")) return;
+      fillFeedback(form);
+      const files = form.elements.namedItem("screenshots");
+      if (files.files.length > Number(files.dataset.max)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        showFormError(form, `Pick at most ${files.dataset.max} screenshots.`);
+      }
+    },
+    true,
+  );
+  // Picked screenshots show as thumbnails in the picker.
+  const showThumbs = (input) => {
+    const box = input.form.querySelector("[data-feedback-thumbs]");
+    box.querySelectorAll("img").forEach((img) => URL.revokeObjectURL(img.src));
+    box.replaceChildren(
+      ...Array.from(input.files, (f) => {
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(f);
+        img.alt = f.name;
+        img.className = "size-10 rounded-md border object-cover";
+        return img;
+      }),
+    );
+  };
+  document.addEventListener("change", (e) => {
+    if (e.target.matches("form[data-feedback] [name=screenshots]")) showThumbs(e.target);
+  });
+  // A sent report clears what was typed. Not form.reset(): the kind cards
+  // keep their own state, and the chosen kind stays for the next report.
+  document.addEventListener("htmx:afterRequest", (e) => {
+    const form = e.detail.elt;
+    if (!e.detail.successful || !form.matches?.("form[data-feedback]")) return;
+    form.querySelectorAll("input[type=text], input:not([type]), textarea").forEach((el) => (el.value = ""));
+    const files = form.elements.namedItem("screenshots");
+    files.value = "";
+    showThumbs(files);
+  });
   document.addEventListener("DOMContentLoaded", () => {
     const input = document.getElementById("player-name");
     if (!input) return;
@@ -410,14 +519,19 @@
     if (e.detail.xhr.status !== 422 || !form) return;
     const flash = new DOMParser().parseFromString(e.detail.serverResponse, "text/html").querySelector("#flash[hx-swap-oob]");
     if (!flash) return;
+    showFormError(form, flash.textContent.trim());
+    e.detail.shouldSwap = false;
+  });
+  // A form with a [data-form-errors] slot shows errors there, else at its end.
+  function showFormError(form, msg) {
+    form.querySelector("[data-form-error]")?.remove();
     const p = document.createElement("p");
     p.dataset.formError = "";
     p.setAttribute("role", "alert");
     p.className = "basis-full text-sm text-destructive";
-    p.textContent = flash.textContent.trim();
-    form.append(p);
-    e.detail.shouldSwap = false;
-  });
+    p.textContent = msg;
+    (form.querySelector("[data-form-errors]") || form).append(p);
+  }
 
   // The command palette puts the picked example in the command bar, ready to
   // adjust; "/" jumps to the bar from anywhere but a text field.

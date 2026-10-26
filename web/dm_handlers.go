@@ -128,6 +128,7 @@ func (a *App) kick(c *gin.Context) {
 		return
 	}
 	a.Hub.CloseSession(sess.ID)
+	a.reqs.forget(sessionKey(sess))
 	a.changed(c, ch.CampaignID, hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID})
 }
 

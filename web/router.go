@@ -41,6 +41,7 @@ type App struct {
 	Deps
 	Hub     *hub.Hub
 	imports csvImports
+	reqs    reqLog
 }
 
 // New builds the app. The hub renders fragments through the app.
@@ -67,7 +68,7 @@ func (a *App) Router() *gin.Engine {
 	}
 	r.Use(securityHeaders, sameOriginOnly(http.NewCrossOriginProtection()))
 	a.mountAssets(r)
-	r.Use(a.Auth.Middleware())
+	r.Use(a.Auth.Middleware(), a.recordRequest)
 
 	gm := auth.RequireAdmin()
 
@@ -84,6 +85,7 @@ func (a *App) Router() *gin.Engine {
 	r.GET("/join.png", a.joinQR)
 	r.GET("/ws", a.websocket)
 	r.GET("/live", a.liveHTML)
+	r.POST(views.PathFeedback, a.sendFeedback)
 
 	// GM table controls.
 	r.POST("/campaigns", gm, a.createCampaign)

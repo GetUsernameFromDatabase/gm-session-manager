@@ -1,0 +1,173 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/web/components/button"
+	"gm-session-manager/web/components/dialog"
+	"gm-session-manager/web/components/field"
+	"gm-session-manager/web/components/icon"
+	"gm-session-manager/web/components/input"
+	"gm-session-manager/web/components/radiogroup"
+	"gm-session-manager/web/components/textarea"
+)
+
+// PathFeedback takes bug reports and ideas; they are saved as files on the host.
+const PathFeedback = "/feedback"
+
+// MaxScreenshots is how many pictures one report may carry.
+const MaxScreenshots = 3
+
+// Classes that show an element for one kind only, keyed on the form's
+// checked kind, so switching keeps everything typed.
+const (
+	bugOnly  = "group-has-[[name=kind][value=idea]:checked]/feedback:hidden"
+	ideaOnly = "hidden group-has-[[name=kind][value=idea]:checked]/feedback:inline"
+)
+
+const feedbackLabel = "Report a bug or suggest an idea"
+
+// feedbackDialog is the navbar's button and form for a bug report or an idea.
+templ feedbackDialog() {
+	@dialog.Dialog(dialog.Props{ID: "feedback"}) {
+		@button.Button(button.Props{
+			Variant:    button.VariantGhost,
+			Size:       button.SizeIconSm,
+			Attributes: with(dialog.Trigger(ctx), templ.Attributes{"aria-label": feedbackLabel, "title": feedbackLabel, "data-feedback-open": true}),
+		}) {
+			@icon.MessageSquareWarning()
+		}
+		@dialog.Content(dialog.ContentProps{Class: "max-h-[90dvh] overflow-y-auto sm:max-w-lg"}) {
+			@dialog.Header() {
+				@dialog.Title() {
+					{ feedbackLabel }
+				}
+				@dialog.Description() {
+					Saved on the host computer for the GM to read.
+				}
+			}
+			@feedbackForm()
+		}
+	}
+}
+
+// feedbackForm is one form for both kinds. app.js fills the hidden fields
+// and the "Sent with it" values.
+templ feedbackForm() {
+	<form
+		class="group/busy group/feedback grid gap-5"
+		data-busy
+		data-feedback
+		hx-post={ PathFeedback }
+		hx-encoding="multipart/form-data"
+		{ templ.Attributes{"hx-on::after-request": closeDialogJS}... }
+	>
+		<input type="hidden" name="page"/>
+		<input type="hidden" name="viewport"/>
+		<input type="hidden" name="dark"/>
+		<input type="hidden" name="player"/>
+		<input type="hidden" name="console"/>
+		@radiogroup.RadioGroup(radiogroup.Props{Name: "kind", DefaultValue: "bug", Class: "grid-cols-2 gap-3", Attributes: templ.Attributes{"aria-label": "Kind"}}) {
+			@feedbackKind("bug", "Something broke", "It did the wrong thing", icon.Bug)
+			@feedbackKind("idea", "I have an idea", "It could do more", icon.Lightbulb)
+		}
+		@field.Group(field.GroupProps{Class: "gap-4"}) {
+			@feedbackField("feedback-title", "Title") {
+				@input.Input(input.Props{ID: "feedback-title", Name: "title", Required: true, Attributes: templ.Attributes{"maxlength": "120", "autocomplete": "off"}})
+			}
+			@field.Field() {
+				@field.Label(field.LabelProps{For: "feedback-body"}) {
+					<span class={ bugOnly }>What happened?</span>
+					<span class={ ideaOnly }>What would help?</span>
+				}
+				@textarea.Textarea(textarea.Props{ID: "feedback-body", Name: "body", Rows: 3, Attributes: templ.Attributes{"required": true, "maxlength": "4000"}})
+				@field.Description() {
+					<span class={ bugOnly }>What you saw, and where.</span>
+					<span class={ ideaOnly }>What you would like, and how it would help at the table.</span>
+				}
+			}
+			<div class={ "grid gap-4", bugOnly }>
+				@feedbackField("feedback-steps", "Steps to get there") {
+					@textarea.Textarea(textarea.Props{ID: "feedback-steps", Name: "steps", Rows: 3, Placeholder: "1. Opened my sheet\n2. Tapped Damage", Attributes: templ.Attributes{"maxlength": "4000"}})
+				}
+				@feedbackField("feedback-expected", "What should have happened?") {
+					@textarea.Textarea(textarea.Props{ID: "feedback-expected", Name: "expected", Rows: 2, Attributes: templ.Attributes{"maxlength": "4000"}})
+				}
+			</div>
+			@screenshotPicker()
+		}
+		@feedbackSent()
+		<div data-form-errors></div>
+		@dialog.Footer() {
+			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.Close(ctx)}) {
+				Cancel
+			}
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				<span class={ bugOnly }>Send report</span>
+				<span class={ ideaOnly }>Send idea</span>
+			}
+		}
+		@busyIndicator("Sending…")
+	</form>
+}
+
+// feedbackKind is one of the two kind cards; the chosen one is marked in gold.
+templ feedbackKind(value, title, hint string, ic func(...icon.Props) templ.Component) {
+	<label
+		for={ "feedback-kind-" + value }
+		class="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent has-data-checked:border-primary has-data-checked:bg-primary/15 has-focus-visible:ring-3 has-focus-visible:ring-ring/50"
+	>
+		@radiogroup.Item(radiogroup.ItemProps{ID: "feedback-kind-" + value, Value: value, Class: "mt-1"})
+		<span class="grid min-w-0 gap-1">
+			<span class="flex items-center gap-2 font-medium">
+				@ic(icon.Props{Size: 18, Class: "shrink-0"})
+				{ title }
+			</span>
+			<span class="text-sm text-muted-foreground">{ hint }</span>
+		</span>
+	</label>
+}
+
+// screenshotPicker is a dashed drop area around a hidden file input; app.js
+// shows the picked pictures in it.
+templ screenshotPicker() {
+	<label
+		for="feedback-screenshots"
+		class="relative flex min-h-14 cursor-pointer flex-wrap items-center gap-3 rounded-lg border border-dashed p-3 text-sm hover:bg-accent has-focus-visible:ring-3 has-focus-visible:ring-ring/50"
+	>
+		@icon.ImagePlus(icon.Props{Size: 18, Class: "shrink-0 text-muted-foreground"})
+		<span>
+			Add screenshots
+			<span class="text-muted-foreground">{ fmt.Sprintf("(up to %d)", MaxScreenshots) }</span>
+		</span>
+		<span data-feedback-thumbs class="ml-auto flex gap-2 empty:hidden"></span>
+		<input id="feedback-screenshots" type="file" name="screenshots" accept="image/*" multiple class="sr-only" data-max={ fmt.Sprint(MaxScreenshots) }/>
+	</label>
+}
+
+// feedbackSent shows what goes with the report, with the real values.
+templ feedbackSent() {
+	<div class="grid gap-1.5 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+		<p class="font-medium text-foreground">Sent with it</p>
+		<p class="flex min-w-0 items-center gap-2">
+			@icon.FileText(icon.Props{Size: 14, Class: "shrink-0"})
+			<span>This page, <code class="break-all" data-feedback-show="page"></code></span>
+		</p>
+		<p class="flex items-center gap-2">
+			@icon.Monitor(icon.Props{Size: 14, Class: "shrink-0"})
+			<span>Your browser and screen size, <span class="tabular-nums" data-feedback-show="viewport"></span></span>
+		</p>
+		<p class={ "flex items-center gap-2", bugOnly }>
+			@icon.History(icon.Props{Size: 14, Class: "shrink-0"})
+			What this device did recently, its console and any errors
+		</p>
+	</div>
+}
+
+templ feedbackField(id, label string) {
+	@field.Field() {
+		@field.Label(field.LabelProps{For: id}) {
+			{ label }
+		}
+		{ children... }
+	}
+}

@@ -137,6 +137,9 @@ templ navbar(l Layout) {
 					}
 				}
 			}
+			if l.HasSession || l.IsGM {
+				@feedbackDialog()
+			}
 			@button.Button(button.Props{
 				Variant:    button.VariantGhost,
 				Size:       button.SizeIconSm,

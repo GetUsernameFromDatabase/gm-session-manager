@@ -139,6 +139,25 @@
   }
 }
 
+/* A label whose field the form will not send empty gets an asterisk, so the
+   browser's "Please fill in this field" is no surprise. Two shapes: a
+   field.Field with its field.Label (not a nested field's control), and a
+   label.Label beside its control. The asterisk is hidden from screen
+   readers, which announce `required` already. */
+@layer components {
+  [data-slot="field"]:has(
+      > :is(input, textarea, select):required,
+      > :not([data-slot="field"]) :is(input, textarea, select):required
+    )
+    > [data-slot="field-label"]::after,
+  :has(> [data-slot="label"] ~ :is(input, textarea, select):required, > [data-slot="label"] ~ * :is(input, textarea, select):required)
+    > [data-slot="label"]::after {
+    content: "*";
+    content: "*" / "";
+    @apply -ms-1 text-destructive;
+  }
+}
+
 /* Rich-text note blocks (TipTap). The editor renders plain elements, so
    give them document styling here instead of utility classes. */
 

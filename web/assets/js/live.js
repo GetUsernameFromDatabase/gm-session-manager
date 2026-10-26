@@ -113,9 +113,12 @@
   };
 
   // Without a websocket the actor's own changes would not show: refetch
-  // the page's views after each successful change instead.
+  // the page's views after each successful change instead. Not after a 422:
+  // htmx counts it as successful (it carries a message to show), it changed
+  // nothing, and a refetch would wipe its message from the form.
   document.addEventListener("htmx:afterRequest", (e) => {
     const verb = e.detail.requestConfig && e.detail.requestConfig.verb;
-    if (!gsm.socket && e.detail.successful && verb && verb !== "get") gsm.watching().forEach(gsm.refetch);
+    const changed = e.detail.xhr && e.detail.xhr.status < 300;
+    if (!gsm.socket && changed && verb && verb !== "get") gsm.watching().forEach(gsm.refetch);
   });
 })();

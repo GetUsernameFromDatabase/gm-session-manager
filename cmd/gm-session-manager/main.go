@@ -100,6 +100,9 @@ func run() error {
 	if err := app.CleanAttachments(ctx); err != nil {
 		slog.Warn("cleaning attachments", "err", err)
 	}
+	if err := app.WriteFeedbackIndex(); err != nil {
+		slog.Warn("listing unread feedback", "err", err)
+	}
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),

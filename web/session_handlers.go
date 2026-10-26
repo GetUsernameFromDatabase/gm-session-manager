@@ -49,7 +49,7 @@ func (a *App) home(c *gin.Context) {
 			a.serverError(c, err)
 			return
 		}
-		a.render(c, http.StatusOK, views.GMHome(a.layout(w, "Campaigns", views.NavHome, nil, false), campaigns, a.joinInfo(0)))
+		a.render(c, http.StatusOK, views.GMHome(a.layout(w, "Campaigns", views.NavHome, nil, false), campaigns, a.joinInfo(0), a.feedbackPath()))
 	case w.character != nil:
 		c.Redirect(http.StatusSeeOther, fmt.Sprintf("/characters/%d", w.character.ID))
 	default:
@@ -158,6 +158,7 @@ func (a *App) logout(c *gin.Context) {
 			return
 		}
 		a.Hub.CloseSession(sess.ID)
+		a.reqs.forget(sessionKey(*sess))
 		if w.character != nil {
 			a.Hub.Publish(w.character.CampaignID, hub.Topic{Kind: hub.TopicCampaign, ID: w.character.CampaignID})
 		}

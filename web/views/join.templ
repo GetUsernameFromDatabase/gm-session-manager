@@ -77,7 +77,7 @@ func fingerprintPairs(hex string) string {
 	return b.String()
 }
 
-templ GMHome(l Layout, campaigns []sqlc.Campaign, j JoinInfo) {
+templ GMHome(l Layout, campaigns []sqlc.Campaign, j JoinInfo, feedbackDir string) {
 	@Page(l) {
 		@PageHeader("Campaigns", "You are the GM on this device.")
 		<div class="grid gap-6 md:grid-cols-2">
@@ -97,6 +97,13 @@ templ GMHome(l Layout, campaigns []sqlc.Campaign, j JoinInfo) {
 			</div>
 			@joinPanel(j)
 		</div>
+		<p class="mt-8 flex items-center gap-2 text-sm text-muted-foreground">
+			@icon.MessageSquare(icon.Props{Size: 16, Class: "shrink-0"})
+			<span>
+				Bug reports and ideas sent from any device, and reports of server errors, are saved in <code class="break-all">{ feedbackDir }</code>.
+				<code>USER_FEEDBACK_NOT_READ</code> next to it lists the unread ones; delete a report's folder once read.
+			</span>
+		</p>
 	}
 }
 

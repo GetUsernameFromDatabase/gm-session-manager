@@ -185,6 +185,8 @@ func (a *App) fail(c *gin.Context, status int, msg string) {
 
 // failBack is fail with the error page linking to backURL instead of home.
 func (a *App) failBack(c *gin.Context, status int, msg, backURL, backLabel string) {
+	c.Set(failMsgKey, msg)
+	c.Set(failStatusKey, status)
 	if isHTMX(c) {
 		a.render(c, http.StatusUnprocessableEntity, views.Flash(msg, true))
 		c.Abort()
@@ -196,6 +198,7 @@ func (a *App) failBack(c *gin.Context, status int, msg, backURL, backLabel strin
 
 func (a *App) serverError(c *gin.Context, err error) {
 	slog.Error("request failed", "path", c.FullPath(), "err", err)
+	c.Set(serverErrKey, err.Error()) // for the request log in bug reports
 	a.fail(c, http.StatusInternalServerError, "Something went wrong on the host. Check its log.")
 }
 
