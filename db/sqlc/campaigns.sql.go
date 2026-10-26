@@ -35,6 +35,16 @@ func (q *Queries) CreateCampaign(ctx context.Context, arg CreateCampaignParams) 
 	return i, err
 }
 
+const deleteCampaign = `-- name: DeleteCampaign :exec
+DELETE FROM campaigns
+WHERE id = ?
+`
+
+func (q *Queries) DeleteCampaign(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteCampaign, id)
+	return err
+}
+
 const getCampaign = `-- name: GetCampaign :one
 SELECT id, name, system, edition, open_join, created_at FROM campaigns
 WHERE id = ?
@@ -87,6 +97,22 @@ func (q *Queries) ListCampaigns(ctx context.Context) ([]Campaign, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const renameCampaign = `-- name: RenameCampaign :exec
+UPDATE campaigns
+SET name = ?
+WHERE id = ?
+`
+
+type RenameCampaignParams struct {
+	Name string
+	ID   int64
+}
+
+func (q *Queries) RenameCampaign(ctx context.Context, arg RenameCampaignParams) error {
+	_, err := q.db.ExecContext(ctx, renameCampaign, arg.Name, arg.ID)
+	return err
 }
 
 const setCampaignOpenJoin = `-- name: SetCampaignOpenJoin :exec

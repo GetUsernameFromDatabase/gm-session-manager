@@ -54,7 +54,19 @@ type PendingGroup struct {
 
 templ CampaignOverview(l Layout, r Roster, j JoinInfo) {
 	@Page(l) {
-		@PageHeader(r.Campaign.Name, "Table overview")
+		<div class="mb-6">
+			<form class="flex items-center gap-2" hx-post={ fmt.Sprintf("/campaigns/%d/rename", r.Campaign.ID) } hx-trigger="change, submit">
+				@input.Input(input.Props{Name: "name", Value: r.Campaign.Name, Required: true, Class: "h-auto min-w-0 flex-1 border-transparent px-1 text-2xl font-semibold md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Campaign name", "maxlength": "100", "autocomplete": "off"}})
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Class: quietDestructive, Attributes: templ.Attributes{
+					"hx-post":    fmt.Sprintf("/campaigns/%d/delete", r.Campaign.ID),
+					"hx-confirm": "Delete " + r.Campaign.Name + " forever, with all its characters, notes, combat and images? Its players are logged out. This cannot be undone.",
+					"aria-label": "Delete campaign", "title": "Delete campaign",
+				}}) {
+					@icon.Trash2()
+				}
+			</form>
+			<p class="text-sm text-muted-foreground">Table overview</p>
+		</div>
 		<div class="grid gap-6 md:grid-cols-[1fr_20rem]">
 			@CampaignRoster(r)
 			<div class="space-y-4">

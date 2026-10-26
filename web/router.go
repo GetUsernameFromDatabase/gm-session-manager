@@ -89,6 +89,8 @@ func (a *App) Router() *gin.Engine {
 	r.POST("/campaigns", gm, a.createCampaign)
 	r.GET("/campaigns/:campaign", gm, a.campaignOverview)
 	r.POST("/campaigns/:campaign/open-join", gm, a.toggleOpenJoin)
+	r.POST("/campaigns/:campaign/rename", gm, a.renameCampaign)
+	r.POST("/campaigns/:campaign/delete", gm, a.deleteCampaign)
 	r.POST("/campaigns/:campaign/requests/all/:decision", gm, a.decideAll)
 	r.POST("/campaigns/:campaign/requests/:request/:decision", gm, a.decideRequest)
 	r.GET("/campaigns/:campaign/export", gm, a.exportCampaign)

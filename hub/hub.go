@@ -140,6 +140,15 @@ func (h *Hub) CloseCharacter(characterID int64) {
 	h.closeMatching(func(c *Client) bool { return c.Viewer.CharacterID == characterID })
 }
 
+// CloseCampaign disconnects the players and waiting visitors of a deleted
+// campaign; dropping a visitor drops its join request. GM tabs stay, so the
+// deleting tab follows its own redirect.
+func (h *Hub) CloseCampaign(campaignID int64) {
+	h.closeMatching(func(c *Client) bool {
+		return c.CampaignID == campaignID && !c.Viewer.IsGM || c.Pending != nil && c.Pending.CampaignID == campaignID
+	})
+}
+
 func (h *Hub) closeMatching(match func(c *Client) bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

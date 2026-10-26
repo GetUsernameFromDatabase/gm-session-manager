@@ -15,3 +15,12 @@ ORDER BY name;
 UPDATE campaigns
 SET open_join = ?
 WHERE id = ?;
+
+-- name: RenameCampaign :exec
+UPDATE campaigns
+SET name = ?
+WHERE id = ?;
+
+-- name: DeleteCampaign :exec
+DELETE FROM campaigns
+WHERE id = ?;

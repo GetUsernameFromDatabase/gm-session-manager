@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -72,5 +73,40 @@ func TestDeleteRestoreImport(t *testing.T) {
 	chars, _ := e.q().ListCharactersByCampaign(ctx, e.campaignID)
 	if len(chars) != 3 {
 		t.Errorf("after import: %d characters", len(chars))
+	}
+}
+
+// TestRenameDeleteCampaign: only the GM renames or deletes a campaign, and
+// deleting it removes its characters and so their devices.
+func TestRenameDeleteCampaign(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	gm := e.token(t, auth.RoleAdmin)
+	player := e.token(t, auth.RolePlayer)
+	overview := fmt.Sprintf("/campaigns/%d", e.campaignID)
+	name := url.Values{"name": {"  Curse of Strahd  "}}
+
+	if w := e.do(t, http.MethodPost, overview+"/rename", player, name, true); w.Code < http.StatusBadRequest {
+		t.Errorf("player rename: %d", w.Code)
+	}
+	if w := e.do(t, http.MethodPost, overview+"/delete", player, nil, true); w.Code < http.StatusBadRequest {
+		t.Errorf("player delete: %d", w.Code)
+	}
+
+	if w := e.do(t, http.MethodPost, overview+"/rename", gm, name, true); w.Header().Get("HX-Redirect") != overview {
+		t.Fatalf("rename: %d %v %s", w.Code, w.Header(), w.Body)
+	}
+	if camp, err := e.q().GetCampaign(ctx, e.campaignID); err != nil || camp.Name != "Curse of Strahd" {
+		t.Errorf("renamed campaign: %q %v", camp.Name, err)
+	}
+
+	if w := e.do(t, http.MethodPost, overview+"/delete", gm, nil, true); w.Header().Get("HX-Redirect") != PathHome {
+		t.Fatalf("delete: %d %v %s", w.Code, w.Header(), w.Body)
+	}
+	if w := e.do(t, http.MethodGet, overview, gm, nil, false); w.Code != http.StatusNotFound {
+		t.Errorf("deleted campaign: %d", w.Code)
+	}
+	if _, err := e.q().GetCharacterAny(ctx, e.characterID); err == nil {
+		t.Error("character outlived its campaign")
 	}
 }

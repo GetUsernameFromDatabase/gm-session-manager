@@ -66,6 +66,43 @@ func (a *App) toggleOpenJoin(c *gin.Context) {
 	a.changed(c, id, hub.Topic{Kind: hub.TopicCampaign, ID: id})
 }
 
+func (a *App) renameCampaign(c *gin.Context) {
+	id, ok := a.idParam(c, "campaign")
+	if !ok {
+		return
+	}
+	if _, _, ok := a.campaignAccess(c, id); !ok {
+		return
+	}
+	var form nameForm
+	if !a.bindForm(c, &form) {
+		return
+	}
+	if err := a.Store.RenameCampaign(c.Request.Context(), sqlc.RenameCampaignParams{ID: id, Name: strings.TrimSpace(form.Name)}); err != nil {
+		a.serverError(c, err)
+		return
+	}
+	redirect(c, fmt.Sprintf("/campaigns/%d", id))
+}
+
+// deleteCampaign removes a campaign and, by cascade, everything in it. Its
+// attachment files go at the next start (CleanAttachments).
+func (a *App) deleteCampaign(c *gin.Context) {
+	id, ok := a.idParam(c, "campaign")
+	if !ok {
+		return
+	}
+	if _, _, ok := a.campaignAccess(c, id); !ok {
+		return
+	}
+	if err := a.Store.DeleteCampaign(c.Request.Context(), id); err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.Hub.CloseCampaign(id)
+	redirect(c, PathHome)
+}
+
 // kick deletes a device's session, exactly like logout, and sends that
 // device back to the start screen.
 func (a *App) kick(c *gin.Context) {
