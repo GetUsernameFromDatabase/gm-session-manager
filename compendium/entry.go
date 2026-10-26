@@ -53,10 +53,10 @@ const HomebrewSource = "homebrew"
 // https://github.com/5e-bits/5e-srd-api/blob/main/apps/api/src/controllers/api/imageController.ts
 const MonsterImagePrefix = "https://dnd-5e-api-images.s3.us-west-1.amazonaws.com/monsters/"
 
-// Habitats are the 2024 Monster Manual habitats, in display order; the
-// monster_habitats CHECK lists the same values.
+// Habitats are the 2024 Monster Manual habitats, in display order, without
+// "Any", which filters nothing; the monster_habitats CHECK still allows it.
 var Habitats = []string{
-	"Any", "Arctic", "Coastal", "Desert", "Forest", "Grassland", "Hill",
+	"Arctic", "Coastal", "Desert", "Forest", "Grassland", "Hill",
 	"Mountain", "Planar", "Swamp", "Underdark", "Underwater", "Urban",
 }
 

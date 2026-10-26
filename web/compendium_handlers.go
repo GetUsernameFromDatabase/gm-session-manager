@@ -99,7 +99,7 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 		return
 	}
 	ctx := c.Request.Context()
-	v := views.CompendiumView{Query: strings.TrimSpace(c.Query("q")), Kind: c.Query("kind"), IsGM: w.isGM(), Import: notice}
+	v := views.CompendiumView{Query: strings.TrimSpace(c.Query("q")), Kind: c.Query("kind"), IsGM: w.isGM(), Import: notice, Tab: c.Query("tab")}
 	v.Import.Dir, v.Import.OnHost = a.compendiumDir(), w.id.Loopback
 	// Only monsters have habitats, so the filter applies to them alone.
 	if v.Kind == string(compendium.KindMonster) {
@@ -256,6 +256,10 @@ func (a *App) compendiumEntry(c *gin.Context) {
 		q, _ := url.ParseQuery(compendiumBack(back))
 		q.Set("import", views.ImportTabPage)
 		v.Back = "/compendium?" + q.Encode() + "#compendium-import"
+	} else if ref, err := url.Parse(c.Request.Referer()); err == nil && ref.Path == "/compendium" {
+		// Back to the list as it was: the search keeps its filters in the URL.
+		// Only the path and query are kept, so the link never leaves the app.
+		v.Back = ref.RequestURI()
 	}
 	a.render(c, http.StatusOK, views.EntryPage(a.layout(w, e.Name, views.NavCompendium, camp, false), v))
 }
@@ -500,8 +504,11 @@ func (a *App) homebrewDelete(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	c.Redirect(http.StatusSeeOther, "/compendium")
+	c.Redirect(http.StatusSeeOther, homebrewTabURL)
 }
+
+// homebrewTabURL is the compendium with its Homebrew tab open.
+const homebrewTabURL = "/compendium?tab=" + views.CompendiumTabHomebrew
 
 // homebrewLink shows a player's entry in another campaign too.
 func (a *App) homebrewLink(c *gin.Context) {
@@ -518,7 +525,7 @@ func (a *App) homebrewLink(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	redirect(c, "/compendium")
+	redirect(c, homebrewTabURL)
 }
 
 // homebrewUnlink hides a player's entry from one campaign.
@@ -535,7 +542,7 @@ func (a *App) homebrewUnlink(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	redirect(c, "/compendium")
+	redirect(c, homebrewTabURL)
 }
 
 // compendiumDir is the absolute DATA_DIR/compendium, shown to the GM.

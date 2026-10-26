@@ -60,7 +60,10 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
     CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
     CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
-    CAST(COALESCE(json_extract(e.data_json, '$.alignment'), '') AS TEXT) AS alignment
+    CAST(COALESCE(json_extract(e.data_json, '$.alignment'), '') AS TEXT) AS alignment,
+    CAST(COALESCE(CASE e.kind WHEN 'monster' THEN json_extract(e.data_json, '$.cr')
+        WHEN 'spell' THEN json_extract(e.data_json, '$.level')
+        WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
 FROM compendium_entries AS e
 WHERE (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (e.name > CAST(sqlc.arg(after_name) AS TEXT) OR (e.name = CAST(sqlc.arg(after_name) AS TEXT) AND e.id > sqlc.arg(after_id)))
@@ -118,7 +121,10 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
     CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
     CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
-    CAST(COALESCE(json_extract(e.data_json, '$.alignment'), '') AS TEXT) AS alignment
+    CAST(COALESCE(json_extract(e.data_json, '$.alignment'), '') AS TEXT) AS alignment,
+    CAST(COALESCE(CASE e.kind WHEN 'monster' THEN json_extract(e.data_json, '$.cr')
+        WHEN 'spell' THEN json_extract(e.data_json, '$.level')
+        WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
 FROM compendium_fts
 JOIN compendium_entries AS e ON e.id = compendium_fts.rowid
 WHERE compendium_fts MATCH CAST(sqlc.arg(query) AS TEXT)

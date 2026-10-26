@@ -344,7 +344,10 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
     CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
     CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
-    CAST(COALESCE(json_extract(e.data_json, '$.alignment'), '') AS TEXT) AS alignment
+    CAST(COALESCE(json_extract(e.data_json, '$.alignment'), '') AS TEXT) AS alignment,
+    CAST(COALESCE(CASE e.kind WHEN 'monster' THEN json_extract(e.data_json, '$.cr')
+        WHEN 'spell' THEN json_extract(e.data_json, '$.level')
+        WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
 FROM compendium_entries AS e
 WHERE (CAST(?1 AS TEXT) = '' OR instr(',' || CAST(?1 AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (e.name > CAST(?2 AS TEXT) OR (e.name = CAST(?2 AS TEXT) AND e.id > ?3))
@@ -375,6 +378,7 @@ type ListCompendiumByKindRow struct {
 	Category   string
 	Size       string
 	Alignment  string
+	Figure     string
 }
 
 // Browse, random and search show player homebrew (scoped) only in the
@@ -409,6 +413,7 @@ func (q *Queries) ListCompendiumByKind(ctx context.Context, arg ListCompendiumBy
 			&i.Category,
 			&i.Size,
 			&i.Alignment,
+			&i.Figure,
 		); err != nil {
 			return nil, err
 		}
@@ -951,7 +956,10 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
     CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
     CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
-    CAST(COALESCE(json_extract(e.data_json, '$.alignment'), '') AS TEXT) AS alignment
+    CAST(COALESCE(json_extract(e.data_json, '$.alignment'), '') AS TEXT) AS alignment,
+    CAST(COALESCE(CASE e.kind WHEN 'monster' THEN json_extract(e.data_json, '$.cr')
+        WHEN 'spell' THEN json_extract(e.data_json, '$.level')
+        WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
 FROM compendium_fts
 JOIN compendium_entries AS e ON e.id = compendium_fts.rowid
 WHERE compendium_fts MATCH CAST(?1 AS TEXT)
@@ -982,6 +990,7 @@ type SearchCompendiumRow struct {
 	Category   string
 	Size       string
 	Alignment  string
+	Figure     string
 }
 
 func (q *Queries) SearchCompendium(ctx context.Context, arg SearchCompendiumParams) ([]SearchCompendiumRow, error) {
@@ -1010,6 +1019,7 @@ func (q *Queries) SearchCompendium(ctx context.Context, arg SearchCompendiumPara
 			&i.Category,
 			&i.Size,
 			&i.Alignment,
+			&i.Figure,
 		); err != nil {
 			return nil, err
 		}

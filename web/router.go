@@ -188,6 +188,7 @@ func (a *App) Router() *gin.Engine {
 	r.POST("/compendium/entries/:entry/image", gm, a.compendiumImage)
 	r.GET("/compendium/habitats", gm, a.habitatsPage)
 	r.POST("/compendium/habitats/cell", gm, a.habitatCell)
+	r.POST("/compendium/habitats/any", gm, a.habitatAny)
 	r.POST("/compendium/habitats/batch", gm, a.habitatBatch)
 	r.GET("/compendium/homebrew/new", a.homebrewNew)
 	r.POST("/compendium/homebrew", a.homebrewCreate)

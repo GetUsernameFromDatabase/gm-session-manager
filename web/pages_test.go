@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -229,6 +230,10 @@ func TestMonsterHabitats(t *testing.T) {
 	batch := func(q, habitat string, on bool) url.Values {
 		return url.Values{"q": {q}, "habitat": {habitat}, "on": {fmt.Sprint(on)}}
 	}
+	anyForm := func(id int64) url.Values { return url.Values{"entry_id": {fmt.Sprint(id)}} }
+	every := slices.Clone(compendium.Habitats)
+	slices.Sort(every)
+	all := strings.Join(every, ",")
 
 	// Every listed habitat passes the form's oneof and the table's CHECK.
 	for _, h := range compendium.Habitats {
@@ -262,6 +267,14 @@ func TestMonsterHabitats(t *testing.T) {
 		{"player batch refused", player, "/compendium/habitats/batch", batch("", "Urban", true), false, "Forest,Mountain", "Hill,Mountain"},
 		{"batch removes from matches only", gm, "/compendium/habitats/batch", batch("goblin", "Mountain", false), true, "Forest", "Hill,Mountain"},
 		{"gm unticks", gm, "/compendium/habitats/cell", cell(goblin.ID, "Forest", false), true, "", "Hill,Mountain"},
+		{"gm sets any", gm, "/compendium/habitats/any", anyForm(goblin.ID), true, all, "Hill,Mountain"},
+		{"player any refused", player, "/compendium/habitats/any", anyForm(goblin.ID), false, all, "Hill,Mountain"},
+		{"any on a spell refused", gm, "/compendium/habitats/any", anyForm(spell.ID), false, all, "Hill,Mountain"},
+		{"any from some sets the rest", gm, "/compendium/habitats/any", anyForm(giant.ID), true, all, all},
+		{"gm clears any", gm, "/compendium/habitats/any", anyForm(goblin.ID), true, "", all},
+		{"gm clears the giant's any", gm, "/compendium/habitats/any", anyForm(giant.ID), true, "", ""},
+		{"batch restores the giant", gm, "/compendium/habitats/batch", batch("giant", "Hill", true), true, "", "Hill"},
+		{"and its mountain", gm, "/compendium/habitats/batch", batch("giant", "Mountain", true), true, "", "Hill,Mountain"},
 	}
 	for _, c := range cases {
 		w := e.do(t, http.MethodPost, c.path, c.cookie, c.form, true)
@@ -278,6 +291,13 @@ func TestMonsterHabitats(t *testing.T) {
 	if got := habitats(spell.ID); got != "" {
 		t.Errorf("spell got habitats %q", got)
 	}
+
+	// Every habitat reads as the Monster Manual's "Any".
+	e.do(t, http.MethodPost, "/compendium/habitats/any", gm, anyForm(goblin.ID), true)
+	if body := e.do(t, http.MethodGet, fmt.Sprintf("/compendium/entries/%d", goblin.ID), player, nil, false).Body.String(); !strings.Contains(body, "</strong> Any") {
+		t.Error("entry page with every habitat does not read Any")
+	}
+	e.do(t, http.MethodPost, "/compendium/habitats/any", gm, anyForm(goblin.ID), true)
 
 	// Re-importing keeps what the GM typed.
 	e.do(t, http.MethodPost, "/compendium/habitats/cell", gm, cell(goblin.ID, "Hill", true), false)
@@ -337,16 +357,16 @@ func TestCompendiumHabitatFilter(t *testing.T) {
 	}
 	for _, c := range cases {
 		body := e.do(t, http.MethodGet, "/compendium?"+c.query, gm, nil, false).Body.String()
-		// Only the results, not the GM's homebrew list further down.
+		// Only the results, not the GM's homebrew tab after them.
 		_, results, _ := strings.Cut(body, `id="`+views.CompendiumResultsID+`"`)
-		results, _, _ = strings.Cut(results, "<section")
+		results, _, _ = strings.Cut(results, `role="tabpanel"`)
 		if got := strings.Contains(results, ">Hill Giant<"); got != c.giant {
 			t.Errorf("%s: giant listed %v, want %v", c.name, got, c.giant)
 		}
 		if got := strings.Contains(results, ">Goblin Warrior<"); got != c.goblin {
 			t.Errorf("%s: goblin listed %v, want %v", c.name, got, c.goblin)
 		}
-		if got := strings.Contains(body, "1 Hill<"); got != c.habitatBadge {
+		if got := strings.Contains(body, `data-habitat="Hill"`); got != c.habitatBadge {
 			t.Errorf("%s: habitat badges %v, want %v", c.name, got, c.habitatBadge)
 		}
 	}
@@ -354,5 +374,51 @@ func TestCompendiumHabitatFilter(t *testing.T) {
 	w := e.do(t, http.MethodGet, "/compendium/random?kind=monster&habitat=Hill", gm, nil, false)
 	if want := fmt.Sprintf("/compendium/entries/%d", giant.ID); w.Header().Get("Location") != want {
 		t.Errorf("random: %d %q, want %q", w.Code, w.Header().Get("Location"), want)
+	}
+}
+
+// TestEntryBackKeepsFilters checks an entry's back link returns to the
+// compendium list it was opened from, and never leaves the app.
+func TestEntryBackKeepsFilters(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
+		t.Fatal(err)
+	}
+	gm := e.token(t, auth.RoleAdmin)
+	goblin, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ name, referer, back string }{
+		{"filtered list", "https://192.168.1.10:8080/compendium?kind=monster&q=gob", `href="/compendium?kind=monster&amp;q=gob"`},
+		{"other site", "https://evil.example/compendium?kind=spell", `href="/compendium?kind=spell"`},
+		{"other page", "https://192.168.1.10:8080/campaigns/1/notes", `href="/compendium"`},
+		{"no referer", "", `href="/compendium"`},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("/compendium/entries/%d", goblin.ID), nil)
+		req.RemoteAddr = lanAddr
+		req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: gm})
+		if c.referer != "" {
+			req.Header.Set("Referer", c.referer)
+		}
+		w := httptest.NewRecorder()
+		e.router.ServeHTTP(w, req)
+		if body := w.Body.String(); !strings.Contains(body, c.back) {
+			t.Errorf("%s: back link %s missing", c.name, c.back)
+		}
+	}
+}
+
+// TestHabitatsMatchSchema keeps the habitat forms' oneof lists in step with
+// compendium.Habitats.
+func TestHabitatsMatchSchema(t *testing.T) {
+	want := "oneof=" + strings.Join(compendium.Habitats, " ")
+	for _, form := range []any{habitatCellForm{}, habitatBatchForm{}} {
+		f, _ := reflect.TypeOf(form).FieldByName("Habitat")
+		if !strings.Contains(f.Tag.Get("validate"), want) {
+			t.Errorf("%T: validate %q, want %s", form, f.Tag.Get("validate"), want)
+		}
 	}
 }
