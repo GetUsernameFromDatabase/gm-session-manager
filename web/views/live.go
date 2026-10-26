@@ -45,8 +45,8 @@ func live(kind string, id any, extra ...any) templ.Attributes {
 }
 
 // bind marks an element for live.js: each spec is target=key, where target
-// is text, value (inputs, skipped while focused), show (hidden unless true)
-// or an attribute name.
+// is text, value (inputs, skipped while focused), show (hidden unless true),
+// reveal (data-closed unless true, for CSS to transition) or an attribute name.
 func bind(spec ...string) templ.Attributes {
 	return templ.Attributes{"data-bind": strings.Join(spec, " ")}
 }

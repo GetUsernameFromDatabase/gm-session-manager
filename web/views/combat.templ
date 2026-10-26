@@ -665,7 +665,8 @@ templ turnCard(e EncounterView) {
 		</div>
 		if e.IsGM {
 			{{ skipped := e.turnSkipped() }}
-			<p class="flex items-center gap-1.5 border-t border-primary/20 pt-2 text-xs text-muted-foreground" hidden?={ skipped == "" } { bind("show=turn.skipped")... }>
+			// Eases in and out, so a turn change doesn't make the card jump.
+			<p class="flex items-center gap-1.5 overflow-hidden border-t border-primary/20 pt-2 text-xs text-muted-foreground transition-[height,opacity,padding,border-width,visibility] duration-300 ease-out [interpolate-size:allow-keywords] motion-reduce:transition-none data-closed:invisible data-closed:h-0 data-closed:border-t-0 data-closed:pt-0 data-closed:opacity-0" data-closed?={ skipped == "" } { bind("reveal=turn.skipped")... }>
 				@icon.Info(icon.Props{Size: 14, Class: "shrink-0"})
 				<span { bind("text=turn.skipped")... }>{ skipped }</span>
 			</p>

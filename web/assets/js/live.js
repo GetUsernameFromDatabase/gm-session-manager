@@ -1,6 +1,6 @@
 // Live views. Each [data-live] root on the page is a view the hub keeps
 // current: it sends only the values that changed, as JSON. Elements bind
-// keys with data-bind="target=key ..." (target: text, value, show, or an
+// keys with data-bind="target=key ..." (target: text, value, show, reveal, or an
 // attribute name). A change no bound element can show (new markup, a list
 // row added or removed) refetches the view's HTML from /live instead.
 (function () {
@@ -34,6 +34,8 @@
   function show(el, target, value) {
     switch (target) {
       case "text":
+        // Text going away as its element hides stays for the hide transition.
+        if (value === "" && el.closest("[hidden],[data-closed]")) break;
         el.textContent = value;
         break;
       case "value":
@@ -41,6 +43,9 @@
         break;
       case "show":
         el.hidden = !value;
+        break;
+      case "reveal": // hidden's display:none !important would cut a transition short
+        el.toggleAttribute("data-closed", !value);
         break;
       default:
         el.setAttribute(target, String(value));
@@ -64,9 +69,19 @@
   };
 
   // A refetched view replaces its markup; scrolled lists inside it keep
-  // their place (data-keep-scroll, matched by id). The old target is still
-  // in the document here, and the microtask runs after the swap, before paint.
+  // their place (data-keep-scroll, matched by id), and tabs their active tab.
+  // The old target is still in the document here, and the microtask runs
+  // after the swap, before paint. Tabs wait for the settle, which puts the
+  // server's classes back on their panels (they have ids).
   document.addEventListener("htmx:oobBeforeSwap", (e) => {
+    for (const el of e.detail.target.querySelectorAll('[data-slot="tabs"][id]')) {
+      const value = el.querySelector('[data-slot="tabs-trigger"][data-active]')?.dataset.templValue;
+      if (!value) continue;
+      document.addEventListener("htmx:afterSettle", () => {
+        const now = document.getElementById(el.id);
+        if (now) window.templ.tabs.setActive(now, value);
+      }, { once: true });
+    }
     for (const el of e.detail.target.querySelectorAll("[data-keep-scroll][id]")) {
       const { id, scrollTop } = el;
       queueMicrotask(() => {
