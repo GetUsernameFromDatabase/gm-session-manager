@@ -54,6 +54,9 @@ func (s SheetView) condition(slug string) (sqlc.Condition, bool) {
 	return s.Conditions[i], true
 }
 
+// tapSize lifts small sheet controls to 32px on phones.
+const tapSize = "max-sm:h-8 max-sm:px-3"
+
 func cmdVals(cmd string) string {
 	return fmt.Sprintf(`{"cmd":%q}`, cmd)
 }
@@ -67,9 +70,9 @@ templ CharacterPage(l Layout, s SheetView) {
 	}
 }
 
-// cmdButton runs one command.
+// cmdButton runs one command; on phones it grows to a fingertip's size.
 templ cmdButton(s SheetView, cmd string, variant button.Variant) {
-	@button.Button(button.Props{Size: button.SizeXs, Variant: variant, Attributes: templ.Attributes{"hx-post": s.cmdURL(), "hx-vals": cmdVals(cmd)}}) {
+	@button.Button(button.Props{Size: button.SizeXs, Variant: variant, Class: tapSize, Attributes: templ.Attributes{"hx-post": s.cmdURL(), "hx-vals": cmdVals(cmd)}}) {
 		{ children... }
 	}
 }
@@ -78,7 +81,7 @@ templ CharacterSheet(s SheetView) {
 	<div id={ fmt.Sprintf("character-%d", s.ID) } hx-swap-oob="true" class="space-y-6" { live(LiveCharacter, s.ID)... }>
 		<div class="flex flex-wrap items-end justify-between gap-3">
 			<div>
-				<h1 class="text-2xl font-semibold">
+				<h1 class="text-3xl leading-tight font-semibold">
 					@editable(s, edit{"details", "set-name", ""}, "Change name", "") {
 						{ s.C.Name }
 					}
@@ -128,12 +131,14 @@ templ CharacterSheet(s SheetView) {
 				<a class="font-medium underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d/create", s.ID)) }>finish setting up</a>.
 			</p>
 		}
+		// In the order play needs them: vitals and conditions, then the rolls
+		// players make most, then what they do on a turn, then their gear.
+		@vitalsStrip(s)
+		@conditionsCard(s)
 		if s.CanSheet {
 			@commandBar(s)
 		}
-		@hpCard(s)
-		@conditionsCard(s)
-		@modifiersCard(s)
+		@statsCard(s)
 		<div class="grid gap-4 md:grid-cols-2">
 			@abilitiesCard(s)
 			@skillsCard(s)
@@ -148,6 +153,7 @@ templ CharacterSheet(s SheetView) {
 			@inventoryCard(s)
 			@featuresCard(s)
 		</div>
+		@modifiersCard(s)
 		@backstoryCard(s)
 		@characterLooks(s)
 	</div>
@@ -198,66 +204,97 @@ func (s SheetView) subtitle() []subtitlePart {
 	return slices.DeleteFunc(parts, func(p subtitlePart) bool { return p.text == "" })
 }
 
-templ hpCard(s SheetView) {
+// vitalsStrip stays pinned under the nav (top-12 is the nav's height): HP
+// as a figure and a bar, then AC, initiative and speed, with the HP form
+// one tap away so the strip stays one row on a phone.
+templ vitalsStrip(s SheetView) {
+	<section aria-label="Vitals" class="sticky top-12 z-20 -mx-4 border-y bg-background/95 px-4 py-2 backdrop-blur sm:mx-0 sm:rounded-xl sm:border">
+		<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+			<div>
+				<div class="text-xs text-muted-foreground">HP</div>
+				<div class="text-4xl leading-none font-semibold tabular-nums">
+					@editable(s, edit{"hp", "hp-set", ""}, "Change hit points", "") {
+						<span { bind("text=hp")... }>{ fmt.Sprint(s.C.HP) }</span>
+					}
+					@editable(s, edit{"hp", "hp-max", ""}, "Change max hit points", "") {
+						<span class="text-xl text-muted-foreground">/{ fmt.Sprint(s.C.MaxHP) }</span>
+					}
+				</div>
+				if s.C.TempHP > 0 {
+					@editable(s, edit{"hp", "hp-temp", ""}, "Change temporary hit points", "") {
+						<span class="text-xs text-sky-600 dark:text-sky-400" { bind("text=temp")... }>{ tempLabel(s.C.TempHP) }</span>
+					}
+				}
+			</div>
+			<dl class="flex flex-1 gap-x-4 text-sm">
+				@stat(s, "AC", fmt.Sprint(s.C.Sheet.ArmorClass()), "", edit{"details", "set-ac", ""}) {
+					@modWarn(s, "ac", dnd5e.ModAC)
+				}
+				@stat(s, "Init", dnd5e.Signed(s.C.Sheet.Initiative()), "", edit{"mods", "mod-add", dnd5e.ModInit}) {
+					@modWarn(s, "init", dnd5e.ModInit, "dex")
+				}
+				@stat(s, "Speed", fmt.Sprint(s.C.Sheet.WalkSpeed()), "", edit{"details", "set-speed", ""}) {
+					@modWarn(s, "speed", dnd5e.ModSpeed)
+				}
+			</dl>
+			if s.CanHP {
+				@popover.Popover(popover.Props{ID: "hp-adjust"}) {
+					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIcon, Attributes: with(popover.Trigger(ctx), templ.Attributes{"aria-label": "Damage or heal", "title": "Damage or heal"})}) {
+						@icon.Heart(icon.Props{Class: "text-rose-600"})
+					}
+					@popover.Content(popover.ContentProps{Align: popover.AlignEnd, Class: "w-auto"}) {
+						@hpQuickForm(s.cmdURL(), false)
+					}
+				}
+			}
+		</div>
+		if s.C.MaxHP > 0 {
+			// Red at half or below, like the combat tracker's.
+			<meter
+				class="hp-meter mt-2 block w-full"
+				min="0"
+				max={ fmt.Sprint(s.C.MaxHP) }
+				low={ fmt.Sprint(s.C.MaxHP/2 + 1) }
+				optimum={ fmt.Sprint(s.C.MaxHP) }
+				value={ fmt.Sprint(s.C.HP) }
+				aria-hidden="true"
+				{ bind("value=hp")... }
+			></meter>
+		}
+		if dying(s) {
+			<div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+				<span class="font-medium">Death saves</span>
+				<span { bind("text=ds.s")... }>{ fmt.Sprintf("✓ %d/3", s.C.Sheet.DeathSaves.Successes) }</span>
+				<span { bind("text=ds.f")... }>{ fmt.Sprintf("✗ %d/3", s.C.Sheet.DeathSaves.Failures) }</span>
+				if s.CanSheet {
+					@cmdButton(s, "deathsave success", button.VariantOutline) {
+						Success
+					}
+					@cmdButton(s, "deathsave fail", button.VariantOutline) {
+						Failure
+					}
+					@cmdButton(s, "deathsave reset", button.VariantGhost) {
+						Reset
+					}
+				}
+			</div>
+		}
+	</section>
+}
+
+// statsCard is the figures checked now and then, and resting.
+templ statsCard(s SheetView) {
 	@card.Card() {
 		@card.Content() {
-			<div class="flex flex-wrap items-center gap-6">
-				<div>
-					<div class="text-xs text-muted-foreground uppercase">Hit points</div>
-					<div class="text-3xl font-semibold tabular-nums">
-						@editable(s, edit{"hp", "hp-set", ""}, "Change hit points", "") {
-							<span { bind("text=hp")... }>{ fmt.Sprint(s.C.HP) }</span>
-						}
-						@editable(s, edit{"hp", "hp-max", ""}, "Change max hit points", "") {
-							<span class="text-lg text-muted-foreground">/{ fmt.Sprint(s.C.MaxHP) }</span>
-						}
-						if s.C.TempHP > 0 {
-							@editable(s, edit{"hp", "hp-temp", ""}, "Change temporary hit points", "") {
-								<span class="ml-2 text-lg text-sky-600" { bind("text=temp")... }>{ tempLabel(s.C.TempHP) }</span>
-							}
-						}
-					</div>
-				</div>
-				if s.CanHP {
-					@hpQuickForm(s.cmdURL(), false)
+			<dl class="grid grid-cols-3 gap-x-6 gap-y-2 text-sm sm:grid-cols-5">
+				@stat(s, "Prof", dnd5e.Signed(s.C.Sheet.ProficiencyBonus()), "", edit{})
+				@stat(s, "Passive Perception", fmt.Sprint(s.C.Sheet.PassivePerception()), "", edit{"mods", "mod-add", dnd5e.ModPassive}) {
+					@modWarn(s, "passive", dnd5e.ModPassive, "skill.perception", "wis")
 				}
-				<dl class="grid grid-cols-3 gap-x-6 gap-y-1 text-sm sm:grid-cols-4 lg:grid-cols-8">
-					@stat(s, "AC", fmt.Sprint(s.C.Sheet.ArmorClass()), "", edit{"details", "set-ac", ""}) {
-						@modWarn(s, "ac", dnd5e.ModAC)
-					}
-					@stat(s, "Speed", fmt.Sprint(s.C.Sheet.WalkSpeed()), "", edit{"details", "set-speed", ""}) {
-						@modWarn(s, "speed", dnd5e.ModSpeed)
-					}
-					@stat(s, "Init", dnd5e.Signed(s.C.Sheet.Initiative()), "", edit{"mods", "mod-add", dnd5e.ModInit}) {
-						@modWarn(s, "init", dnd5e.ModInit, "dex")
-					}
-					@stat(s, "Prof", dnd5e.Signed(s.C.Sheet.ProficiencyBonus()), "", edit{})
-					@stat(s, "Passive Perception", fmt.Sprint(s.C.Sheet.PassivePerception()), "", edit{"mods", "mod-add", dnd5e.ModPassive}) {
-						@modWarn(s, "passive", dnd5e.ModPassive, "skill.perception", "wis")
-					}
-					@stat(s, "Hit dice", hitDice(s.C.Sheet), "hd", edit{"rest", "hitdie-use", ""})
-					@stat(s, "Size", cmp.Or(s.C.Sheet.Size, "—"), "", edit{"details", "set-size", ""})
-					@stat(s, "Vision", cmp.Or(s.C.Sheet.Vision, "Normal"), "", edit{"details", "set-vision", ""})
-				</dl>
-			</div>
-			if dying(s) {
-				<div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
-					<span class="font-medium">Death saves</span>
-					<span { bind("text=ds.s")... }>{ fmt.Sprintf("✓ %d/3", s.C.Sheet.DeathSaves.Successes) }</span>
-					<span { bind("text=ds.f")... }>{ fmt.Sprintf("✗ %d/3", s.C.Sheet.DeathSaves.Failures) }</span>
-					if s.CanSheet {
-						@cmdButton(s, "deathsave success", button.VariantOutline) {
-							Success
-						}
-						@cmdButton(s, "deathsave fail", button.VariantOutline) {
-							Failure
-						}
-						@cmdButton(s, "deathsave reset", button.VariantGhost) {
-							Reset
-						}
-					}
-				</div>
-			}
+				@stat(s, "Hit dice", hitDice(s.C.Sheet), "hd", edit{"rest", "hitdie-use", ""})
+				@stat(s, "Size", cmp.Or(s.C.Sheet.Size, "—"), "", edit{"details", "set-size", ""})
+				@stat(s, "Vision", cmp.Or(s.C.Sheet.Vision, "Normal"), "", edit{"details", "set-vision", ""})
+			</dl>
 			if s.CanSheet {
 				<div class="mt-3 flex flex-wrap gap-2">
 					@cmdButton(s, "rest short", button.VariantOutline) {
@@ -326,7 +363,7 @@ templ stat(s SheetView, name, value, key string, to edit) {
 		} else {
 			<dt class="text-xs text-muted-foreground">{ name }</dt>
 		}
-		<dd class="flex items-center gap-1 font-medium tabular-nums">
+		<dd class="flex items-center gap-1 text-lg leading-tight font-semibold tabular-nums">
 			@editable(s, to, "Change "+name, "") {
 				<span
 					if key != "" {
@@ -563,7 +600,7 @@ templ conditionChip(s SheetView, slug string) {
 		@button.Button(button.Props{
 			Variant:    button.VariantOutline,
 			Size:       button.SizeXs,
-			Class:      "rounded-full capitalize text-muted-foreground aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80",
+			Class:      "rounded-full capitalize text-muted-foreground max-sm:h-8 aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80",
 			Disabled:   !s.CanConditions,
 			Attributes: with(templ.Attributes{"hx-post": s.cmdURL(), "hx-vals": cmdVals("toggle " + slug), "aria-pressed": fmt.Sprint(on)}, bind("aria-pressed=cond."+slug), tooltip.Trigger(ctx)),
 		}) {
@@ -642,13 +679,13 @@ templ abilitiesCard(s SheetView) {
 	@card.Card() {
 		@cardTitle(s, "Abilities", "abilities", "")
 		@card.Content() {
-			<div class="grid grid-cols-3 gap-3">
+			<div class="grid grid-cols-3 gap-x-3 gap-y-4">
 				for _, a := range dnd5e.Abilities {
-					<div class="relative rounded-md border p-2 text-center">
+					<div class="relative text-center">
 						if s.CanSheet {
 							@button.Button(button.Props{
 								Variant:    button.VariantGhost,
-								Class:      "h-auto w-full flex-col gap-0 py-1",
+								Class:      "h-auto w-full p-0 active:not-aria-[haspopup]:translate-y-0",
 								Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "abilities", "ability", a), templ.Attributes{"aria-label": "Change " + dnd5e.AbilityNames[a]}),
 							}) {
 								@abilityFace(s, a)
@@ -663,7 +700,7 @@ templ abilitiesCard(s SheetView) {
 						if slices.Contains(s.C.Sheet.SaveProfs, a) {
 							{{ saveLevel = dnd5e.ProfProficient }}
 						}
-						<div class={ "mt-1 flex items-center justify-center gap-0.5 text-xs", templ.KV("font-semibold", saveLevel != dnd5e.ProfNone) }>
+						<div class={ "mt-3 flex items-center justify-center gap-0.5 text-xs", templ.KV("font-semibold", saveLevel != dnd5e.ProfNone) }>
 							@editable(s, edit{"profs", focusSave, a}, dnd5e.AbilityNames[a]+" save proficiency", "gap-1") {
 								@profMark(saveLevel)
 								save { dnd5e.Signed(s.C.Sheet.SaveBonus(a)) }
@@ -677,11 +714,14 @@ templ abilitiesCard(s SheetView) {
 	}
 }
 
-// abilityFace is an ability tile's name, modifier and score.
+// abilityFace is an ability tile as a printed sheet draws it: the
+// modifier large in a box, the score in a pill on the box's bottom edge.
 templ abilityFace(s SheetView, a string) {
-	<div class="text-xs text-muted-foreground uppercase">{ a }</div>
-	<div class="text-xl font-semibold">{ dnd5e.Signed(s.C.Sheet.Mod(a)) }</div>
-	<div class="text-xs">{ fmt.Sprint(s.C.Sheet.Score(a)) }</div>
+	<div class="relative flex w-full flex-col items-center rounded-lg border px-1 pt-1.5 pb-3.5">
+		<span class="text-xs text-muted-foreground uppercase">{ a }</span>
+		<span class="text-2xl leading-tight font-semibold tabular-nums">{ dnd5e.Signed(s.C.Sheet.Mod(a)) }</span>
+		<span class="absolute -bottom-2.5 left-1/2 min-w-8 -translate-x-1/2 rounded-full border bg-card px-2 text-sm leading-5 tabular-nums">{ fmt.Sprint(s.C.Sheet.Score(a)) }</span>
+	</div>
 }
 
 templ skillsCard(s SheetView) {
