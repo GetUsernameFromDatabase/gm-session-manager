@@ -15,7 +15,7 @@ My first project made with claude
 - [Quick start (from a release)](#quick-start-from-a-release)
   - [First visit on each device](#first-visit-on-each-device)
   - [Windows firewall](#windows-firewall)
-  - [macOS](#macos)
+  - [Other systems](#other-systems)
   - [GM on another device](#gm-on-another-device)
 - [Configuration](#configuration)
 - [Compendium (2024 SRD)](#compendium-2024-srd)
@@ -62,10 +62,11 @@ netsh advfirewall firewall add rule name="gm-session-manager" dir=in action=allo
 `go run` builds a new temporary executable each time, so Windows may ask
 again; a built binary keeps its permission.
 
-### macOS
+### Other systems
 
-Release binaries are not signed. On first run, right-click the binary and
-choose "Open", or run `xattr -d com.apple.quarantine gm-session-manager`.
+Releases ship for Windows and Linux on x86-64. On macOS or ARM, build from
+source (see [Development](#development)): `./build.sh` builds for the
+machine it runs on.
 
 ### GM on another device
 
@@ -194,7 +195,7 @@ tests and stamps the version (`git describe`, or `$VERSION`) into the binary:
 ```
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`: it runs
-`golangci-lint`, then `build.sh release` (Windows, Linux and macOS binaries,
+`golangci-lint`, then `build.sh release` (Windows and Linux x86-64 binaries,
 no CGO, so every target builds from one runner, each packed with
 `README.md` and `.env.example`), and publishes a GitHub release with
 generated notes. `.env` and `data/` are git-ignored and never shipped.

@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 
 app=gm-session-manager
 pkg=./cmd/$app
-targets="windows/amd64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64"
+targets="windows/amd64 linux/amd64" # other systems build from source
 extras="README.md .env.example" # shipped next to the binary in each archive
 out=dist                        # binaries and release archives (release.yml, .gitignore)
 stage=build                     # scratch folders packed into the archives
