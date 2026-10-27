@@ -107,7 +107,7 @@ Generated code and built assets are committed, except `web/assets/vendor` and th
 | shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./web` |
 | browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |
 
-Then `go build ./...`, `go test ./...`, `golangci-lint run` and `graphify update .`. `./build.sh` is the full build (vendor JS, script bundle, tests, versioned binary in `dist/`); CI runs `./build.sh release` on `v*` tags. Run the app with `./run.sh` (or `go run ./cmd/gm-session-manager`); see README.md for setup.
+Then `go build ./...`, `go test ./...`, `golangci-lint run` and `graphify update .`. `./build.sh` is the full build (vendor JS, script bundle, tests, versioned binary in `dist/`); CI runs `./build.sh release` on `v*` tags (`./release.sh <version>` checks, tags and pushes one). Run the app with `./run.sh` (or `go run ./cmd/gm-session-manager`); see README.md for setup.
 
 ## graphify
 

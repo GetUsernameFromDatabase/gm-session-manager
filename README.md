@@ -203,11 +203,11 @@ generated notes. `.env` and `data/` are git-ignored and never shipped.
 
 1. If sources changed, regenerate (`go generate ./db ./web`) and commit.
 2. Check: `go build ./...`, `go test ./...`, `golangci-lint run`.
-3. Tag and push:
+3. Tag and push (from a clean, pushed `main`; it refuses a version that
+   isn't newer than the latest tag unless you add `--force`):
 
    ```sh
-   git tag v0.1.0
-   git push origin v0.1.0
+   ./release.sh 0.2.0
    ```
 
 4. Watch the run on the repository's Actions tab (`gh run watch`); the
