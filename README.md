@@ -184,11 +184,20 @@ everything else (queries, hooks, exports).
 
 ## Releasing on GitHub
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`: it runs the tests,
-builds Windows, Linux and macOS binaries (no CGO, so every target builds
-from one runner), packs each with `README.md` and `.env.example`, and
-publishes a GitHub release with generated notes. `.env` and `data/` are
-git-ignored and never shipped.
+`build.sh` is the one build process, for you and CI. It fetches the vendored
+JS, builds the shadcn-templ script bundle (both are gitignored), runs the
+tests and stamps the version (`git describe`, or `$VERSION`) into the binary:
+
+```sh
+./build.sh           # this machine → dist/gm-session-manager[.exe]
+./build.sh release   # every target → dist/ archives + SHA256SUMS (needs zip)
+```
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`: it runs
+`golangci-lint`, then `build.sh release` (Windows, Linux and macOS binaries,
+no CGO, so every target builds from one runner, each packed with
+`README.md` and `.env.example`), and publishes a GitHub release with
+generated notes. `.env` and `data/` are git-ignored and never shipped.
 
 ### Each release
 
@@ -206,9 +215,9 @@ git-ignored and never shipped.
 
 ### Manual fallback
 
-Build one target and upload it yourself:
+Build and upload it yourself:
 
 ```sh
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/gm-session-manager.exe ./cmd/gm-session-manager
+VERSION=v0.1.0 ./build.sh release
 gh release create v0.1.0 dist/* --generate-notes
 ```

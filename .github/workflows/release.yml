@@ -11,31 +11,19 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go run ./cmd/vendorjs
-      - run: go test ./...
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
       - name: Build
         env:
-          CGO_ENABLED: "0"
-        run: |
-          mkdir dist
-          for target in windows/amd64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
-            os=${target%/*} arch=${target#*/}
-            name=gm-session-manager-$GITHUB_REF_NAME-$os-$arch
-            exe=gm-session-manager; [ "$os" = windows ] && exe=$exe.exe
-            mkdir -p "build/$name"
-            GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w" -o "build/$name/$exe" ./cmd/gm-session-manager
-            cp README.md .env.example "build/$name/"
-            if [ "$os" = windows ]; then
-              (cd build && zip -qr "../dist/$name.zip" "$name")
-            else
-              tar -C build -czf "dist/$name.tar.gz" "$name"
-            fi
-          done
+          VERSION: ${{ github.ref_name }}
+        run: bash build.sh release
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+        # dist is $out in build.sh
         run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes

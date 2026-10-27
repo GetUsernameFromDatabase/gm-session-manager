@@ -5,6 +5,9 @@
 /web/assets/vendor/
 # Built by `go tool shadcn-templ bundle` (go generate ./web); scripts_bundle.go is committed
 /web/assets/js/shadcn-templ-*.js
+# Output of ./build.sh ($stage, $out)
+/build/
+/dist/
 
 ### AI agent, Claude
 # Personal Claude Code settings and backups

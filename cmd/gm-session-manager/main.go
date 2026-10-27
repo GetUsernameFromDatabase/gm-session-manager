@@ -32,6 +32,9 @@ const (
 	shutdownTimeout = 5 * time.Second
 )
 
+// version is set at build time by build.sh (-X main.version=…).
+var version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "gm-session-manager:", err)
@@ -127,7 +130,7 @@ func run() error {
 	go keepAwake(ctx)
 	errc := make(chan error, 1)
 	go func() {
-		slog.Info("listening", "url", fmt.Sprintf("https://localhost:%d", cfg.Port), "data_dir", cfg.DataDir)
+		slog.Info("listening", "url", fmt.Sprintf("https://localhost:%d", cfg.Port), "data_dir", cfg.DataDir, "version", version)
 		errc <- srv.ServeTLS(tlsL, "", "")
 	}()
 
