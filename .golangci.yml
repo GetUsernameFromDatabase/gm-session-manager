@@ -16,10 +16,10 @@ linters:
   exclusions:
     generated: lax
     paths:
-      - db/sqlc
+      - internal/db/sqlc
       # Installed and updated by the shadcn-templ CLI; not edited by hand.
-      - web/components
-      - web/utils
+      - internal/web/components
+      - internal/web/utils
       - ".*_templ\\.go$"
     rules:
       - path: _test\.go
@@ -31,9 +31,9 @@ formatters:
     - goimports
   exclusions:
     paths:
-      - db/sqlc
-      - web/components
-      - web/utils
+      - internal/db/sqlc
+      - internal/web/components
+      - internal/web/utils
       - '.*_templ\.go$'
   settings:
     goimports:

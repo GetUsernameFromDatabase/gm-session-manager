@@ -7,34 +7,15 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 ## Stack
 
 - Go, no CGO; tools (`templ`, `shadcn-templ`) are `tool` deps in `go.mod`. Router: gin.
-- SQLite via `modernc.org/sqlite`, WAL mode, `PRAGMA foreign_keys = ON` on every connection. All queries through `sqlc`; the migrations in `db/migrations` are the schema. FTS5 tables live in a migration, with a stub for sqlc in `db/sqlc_stubs.sql`.
+- SQLite via `modernc.org/sqlite`, WAL mode, `PRAGMA foreign_keys = ON` on every connection. All queries through `sqlc`; the migrations in `internal/db/migrations` are the schema. FTS5 tables live in a migration, with a stub for sqlc in `internal/db/sqlc_stubs.sql`.
 - Views: `templ` with [shadcn-templ](https://shadcn-templ.com/llms.txt) components, Tailwind (standalone CLI), `htmx` with the websocket extension.
-- Notes: TipTap/ProseMirror with the collab plugin (`web/assets/js/notes.js`). NPC fields reuse TipTap (`fields.js`); both share `wikilink.js`, which renders `[[kind:id|label]]` tokens (parsed server-side in `web/views/wikilinks.go`).
-- **No node or npm.** Browser libraries are vendored into `web/assets/vendor` by `cmd/vendorjs`. Everything ships in one binary via `go:embed`.
-- HTTPS only, with a self-signed certificate generated in `DATA_DIR/tls` (`join/`).
+- Notes: TipTap/ProseMirror with the collab plugin (`internal/web/assets/js/notes.js`). NPC fields reuse TipTap (`fields.js`); both share `wikilink.js`, which renders `[[kind:id|label]]` tokens (parsed server-side in `internal/web/views/wikilinks.go`).
+- **No node or npm.** Browser libraries are vendored into `internal/web/assets/vendor` by `cmd/vendorjs`. Everything ships in one binary via `go:embed`.
+- HTTPS only, with a self-signed certificate generated in `DATA_DIR/tls` (`internal/join/`).
 
 ## Layout
 
-There is **no `internal/` directory. Do not create one.**
-
-```
-cmd/gm-session-manager/   main: config, DB, hub, HTTPS server
-cmd/vendorjs/             downloads pinned browser JS into web/assets/vendor
-config/                   .env loading and fail-fast validation
-db/                       migrations/, queries/ (sqlc input), sqlc/ (generated), Open, Migrate, Store.InTx
-auth/                     session tokens, cookie, middleware, admin and loopback checks
-perm/                     every permission and visibility rule (characters, combatants, note blocks, entities)
-hub/                      websocket hub: (epoch, seq) events, catch-up ring, live-view patches, pending join requests
-dnd5e/                    5e sheet, commands (Parse/Apply), slots, level-up
-compendium/               Open5e importer, search, homebrew
-export/                   campaign zip (notes as Markdown, characters as JSON)
-join/                     LAN addresses, TLS certificate, HTTP→HTTPS redirect on the same port, QR code
-web/                      router, *_handlers.go, render.go (view models), live.go (live views, /live)
-web/views/                templ pages and components; live.go holds live-view keys and binds
-web/components/, utils/   shadcn-templ CLI output: never edit by hand
-web/assets/               js/ (app.js, live.js, notes.js, fields.js, wikilink.js), css/ (globals.css → output.css), vendor/
-data/                     DATA_DIR at runtime (database, tls, attachments, compendium); not code
-```
+See [Project layout](README.md#project-layout) in README.md.
 
 ## Rules that must not be broken
 
@@ -58,7 +39,7 @@ data/                     DATA_DIR at runtime (database, tls, attachments, compe
 | Monster HP in combat | always | hidden unless the GM toggles `hp_visible` |
 | Entities | all fields | revealed entities, revealed fields only |
 
-Note blocks (`perm/perm_test.go` mirrors this table):
+Note blocks (`internal/perm/perm_test.go` mirrors this table):
 
 | Visibility | Who reads | Who edits |
 |---|---|---|
@@ -73,10 +54,10 @@ Any player may add a `players` block to the GM's `game_session` notes. A block's
 
 A page region that updates in real time is a live view.
 
-1. Give its root `live(kind, id...)` (kinds and helpers in `web/views/live.go`). The page sends its `data-live` keys in the websocket hello.
-2. Add the kind to `liveAffects` (which topics change it) and `loadLive` (permission checks, HTML) in `web/live.go`.
-3. For values that change often, give the view model `Hot` (adds exactly the keys the markup binds) and `Shape` (the same model with those values fixed) in `web/views/live.go`, and mark the elements with `bind("text=key")`, `bind("aria-pressed=key")`, etc. Everything else is covered by the hash of `Shape`'s markup.
-4. Cover it in `TestLiveVisibility` and `TestLiveBindsMatchState` (`web/live_test.go`).
+1. Give its root `live(kind, id...)` (kinds and helpers in `internal/web/views/live.go`). The page sends its `data-live` keys in the websocket hello.
+2. Add the kind to `liveAffects` (which topics change it) and `loadLive` (permission checks, HTML) in `internal/web/live.go`.
+3. For values that change often, give the view model `Hot` (adds exactly the keys the markup binds) and `Shape` (the same model with those values fixed) in `internal/web/views/live.go`, and mark the elements with `bind("text=key")`, `bind("aria-pressed=key")`, etc. Everything else is covered by the hash of `Shape`'s markup.
+4. Cover it in `TestLiveVisibility` and `TestLiveBindsMatchState` (`internal/web/live_test.go`).
 
 ## UI conventions
 
@@ -85,8 +66,8 @@ A page region that updates in real time is a live view.
 - Style toggled states with `aria-pressed:` or `data-[…]:` variants, so a live update flips one attribute instead of swapping classes.
 - Slow forms show a loading indicator: mark the form `data-busy` with class `group/busy` and put `@busyIndicator("…")` inside (layout.templ). app.js sets `aria-busy` while it submits or runs htmx requests, and disables its submit buttons against double submits.
 - Previews fetch nothing while their place is not visible (a pane hidden on small screens, a collapsed section): check `checkVisibility()` before loading, as the compendium and import previews do; lists of images use `loading="lazy"`.
-- New Tailwind classes need `go generate ./web` (rebuilds `output.css`).
-- Never hand-edit `web/components`, `web/utils`, `*_templ.go` or `db/sqlc`.
+- New Tailwind classes need `go generate ./internal/web` (rebuilds `output.css`).
+- Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
 
 ## Code conventions
 
@@ -98,13 +79,13 @@ A page region that updates in real time is a live view.
 
 ## Commands
 
-Generated code and built assets are committed, except `web/assets/vendor` and the shadcn-templ script bundle `web/assets/js/shadcn-templ-*.js` (both gitignored; `web/components/scripts_bundle.go` is committed): run `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` once after cloning, then `go build` alone works. After changing sources:
+Generated code and built assets are committed, except `internal/web/assets/vendor` and the shadcn-templ script bundle `internal/web/assets/js/shadcn-templ-*.js` (both gitignored; `internal/web/components/scripts_bundle.go` is committed): run `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` once after cloning, then `go build` alone works. After changing sources:
 
 | Change | Command |
 |---|---|
-| `db/migrations`, `db/queries` | `go generate ./db` (sqlc on PATH) |
-| `*.templ`, Tailwind classes | `go generate ./web` (script bundle + templ + Tailwind standalone CLI on PATH) |
-| shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./web` |
+| `internal/db/migrations`, `internal/db/queries` | `go generate ./internal/db` (sqlc on PATH) |
+| `*.templ`, Tailwind classes | `go generate ./internal/web` (script bundle + templ + Tailwind standalone CLI on PATH) |
+| shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./internal/web` |
 | browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |
 
 Then `go build ./...`, `go test ./...`, `golangci-lint run` and `graphify update .`. `./build.sh` is the full build (vendor JS, script bundle, tests, versioned binary in `dist/`); CI runs `./build.sh release` on `v*` tags (`./release.sh <version>` checks, tags and pushes one). Run the app with `./run.sh` (or `go run ./cmd/gm-session-manager`); see README.md for setup.

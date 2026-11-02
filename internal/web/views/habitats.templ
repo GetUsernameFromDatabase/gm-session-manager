@@ -1,0 +1,171 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/internal/compendium"
+	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/checkbox"
+	"gm-session-manager/internal/web/components/empty"
+	"gm-session-manager/internal/web/components/icon"
+	"gm-session-manager/internal/web/components/inputgroup"
+	"gm-session-manager/internal/web/components/table"
+	"gm-session-manager/internal/web/utils"
+	"net/url"
+	"slices"
+)
+
+// HabitatGridID is the grid's element, swapped alone on filtering.
+const HabitatGridID = "habitat-grid"
+
+// HabitatView is the GM's habitat grid: the monsters whose name contains
+// Filter and the habitats each one has.
+type HabitatView struct {
+	Filter   string
+	Monsters []sqlc.ListMonstersByNameRow
+	Has      map[int64]map[string]bool
+}
+
+templ HabitatsPage(l Layout, v HabitatView) {
+	@Page(l) {
+		@button.Button(button.Props{Href: "/compendium?tab=" + CompendiumTabHomebrew, Variant: button.VariantGhost, Size: button.SizeSm, Class: "mb-2 -ml-2.5 self-start"}) {
+			@icon.ArrowLeft()
+			Compendium
+		}
+		@PageHeader("Monster habitats", "A click saves. Filter by name, then use + or − under a habitat to change every monster that matches.")
+		<form
+			method="get"
+			class="mb-4"
+			hx-get="/compendium/habitats"
+			hx-trigger="submit, input[target.id==='habitat-q'] delay:200ms"
+			hx-target={ "#" + HabitatGridID }
+			hx-swap="outerHTML"
+			hx-push-url="true"
+		>
+			@inputgroup.InputGroup(inputgroup.Props{Class: "max-w-md"}) {
+				@inputgroup.Addon() {
+					@icon.Search()
+				}
+				@inputgroup.Input(inputgroup.InputProps{ID: "habitat-q", Name: "q", Type: "search", Value: v.Filter, Placeholder: "Filter monsters by name (e.g. hill, dragon)…", Attributes: templ.Attributes{"autocomplete": "off", "aria-label": "Filter monsters by name"}})
+			}
+		</form>
+		@HabitatGrid(v)
+	}
+}
+
+// HabitatGrid is the monsters × habitats table. Each box is its own form
+// posted on change; + and − apply one habitat to every match of Filter.
+templ HabitatGrid(v HabitatView) {
+	// The table scrolls in its own box, so the filter above stays on screen
+	// and the sticky header row and Monster column need no navbar offset.
+	// On desktop the grid fills the window below the filter (data-fit-screen,
+	// globals.css); on phones the table box keeps a fixed height.
+	<div id={ HabitatGridID } data-fit-screen class="max-md:[&_[data-slot=table-container]]:max-h-[calc(100dvh-14rem)] md:[&_[data-slot=table-container]]:min-h-0 md:[&_[data-slot=table-container]]:flex-1">
+		if len(v.Monsters) == 0 {
+			@empty.Empty(empty.Props{Class: "border border-dashed"}) {
+				@empty.Header() {
+					@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+						@icon.Skull()
+					}
+					@empty.Title() {
+						No monsters match
+					}
+					@empty.Description() {
+						if v.Filter != "" {
+							No monster's name contains “{ v.Filter }”.
+						} else {
+							Import monsters first; the grid lists every one.
+						}
+					}
+				}
+			}
+		} else {
+			<p class="mb-2 text-xs text-muted-foreground">{ fmt.Sprint(len(v.Monsters)) } monsters.</p>
+			@table.Table() {
+				@table.Header() {
+					@table.Row() {
+						@table.Head(table.HeadProps{Class: "sticky top-0 left-0 z-20 bg-background"}) {
+							Monster
+						}
+						for _, h := range compendium.Habitats {
+							@table.Head(table.HeadProps{Class: "sticky top-0 z-10 bg-background text-center"}) {
+								<div>{ h }</div>
+								<div class="flex justify-center">
+									@habitatBatchButton(v, h, true)
+									@habitatBatchButton(v, h, false)
+								</div>
+							}
+						}
+					}
+				}
+				@table.Body() {
+					for _, m := range v.Monsters {
+						@HabitatRow(m, v.Has[m.ID])
+					}
+				}
+			}
+		}
+	</div>
+}
+
+// HabitatRow is one monster's row: its name with an Any toggle (every
+// habitat, as the Monster Manual's "Habitat: Any"), then a box per habitat.
+// The Any button's pressed look follows the boxes (anyPressed).
+templ HabitatRow(m sqlc.ListMonstersByNameRow, has map[string]bool) {
+	{{ every := everyHabitat(has) }}
+	@table.Row(table.RowProps{Class: "group/row"}) {
+		// Opaque, so cells scrolling under it stay hidden; on hover it
+		// takes the row's muted/50 tint, mixed solid.
+		@table.Cell(table.CellProps{Class: "sticky left-0 z-10 bg-background group-hover/row:bg-[color-mix(in_oklab,var(--color-muted)_50%,var(--color-background))]"}) {
+			<span class="flex items-center justify-between gap-2">
+				<a class="hover:underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", m.ID)) }>{ m.Name }</a>
+				{{ what := utils.IfElse(every, "Clear every habitat for ", "Set every habitat for ") + m.Name }}
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Class: anyPressed, Attributes: templ.Attributes{
+					"type": "button", "aria-pressed": fmt.Sprint(every), "title": what, "aria-label": what,
+					"hx-post": "/compendium/habitats/any", "hx-vals": toJSON(map[string]any{"entry_id": m.ID}),
+					"hx-target": "closest tr", "hx-swap": "outerHTML",
+				}}) {
+					Any
+				}
+			</span>
+		}
+		for _, h := range compendium.Habitats {
+			// A tint on ticked cells shows each habitat's coverage at a glance.
+			@table.Cell(table.CellProps{Class: "text-center has-checked:bg-emerald-500/10"}) {
+				<form class="flex justify-center" hx-post="/compendium/habitats/cell" hx-trigger="change" hx-vals={ toJSON(map[string]any{"entry_id": m.ID, "habitat": h}) }>
+					@checkbox.Checkbox(checkbox.Props{Name: "on", Value: "true", DefaultChecked: has[h], Attributes: templ.Attributes{"aria-label": h + ": " + m.Name}})
+				</form>
+			}
+		}
+	}
+}
+
+// habitatBatchButton adds (on) or removes habitat h for every match.
+templ habitatBatchButton(v HabitatView, h string, on bool) {
+	{{ what := fmt.Sprintf(utils.IfElse(on, "Add %s to all %d monsters shown", "Remove %s from all %d monsters shown"), h, len(v.Monsters)) }}
+	@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: templ.Attributes{
+		"type": "button", "title": what, "aria-label": what,
+		"hx-post": "/compendium/habitats/batch", "hx-vals": toJSON(map[string]any{"q": v.Filter, "habitat": h, "on": on}),
+		"hx-confirm": what + "?", "hx-target": "#" + HabitatGridID, "hx-swap": "outerHTML",
+	}}) {
+		if on {
+			@icon.Plus()
+		} else {
+			@icon.Minus()
+		}
+	}
+}
+
+// anyPressed styles the Any button pressed while no box in its row is
+// unticked, so it follows the GM ticking boxes one by one.
+const anyPressed = "[tr:not(:has([data-slot=checkbox][data-unchecked]))_&]:border-primary [tr:not(:has([data-slot=checkbox][data-unchecked]))_&]:bg-primary [tr:not(:has([data-slot=checkbox][data-unchecked]))_&]:text-primary-foreground"
+
+// everyHabitat reports whether has holds every habitat: the monster's habitat is Any.
+func everyHabitat(has map[string]bool) bool {
+	return !slices.ContainsFunc(compendium.Habitats, func(h string) bool { return !has[h] })
+}
+
+// habitatsURL opens the grid filtered to name.
+func habitatsURL(name string) templ.SafeURL {
+	return templ.SafeURL("/compendium/habitats?" + url.Values{"q": {name}}.Encode())
+}

@@ -16,12 +16,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gm-session-manager/auth"
-	"gm-session-manager/compendium"
-	"gm-session-manager/config"
-	"gm-session-manager/db"
-	"gm-session-manager/join"
-	"gm-session-manager/web"
+	"gm-session-manager/internal/auth"
+	"gm-session-manager/internal/compendium"
+	"gm-session-manager/internal/config"
+	"gm-session-manager/internal/db"
+	"gm-session-manager/internal/join"
+	"gm-session-manager/internal/web"
 )
 
 const (

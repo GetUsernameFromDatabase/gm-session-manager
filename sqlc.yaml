@@ -4,11 +4,11 @@ sql:
     # Migrations double as the schema; db.Migrate applies them in filename order.
     # sqlc_stubs.sql declares FTS5 hidden columns for sqlc only.
     schema:
-      - db/migrations
-      - db/sqlc_stubs.sql
-    queries: db/queries
+      - internal/db/migrations
+      - internal/db/sqlc_stubs.sql
+    queries: internal/db/queries
     gen:
       go:
         package: sqlc
-        out: db/sqlc
+        out: internal/db/sqlc
         emit_empty_slices: true

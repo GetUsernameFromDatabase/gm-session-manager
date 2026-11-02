@@ -25,8 +25,8 @@ step "vendoring browser JS"
 go run ./cmd/vendorjs
 step "bundling shadcn-templ scripts"
 go tool shadcn-templ bundle --silent
-bundle=web$(sed -n 's/.*bundleSrc = "\(.*\)"/\1/p' web/components/scripts_bundle.go)
-[ -f "$bundle" ] || { echo "missing $bundle (named in web/components/scripts_bundle.go)" >&2; exit 1; }
+bundle=internal/web$(sed -n 's/.*bundleSrc = "\(.*\)"/\1/p' internal/web/components/scripts_bundle.go)
+[ -f "$bundle" ] || { echo "missing $bundle (named in internal/web/components/scripts_bundle.go)" >&2; exit 1; }
 echo "$bundle"
 
 step "testing"

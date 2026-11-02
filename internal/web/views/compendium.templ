@@ -1,0 +1,1528 @@
+package views
+
+import (
+	"cmp"
+	"fmt"
+	"gm-session-manager/internal/compendium"
+	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/web/components/badge"
+	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/combobox"
+	"gm-session-manager/internal/web/components/empty"
+	"gm-session-manager/internal/web/components/icon"
+	"gm-session-manager/internal/web/components/input"
+	"gm-session-manager/internal/web/components/inputgroup"
+	"gm-session-manager/internal/web/components/label"
+	selectcomp "gm-session-manager/internal/web/components/select"
+	"gm-session-manager/internal/web/components/spinner"
+	"gm-session-manager/internal/web/components/tabs"
+	"gm-session-manager/internal/web/components/textarea"
+	"gm-session-manager/internal/web/components/tooltip"
+	"gm-session-manager/internal/web/utils"
+	"net/url"
+	"slices"
+	"strings"
+)
+
+// CompendiumView is the compendium search page.
+type CompendiumView struct {
+	Query    string
+	Kind     string
+	Results  []sqlc.SearchCompendiumRow
+	// TextResults are search hits in the text only, listed below Results.
+	TextResults []sqlc.SearchCompendiumRow
+	Counts   []sqlc.CountCompendiumRow
+	// Habitat filters monsters (kind "monster" only); comma-separated.
+	Habitat       string
+	HabitatCounts []sqlc.CountHabitatsRow
+	IsGM     bool
+	// Homebrew is every homebrew entry, with the campaigns each player
+	// entry is linked to and the campaigns it could be, for the GM.
+	Homebrew      []sqlc.ListHomebrewRow
+	HomebrewLinks map[int64][]sqlc.ListHomebrewLinksRow
+	Campaigns     []sqlc.Campaign
+	// MyHomebrew is a player's own entries.
+	MyHomebrew []sqlc.ListHomebrewByOwnerRow
+	Import     ImportNotice
+	More     string // URL of the next batch when browsing; "" at the end
+	// Tab is the page tab to open (CompendiumTab*); "" is Browse.
+	Tab string
+}
+
+// Page tabs of the compendium page.
+const (
+	CompendiumTabBrowse   = "browse"
+	CompendiumTabHomebrew = "homebrew"
+	CompendiumTabImport   = "import"
+)
+
+// openTab is the page tab to show first: an import message lands on Import.
+func (v CompendiumView) openTab() string {
+	switch {
+	case v.IsGM && (v.Import.Tab != "" || v.Tab == CompendiumTabImport):
+		return CompendiumTabImport
+	case v.Tab == CompendiumTabHomebrew:
+		return CompendiumTabHomebrew
+	}
+	return CompendiumTabBrowse
+}
+
+// Import tabs of the compendium page.
+const (
+	ImportTabFolder = "folder"
+	ImportTabPage   = "page"
+)
+
+// ImportNotice is the Import section's state: the open tab and the last
+// import's message, shown under that tab.
+type ImportNotice struct {
+	Tab    string
+	Msg    string
+	Failed bool
+	// Page is the page link the GM pasted, kept after an error.
+	Page string
+	// Back is the compendium filter (q, kind) to return to after a page import.
+	Back string
+	// Dir is DATA_DIR/compendium; OnHost is set when the browser runs on
+	// the host, which may open it in the file manager.
+	Dir    string
+	OnHost bool
+}
+
+templ CompendiumPage(l Layout, v CompendiumView) {
+	@Page(l) {
+		<div class="mb-4 flex flex-wrap items-center gap-2">
+			<h1 class="mr-auto text-2xl font-semibold">Compendium</h1>
+			@button.Button(button.Props{Href: utils.IfElse(v.IsGM, "/compendium/homebrew/new", "/compendium/homebrew/new?kind=spell")}) {
+				@icon.Plus()
+				New homebrew
+			}
+		</div>
+		@tabs.Tabs(tabs.Props{ID: "compendium-tabs", DefaultValue: v.openTab(), Attributes: templ.Attributes{"data-fit": true, "data-url-param": "tab"}}) {
+			@tabs.List(tabs.ListProps{Class: "mb-4 w-fit"}) {
+				@tabs.Trigger(tabs.TriggerProps{Value: CompendiumTabBrowse}) {
+					@icon.Search()
+					Browse
+				}
+				@tabs.Trigger(tabs.TriggerProps{Value: CompendiumTabHomebrew}) {
+					@icon.Feather()
+					{ utils.IfElse(v.IsGM, "Homebrew", "Your homebrew") }
+					if n := utils.IfElse(v.IsGM, len(v.Homebrew), len(v.MyHomebrew)); n > 0 {
+						<span class="text-xs text-muted-foreground tabular-nums">{ fmt.Sprint(n) }</span>
+					}
+				}
+				if v.IsGM {
+					@tabs.Trigger(tabs.TriggerProps{Value: CompendiumTabImport}) {
+						@icon.Download()
+						Import
+					}
+				}
+			}
+			// Browse fits the window on desktop (data-fit-screen, globals.css).
+			@tabs.Content(tabs.ContentProps{Value: CompendiumTabBrowse, Attributes: templ.Attributes{"data-fit-screen": true}}) {
+				if len(v.Counts) == 0 {
+					@compendiumEmpty(v.IsGM)
+				} else {
+					// On phones the list scrolls with the page, so the search and
+					// filters stick under the navbar (3rem + its border).
+					<div class="sticky top-[calc(3rem+1px)] z-20 -mx-4 bg-background px-4 pt-2 md:static md:mx-0 md:p-0">
+						@compendiumSearchForm(v)
+						@kindCounts(v)
+					</div>
+					@CompendiumResults(v)
+				}
+			}
+			@tabs.Content(tabs.ContentProps{Value: CompendiumTabHomebrew}) {
+				@homebrewTab(v)
+			}
+			if v.IsGM {
+				@tabs.Content(tabs.ContentProps{Value: CompendiumTabImport}) {
+					@importTabs(v.Import)
+				}
+			}
+		}
+	}
+}
+
+// compendiumSearchForm searches as one types: it swaps only the results and
+// keeps the URL in step, so back/forward work without reloads.
+templ compendiumSearchForm(v CompendiumView) {
+	<form
+		method="get"
+		class="mb-3 flex gap-2"
+		hx-get="/compendium"
+		hx-trigger="submit, input[target.id==='compendium-q'] delay:200ms"
+		hx-target={ "#" + CompendiumResultsID }
+		hx-swap="outerHTML"
+		hx-push-url="true"
+	>
+		@inputgroup.InputGroup(inputgroup.Props{Class: "max-w-xl"}) {
+			@inputgroup.Addon() {
+				@icon.Search()
+			}
+			@inputgroup.Input(inputgroup.InputProps{ID: "compendium-q", Name: "q", Type: "search", Value: v.Query, Placeholder: "Search spells, monsters, items, rules…", Attributes: templ.Attributes{"autocomplete": "off", "aria-label": "Search the compendium"}})
+		}
+		<input type="hidden" name="kind" value={ v.Kind }/>
+		<input type="hidden" name="habitat" value={ v.Habitat }/>
+		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{
+			"onclick": "const f = new FormData(this.form); window.open('/compendium/random?kind=' + encodeURIComponent(f.get('kind') ?? '') + '&habitat=' + encodeURIComponent(f.get('habitat') ?? ''), '_blank')", "title": "Random entry of the chosen kind and habitat (new tab)",
+		}}) {
+			@icon.Dices()
+			<span class="max-sm:sr-only">Random</span>
+		}
+	</form>
+}
+
+// compendiumEmpty stands in for the search while nothing is imported.
+templ compendiumEmpty(isGM bool) {
+	@empty.Empty(empty.Props{Class: "border border-dashed"}) {
+		@empty.Header() {
+			@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+				@icon.BookOpen()
+			}
+			@empty.Title() {
+				The compendium is empty
+			}
+			@empty.Description() {
+				if isGM {
+					Import the SRD or another source to look up monsters, spells and items here.
+				} else {
+					The GM has not imported anything yet.
+				}
+			}
+		}
+		if isGM {
+			@empty.Content() {
+				@button.Button(button.Props{Href: "/compendium?tab=" + CompendiumTabImport}) {
+					@icon.Download()
+					Import
+				}
+			}
+		}
+	}
+}
+
+// homebrewTab lists homebrew: all of it for the GM, with each player
+// entry's campaigns; a player's own entries for them.
+templ homebrewTab(v CompendiumView) {
+	if v.IsGM && len(v.Homebrew) > 0 {
+		<ul class="divide-y rounded-lg border text-sm">
+			for _, h := range v.Homebrew {
+				<li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+					@homebrewName(h.ID, h.Kind, h.Name)
+					if h.Scoped {
+						<span class="text-xs text-muted-foreground">
+							by { utils.IfElse(h.OwnerName != "", h.OwnerName, "a deleted character") }
+						</span>
+						<span class="ml-auto">
+							@homebrewLinks(v, h.ID)
+						</span>
+					}
+				</li>
+			}
+		</ul>
+	} else if !v.IsGM && len(v.MyHomebrew) > 0 {
+		<ul class="divide-y rounded-lg border text-sm">
+			for _, h := range v.MyHomebrew {
+				<li class="flex items-center gap-3 px-3 py-2">
+					@homebrewName(h.ID, h.Kind, h.Name)
+				</li>
+			}
+		</ul>
+	} else {
+		@empty.Empty(empty.Props{Class: "border border-dashed"}) {
+			@empty.Header() {
+				@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+					@icon.Feather()
+				}
+				@empty.Title() {
+					No homebrew yet
+				}
+				@empty.Description() {
+					if v.IsGM {
+						Add monsters, spells and items from your own books. They are in every campaign.
+					} else {
+						Spells and items you make yourself show here and in your campaign's compendium.
+					}
+				}
+			}
+		}
+	}
+	if v.IsGM {
+		<p class="mt-3 text-xs text-muted-foreground">
+			Your homebrew is in every campaign. A player's is in the campaigns it is linked to.
+			<a class="ml-2 underline underline-offset-4" href="/compendium/habitats">Monster habitats</a>
+		</p>
+	}
+}
+
+templ homebrewName(id int64, kind, name string) {
+	<span class="flex min-w-0 items-center gap-2">
+		@kindIcon(kind, "")
+		<span class="sr-only">{ kind }</span>
+		<a class="truncate font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", id)) }>{ name }</a>
+	</span>
+}
+
+// importTabs are the GM's two ways to fill the compendium: data folders on
+// the host, and single pages of the compendium.Sites.
+templ importTabs(n ImportNotice) {
+	@tabs.Tabs(tabs.Props{ID: "compendium-import", DefaultValue: utils.IfElse(n.Tab == ImportTabFolder, ImportTabFolder, ImportTabPage)}) {
+		@tabs.List(tabs.ListProps{Class: "w-fit"}) {
+			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabFolder}) {
+				@icon.FolderOpen()
+				Data folder
+			}
+			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabPage}) {
+				@icon.Globe()
+				Web page
+			}
+		}
+		@tabs.Content(tabs.ContentProps{Value: ImportTabFolder, Class: "max-w-2xl space-y-3 text-sm"}) {
+			<div class="flex flex-wrap items-center gap-2">
+				<code class="rounded bg-muted px-2 py-1 font-mono text-xs break-all">{ n.Dir }</code>
+				@button.Button(button.Props{Size: button.SizeIconSm, Variant: button.VariantGhost, Class: "group", Attributes: templ.Attributes{"data-copy": n.Dir, "aria-label": "Copy folder path", "title": "Copy folder path"}}) {
+					@icon.Copy(icon.Props{Size: 16, Class: "group-data-[copied]:hidden"})
+					@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-[copied]:block"})
+				}
+				if n.OnHost {
+					@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": "/compendium/folder", "hx-swap": "none"}}) {
+						@icon.FolderOpen()
+						Open folder
+					}
+				}
+			</div>
+			<ul class="list-disc space-y-1 pl-5 text-muted-foreground">
+				<li>Each folder in it is one source; its name is the source's key (for example <code>srd-2024</code>; <code>homebrew</code> is reserved).</li>
+				<li>
+					A source folder holds the Open5e v2 JSON files of one document: <code>Document.json</code>, <code>Spell.json</code>, <code>Creature.json</code>, <code>CharacterClass.json</code>, <code>ClassFeature.json</code> and the rest, as in
+					<a class="underline" href="https://github.com/open5e/open5e-api/tree/staging/data/v2/wizards-of-the-coast/srd-2024" target="_blank" rel="noopener">open5e-api data/v2</a>.
+				</li>
+				<li>Every entry keeps the license and attribution of its folder's <code>Document.json</code>.</li>
+				<li>Folders that have not changed since the last import are skipped; entries removed from a folder are removed from the compendium.</li>
+				<li>The import also runs every time the app starts.</li>
+			</ul>
+			<form method="post" action="/compendium/import" class="group/busy" data-busy>
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					Import now
+				}
+				@busyIndicator("Importing…")
+			</form>
+			if n.Msg != "" && n.Tab == ImportTabFolder {
+				@Notice(n.Msg, n.Failed, "")
+			}
+		}
+		@tabs.Content(tabs.ContentProps{Value: ImportTabPage, Class: "max-w-2xl space-y-3 text-sm"}) {
+			<form method="post" action="/compendium/page/preview" class="group/busy flex flex-wrap items-center gap-2" data-busy>
+				<input type="hidden" name="back" value={ n.Back }/>
+				// Focused when coming back from an import, ready for the next page.
+				@input.Input(input.Props{Name: "page", Value: n.Page, Placeholder: "Paste a page link", Class: "max-w-md", Attributes: templ.Attributes{"required": true, "aria-label": "Page link", "autocomplete": "off", "autofocus": n.Tab == ImportTabPage}})
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					Preview
+				}
+				@busyIndicator("Fetching…")
+			</form>
+			if n.Msg != "" && n.Tab == ImportTabPage {
+				@Notice(n.Msg, n.Failed, "")
+			}
+			<p class="text-muted-foreground">Pages can come from these sites only; open one, find the page and paste its link.</p>
+			<ul class="list-disc space-y-1 pl-5 text-muted-foreground">
+				for _, s := range compendium.Sites {
+					<li>
+						<a class="font-medium text-foreground underline" href={ templ.SafeURL(s.Home) } target="_blank" rel="noopener noreferrer">{ s.Host() }</a>: { s.Imports }.
+						if s.Note != "" {
+							<span class="text-amber-700 dark:text-amber-300">{ s.Note }</span>
+							<a class="underline" href={ templ.SafeURL(s.NoteURL) } target="_blank" rel="noopener noreferrer">Browse the mirror</a>.
+						}
+					</li>
+				}
+			</ul>
+			<p class="text-muted-foreground">
+				Other pages of these sites are tried too, as plain text whose kind you pick.
+				You review and edit it before it is saved; saving the same page again replaces it.
+				Entries are attributed to the book and the page they came from.
+			</p>
+		}
+	}
+}
+
+// homebrewLinks are a player entry's campaigns, each removable, and a
+// picker to add it to another.
+templ homebrewLinks(v CompendiumView, entryID int64) {
+	{{ links := v.HomebrewLinks[entryID] }}
+	<span class="flex flex-wrap items-center gap-1 text-xs">
+		for _, l := range links {
+			<span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5">
+				{ l.CampaignName }
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-4", Attributes: templ.Attributes{
+					"hx-post": fmt.Sprintf("/compendium/entries/%d/campaigns/%d/delete", entryID, l.CampaignID), "aria-label": "Remove from " + l.CampaignName,
+				}}) {
+					@icon.X(icon.Props{Size: 12})
+				}
+			</span>
+		}
+		if len(links) == 0 {
+			<span class="text-muted-foreground">in no campaign</span>
+		}
+		{{ others := slices.DeleteFunc(slices.Clone(v.Campaigns), func(c sqlc.Campaign) bool {
+			return slices.ContainsFunc(links, func(l sqlc.ListHomebrewLinksRow) bool { return l.CampaignID == c.ID })
+		}) }}
+		if len(others) > 0 {
+			<form class="flex items-center gap-1" hx-post={ fmt.Sprintf("/compendium/entries/%d/campaigns", entryID) }>
+				@formSelect("", "campaign_id", selectItems(others, func(c sqlc.Campaign) string { return fmt.Sprint(c.ID) }, func(c sqlc.Campaign) string { return c.Name }), "", "h-6 text-xs", "")
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs, Variant: button.VariantOutline}) {
+					Add to campaign
+				}
+			</form>
+		}
+	</span>
+}
+
+// CompendiumResultsID is the element htmx swaps when searching or changing kind.
+const CompendiumResultsID = "compendium-results"
+
+// CompendiumResults is the result list, rendered alone for htmx.
+templ CompendiumResults(v CompendiumView) {
+	<div id={ CompendiumResultsID } data-fit>
+		if v.Query != "" || len(v.Results) > 0 || len(v.TextResults) > 0 {
+			// On desktop the list scrolls on its own, filling the window below the
+			// filters, so the hover preview lives in a side pane rather than a
+			// popover the scroll box would clip. On phones the page scrolls.
+			// grid-cols-1 caps the column at the screen width, so long rows truncate
+			// on phones instead of scrolling sideways.
+			<div class="grid grid-cols-1 gap-4 md:min-h-0 md:flex-1 md:grid-cols-2 md:grid-rows-1">
+				<ul class="divide-y rounded-lg border text-sm md:min-h-0 md:overflow-y-auto">
+					@CompendiumRows(v)
+					if len(v.Results) == 0 && len(v.TextResults) == 0 {
+						<li class="p-2 text-muted-foreground">Nothing found.</li>
+					}
+				</ul>
+				// Fixed height so swapping previews never resizes the results and
+				// shifts the page; requests are skipped while it is hidden.
+				<div id="entry-preview" class="hidden flex-col overflow-hidden rounded-lg border text-sm md:flex">
+					<p class="p-3 text-muted-foreground">Hover an entry to preview it.</p>
+				</div>
+			</div>
+		}
+	</div>
+}
+
+// CompendiumRows are result rows, then a row that loads the next batch in
+// its place once scrolled into view (intersect, since the list scrolls itself).
+templ CompendiumRows(v CompendiumView) {
+	for _, r := range v.Results {
+		@compendiumRow(r)
+	}
+	if len(v.TextResults) > 0 {
+		@textMatchesHeader()
+		for _, r := range v.TextResults {
+			@compendiumRow(r)
+		}
+	}
+	if v.More != "" {
+		<li class="flex justify-center p-2" hx-get={ v.More } hx-trigger="intersect once" hx-swap="outerHTML">
+			@spinner.Spinner()
+		</li>
+	}
+}
+
+templ compendiumRow(r sqlc.SearchCompendiumRow) {
+	// Relative, so the sr-only kind stays inside the scrolling list instead
+	// of stretching the page.
+	<li class="relative flex items-center gap-2 px-2 py-1.5 hover:bg-muted" hx-get={ fmt.Sprintf("/compendium/entries/%d?preview=1", r.ID) } hx-trigger="mouseenter[document.getElementById('entry-preview').checkVisibility()] delay:150ms" hx-target="#entry-preview" hx-swap="innerHTML">
+		@kindIcon(r.Kind, "")
+		<span class="sr-only">{ r.Kind }</span>
+		<a class="truncate hover:underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", r.ID)) }>{ r.Name }</a>
+		if r.IsHomebrew {
+			@homebrewBadge()
+		}
+		// Zero basis: classes get only the space left beside the name; badges
+		// that wrap fall below the one-badge-high box and are clipped whole.
+		<span class="flex h-5 min-w-0 grow basis-0 flex-wrap justify-end gap-1 overflow-hidden">
+			// A subclass's class is its figure, on the right.
+			if r.Kind != string(compendium.KindSubclass) {
+				@classBadges(strings.Fields(r.Classes))
+			}
+			if r.Size != "" {
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "capitalize " + sizeColors[strings.ToLower(r.Size)]}) {
+					{ r.Size }
+				}
+			}
+			if r.Alignment != "" {
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: alignmentColor(r.Alignment)}) {
+					{ r.Alignment }
+				}
+			}
+		</span>
+		{{ text, color := rowFigure(r) }}
+		{{ rarity := utils.IfElse(r.Kind == string(compendium.KindItem), r.Figure, "") }}
+		<span class="w-24 shrink-0 truncate text-right text-xs text-muted-foreground tabular-nums first-letter:uppercase" title={ strings.TrimPrefix(text+commaPrefixed(rarity), ", ") }>
+			<span class={ color }>{ text }</span>
+			if rarity != "" {
+				<span class="sr-only">{ commaPrefixed(rarity) }</span>
+			}
+		</span>
+	</li>
+}
+
+// rowFigure is a result row's right-hand text and its colour: a monster's
+// CR, a spell's level, else the category; an item's is tinted by rarity, a
+// subclass's (its class) by the class colour.
+func rowFigure(r sqlc.SearchCompendiumRow) (text, color string) {
+	switch compendium.Kind(r.Kind) {
+	case compendium.KindMonster:
+		if r.Figure == "" {
+			return "", ""
+		}
+		return "CR " + crText(r.Figure), ""
+	case compendium.KindSpell:
+		if r.Figure == "0" {
+			return "Cantrip", ""
+		}
+		return "Level " + r.Figure, ""
+	case compendium.KindSubclass:
+		return r.Classes, textOnly(classColors[r.Classes])
+	case compendium.KindItem:
+		return strings.ReplaceAll(r.Category, "-", " "), rarityColors[strings.ToLower(r.Figure)]
+	}
+	return strings.ReplaceAll(r.Category, "-", " "), ""
+}
+
+// rarityColors tint an item's category; common items stay grey.
+var rarityColors = map[string]string{
+	"uncommon":  "text-green-600 dark:text-green-400",
+	"rare":      "text-sky-600 dark:text-sky-400",
+	"very rare": "text-violet-600 dark:text-violet-400",
+	"legendary": "text-amber-600 dark:text-amber-400",
+	"artifact":  "text-rose-600 dark:text-rose-400",
+}
+
+// textOnly keeps the text colours of a badge's classes, dropping its tint.
+func textOnly(classes string) string {
+	var out []string
+	for _, c := range strings.Fields(classes) {
+		if strings.HasPrefix(c, "text-") || strings.HasPrefix(c, "dark:text-") {
+			out = append(out, c)
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+var crFractions = strings.NewReplacer("1/8", "⅛", "1/4", "¼", "1/2", "½")
+
+// crText sets fractional challenge ratings as the book does.
+func crText(cr string) string { return crFractions.Replace(cr) }
+
+// textMatchesHeader separates name matches from entries found only in their text.
+templ textMatchesHeader() {
+	<li class="bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground">Found in text</li>
+}
+
+// CompendiumSearch answers a search: the results, and the kind badges out
+// of band so their links carry the query just typed.
+templ CompendiumSearch(v CompendiumView) {
+	@CompendiumResults(v)
+	@kindCounts(v)
+}
+
+// kindCounts toggles each kind in or out of the filter; several may be active.
+templ kindCounts(v CompendiumView) {
+	<div id="compendium-kinds" class="mb-4" hx-swap-oob="true">
+		<div class={ chipRow }>
+			for _, c := range v.Counts {
+				{{ on := slices.Contains(kindSet(v.Kind), c.Kind) }}
+				@badge.Badge(badge.Props{Href: kindHref(v.Query, c.Kind, v.Kind), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "h-7 gap-1.5 px-2.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on)}}) {
+					@kindIcon(c.Kind, utils.IfElse(on, "text-current", ""))
+					{ c.Kind }
+					<span class="tabular-nums opacity-60">{ fmt.Sprint(c.N) }</span>
+				}
+			}
+		</div>
+		if v.Kind == string(compendium.KindMonster) {
+			@habitatCounts(v)
+		}
+	</div>
+}
+
+// chipRow wraps filter chips on desktop; on phones they make one line that
+// swipes sideways, keeping the sticky filters short.
+const chipRow = "flex flex-wrap gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:pb-1 max-md:[&>*]:shrink-0"
+
+// habitatCounts toggles each habitat in or out of the monster filter.
+templ habitatCounts(v CompendiumView) {
+	{{ counts := habitatCountMap(v.HabitatCounts) }}
+	if len(counts) == 0 {
+		<p class="mt-2 text-xs text-muted-foreground">
+			No monster has a habitat yet.
+			if v.IsGM {
+				<a class="underline" href="/compendium/habitats">Set habitats</a>
+			}
+		</p>
+	} else {
+		<div class={ chipRow, "mt-2 items-center" }>
+			@icon.Mountain(icon.Props{Size: 14, Class: "text-muted-foreground", Attributes: templ.Attributes{"aria-label": "Habitats"}})
+			for _, h := range compendium.Habitats {
+				if counts[h] > 0 {
+					{{ on := slices.Contains(kindSet(v.Habitat), h) }}
+					@badge.Badge(badge.Props{Href: habitatHref(v.Query, h, v.Habitat), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "gap-1.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on), "data-habitat": h}}) {
+						{ h }
+						<span class="tabular-nums opacity-60">{ fmt.Sprint(counts[h]) }</span>
+					}
+				}
+			}
+		</div>
+	}
+}
+
+func habitatCountMap(rows []sqlc.CountHabitatsRow) map[string]int64 {
+	m := map[string]int64{}
+	for _, r := range rows {
+		m[r.Habitat] = r.N
+	}
+	return m
+}
+
+// habitatHref toggles habitat in the monster filter, in Habitats order.
+func habitatHref(query, habitat, current string) string {
+	q := url.Values{"kind": {string(compendium.KindMonster)}}
+	if query != "" {
+		q.Set("q", query)
+	}
+	set := kindSet(current)
+	var next []string
+	for _, h := range compendium.Habitats {
+		if (h == habitat) != slices.Contains(set, h) {
+			next = append(next, h)
+		}
+	}
+	if len(next) > 0 {
+		q.Set("habitat", strings.Join(next, ","))
+	}
+	return "/compendium?" + q.Encode()
+}
+
+func kindHref(query, kind, current string) string {
+	q := url.Values{}
+	if query != "" {
+		q.Set("q", query)
+	}
+	set := kindSet(current)
+	var next []string
+	for _, k := range compendium.Kinds {
+		// Kinds order keeps URLs stable however the badges were clicked.
+		if (string(k) == kind) != slices.Contains(set, string(k)) {
+			next = append(next, string(k))
+		}
+	}
+	if len(next) > 0 {
+		q.Set("kind", strings.Join(next, ","))
+	}
+	return "/compendium?" + q.Encode()
+}
+
+// kindSet splits the comma-separated kind filter; "" is every kind.
+func kindSet(kind string) []string {
+	return strings.FieldsFunc(kind, func(r rune) bool { return r == ',' })
+}
+
+// classColors are literal so Tailwind finds them; other classes stay grey.
+var classColors = map[string]string{
+	"barbarian": "bg-red-500/15 text-red-700 dark:text-red-300",
+	"bard":      "bg-pink-500/15 text-pink-700 dark:text-pink-300",
+	"cleric":    "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
+	"druid":     "bg-green-500/15 text-green-700 dark:text-green-300",
+	"fighter":   "bg-stone-500/15 text-stone-700 dark:text-stone-300",
+	"monk":      "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
+	"paladin":   "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+	"ranger":    "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+	"rogue":     "bg-slate-500/15 text-slate-700 dark:text-slate-300",
+	"sorcerer":  "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+	"warlock":   "bg-purple-500/15 text-purple-700 dark:text-purple-300",
+	"wizard":    "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+}
+
+// sizeColors run cool to hot from tiny to gargantuan.
+var sizeColors = map[string]string{
+	"tiny":       "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+	"small":      "bg-teal-500/15 text-teal-700 dark:text-teal-300",
+	"medium":     "bg-green-500/15 text-green-700 dark:text-green-300",
+	"large":      "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+	"huge":       "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+	"gargantuan": "bg-red-500/15 text-red-700 dark:text-red-300",
+}
+
+// alignmentColor codes the good/evil axis; unaligned and "any" stay grey.
+func alignmentColor(a string) string {
+	a = strings.ToLower(a)
+	switch {
+	case strings.Contains(a, "good"):
+		return "bg-blue-500/15 text-blue-700 dark:text-blue-300"
+	case strings.Contains(a, "evil"):
+		return "bg-red-500/15 text-red-700 dark:text-red-300"
+	case strings.Contains(a, "neutral"):
+		return "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+	}
+	return ""
+}
+
+templ classBadges(slugs []string) {
+	for _, s := range slugs {
+		@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "capitalize " + classColors[s]}) {
+			{ s }
+		}
+	}
+}
+
+// kindSelect picks a homebrew kind; players write spells and items only.
+templ kindSelect(current string, isGM bool) {
+	{{ kinds := compendium.Kinds }}
+	if !isGM {
+		{{ kinds = []compendium.Kind{compendium.KindSpell, compendium.KindItem} }}
+	}
+	{{ items := selectItems(kinds, func(k compendium.Kind) string { return string(k) }, func(k compendium.Kind) string { return string(k) }) }}
+	@formSelect("", "kind", items, current, "", "")
+}
+
+templ kindBadge(kind string, homebrew bool) {
+	<span class="flex gap-1">
+		@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "gap-1"}) {
+			@kindIcon(kind, "")
+			{ kind }
+		}
+		if homebrew {
+			@homebrewBadge()
+		}
+	</span>
+}
+
+templ homebrewBadge() {
+	@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "gap-1"}) {
+		@icon.Feather()
+		homebrew
+	}
+}
+
+// kindColors tint each kind's icon; literal so Tailwind finds them.
+var kindColors = map[string]string{
+	"monster":    "text-rose-600 dark:text-rose-400",
+	"spell":      "text-violet-600 dark:text-violet-400",
+	"item":       "text-amber-600 dark:text-amber-400",
+	"class":      "text-blue-600 dark:text-blue-400",
+	"subclass":   "text-blue-600 dark:text-blue-400",
+	"species":    "text-emerald-600 dark:text-emerald-400",
+	"background": "text-stone-600 dark:text-stone-400",
+	"feat":       "text-yellow-600 dark:text-yellow-400",
+	"condition":  "text-orange-600 dark:text-orange-400",
+	"rule":       "text-slate-600 dark:text-slate-400",
+}
+
+// kindIcon marks an entry's kind; callers add the kind as text for readers.
+templ kindIcon(kind, class string) {
+	{{ p := icon.Props{Size: 16, Class: utils.CN("shrink-0", kindColors[kind], class), Attributes: templ.Attributes{"aria-hidden": "true"}} }}
+	switch compendium.Kind(kind) {
+		case compendium.KindMonster:
+			@icon.Skull(p)
+		case compendium.KindSpell:
+			@icon.Sparkles(p)
+		case compendium.KindItem:
+			@icon.Gem(p)
+		case compendium.KindClass:
+			@icon.Shield(p)
+		case compendium.KindSubclass:
+			@icon.ShieldHalf(p)
+		case compendium.KindSpecies:
+			@icon.Footprints(p)
+		case compendium.KindBackground:
+			@icon.Scroll(p)
+		case compendium.KindFeat:
+			@icon.Award(p)
+		case compendium.KindCondition:
+			@icon.HeartCrack(p)
+		default:
+			@icon.BookOpen(p)
+	}
+}
+
+// PickerTarget says what the result buttons of a compendium picker do.
+type PickerTarget struct {
+	EncounterID int64
+	CharacterID int64
+	EntityID    int64
+}
+
+// SearchResults is the inline picker used by the combat tracker, the
+// character sheet and the entity editor.
+templ SearchResults(names, text []sqlc.SearchCompendiumRow, t PickerTarget) {
+	for _, r := range names {
+		@pickerRow(r, t)
+	}
+	if len(text) > 0 {
+		@textMatchesHeader()
+		for _, r := range text {
+			@pickerRow(r, t)
+		}
+	}
+	if len(names) == 0 && len(text) == 0 {
+		<li class="py-0.5 text-muted-foreground">No matches</li>
+	}
+}
+
+// SearchComboItems fill an itemPicker's list with entry names, each once,
+// and the template its create button adds a typed name from.
+templ SearchComboItems(rows []sqlc.SearchCompendiumRow) {
+	{{ seen := map[string]bool{} }}
+	for _, r := range rows {
+		if !seen[strings.ToLower(r.Name)] {
+			{{ seen[strings.ToLower(r.Name)] = true }}
+			@combobox.Item(combobox.ItemProps{Value: r.Name}) {
+				{ r.Name }
+			}
+		}
+	}
+	<template data-combobox-create-item>
+		@combobox.Item()
+	</template>
+}
+
+templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
+		if t.EncounterID != 0 {
+			// Combat picker is a dropdown: choosing a row adds the monster and closes it.
+			<li>
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start truncate", Attributes: templ.Attributes{
+					"hx-post":              fmt.Sprintf("/encounters/%d/combatants", t.EncounterID),
+					"hx-vals":              fmt.Sprintf(`{"kind":"monster","id":"%d"}`, r.ID),
+					"hx-on::after-request": "const u = this.closest('ul'); u.previousElementSibling.value = ''; u.replaceChildren()",
+				}}) {
+					{ r.Name }
+				}
+			</li>
+		} else if t.CharacterID != 0 {
+			@pickRow(r.ID, templ.Attributes{
+				"hx-post": fmt.Sprintf("/characters/%d/cmd", t.CharacterID), "hx-vals": cmdVals("spell add " + r.Slug),
+				"hx-on::after-request": "if (event.detail.successful) this.disabled = true",
+			}) {
+				{ r.Name }
+			}
+		} else {
+			<li class="flex items-center justify-between gap-2 py-0.5">
+				<a class="truncate hover:underline" { pickerLinkAttrs(t)... } href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", r.ID)) }>{ r.Name }</a>
+				switch  {
+					case t.EntityID != 0:
+						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", t.EntityID), "hx-vals": fmt.Sprintf(`{"entry":"%d"}`, r.ID)}}) {
+							Link
+						}
+				}
+			</li>
+		}
+}
+
+// pickRow is a compendium result that acts when clicked (attrs post the
+// action); hovering it shows the entry, loaded the first time the tooltip
+// shows. The loader sits inside the tooltip: on the row, its hx-target would
+// be inherited by the button.
+templ pickRow(entryID int64, attrs templ.Attributes) {
+	<li>
+		@tooltip.Tooltip() {
+			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start gap-2 truncate disabled:opacity-60", Attributes: with(attrs, tooltip.Trigger(ctx))}) {
+				@icon.Plus(icon.Props{Class: "in-disabled:hidden"})
+				@icon.Check(icon.Props{Class: "hidden in-disabled:block"})
+				{ children... }
+			}
+			@tooltip.Content(tooltip.ContentProps{Class: "flex max-h-80 max-w-sm flex-col overflow-hidden border bg-popover p-0 text-left text-popover-foreground [&>[aria-hidden]]:hidden"}) {
+				<div class="p-2" hx-get={ fmt.Sprintf("/compendium/entries/%d?preview=1", entryID) } hx-trigger="intersect once" hx-swap="outerHTML">Loading…</div>
+			}
+		}
+	</li>
+}
+
+// pickerLinkAttrs opens entries in a new tab from pickers embedded in
+// other pages; the compendium's own dropdown navigates in place.
+func pickerLinkAttrs(t PickerTarget) templ.Attributes {
+	if t == (PickerTarget{}) {
+		return nil
+	}
+	return templ.Attributes{"target": "_blank"}
+}
+
+// EntryView is one compendium entry page.
+type EntryView struct {
+	// CanEdit is set for homebrew the viewer may change.
+	CanEdit bool
+	Entry   sqlc.CompendiumEntry
+	Source sqlc.CompendiumSource
+	Data   any
+	IsGM   bool
+	// Habitats are a monster's, typed in by the GM.
+	Habitats []string
+	// Back links to the compendium list the entry was opened from, filters
+	// kept, or that a page import started from.
+	Back string
+}
+
+templ EntryPage(l Layout, v EntryView) {
+	@Page(l) {
+		{{ pictured := v.Entry.Kind == string(compendium.KindMonster) && v.Entry.ImageUrl.String != "" }}
+		<div class="mb-4 flex flex-wrap items-center gap-2">
+			@button.Button(button.Props{Href: cmp.Or(v.Back, "/compendium"), Variant: button.VariantGhost, Size: button.SizeSm, Class: "-ml-2.5 mr-auto"}) {
+				@icon.ArrowLeft()
+				Compendium
+			}
+			if v.CanEdit {
+				@button.Button(button.Props{Href: fmt.Sprintf("/compendium/entries/%d/edit", v.Entry.ID), Variant: button.VariantOutline, Size: button.SizeSm}) {
+					@icon.Pencil()
+					Edit
+				}
+			}
+		</div>
+		// Like an NPC page: the picture leads, sticky beside the stat block on desktop.
+		<div class={ utils.IfElse(pictured, "grid gap-6 md:grid-cols-[2fr_3fr] md:gap-8", "max-w-2xl") }>
+			if pictured {
+				<div class="md:sticky md:top-20 md:self-start">
+					@monsterPicture(v.Entry, v.IsGM, "max-h-[70vh] w-full")
+				</div>
+			}
+			<article class="statblock min-w-0">
+				@entryHead(v.Entry, false)
+				@entryBody(v.Data)
+				@monsterHabitats(v.Entry, v.Habitats, v.IsGM)
+			</article>
+			if !pictured && v.IsGM && v.Entry.Kind == string(compendium.KindMonster) {
+				<div class="mt-4">
+					@monsterPicture(v.Entry, true, "")
+				</div>
+			}
+		</div>
+		<footer class="mt-10 max-w-2xl border-t pt-3 text-xs text-muted-foreground">
+			<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+				<dt class="font-medium">Source</dt>
+				<dd>{ v.Source.SourceKey }{ commaPrefixed(v.Source.Edition) }</dd>
+				<dt class="font-medium">License</dt>
+				<dd>{ v.Source.License }</dd>
+				if v.Source.Attribution != "" {
+					<dt class="font-medium">Attribution</dt>
+					<dd>{ v.Source.Attribution }</dd>
+				}
+			</dl>
+		</footer>
+	}
+}
+
+// entryHead is the stat block's name and kind; previews link the name.
+templ entryHead(e sqlc.CompendiumEntry, preview bool) {
+	<header class="flex items-start justify-between gap-3">
+		if preview {
+			<a class="text-xl leading-tight font-semibold text-statblock-ink hover:underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", e.ID)) }>{ e.Name }</a>
+		} else {
+			<h1 class="text-3xl leading-tight font-semibold text-statblock-ink">{ e.Name }</h1>
+		}
+		<span class="mt-1 font-sans">
+			@kindBadge(e.Kind, e.IsHomebrew)
+		</span>
+	</header>
+}
+
+// EntryPreview is the hover card on compendium lists.
+templ EntryPreview(e sqlc.CompendiumEntry, data any, habitats []string) {
+	// The pane is a column: the name stays put and only the body scrolls,
+	// so nothing passes behind it.
+	<div class="shrink-0 border-b bg-statblock-paper px-4 pt-3 pb-2 font-serif">
+		@entryHead(e, true)
+	</div>
+	<div class="statblock min-h-0 flex-1 overflow-y-auto rounded-none border-0 pt-2 text-sm sm:p-4 sm:pt-2">
+		@monsterPicture(e, false, "max-h-48")
+		@entryBody(data)
+		@monsterHabitats(e, habitats, false)
+	</div>
+}
+
+// monsterHabitats lists a monster's habitats; the GM gets a link to the grid.
+templ monsterHabitats(e sqlc.CompendiumEntry, habitats []string, gm bool) {
+	if e.Kind == string(compendium.KindMonster) && (len(habitats) > 0 || gm) {
+		@rule()
+		<p>
+			<strong>Habitat</strong> { utils.IfElse(len(habitats) > 0, inHabitatOrder(habitats), "none set") }
+			if gm {
+				<a class="ml-2 font-sans text-xs text-muted-foreground underline underline-offset-4" href={ habitatsURL(e.Name) }>Edit habitats</a>
+			}
+		</p>
+	}
+}
+
+// inHabitatOrder joins habitats in compendium.Habitats order; every one of
+// them reads "Any", as in the Monster Manual.
+func inHabitatOrder(habitats []string) string {
+	var out []string
+	for _, h := range compendium.Habitats {
+		if slices.Contains(habitats, h) {
+			out = append(out, h)
+		}
+	}
+	if len(out) == len(compendium.Habitats) {
+		return "Any"
+	}
+	return strings.Join(out, ", ")
+}
+
+// monsterPicture shows a monster's linked picture; a dead link hides itself.
+// For the GM, clicking it (or its failing to load) reveals the link form.
+// class sizes the picture.
+templ monsterPicture(e sqlc.CompendiumEntry, editable bool, class string) {
+	if e.Kind == string(compendium.KindMonster) {
+		{{ imgClass := utils.CN("rounded-lg border bg-muted object-contain", class) }}
+		if !editable {
+			if e.ImageUrl.String != "" {
+				<img src={ e.ImageUrl.String } alt={ e.Name } loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" class={ utils.CN(imgClass, "mb-3") }/>
+			}
+		} else {
+			<div data-pic class="group/pic space-y-2">
+				if e.ImageUrl.String != "" {
+					@button.Button(button.Props{Variant: button.VariantGhost, Class: "h-auto w-full p-0 group-data-[broken]/pic:hidden", Attributes: templ.Attributes{
+						"type": "button", "title": "Change picture", "onclick": "this.closest('[data-pic]').toggleAttribute('data-editing')",
+					}}) {
+						<img src={ e.ImageUrl.String } alt={ e.Name } loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('[data-pic]').toggleAttribute('data-broken', true)" class={ imgClass }/>
+					}
+				}
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d/image", e.ID)) } class={ "flex-wrap items-center gap-2", templ.KV("hidden group-data-[broken]/pic:flex group-data-[editing]/pic:flex", e.ImageUrl.String != ""), templ.KV("flex", e.ImageUrl.String == "") }>
+					@inlineField("Picture link", "image_url", e.ImageUrl.String, "w-96 max-w-full", templ.Attributes{"type": "url", "pattern": "https://.*", "placeholder": "https://… (empty: no picture)"})
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+						Save
+					}
+				</form>
+			</div>
+		}
+	}
+}
+
+// EntryDetails is an entry's body alone, for places that show it inline.
+templ EntryDetails(data any) {
+	@entryBody(data)
+}
+
+templ entryBody(data any) {
+	switch d := data.(type) {
+		case *compendium.MonsterData:
+			@monsterBody(d)
+		case *compendium.SpellData:
+			@spellBody(d)
+		case *compendium.ItemData:
+			@itemBody(d)
+		case *compendium.ClassData:
+			@classBody(d)
+		case *compendium.TextData:
+			@textBody(d)
+	}
+}
+
+templ prose(text string) {
+	if text != "" {
+		@markdown(text)
+	}
+}
+
+templ namedParts(parts []compendium.NameDesc) {
+	for _, p := range parts {
+		@markdown("**" + p.Name + ".** " + p.Desc)
+	}
+}
+
+func signedMap(m map[string]int, order []string) string {
+	var parts []string
+	for _, k := range order {
+		if v, ok := m[k]; ok {
+			parts = append(parts, k+" "+dnd5e.Signed(v))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+func speeds(m map[string]int) string {
+	var parts []string
+	for _, k := range sortedKeys(m) {
+		parts = append(parts, fmt.Sprintf("%s %d ft.", k, m[k]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// rule is the stat block's tapered divider.
+templ rule() {
+	<hr class="statblock-rule"/>
+}
+
+// subtitle is the italic line under an entry's name.
+templ subtitle() {
+	<p class="text-muted-foreground italic first-letter:uppercase">
+		{ children... }
+	</p>
+}
+
+// fact is one labelled figure in an entry's facts grid; empty values are left out.
+templ fact(name, value string) {
+	if value != "" {
+		<div>
+			<dt class="font-semibold">{ name }</dt>
+			<dd>{ value }</dd>
+		</div>
+	}
+}
+
+const factsGrid = "grid grid-cols-2 gap-x-4 gap-y-1.5"
+
+templ monsterBody(d *compendium.MonsterData) {
+	@subtitle() {
+		{ strings.TrimSpace(d.Size + " " + d.Type) }{ commaPrefixed(d.Alignment) }
+	}
+	@rule()
+	<p><strong>AC</strong> { fmt.Sprint(d.AC) } { parenthesized(d.ACDetail) }<strong class="ml-4">Initiative</strong> { dnd5e.Signed(d.Initiative) }</p>
+	<p><strong>HP</strong> { fmt.Sprint(d.HP) } { parenthesized(d.HitDice) }</p>
+	if len(d.Speed) > 0 {
+		<p><strong>Speed</strong> { speeds(d.Speed) }</p>
+	}
+	if len(d.Abilities) > 0 {
+		@rule()
+		<dl class="grid grid-cols-3 gap-y-2 text-center tabular-nums sm:grid-cols-6">
+			for _, a := range dnd5e.Abilities {
+				<div>
+					<dt class="text-xs font-semibold text-statblock-ink uppercase">{ a }</dt>
+					<dd>{ fmt.Sprint(d.Abilities[a]) } <span class="text-muted-foreground">({ dnd5e.Signed(dnd5e.Modifier(d.Abilities[a])) })</span></dd>
+				</div>
+			}
+		</dl>
+	}
+	if len(d.Saves) > 0 || len(d.Skills) > 0 || d.Resistance != "" || d.Immunity != "" || d.Senses != "" || d.Languages != "" || d.CR != "" {
+		@rule()
+	}
+	if len(d.Saves) > 0 {
+		<p><strong>Saves</strong> { signedMap(d.Saves, dnd5e.Abilities) }</p>
+	}
+	if len(d.Skills) > 0 {
+		<p><strong>Skills</strong> { signedMap(d.Skills, sortedKeys(d.Skills)) }</p>
+	}
+	if d.Resistance != "" {
+		<p><strong>Resistances</strong> { d.Resistance }</p>
+	}
+	if d.Immunity != "" {
+		<p><strong>Immunities</strong> { d.Immunity }</p>
+	}
+	if d.Senses != "" {
+		<p><strong>Senses</strong> { d.Senses }</p>
+	}
+	if d.Languages != "" {
+		<p><strong>Languages</strong> { d.Languages }</p>
+	}
+	if d.CR != "" {
+		<p><strong>CR</strong> { crText(d.CR) }</p>
+	}
+	if d.Desc != "" {
+		@rule()
+		@prose(d.Desc)
+	}
+	if len(d.Traits) > 0 {
+		<h3 class="mt-4 font-semibold">Traits</h3>
+		@namedParts(d.Traits)
+	}
+	{{ section := "" }}
+	for _, a := range d.Actions {
+		if a.Type != section {
+			{{ section = a.Type }}
+			<h3 class="mt-4 font-semibold capitalize">{ strings.ReplaceAll(a.Type, "_", " ") }s</h3>
+		}
+		@markdown("**" + a.Name + ".** " + a.Desc)
+	}
+}
+
+func parenthesized(s string) string {
+	if s == "" {
+		return ""
+	}
+	return "(" + s + ")"
+}
+
+func commaPrefixed(s string) string {
+	if s == "" {
+		return ""
+	}
+	return ", " + s
+}
+
+templ spellBody(d *compendium.SpellData) {
+	@subtitle() {
+		if d.Level == 0 {
+			{ d.School } cantrip
+		} else {
+			Level { fmt.Sprint(d.Level) } { d.School }
+		}
+		if d.Ritual {
+			(ritual)
+		}
+	}
+	@rule()
+	<dl class={ factsGrid }>
+		@fact("Casting time", d.CastingTime)
+		@fact("Range", d.Range)
+		@fact("Components", d.Components)
+		@fact("Duration", utils.IfElse(d.Concentration, "Concentration, ", "")+d.Duration)
+	</dl>
+	@rule()
+	@prose(d.Desc)
+	if d.HigherLevel != "" {
+		@markdown("**At higher levels.** " + d.HigherLevel)
+	}
+	if len(d.Classes) > 0 {
+		<p class="mt-3 flex flex-wrap gap-1 font-sans">
+			@classBadges(d.Classes)
+		</p>
+	}
+}
+
+templ itemBody(d *compendium.ItemData) {
+	@subtitle() {
+		{ strings.ReplaceAll(d.Category, "-", " ") }
+		if d.Rarity != "" {
+			, { d.Rarity }
+		}
+		if d.Attunement {
+			(requires attunement)
+		}
+	}
+	if d.Damage != "" || d.ArmorClass != "" || d.Cost != "" || d.Weight != "" {
+		@rule()
+		<dl class={ factsGrid }>
+			@fact("Damage", d.Damage)
+			@fact("Properties", d.Properties)
+			@fact("AC", d.ArmorClass)
+			@fact("Cost", utils.IfElse(d.Cost != "", d.Cost+" gp", ""))
+			@fact("Weight", utils.IfElse(d.Weight != "", d.Weight+" lb", ""))
+		</dl>
+	}
+	@rule()
+	@prose(d.Desc)
+}
+
+templ classBody(d *compendium.ClassData) {
+	if d.SubclassOf != "" {
+		<p class="flex items-center gap-1 text-muted-foreground italic">
+			Subclass of
+			<span class="font-sans not-italic">
+				@classBadges([]string{d.SubclassOf})
+			</span>
+		</p>
+	}
+	if d.HitDie > 0 {
+		@rule()
+		<dl class={ factsGrid }>
+			@fact("Hit die", fmt.Sprintf("d%d", d.HitDie))
+			@fact("Spellcasting", d.Caster)
+			@fact("Saves", strings.Join(d.Saves, ", "))
+		</dl>
+	}
+	@rule()
+	@prose(d.Desc)
+	if len(d.Features) > 0 {
+		<h3 class="mt-4 font-semibold">Features</h3>
+	}
+	for _, f := range d.Features {
+		<details class="group/feat border-b border-statblock-ink/15 py-1.5 last:border-0">
+			<summary class="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+				@icon.ChevronRight(icon.Props{Size: 14, Class: "shrink-0 text-statblock-ink transition-transform group-open/feat:rotate-90"})
+				<strong class="mr-auto">{ f.Name }</strong>
+				if len(f.Levels) > 0 {
+					<span class="font-sans text-xs text-muted-foreground tabular-nums">Level { levelsText(f.Levels) }</span>
+				}
+			</summary>
+			<div class="mt-1 pl-5">
+				@markdown(f.Desc)
+			</div>
+		</details>
+	}
+}
+
+func levelsText(levels []int) string {
+	parts := make([]string, len(levels))
+	for i, l := range levels {
+		parts[i] = fmt.Sprint(l)
+	}
+	return strings.Join(parts, ", ")
+}
+
+templ textBody(d *compendium.TextData) {
+	if d.Category != "" {
+		@subtitle() {
+			{ d.Category }
+		}
+	}
+	if d.Prerequisite != "" {
+		<p><strong>Prerequisite</strong> { d.Prerequisite }</p>
+	}
+	@rule()
+	@prose(d.Desc)
+	@namedParts(d.Parts)
+}
+
+// HomebrewView is the homebrew editor.
+type HomebrewView struct {
+	ID    int64
+	Input compendium.HomebrewInput
+	Error string
+	IsGM  bool
+	// AddToSheet adds the new entry to the player's character on save.
+	AddToSheet bool
+	// Page is the site page under review (its kind is fixed; ID "" when
+	// none); Replaces is the entry an earlier import of it made.
+	Page     compendium.Page
+	Replaces int64
+	// Back is the compendium filter the import started from.
+	Back string
+}
+
+// HomebrewPage edits a homebrew entry. Each kind's own fields show only
+// while that kind is chosen (data-kinds, app.js).
+templ HomebrewPage(l Layout, v HomebrewView) {
+	@Page(l) {
+		<div class="flex items-start gap-2">
+			<div class="mr-auto">
+				switch {
+					case v.Page.ID != "":
+						@PageHeader("Import preview", "Check and edit the page before saving it.")
+					case v.ID == 0:
+						@PageHeader("New homebrew", utils.IfElse(v.IsGM, "Shared by every campaign.", "Shown in your campaign's compendium; the GM may share it with other campaigns."))
+					default:
+						@PageHeader("Edit "+v.Input.Name, "")
+				}
+			</div>
+			if v.ID != 0 {
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Class: quietDestructive, Attributes: templ.Attributes{
+					"form": homebrewFormID, "formaction": fmt.Sprintf("/compendium/entries/%d/delete", v.ID), "formnovalidate": true, "type": "submit",
+					"onclick": "return confirm('Delete this homebrew entry?')", "aria-label": "Delete", "title": "Delete",
+				}}) {
+					@icon.Trash2()
+				}
+			}
+		</div>
+		if v.Error != "" {
+			@Notice(v.Error, true, "mb-4")
+		}
+		if v.Page.ID != "" {
+			<div class="mb-4 max-w-2xl space-y-1 text-sm text-muted-foreground">
+				<p>
+					From <a class="underline" href={ templ.SafeURL(v.Page.URL()) } target="_blank" rel="noopener">{ v.Page.URL() }</a>{ utils.IfElse(v.Page.Book != "", " ("+v.Page.Book+")", "") }. Nothing is saved until you press Save.
+				</p>
+				if v.Page.Site.Note != "" {
+					<p>{ v.Page.Site.Note }</p>
+				}
+				if v.Replaces != 0 {
+					<p>
+						Saving replaces the <a class="underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", v.Replaces)) }>entry imported from this page before</a>.
+					</p>
+				}
+			</div>
+		}
+		<form id={ homebrewFormID } method="post" action={ templ.SafeURL(utils.IfElse(v.Page.ID != "", "/compendium/page", homebrewAction(v.ID))) } class="group/busy max-w-2xl space-y-6" data-homebrew data-busy>
+			if v.AddToSheet {
+				<input type="hidden" name="add" value="1"/>
+			}
+			if v.Page.ID != "" {
+				<input type="hidden" name="site" value={ v.Page.Site.Key }/>
+				<input type="hidden" name="page" value={ v.Page.ID }/>
+				<input type="hidden" name="book" value={ v.Page.Book }/>
+				<input type="hidden" name="back" value={ v.Back }/>
+			}
+			<div class="flex flex-wrap gap-2">
+				// A page no parser knows the kind of leaves it to the GM.
+				if v.ID == 0 && (v.Page.ID == "" || v.Page.Kind() == "") {
+					@kindSelect(v.Input.Kind, v.IsGM)
+				} else {
+					<input type="hidden" name="kind" value={ v.Input.Kind }/>
+					@kindBadge(v.Input.Kind, true)
+				}
+				@input.Input(input.Props{Name: "name", Value: v.Input.Name, Placeholder: "Name", Required: true, Class: "max-w-sm"})
+			</div>
+			<div class="space-y-3 text-sm" data-kinds="monster">
+				<h2 class={ sectionHeading }>Statistics</h2>
+				if v.Page.ID != "" {
+					<div class="flex flex-wrap items-center gap-3">
+						if v.Page.Image != "" {
+							<img src={ v.Page.Image } alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" class="max-h-32 rounded border object-contain"/>
+						}
+						@inlineField("Picture link", "image_url", v.Page.Image, "w-96 max-w-full", templ.Attributes{"type": "url", "pattern": "https://.*", "placeholder": "https://… (empty: no picture)"})
+					</div>
+				}
+				<div class="flex flex-wrap items-center gap-3">
+					@inlineField("Size", "size", v.Input.Size, "w-28", templ.Attributes{"placeholder": "Medium"})
+					@inlineField("Type", "monster_type", v.Input.MonsterType, "w-32", templ.Attributes{"placeholder": "fiend"})
+					@inlineField("Alignment", "alignment", v.Input.Alignment, "w-36", templ.Attributes{"placeholder": "chaotic evil"})
+				</div>
+				<div class="flex flex-wrap items-center gap-3">
+					@inlineField("AC", "ac", fmt.Sprint(v.Input.AC), "w-16", templ.Attributes{"type": "number", "min": "0"})
+					@inlineField("AC from", "ac_detail", v.Input.ACDetail, "w-36", templ.Attributes{"placeholder": "natural armor"})
+					@inlineField("HP", "hp", fmt.Sprint(v.Input.HP), "w-20", templ.Attributes{"type": "number", "min": "0"})
+					@inlineField("Hit dice", "hit_dice", v.Input.HitDice, "w-28", templ.Attributes{"placeholder": "12d10 + 24"})
+					@inlineField("Initiative", "initiative", fmt.Sprint(v.Input.Initiative), "w-16", templ.Attributes{"type": "number"})
+					@inlineField("CR", "cr", v.Input.CR, "w-16", nil)
+				</div>
+				// Laid out like the stat block's ability row.
+				<div class="grid max-w-md grid-cols-6 gap-2">
+					for _, a := range []struct {
+						key string
+						n   int
+					}{{"str", v.Input.Str}, {"dex", v.Input.Dex}, {"con", v.Input.Con}, {"int", v.Input.Int}, {"wis", v.Input.Wis}, {"cha", v.Input.Cha}} {
+						@label.Label(label.Props{Class: "flex-col items-stretch gap-1 text-center text-xs"}) {
+							{ strings.ToUpper(a.key) }
+							@input.Input(input.Props{Name: a.key, Value: fmt.Sprint(a.n), Class: "px-1 text-center", Attributes: templ.Attributes{"type": "number", "min": "0", "max": "30"}})
+						}
+					}
+				</div>
+				<div class="grid gap-3 sm:grid-cols-2">
+					@inlineField("Speed", "monster_speed", v.Input.MonsterSpeed, "w-full", templ.Attributes{"placeholder": "walk 40, fly 60"})
+					@inlineField("Saves", "monster_saves", v.Input.MonsterSaves, "w-full", templ.Attributes{"placeholder": "dex +6, wis +8"})
+					@inlineField("Skills", "monster_skills", v.Input.MonsterSkills, "w-full", templ.Attributes{"placeholder": "perception +5, stealth +6"})
+					@inlineField("Senses", "senses", v.Input.Senses, "w-full", templ.Attributes{"placeholder": "Darkvision 60 ft., Passive Perception 15"})
+					@inlineField("Languages", "languages", v.Input.Languages, "w-full", templ.Attributes{"placeholder": "Common, Abyssal"})
+					@inlineField("Resistances", "resistances", v.Input.Resistances, "w-full", templ.Attributes{"placeholder": "cold, fire"})
+					@inlineField("Immunities", "immunities", v.Input.Immunities, "w-full", templ.Attributes{"placeholder": "poison; frightened"})
+				</div>
+				<h2 class={ utils.CN(sectionHeading, "pt-3") }>Traits and actions</h2>
+				// Each section is one paragraph per entry, as "Name. What it does…".
+				for _, s := range []struct{ name, value, label string }{
+					{"traits", v.Input.Traits, "Traits"}, {"actions", v.Input.Actions, "Actions"}, {"bonus_actions", v.Input.BonusActions, "Bonus actions"},
+					{"reactions", v.Input.Reactions, "Reactions"}, {"legendary_actions", v.Input.Legendary, "Legendary actions"},
+				} {
+					@label.Label(label.Props{Class: "block space-y-1 font-normal"}) {
+						<span>{ s.label }</span>
+						@textarea.Textarea(textarea.Props{Name: s.name, Value: s.value, Rows: 4, Placeholder: "Name. What it does…\n\nNext name. …"})
+					}
+				}
+			</div>
+			<div class="grid gap-3 text-sm sm:grid-cols-2" data-kinds="spell">
+				<h2 class={ utils.CN(sectionHeading, "sm:col-span-2") }>Casting</h2>
+				@inlineField("Level (0 = cantrip)", "level", fmt.Sprint(v.Input.Level), "w-14", templ.Attributes{"type": "number", "min": "0", "max": "9"})
+				@inlineField("School", "school", v.Input.School, "w-40", templ.Attributes{"placeholder": "evocation"})
+				@inlineField("Casting time", "casting_time", v.Input.CastingTime, "w-40", templ.Attributes{"placeholder": "action, bonus action…"})
+				@inlineField("Range", "range", v.Input.Range, "w-40", templ.Attributes{"placeholder": "60 feet"})
+				@inlineField("Components", "components", v.Input.Components, "w-40", templ.Attributes{"placeholder": "V, S, M (a feather)"})
+				@inlineField("Duration", "duration", v.Input.Duration, "w-40", templ.Attributes{"placeholder": "instantaneous"})
+				@inlineField("Classes", "classes", v.Input.Classes, "w-40", templ.Attributes{"placeholder": "wizard, sorcerer"})
+				<div class="flex items-center gap-4">
+					@checkField("concentration", "true", v.Input.Concentration) {
+						Concentration
+					}
+					@checkField("ritual", "true", v.Input.Ritual) {
+						Ritual
+					}
+				</div>
+			</div>
+			<div class="space-y-3 text-sm" data-kinds="item">
+				<h2 class={ sectionHeading }>Item</h2>
+				<div class="flex flex-wrap items-center gap-3">
+					@inlineField("Category", "category", v.Input.Category, "w-32", templ.Attributes{"placeholder": "weapon, armor, gear…"})
+					@inlineField("Damage", "damage", v.Input.Damage, "w-32", templ.Attributes{"placeholder": "1d8 slashing"})
+					@inlineField("Range", "weapon_range", v.Input.WeaponRange, "w-24", templ.Attributes{"placeholder": "80/320"})
+					@inlineField("Properties", "properties", v.Input.Properties, "w-48", templ.Attributes{"placeholder": "Finesse, Light"})
+					@checkField("martial", "true", v.Input.Martial) {
+						Martial weapon
+					}
+				</div>
+				<fieldset class="flex flex-wrap items-center gap-3 rounded-md border p-2">
+					<legend class="px-1 text-xs text-muted-foreground">Armor (leave the type empty for anything else)</legend>
+					@formSelect("", "armor_type", []selectcomp.ItemData{{Value: "", Label: "Not armor"}, {Value: "light", Label: "Light"}, {Value: "medium", Label: "Medium"}, {Value: "heavy", Label: "Heavy"}, {Value: "shield", Label: "Shield"}}, v.Input.ArmorType, "", "")
+					@inlineField("Base AC", "armor_base", fmt.Sprint(v.Input.ArmorBase), "w-16", templ.Attributes{"type": "number", "min": "0"})
+					@checkField("armor_add_dex", "true", v.Input.ArmorAddDex) {
+						+ Dex
+					}
+					@inlineField("Dex max (0 = none)", "armor_dex_cap", fmt.Sprint(v.Input.ArmorDexCap), "w-14", templ.Attributes{"type": "number", "min": "0"})
+					@inlineField("Strength needed", "armor_str_req", fmt.Sprint(v.Input.ArmorStrReq), "w-14", templ.Attributes{"type": "number", "min": "0"})
+					@checkField("armor_stealth", "true", v.Input.ArmorStealth) {
+						Stealth disadvantage
+					}
+				</fieldset>
+			</div>
+			<div class="space-y-3 text-sm" data-kinds="class subclass">
+				<h2 class={ sectionHeading }>Class</h2>
+				<div class="flex flex-wrap items-center gap-3" data-kinds="class">
+					@formSelect("", "hit_die", []selectcomp.ItemData{{Value: "8", Label: "d8"}, {Value: "6", Label: "d6"}, {Value: "10", Label: "d10"}, {Value: "12", Label: "d12"}}, fmt.Sprint(v.Input.HitDie), "", "")
+					@formSelect("", "caster", []selectcomp.ItemData{{Value: "none", Label: "No spellcasting"}, {Value: "full", Label: "Full caster"}, {Value: "half", Label: "Half caster"}, {Value: "pact", Label: "Pact magic"}}, v.Input.Caster, "", "")
+					<span class="text-muted-foreground">Saves</span>
+					for _, a := range dnd5e.Abilities {
+						@checkField("saves", a, slices.Contains(v.Input.Saves, a)) {
+							{ strings.ToUpper(a) }
+						}
+					}
+				</div>
+				<div class="grid gap-3 sm:grid-cols-2" data-kinds="class">
+					@inlineField("Skills", "skills", v.Input.Skills, "w-full", templ.Attributes{"placeholder": "Choose 2: Arcana, History, Investigation"})
+					@inlineField("Armor", "armor", v.Input.Armor, "w-full", templ.Attributes{"placeholder": "Light and Medium armor and Shields"})
+					@inlineField("Weapons", "weapons", v.Input.Weapons, "w-full", templ.Attributes{"placeholder": "Simple weapons"})
+					@inlineField("Tools", "tools", v.Input.Tools, "w-full", templ.Attributes{"placeholder": "Thieves' Tools, Tinker's Tools"})
+				</div>
+				<div data-kinds="subclass">
+					@inlineField("Subclass of", "subclass_of", v.Input.SubclassOf, "w-40", templ.Attributes{"placeholder": "monk"})
+				</div>
+				@textarea.Textarea(textarea.Props{Name: "features", Value: v.Input.Features, Rows: 12, Placeholder: "Features, each starting with a heading line:\nLevel 1: Magical Tinkering\nWhat it does…\n\nLevel 3: Artificer Specialist (subclass)\nChoose a specialty…"})
+				<div data-kinds="class">
+					@textarea.Textarea(textarea.Props{Name: "table", Value: v.Input.Table, Rows: 3, Placeholder: "Class table columns, values for levels 1-20:\nInfusions Known: -, 4, 4, 4, 4, 6, 6, 6, 6, 8"})
+				</div>
+			</div>
+			<div class="space-y-3 text-sm" data-kinds="species background feat">
+				<h2 class={ sectionHeading }>Details</h2>
+				<div class="flex flex-wrap items-center gap-3" data-kinds="species">
+					@inlineField("Size", "size", v.Input.Size, "w-40", templ.Attributes{"placeholder": "Medium"})
+					@inlineField("Speed", "speed", fmt.Sprint(v.Input.Speed), "w-20", templ.Attributes{"type": "number", "min": "0"})
+				</div>
+				<div class="grid gap-3 sm:grid-cols-2" data-kinds="background">
+					@inlineField("Ability scores", "abilities", v.Input.Abilities, "w-full", templ.Attributes{"placeholder": "Strength, Constitution, Wisdom"})
+					@inlineField("Skills", "skills", v.Input.Skills, "w-full", templ.Attributes{"placeholder": "Athletics and Survival"})
+					@inlineField("Tools", "tools", v.Input.Tools, "w-full", templ.Attributes{"placeholder": "One kind of musical instrument"})
+					@inlineField("Origin feat", "feat", v.Input.Feat, "w-full", templ.Attributes{"placeholder": "Tough"})
+				</div>
+				<div data-kinds="species background">
+					@inlineField("Languages", "languages", v.Input.Languages, "w-full", templ.Attributes{"placeholder": "Common and one other language"})
+				</div>
+				<div data-kinds="feat">
+					@inlineField("Prerequisite", "prerequisite", v.Input.Prerequisite, "w-full", templ.Attributes{"placeholder": "Level 4+"})
+				</div>
+				<div data-kinds="species background">
+					@textarea.Textarea(textarea.Props{Name: "traits", Value: v.Input.Traits, Rows: 10, Placeholder: "Traits, one paragraph each:\nAstral Spark. Your psychic connection to the Astral Plane…\n\nHippo Build. You have Advantage on Strength checks…"})
+				</div>
+			</div>
+			<div class="space-y-3">
+				<h2 class={ sectionHeading }>Description</h2>
+				@textarea.Textarea(textarea.Props{Name: "desc", Value: v.Input.Desc, Rows: 14, Placeholder: "Description and rules text", Class: "font-serif", Attributes: templ.Attributes{"aria-label": "Description"}})
+				<div data-kinds="spell">
+					@textarea.Textarea(textarea.Props{Name: "higher_level", Value: v.Input.HigherLevel, Rows: 3, Placeholder: "At higher levels (optional)", Class: "font-serif", Attributes: templ.Attributes{"aria-label": "At higher levels"}})
+				</div>
+			</div>
+			<div class="sticky bottom-3 z-30 flex flex-wrap items-center gap-2 rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur">
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					Save
+				}
+				@busyIndicator("Saving…")
+			</div>
+		</form>
+	}
+}
+
+// inlineField is a small input with its label in front.
+templ inlineField(text, name, value, class string, attrs templ.Attributes) {
+	@label.Label(label.Props{Class: "font-normal"}) {
+		{ text }
+		@input.Input(input.Props{Name: name, Value: value, Class: class, Attributes: attrs})
+	}
+}
+
+const homebrewFormID = "homebrew-form"
+
+func homebrewAction(id int64) string {
+	if id == 0 {
+		return "/compendium/homebrew"
+	}
+	return fmt.Sprintf("/compendium/entries/%d", id)
+}

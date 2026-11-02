@@ -22,6 +22,7 @@ My first project made with claude
 - [Development](#development)
   - [Prerequisites](#prerequisites)
   - [Run from source](#run-from-source)
+  - [Project layout](#project-layout)
   - [After changing sources](#after-changing-sources)
   - [Knowledge graph (graphify)](#knowledge-graph-graphify)
 - [Releasing on GitHub](#releasing-on-github)
@@ -126,13 +127,35 @@ cp .env.example .env    # then set ADMIN_USERNAME and ADMIN_PASSWORD
 ./run.sh                # or: go run ./cmd/gm-session-manager
 ```
 
+### Project layout
+
+```md
+cmd/gm-session-manager/   main: config, DB, hub, HTTPS server
+cmd/vendorjs/             downloads pinned browser JS into internal/web/assets/vendor
+internal/                 every package below; not importable outside this module
+  config/                 .env loading and fail-fast validation
+  db/                     migrations/, queries/ (sqlc input), sqlc/ (generated), Open, Migrate, Store.InTx
+  auth/                   session tokens, cookie, middleware, admin and loopback checks
+  perm/                   every permission and visibility rule (characters, combatants, note blocks, entities)
+  hub/                    websocket hub: (epoch, seq) events, catch-up ring, live-view patches, pending join requests
+  dnd5e/                  5e sheet, commands (Parse/Apply), slots, level-up
+  compendium/             Open5e importer, search, homebrew
+  export/                 campaign zip (notes as Markdown, characters as JSON)
+  join/                   LAN addresses, TLS certificate, HTTP→HTTPS redirect on the same port, QR code
+  web/                    router, *_handlers.go, render.go (view models), live.go (live views, /live)
+  web/views/              templ pages and components; live.go holds live-view keys and binds
+  web/components/, utils/ shadcn-templ CLI output: never edit by hand
+  web/assets/             js/ (app.js, live.js, notes.js, fields.js, wikilink.js), css/ (globals.css → output.css), vendor/
+data/                     DATA_DIR at runtime (database, tls, attachments, compendium); not code
+```
+
 ### After changing sources
 
 | Change | Command |
 | --- | --- |
-| `db/migrations`, `db/queries` | `go generate ./db` (sqlc) |
-| `*.templ`, Tailwind classes | `go generate ./web` (script bundle + templ + Tailwind) |
-| shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./web` |
+| `internal/db/migrations`, `internal/db/queries` | `go generate ./internal/db` (sqlc) |
+| `*.templ`, Tailwind classes | `go generate ./internal/web` (script bundle + templ + Tailwind) |
+| shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./internal/web` |
 | browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |
 
 Then `go build ./...`, `go test ./...` and `golangci-lint run`.
@@ -202,7 +225,7 @@ generated notes. `.env` and `data/` are git-ignored and never shipped.
 
 ### Each release
 
-1. If sources changed, regenerate (`go generate ./db ./web`) and commit.
+1. If sources changed, regenerate (`go generate ./internal/db ./internal/web`) and commit.
 2. Check: `go build ./...`, `go test ./...`, `golangci-lint run`.
 3. Tag and push (from a clean, pushed `main`; it refuses a version that
    isn't newer than the latest tag unless you add `--force`):

@@ -1,6 +1,6 @@
 // Command vendorjs downloads the browser JavaScript the app serves (htmx, its
 // websocket extension, TipTap and ProseMirror) from jsDelivr into
-// web/assets/vendor, so the binary embeds it and never needs a CDN or npm at
+// internal/web/assets/vendor, so the binary embeds it and never needs a CDN or npm at
 // runtime. jsDelivr's +esm modules import their dependencies by absolute
 // /npm/... paths; those are followed and rewritten to local paths.
 //
@@ -34,7 +34,7 @@ import (
 const (
 	cdnBase   = "https://cdn.jsdelivr.net"
 	dataBase  = "https://data.jsdelivr.com/v1/packages/npm/"
-	outDir    = "web/assets/vendor"
+	outDir    = "internal/web/assets/vendor"
 	publicDir = "/assets/vendor"
 )
 
@@ -153,7 +153,7 @@ func check(ctx context.Context) error {
 	}
 	if outdated > 0 {
 		fmt.Println("\nTo update: edit the versions in cmd/vendorjs/main.go (scripts, modules; the @tiptap packages move together),")
-		fmt.Println("then run go run ./cmd/vendorjs and go test ./web.")
+		fmt.Println("then run go run ./cmd/vendorjs and go test ./internal/web.")
 	}
 	return nil
 }
