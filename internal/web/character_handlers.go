@@ -325,7 +325,7 @@ func (a *App) compendiumArmor(ctx context.Context, slug string, campaignID int64
 func (a *App) compendiumSpell(ctx context.Context, slug string, campaignID int64) (dnd5e.Spell, error) {
 	row, err := a.entryBySlug(ctx, compendium.KindSpell, slug, campaignID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return dnd5e.Spell{}, fmt.Errorf("no spell %q in the compendium", slug)
+		return dnd5e.Spell{}, userError{fmt.Errorf("no spell %q in the compendium", slug)}
 	}
 	if err != nil {
 		return dnd5e.Spell{}, err
@@ -563,27 +563,31 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	for _, f := range feats {
 		v.Feats = append(v.Feats, views.Option{Slug: f.Slug, Name: f.Name})
 	}
-	maxLevel := 0
-	for i, n := range plan.Slots {
+	v.Groups = groupViews(classOptionGroups(info, plan.ClassLevel, plan.ClassLevel-1, sheet.Features))
+	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet)
+	return v, err
+}
+
+// classSpellOptions are the class's spells the slots (and pact slots) can
+// cast that the sheet does not have yet.
+func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]int, pactLevel int, sheet dnd5e.Sheet) ([]views.Option, error) {
+	maxLevel := pactLevel
+	for i, n := range slots {
 		if n > 0 {
-			maxLevel = i + 1
+			maxLevel = max(maxLevel, i+1)
 		}
 	}
-	maxLevel = max(maxLevel, plan.PactLevel)
 	spells, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: classSlug, MaxLevel: int64(maxLevel)})
 	if err != nil {
-		return v, err
+		return nil, err
 	}
+	var out []views.Option
 	for _, s := range spells {
-		known := false
-		for _, have := range sheet.Spells {
-			known = known || have.Slug == s.Slug
-		}
-		if !known {
-			v.Spells = append(v.Spells, views.Option{Slug: s.Slug, Name: s.Name, Level: int(s.Level)})
+		if !slices.ContainsFunc(sheet.Spells, func(have dnd5e.Spell) bool { return have.Slug == s.Slug }) {
+			out = append(out, views.Option{Slug: s.Slug, Name: s.Name, Level: int(s.Level)})
 		}
 	}
-	return v, nil
+	return out, nil
 }
 
 func (a *App) levelUpForm(c *gin.Context) {
@@ -664,17 +668,24 @@ func (a *App) levelUp(c *gin.Context) {
 		choice.Spells = append(choice.Spells, sp)
 	}
 
-	err = a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
-		before, err := dc.Sheet.JSON()
-		if err != nil {
-			return err
-		}
-		maxHP := dc.MaxHP
-		if err := dc.LevelUp(choice); err != nil {
-			return userError{err}
-		}
-		return q.CreateLevelUp(ctx, sqlc.CreateLevelUpParams{CharacterID: ch.ID, MaxHp: int64(maxHP), SheetJson: before})
-	})
+	// A plan error (level 20) comes back from LevelUp below.
+	plan, _ := sheet.Plan(choice.Class)
+	groups := classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet.Features)
+	picks, err := readPicks(c, groups)
+	if err == nil {
+		err = a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
+			before, err := dc.Sheet.JSON()
+			if err != nil {
+				return err
+			}
+			maxHP := dc.MaxHP
+			if err := dc.LevelUp(choice); err != nil {
+				return userError{err}
+			}
+			applyPicks(&dc.Sheet, groups, picks)
+			return q.CreateLevelUp(ctx, sqlc.CreateLevelUpParams{CharacterID: ch.ID, MaxHp: int64(maxHP), SheetJson: before})
+		})
+	}
 	var ue userError
 	if errors.As(err, &ue) {
 		v, verr := a.levelUpView(ctx, ch, info.Slug, false)

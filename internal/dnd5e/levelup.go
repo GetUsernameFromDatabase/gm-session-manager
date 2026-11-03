@@ -22,6 +22,17 @@ type ClassInfo struct {
 	Table map[string]map[int]string
 }
 
+// ColumnsAt are the class table values at a class level.
+func (c ClassInfo) ColumnsAt(level int) map[string]string {
+	out := map[string]string{}
+	for col, byLevel := range c.Table {
+		if v, ok := byLevel[level]; ok {
+			out[col] = v
+		}
+	}
+	return out
+}
+
 // ClassFeature is a class feature and the class levels it is gained at.
 type ClassFeature struct {
 	Name        string
@@ -63,7 +74,7 @@ func (s Sheet) Plan(class ClassInfo) (LevelUpPlan, error) {
 	if s.Level() >= 20 {
 		return LevelUpPlan{}, errors.New("already level 20")
 	}
-	p := LevelUpPlan{Class: class, NewLevel: s.Level() + 1, Columns: map[string]string{}}
+	p := LevelUpPlan{Class: class, NewLevel: s.Level() + 1}
 	i := s.classIndex(class.Slug)
 	p.IsNewClass = i < 0
 	p.ClassLevel = 1
@@ -84,11 +95,7 @@ func (s Sheet) Plan(class ClassInfo) (LevelUpPlan, error) {
 			p.NeedsSubclass = i < 0 || s.Classes[i].Subclass == ""
 		}
 	}
-	for col, byLevel := range class.Table {
-		if v, ok := byLevel[p.ClassLevel]; ok {
-			p.Columns[col] = v
-		}
-	}
+	p.Columns = class.ColumnsAt(p.ClassLevel)
 
 	next := s.withClassLevel(class, "")
 	p.Slots, p.Pact, p.PactLevel = SlotMaxima(next.Classes)
@@ -223,9 +230,7 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 		s.Modifiers = append(s.Modifiers, mods...)
 	}
 	for _, sp := range ch.Spells {
-		if !slices.ContainsFunc(s.Spells, func(x Spell) bool { return x.Slug == sp.Slug }) {
-			s.Spells = append(s.Spells, sp)
-		}
+		s.AddSpell(sp)
 	}
 
 	if err := next.Validate(); err != nil {
@@ -299,6 +304,13 @@ func hpGain(s Sheet, hitDie, roll int) int {
 		base = roll
 	}
 	return max(base+s.Mod("con"), 1)
+}
+
+// AddSpell adds sp unless the sheet has it already.
+func (s *Sheet) AddSpell(sp Spell) {
+	if !slices.ContainsFunc(s.Spells, func(x Spell) bool { return x.Slug == sp.Slug }) {
+		s.Spells = append(s.Spells, sp)
+	}
 }
 
 func (s Sheet) classIndex(slug string) int {

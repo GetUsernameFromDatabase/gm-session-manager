@@ -409,6 +409,35 @@ func TestLanguages(t *testing.T) {
 	}
 }
 
+func TestResistances(t *testing.T) {
+	c := Character{Name: "Tam", Sheet: NewSheet()}
+	for _, tt := range []struct {
+		line string
+		ok   bool
+	}{
+		{"prof add resistance Fire", true},
+		{"prof add resistance cold", true},
+		{"prof add resistance fire", true}, // already there
+		{"prof remove resistance cold", true},
+		{"prof add resistance pizza", false},
+	} {
+		cmd, err := Parse(tt.line)
+		if err == nil {
+			_, err = cmd.Apply(&c, Env{})
+		}
+		if (err == nil) != tt.ok {
+			t.Errorf("%s: %v", tt.line, err)
+		}
+	}
+	if !slices.Equal(c.Sheet.Resistances, []string{"fire"}) {
+		t.Errorf("%q", c.Sheet.Resistances)
+	}
+	s := Sheet{Classes: []ClassLevel{{Name: "Warlock"}}}
+	if s.SpellAbilityOf(Spell{}) != "cha" || s.SpellAbilityOf(Spell{Ability: "int"}) != "int" {
+		t.Error("SpellAbilityOf")
+	}
+}
+
 func TestCompletions(t *testing.T) {
 	s := NewSheet()
 	s.Inventory = []Item{{Name: "Torch", Qty: 1}, {Name: "Rope (50 ft)", Qty: 1}}

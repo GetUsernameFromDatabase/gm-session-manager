@@ -9,6 +9,7 @@ import (
 	"gm-session-manager/internal/web/components/card"
 	"gm-session-manager/internal/web/components/input"
 	"gm-session-manager/internal/web/components/label"
+	"gm-session-manager/internal/web/components/radiogroup"
 	"gm-session-manager/internal/web/components/textarea"
 	"gm-session-manager/internal/web/utils"
 	"slices"
@@ -34,6 +35,23 @@ type WizardView struct {
 	Picked    string
 	Choice    *WizardChoice
 	Equipment []EquipmentChoice
+	Choices   *CreationChoices
+}
+
+// CreationChoices are the picks a level-1 class and a species leave open.
+type CreationChoices struct {
+	Groups []ChoiceGroup
+	Spells []Option
+	// Columns are the class table at level 1, for the spell totals.
+	Columns map[string]string
+}
+
+// ChoiceGroup asks for up to Count of Options (a lineage, a skill,
+// languages, invocations).
+type ChoiceGroup struct {
+	Key, Title string
+	Count      int
+	Options    []compendium.NameDesc
 }
 
 // WizardChoice is what a class, species or background gives.
@@ -100,6 +118,8 @@ templ WizardPage(l Layout, v WizardView) {
 				@wizardPick(v)
 			case "abilities":
 				@wizardAbilities(v)
+			case "choices":
+				@wizardChoices(v)
 			case "equipment":
 				@wizardEquipment(v)
 			case "details":
@@ -310,6 +330,83 @@ templ abilityForm(v WizardView) {
 		</div>
 		@wizardNav(v, "Save scores")
 	</form>
+}
+
+// wizardChoices asks what the class and species leave open: lineage,
+// skills, languages, invocations and spells.
+templ wizardChoices(v WizardView) {
+	if v.done("choices") {
+		<p class="mb-4 text-sm">Your choices are on the sheet already.</p>
+		<form method="post">
+			@wizardNav(v, "Next")
+		</form>
+	} else if len(v.Sheet.C.Sheet.Classes) == 0 || v.Sheet.C.Sheet.Species == "" {
+		<p class="mb-4 text-sm text-muted-foreground">Choose a class and a species first: what they leave open is asked here.</p>
+		@wizardNav(v, "")
+	} else {
+		<form method="post" class="space-y-4 text-sm">
+			if c := v.Choices; c != nil {
+				for _, g := range c.Groups {
+					@choiceFieldset(g)
+				}
+				@spellChecklist(c.Spells, c.Columns)
+			}
+			@wizardNav(v, "Save choices")
+		</form>
+	}
+}
+
+// choiceFieldset asks for up to g.Count of its options: radios for one,
+// checkboxes for more.
+templ choiceFieldset(g ChoiceGroup) {
+	<fieldset class="space-y-2 rounded-md border p-3">
+		<legend class="px-1 font-medium">
+			{ g.Title }
+			if g.Count > 1 {
+				<span class="font-normal text-muted-foreground">(choose { fmt.Sprint(g.Count) })</span>
+			}
+		</legend>
+		if g.Count == 1 {
+			@radiogroup.RadioGroup(radiogroup.Props{Name: g.Key, Class: "gap-2", Attributes: templ.Attributes{"aria-label": g.Title}}) {
+				for i, o := range g.Options {
+					<div>
+						@label.Label(label.Props{For: fmt.Sprintf("%s-%d", g.Key, i), Class: "font-normal"}) {
+							@radiogroup.Item(radiogroup.ItemProps{ID: fmt.Sprintf("%s-%d", g.Key, i), Value: o.Name})
+							{ o.Name }
+						}
+						@optionDesc(o.Desc)
+					</div>
+				}
+			}
+		} else {
+			<div class="grid gap-2 sm:grid-cols-2">
+				for _, o := range g.Options {
+					<div>
+						@checkField(g.Key, o.Name, false) {
+							{ o.Name }
+						}
+						@optionDesc(o.Desc)
+					</div>
+				}
+			</div>
+		}
+	</fieldset>
+}
+
+// optionDesc is an option's text: short ones as they are, long ones folded.
+templ optionDesc(desc string) {
+	if len(desc) > 200 {
+		<details class="ml-6">
+			<summary class="cursor-pointer text-xs text-muted-foreground">What it does</summary>
+			<div class="mt-1 text-muted-foreground">
+				@markdown(desc)
+			</div>
+		</details>
+	} else if desc != "" {
+		<div class="ml-6 text-muted-foreground">
+			@markdown(desc)
+		</div>
+	}
 }
 
 // wizardEquipment picks one starting equipment option from the class and

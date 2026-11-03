@@ -32,7 +32,9 @@ type LevelUpView struct {
 	Subclasses []Option
 	Feats      []Option
 	Spells     []Option
-	Error      string
+	// Groups are the class options this level adds (invocations).
+	Groups []ChoiceGroup
+	Error  string
 }
 
 func slotSummary(slots [9]int) string {
@@ -220,28 +222,10 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 							}
 						</div>
 					}
-					if len(v.Spells) > 0 {
-						<div>
-							<div class="font-medium">Learn or prepare spells</div>
-							if counts := spellCounts(p.Columns); counts != "" {
-								<p class="text-xs text-muted-foreground">Class table at this level: { counts } (totals, counting spells you already have).</p>
-							}
-							<div class="mt-1 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2">
-								for _, sp := range v.Spells {
-									@checkField("spell", sp.Slug, false) {
-										{ sp.Name }
-										<span class="text-xs text-muted-foreground">
-											if sp.Level == 0 {
-												cantrip
-											} else {
-												L{ fmt.Sprint(sp.Level) }
-											}
-										</span>
-									}
-								}
-							</div>
-						</div>
+					for _, g := range v.Groups {
+						@choiceFieldset(g)
 					}
+					@spellChecklist(v.Spells, p.Columns)
 				</div>
 			}
 			@card.Footer() {
@@ -251,6 +235,33 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 			}
 		}
 	</form>
+}
+
+// spellChecklist picks spells to learn or prepare, under the class table's
+// totals at the new level (cols).
+templ spellChecklist(spells []Option, cols map[string]string) {
+	if len(spells) > 0 {
+		<div>
+			<div class="font-medium">Learn or prepare spells</div>
+			if counts := spellCounts(cols); counts != "" {
+				<p class="text-xs text-muted-foreground">Class table at this level: { counts } (totals, counting spells you already have).</p>
+			}
+			<div class="mt-1 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2">
+				for _, sp := range spells {
+					@checkField("spell", sp.Slug, false) {
+						{ sp.Name }
+						<span class="text-xs text-muted-foreground">
+							if sp.Level == 0 {
+								cantrip
+							} else {
+								L{ fmt.Sprint(sp.Level) }
+							}
+						</span>
+					}
+				}
+			</div>
+		</div>
+	}
 }
 
 templ abilitySelect(name, label string) {

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
+	"strings"
 	"testing"
 
 	"gm-session-manager/internal/auth"
@@ -49,6 +51,43 @@ func TestRevertLevelUp(t *testing.T) {
 	}
 	if w := e.do(t, http.MethodPost, base+"/revert", player, nil, true); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("revert with nothing left: %d, want 422", w.Code)
+	}
+}
+
+// TestLevelUpInvocations: each level asks for the invocations its column
+// adds, only from the options open at that level.
+func TestLevelUpInvocations(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	if err := e.q().UpsertCompendiumEntry(ctx, testlock); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, auth.RolePlayer)
+	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	if w := e.do(t, http.MethodGet, base+"?class=testlock", player, nil, false); !strings.Contains(w.Body.String(), "Eldritch Invocations") || strings.Contains(w.Body.String(), "Agonizing Blast") {
+		t.Errorf("level 1 form lacks the pick or offers a level 2 option")
+	}
+	for _, step := range []struct {
+		form url.Values
+		code int
+	}{
+		{url.Values{"class": {"testlock"}, "class_eldritch-invocation": {"Armor of Shadows"}}, http.StatusSeeOther},
+		{url.Values{"class": {"testlock"}, "class_eldritch-invocation": {"Armor of Shadows"}}, http.StatusUnprocessableEntity}, // taken
+		{url.Values{"class": {"testlock"}, "class_eldritch-invocation": {"Agonizing Blast"}}, http.StatusSeeOther},
+	} {
+		if w := e.do(t, http.MethodPost, base, player, step.form, false); w.Code != step.code {
+			t.Fatalf("%v: %d, want %d", step.form, w.Code, step.code)
+		}
+	}
+	ch, _ := e.q().GetCharacter(ctx, e.characterID)
+	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
+	for _, name := range []string{"Eldritch Invocation: Armor of Shadows", "Eldritch Invocation: Agonizing Blast"} {
+		if !slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == name }) {
+			t.Errorf("missing %s: %s", name, ch.SheetJson)
+		}
+	}
+	if sh.ClassSummary() != "Testlock 2" {
+		t.Errorf("classes %q", sh.ClassSummary())
 	}
 }
 

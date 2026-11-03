@@ -311,7 +311,7 @@ templ vitalsStrip(s SheetView) {
 templ statsCard(s SheetView) {
 	@card.Card() {
 		@card.Content() {
-			<dl class="grid grid-cols-3 gap-x-6 gap-y-2 text-sm sm:grid-cols-5">
+			<dl class="grid grid-cols-3 gap-x-6 gap-y-2 text-sm lg:grid-cols-6">
 				@stat(s, "Prof", dnd5e.Signed(s.C.Sheet.ProficiencyBonus()), "", edit{})
 				@stat(s, "Passive Perception", fmt.Sprint(s.C.Sheet.PassivePerception()), "", edit{"mods", "mod-add", dnd5e.ModPassive}) {
 					@modWarn(s, "passive", dnd5e.ModPassive, "skill.perception", "wis")
@@ -319,6 +319,7 @@ templ statsCard(s SheetView) {
 				@stat(s, "Hit dice", hitDice(s.C.Sheet), "hd", edit{"rest", "hitdie-use", ""})
 				@stat(s, "Size", cmp.Or(s.C.Sheet.Size, "—"), "", edit{"details", "set-size", ""})
 				@stat(s, "Vision", cmp.Or(s.C.Sheet.Vision, "Normal"), "", edit{"details", "set-vision", ""})
+				@stat(s, "Resistances", cmp.Or(strings.Join(capitalized(s.C.Sheet.Resistances), ", "), "None"), "", edit{"profs", "res-add", ""})
 			</dl>
 			if s.CanSheet {
 				<div class="mt-3 flex flex-wrap gap-2">
@@ -546,6 +547,16 @@ var statTips = map[string]string{
 	"Prof":               "Proficiency bonus: added to the attacks, saves and skills you are proficient in.",
 	"Hit dice":           "Spend these on a short rest to heal; a long rest restores them.",
 	"Vision":             "What you can see in darkness and dim light without a light source.",
+	"Resistances":        "Damage of these types is halved.",
+}
+
+// capitalized are keys such as damage types as names: "fire" is "Fire".
+func capitalized(keys []string) []string {
+	out := make([]string, len(keys))
+	for i, k := range keys {
+		out[i] = strings.ToUpper(k[:1]) + k[1:]
+	}
+	return out
 }
 
 // profMark shows a proficiency level at a glance.
@@ -915,6 +926,9 @@ templ spellsCard(s SheetView) {
 										if sp.Prepared {
 											· prepared
 										}
+										if sp.Ability != "" {
+											· { dnd5e.AbilityNames[sp.Ability][:3] }
+										}
 									</span>
 								</summary>
 								<div data-spell-body class="mt-1 space-y-2 pb-2 text-xs">
@@ -1158,12 +1172,12 @@ func (s SheetView) actions() map[string][]actionEntry {
 			out["attacks"] = append(out["attacks"], actionEntry{Name: "Off-hand: " + w.Name, Detail: detail, Why: offHandRule, Kind: "bonus", Weapon: w.Name, OffHand: true})
 		}
 	}
-	ab := sh.SpellAbility()
 	for _, sp := range sh.Spells {
 		d := s.SpellData[sp.Slug]
 		if d == nil || sp.Level > 0 && !sp.Prepared {
 			continue
 		}
+		ab := sh.SpellAbilityOf(sp)
 		kind := castingKind(d.CastingTime)
 		detail := strings.TrimSpace(d.CastingTime + " · " + d.Range)
 		if ab != "" {

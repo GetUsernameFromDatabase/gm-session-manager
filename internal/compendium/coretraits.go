@@ -102,6 +102,78 @@ func EquipmentOptions(s string) []EquipmentOption {
 	return out
 }
 
+var (
+	boldOption   = regexp.MustCompile(`^(?:- )?\*\*(.+?)\*\*\.?\s*(.*)$`)
+	prereqLevel  = regexp.MustCompile(`Prerequisite:\s*Level (\d+)\+`)
+	knownCantrip = regexp.MustCompile(`know the ([^.]+?) cantrips?\b`)
+)
+
+// Options reads the choices a trait or feature offers: "### Name"
+// sections, else the rows of its first table (the name, then the next
+// column), else "**Name.** text" lines and bullets.
+func Options(desc string) []NameDesc {
+	lines := strings.Split(desc, "\n")
+	var out []NameDesc
+	switch {
+	case strings.HasPrefix(desc, "### ") || strings.Contains(desc, "\n### "):
+		for _, line := range lines {
+			if name, ok := strings.CutPrefix(strings.TrimSpace(line), "### "); ok {
+				out = append(out, NameDesc{Name: strings.Trim(name, "* ")}) // some headings are bold too
+			} else if len(out) > 0 {
+				out[len(out)-1].Desc += line + "\n"
+			}
+		}
+		for i := range out {
+			out[i].Desc = strings.TrimSpace(out[i].Desc)
+		}
+	case strings.Contains(desc, "\n|"):
+		header := true
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "|") {
+				if len(out) > 0 {
+					break // the first table only
+				}
+				continue
+			}
+			cells := strings.Split(strings.Trim(line, "|"), "|")
+			if header || len(cells) < 2 || strings.HasPrefix(strings.TrimSpace(cells[0]), "-") {
+				header = false
+				continue
+			}
+			out = append(out, NameDesc{Name: strings.TrimSpace(cells[0]), Desc: strings.TrimSpace(cells[1])})
+		}
+	default:
+		for _, line := range lines {
+			if m := boldOption.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+				out = append(out, NameDesc{Name: strings.TrimSuffix(m[1], "."), Desc: m[2]})
+			}
+		}
+	}
+	return out
+}
+
+// OptionLevel is the class level an option's "Prerequisite: Level 5+ …"
+// asks for, or 0.
+func OptionLevel(desc string) int {
+	m := prereqLevel.FindStringSubmatch(desc)
+	if m == nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(m[1])
+	return n
+}
+
+// Cantrips are the spells text grants with "know the *Mending* and
+// *Prestidigitation* cantrips".
+func Cantrips(text string) []string {
+	var out []string
+	for _, m := range knownCantrip.FindAllStringSubmatch(text, -1) {
+		out = append(out, SplitList(strings.ReplaceAll(m[1], "*", ""))...)
+	}
+	return out
+}
+
 // Squash lowercases s and drops spaces, so names split by the source's
 // PDF extraction ("In sight", "Ar mor") still match.
 func Squash(s string) string {

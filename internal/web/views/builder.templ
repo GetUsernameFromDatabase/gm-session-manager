@@ -94,6 +94,7 @@ func (s SheetView) builderVerbs() []builderVerb {
 			{"other-add", "Add other", "prof add other", ""},
 			{"other-remove", "Remove other", "prof remove other", ""},
 			{"lang-add", "Add language", "prof add language", ""},
+			{"res-add", "Add resistance", "prof add resistance", ""},
 		}},
 		{"details", "Details", []builderOp{
 			{"set-name", "Name", "set name", ""},
@@ -271,7 +272,7 @@ func opGroup(key string) string {
 
 // profTabGroups are the proficiency tabs by opGroup; each opens its add form.
 var profTabGroups = []struct{ Key, Label string }{
-	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"other", "Other"},
+	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"res", "Resistances"}, {"other", "Other"},
 }
 
 templ profTabs(s SheetView, o builderOp) {
@@ -489,7 +490,7 @@ templ itemDetails() {
 
 // stayOpen are forms (op key to verb) used several times in a row: after a
 // submit they reload with the sheet's new choices instead of closing the dialog.
-var stayOpen = map[string]string{"feature-remove": "features", "lang-add": "profs"}
+var stayOpen = map[string]string{"feature-remove": "features", "lang-add": "profs", "res-add": "profs"}
 
 // removableList shows what a form adds, each name with a button that
 // removes it at once (prefix plus the name as subject).
@@ -636,6 +637,10 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 		case "lang-add":
 			@removableList(s, "prof remove language", s.C.Sheet.Languages)
 			@nameField("Add a language", "", false)
+		case "res-add":
+			@removableList(s, "prof remove resistance", capitalized(s.C.Sheet.Resistances))
+			{{ missing := slices.DeleteFunc(slices.Clone(dnd5e.DamageTypes), func(d string) bool { return slices.Contains(s.C.Sheet.Resistances, d) }) }}
+			@subjectField("Add a resistance", selectItems(missing, func(d string) string { return d }, func(d string) string { return capitalized([]string{d})[0] }), "")
 		case "weapon-add":
 			if w := s.weapon(subject); w != nil {
 				@weaponFields(s, *w, true)
@@ -826,7 +831,7 @@ templ weaponFields(s SheetView, w dnd5e.Weapon, editing bool) {
 		@field.Label(field.LabelProps{For: "builder-dtype"}) {
 			Damage type
 		}
-		@createCombobox("builder-dtype", "dtype", w.DamageType, "slashing", 50, damageTypes)
+		@createCombobox("builder-dtype", "dtype", w.DamageType, "slashing", 50, dnd5e.DamageTypes)
 	}
 	@checkField("prof", "prof", w.Proficient) {
 		Proficient (adds the proficiency bonus to hit)
@@ -835,8 +840,6 @@ templ weaponFields(s SheetView, w dnd5e.Weapon, editing bool) {
 		<p class="text-xs text-muted-foreground">An existing weapon with this name is replaced. For magic bonuses, add a custom modifier to the weapon.</p>
 	}
 }
-
-var damageTypes = []string{"acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"}
 
 func weaponAbilities() []selectcomp.ItemData {
 	items := []selectcomp.ItemData{{Value: "finesse", Label: "Finesse (better of STR and DEX)"}}

@@ -5,6 +5,7 @@
 package dnd5e
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -123,6 +124,9 @@ type Spell struct {
 	Name     string `json:"name"     validate:"required"`
 	Level    int    `json:"level"    validate:"min=0,max=9"`
 	Prepared bool   `json:"prepared"`
+	// Ability is the spellcasting ability when it is not the class's (a
+	// species' spells use the one picked for them).
+	Ability string `json:"ability,omitempty" validate:"omitempty,oneof=str dex con int wis cha"`
 }
 
 // Item is an inventory line. Armor, Shield and Weapon carry the stats of
@@ -369,6 +373,8 @@ type Sheet struct {
 	Expertise  []string `json:"expertise"            validate:"dive,required"`
 	OtherProfs []string `json:"other_profs"          validate:"dive,required,max=200"`
 	Languages  []string `json:"languages"            validate:"dive,required,max=100"`
+	// Resistances are the damage types (DamageTypes) the character resists.
+	Resistances []string `json:"resistances,omitempty" validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`
 	// HitDiceUsed counts spent hit dice across all classes.
 	HitDiceUsed int         `json:"hit_dice_used" validate:"min=0"`
 	Slots       [9]Slot     `json:"spell_slots"   validate:"dive"`
@@ -391,13 +397,20 @@ type Sheet struct {
 	// SetupDone lists the creation steps already applied, which add to the
 	// sheet and so run once: class, species, background, equipment, and
 	// review when the player finished.
-	SetupDone []string `json:"setup_done,omitempty" validate:"dive,oneof=class species background equipment review"`
+	SetupDone []string `json:"setup_done,omitempty" validate:"dive,oneof=class species background choices equipment review"`
 	// EffectsVersion is the EffectsVersion the features last caught up with.
 	EffectsVersion int `json:"effects_version,omitempty"`
 }
 
 // SetUp reports whether a creation step was applied.
 func (s Sheet) SetUp(step string) bool { return slices.Contains(s.SetupDone, step) }
+
+// DamageTypes are the 2024 damage types, lowercase.
+var DamageTypes = []string{"acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"}
+
+// StandardLanguages is the 2024 Standard Languages table, which a new
+// character picks two from besides Common.
+var StandardLanguages = []string{"Common Sign Language", "Draconic", "Dwarvish", "Elvish", "Giant", "Gnomish", "Goblin", "Halfling", "Orc"}
 
 // NewSheet returns the sheet of a freshly created character.
 func NewSheet() Sheet {
@@ -638,6 +651,9 @@ func (s Sheet) SpellAbility() string {
 	}
 	return ""
 }
+
+// SpellAbilityOf is the ability sp is cast with: its own, else the class's.
+func (s Sheet) SpellAbilityOf(sp Spell) string { return cmp.Or(sp.Ability, s.SpellAbility()) }
 
 // SpellAttack is the spell attack bonus with ability.
 func (s Sheet) SpellAttack(ability string) int { return s.ProficiencyBonus() + s.Mod(ability) }

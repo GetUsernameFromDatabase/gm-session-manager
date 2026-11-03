@@ -44,6 +44,39 @@ func TestSkillChoice(t *testing.T) {
 	}
 }
 
+func TestOptions(t *testing.T) {
+	for _, tt := range []struct {
+		name, in string
+		want     []NameDesc
+	}{
+		{"table", "Choose a lineage.\n\nTable: Elven Lineages\n\n|Lineage|Level 1|Level 3|\n|---|---|---|\n|Drow|You know the Dancing Lights cantrip.|Faerie Fire|\n|High Elf|You know the Prestidigitation cantrip.|Detect Magic|\n\n|Other|Table|\n|---|---|\n|Not|This|",
+			[]NameDesc{{Name: "Drow", Desc: "You know the Dancing Lights cantrip."}, {Name: "High Elf", Desc: "You know the Prestidigitation cantrip."}}},
+		{"paragraphs", "Choose one of the following options:\n\n**Forest Gnome.** You know the *Minor Illusion* cantrip.\n\n**Rock Gnome.** You know the *Mending* and *Prestidigitation* cantrips.",
+			[]NameDesc{{Name: "Forest Gnome", Desc: "You know the *Minor Illusion* cantrip."}, {Name: "Rock Gnome", Desc: "You know the *Mending* and *Prestidigitation* cantrips."}}},
+		{"bullets", "Choose one of the following benefits:\n\n- **Cloud's Jaunt (Cloud Giant)**. You teleport.\n- **Fire's Burn (Fire Giant)**. You burn.",
+			[]NameDesc{{Name: "Cloud's Jaunt (Cloud Giant)", Desc: "You teleport."}, {Name: "Fire's Burn (Fire Giant)", Desc: "You burn."}}},
+		{"sections", "In alphabetical order.\n\n### Agonizing Blast\n\n*Prerequisite: Level 2+ Warlock*\n\n**Repeatable.** Again.\n\n### **Armor of Shadows**\n\nMage Armor.",
+			[]NameDesc{{Name: "Agonizing Blast", Desc: "*Prerequisite: Level 2+ Warlock*\n\n**Repeatable.** Again."}, {Name: "Armor of Shadows", Desc: "Mage Armor."}}},
+		{"none", "You have proficiency in the Insight, Perception, or Survival skill.", nil},
+	} {
+		if got := Options(tt.in); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s: %+v", tt.name, got)
+		}
+	}
+	if OptionLevel("*Prerequisite: Level 5+ Warlock*") != 5 || OptionLevel("Mage Armor.") != 0 {
+		t.Error("OptionLevel")
+	}
+	for in, want := range map[string][]string{
+		"You also know the Dancing Lights cantrip.":                  {"Dancing Lights"},
+		"You know the *Mending* and *Prestidigitation* cantrips. X.": {"Mending", "Prestidigitation"},
+		"You have Resistance to Fire damage.":                        nil,
+	} {
+		if got := Cantrips(in); !reflect.DeepEqual(got, want) {
+			t.Errorf("Cantrips(%q) = %q", in, got)
+		}
+	}
+}
+
 func TestEquipmentOptions(t *testing.T) {
 	got := EquipmentOptions("Choose A, B, or C: (A) Chain Mail, 8 Javelins, Dungeoneer's Pack, and 4 GP; (B) Druidic Focus (Quarterstaff), and 11 GP; or (C) 155 GP")
 	want := []EquipmentOption{

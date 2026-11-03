@@ -97,7 +97,11 @@ func textMarkdown(d *compendium.TextData) string {
 		parts = append([]string{"*Prerequisite: " + d.Prerequisite + "*"}, parts...)
 	}
 	for _, p := range d.Parts {
-		parts = append(parts, "**"+p.Name+".** "+p.Desc)
+		if p.Name == "" {
+			parts = append(parts, p.Desc)
+		} else {
+			parts = append(parts, "**"+p.Name+".** "+p.Desc)
+		}
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }

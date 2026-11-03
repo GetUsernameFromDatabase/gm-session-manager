@@ -103,6 +103,7 @@ func (c Character) clone() Character {
 	s.Expertise = slices.Clone(s.Expertise)
 	s.OtherProfs = slices.Clone(s.OtherProfs)
 	s.Languages = slices.Clone(s.Languages)
+	s.Resistances = slices.Clone(s.Resistances)
 	s.Spells = slices.Clone(s.Spells)
 	s.Inventory = slices.Clone(s.Inventory)
 	s.Features = slices.Clone(s.Features)
@@ -894,7 +895,7 @@ func parseProfSet(args []string) (Command, error) {
 }
 
 func parseProf(args []string) (Command, error) {
-	const usage = "prof add|remove skill|save|expertise|other|language <value> | prof set skill|save <key> <level>"
+	const usage = "prof add|remove skill|save|expertise|other|language|resistance <value> | prof set skill|save <key> <level>"
 	if len(args) < 3 {
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
@@ -926,6 +927,12 @@ func parseProf(args []string) (Command, error) {
 		pick = func(s *Sheet) *[]string { return &s.OtherProfs }
 	case "language":
 		pick = func(s *Sheet) *[]string { return &s.Languages }
+	case "resistance":
+		value = strings.ToLower(value)
+		if !slices.Contains(DamageTypes, value) {
+			return Command{}, fmt.Errorf("unknown damage type %q", value)
+		}
+		pick = func(s *Sheet) *[]string { return &s.Resistances }
 	default:
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
