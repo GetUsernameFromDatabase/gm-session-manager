@@ -135,6 +135,16 @@ type normalizer struct {
 
 func (n normalizer) slug(pk string) string { return strings.TrimPrefix(pk, n.prefix) }
 
+// label turns a source value such as "very-rare" or "small" into the text
+// we show: "Very rare", "Small".
+func label(s string) string {
+	s = strings.ReplaceAll(strings.TrimSpace(s), "-", " ")
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
 func joinText(parts ...string) string {
 	var b strings.Builder
 	for _, p := range parts {
@@ -221,7 +231,7 @@ func (n normalizer) monsters() ([]Entry, error) {
 		_ = json.Unmarshal(r.Fields, &raw)
 
 		d := MonsterData{
-			Size: c.Size, Type: c.Type, Alignment: c.Alignment, AC: c.AC, ACDetail: c.ACDetail,
+			Size: label(c.Size), Type: c.Type, Alignment: c.Alignment, AC: c.AC, ACDetail: c.ACDetail,
 			HP: c.HP, HitDice: c.HitDice, CR: formatCR(string(c.CR)), Languages: c.Languages,
 			Resistance: c.Resistances, Immunity: joinNonEmpty("; ", c.Immunities, c.CondImmunities),
 			Speed: map[string]int{}, Abilities: map[string]int{}, Saves: map[string]int{}, Skills: map[string]int{},
@@ -458,7 +468,7 @@ func (n normalizer) items() ([]Entry, error) {
 				return nil, err
 			}
 			d := ItemData{
-				Category: it.Category, Rarity: it.Rarity, Attunement: it.Attunement,
+				Category: it.Category, Rarity: label(it.Rarity), Attunement: it.Attunement,
 				Cost: trimZeros(string(it.Cost)), Weight: trimZeros(string(it.Weight)), Desc: it.Desc,
 			}
 			if it.Weapon != nil {
@@ -488,7 +498,7 @@ func (n normalizer) items() ([]Entry, error) {
 			}
 			out = append(out, Entry{
 				Kind: KindItem, Slug: n.slug(r.pk()), Name: it.Name, Data: d,
-				Text: joinText(it.Category, it.Rarity, it.Desc),
+				Text: joinText(it.Category, d.Rarity, it.Desc),
 			})
 		}
 	}

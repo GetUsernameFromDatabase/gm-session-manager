@@ -38,7 +38,12 @@ func (s Sheet) Explain(target string) []Part {
 	case target == ModSpeed:
 		return append(s.speedBase(), s.modParts(ModSpeed)...)
 	case target == ModInit:
-		return append([]Part{s.abilityPart("dex")}, s.modParts(ModInit)...)
+		parts := []Part{s.abilityPart("dex")}
+		// The Alert feat's bonus grows with level, which a fixed modifier cannot.
+		if s.hasFeature("Alert") {
+			parts = append(parts, Part{Label: "Alert (proficiency bonus)", Value: s.ProficiencyBonus()})
+		}
+		return append(parts, s.modParts(ModInit)...)
 	case target == ModPassive:
 		return append(append([]Part{{Label: "Base", Value: 10}}, s.skillParts(skillByKey("perception"))...), s.modParts(ModPassive)...)
 	case kind == "save":

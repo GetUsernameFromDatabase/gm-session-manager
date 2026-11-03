@@ -831,7 +831,12 @@ func (e EncounterView) turnNames() (prev, cur, next string) {
 		}
 		return ""
 	}
-	return near(-1), e.Combatants[i].Name, near(1)
+	prev = near(-1)
+	// On the first turn of the fight nobody has acted yet.
+	if e.Encounter.Round <= 1 && !slices.ContainsFunc(e.Combatants[:i], func(c CombatantView) bool { return !c.Out }) {
+		prev = "—"
+	}
+	return prev, e.Combatants[i].Name, near(1)
 }
 
 // turnSkipped names those out of the fight between the previous turn and

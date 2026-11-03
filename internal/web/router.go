@@ -70,7 +70,7 @@ func (a *App) Router() *gin.Engine {
 	a.mountAssets(r)
 	r.Use(a.Auth.Middleware(), a.recordRequest)
 
-	gm := auth.RequireAdmin()
+	gm := auth.RequireAdmin(a.gmOnly)
 
 	// Identity and joining.
 	r.GET(PathHome, a.home)
@@ -198,6 +198,8 @@ func (a *App) Router() *gin.Engine {
 	r.POST("/compendium/folder", gm, a.compendiumFolder)
 	r.POST("/compendium/page/preview", gm, a.compendiumPagePreview)
 	r.POST("/compendium/page", gm, a.compendiumPageSave)
+
+	r.NoRoute(func(c *gin.Context) { a.fail(c, http.StatusNotFound, "There is no page at this address.") })
 	return r
 }
 

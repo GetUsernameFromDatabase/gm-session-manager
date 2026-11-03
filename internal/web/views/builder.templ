@@ -332,7 +332,7 @@ templ profForm(s SheetView, o builderOp, subject string) {
 				<span class="font-medium">{ f.Name }</span>
 				<span class="text-2xl font-semibold tabular-nums">{ dnd5e.Signed(f.Bonus) }</span>
 			</div>
-			@breakdown(s.C.Sheet.Explain(f.ModTarget))
+			@breakdown(s.C.Sheet, f.ModTarget)
 			<div class="grid gap-2 sm:grid-flow-col">
 				for _, l := range f.Levels {
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Class: pressedClass, Attributes: templ.Attributes{"name": "text", "value": l, "aria-pressed": fmt.Sprint(l == f.Level)}}) {
@@ -578,7 +578,7 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 		case "set-ac":
 			<div class="text-sm">
 				<div class="font-medium">Armor class { fmt.Sprint(s.C.Sheet.ArmorClass()) }</div>
-				@breakdown(s.C.Sheet.Explain(dnd5e.ModAC))
+				@breakdown(s.C.Sheet, dnd5e.ModAC)
 				<p class="mt-2 text-xs text-muted-foreground">Change what you wear in the Armour card. The bonus below is added whatever you wear.</p>
 			</div>
 			@numberField("AC bonus (always added)", -20, 30, s.C.Sheet.ACBonus, false)
@@ -791,7 +791,7 @@ templ weaponFields(s SheetView, w dnd5e.Weapon, editing bool) {
 	if editing {
 		<div class="text-sm">
 			<span class="font-medium">To hit</span>
-			@breakdown(s.C.Sheet.Explain(dnd5e.ModAttack + "." + w.Name))
+			@breakdown(s.C.Sheet, dnd5e.ModAttack+"."+w.Name)
 		</div>
 	}
 	<div class="grid grid-cols-2 gap-4">

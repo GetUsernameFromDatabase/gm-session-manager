@@ -71,8 +71,8 @@ templ feedbackForm() {
 			@feedbackKind("idea", "I have an idea", "It could do more", icon.Lightbulb)
 		}
 		@field.Group(field.GroupProps{Class: "gap-4"}) {
-			@feedbackField("feedback-title", "Title") {
-				@input.Input(input.Props{ID: "feedback-title", Name: "title", Required: true, Attributes: templ.Attributes{"maxlength": "120", "autocomplete": "off"}})
+			@feedbackField("feedback-title-input", "Title") {
+				@input.Input(input.Props{ID: "feedback-title-input", Name: "title", Required: true, Attributes: templ.Attributes{"maxlength": "120", "autocomplete": "off"}})
 			}
 			@field.Field() {
 				@field.Label(field.LabelProps{For: "feedback-body"}) {

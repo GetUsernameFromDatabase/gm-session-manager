@@ -143,7 +143,7 @@ func upsert(ctx context.Context, q *sqlc.Queries, src Source, e Entry) error {
 
 // normalizeVersion changes whenever the normalized shape gains data, so
 // unchanged source files are imported again once to fill it in.
-const normalizeVersion = "3"
+const normalizeVersion = "4"
 
 // readSource reads the .json files of a source directory and hashes their
 // names and contents, so re-importing unchanged files is a no-op.

@@ -72,7 +72,15 @@ templ CharacterPage(l Layout, s SheetView) {
 
 // cmdButton runs one command; on phones it grows to a fingertip's size.
 templ cmdButton(s SheetView, cmd string, variant button.Variant) {
-	@button.Button(button.Props{Size: button.SizeXs, Variant: variant, Class: tapSize, Attributes: templ.Attributes{"hx-post": s.cmdURL(), "hx-vals": cmdVals(cmd)}}) {
+	@labeledCmdButton(s, cmd, variant, "") {
+		{ children... }
+	}
+}
+
+// labeledCmdButton is cmdButton with an accessible name, for symbol-only
+// buttons such as "+".
+templ labeledCmdButton(s SheetView, cmd string, variant button.Variant, label string) {
+	@button.Button(button.Props{Size: button.SizeXs, Variant: variant, Class: tapSize, Attributes: with(templ.Attributes{"hx-post": s.cmdURL(), "hx-vals": cmdVals(cmd)}, utils.IfElse(label != "", templ.Attributes{"aria-label": label}, nil))}) {
 		{ children... }
 	}
 }
@@ -344,6 +352,11 @@ templ editable(s SheetView, to edit, label, class string) {
 		@button.Button(button.Props{Variant: button.VariantGhost, Class: utils.CN("-mx-1 h-auto px-1 py-0 text-inherit [font:inherit]", class), Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, to.verb, to.op, to.subject), templ.Attributes{"title": label})}) {
 			{ children... }
 		}
+	} else if class != "" {
+		// Keeps the layout (gap, stacking) the button gives editors.
+		<span class={ utils.CN("inline-flex items-center", class) }>
+			{ children... }
+		</span>
 	} else {
 		{ children... }
 	}
@@ -392,15 +405,17 @@ templ whyPopover(s SheetView, id, title, tip, target string) {
 				<p class="mt-1 text-xs text-muted-foreground">{ tip }</p>
 			}
 			if target != "" {
-				@breakdown(s.C.Sheet.Explain(target))
+				@breakdown(s.C.Sheet, target)
 			}
 		}
 	}
 }
 
-// breakdown lists what makes up a value, the parts that do not count right
-// now struck through, and the total.
-templ breakdown(parts []dnd5e.Part) {
+// breakdown lists what makes up a target's value, the parts that do not
+// count right now struck through, and the total, signed for bonuses as the
+// stat shows it.
+templ breakdown(sh dnd5e.Sheet, target string) {
+	{{ parts := sh.Explain(target) }}
 	<ul class="mt-2 space-y-0.5 text-xs">
 		for _, p := range parts {
 			<li class={ "flex justify-between gap-3", templ.KV("text-muted-foreground line-through", p.Off) }>
@@ -410,10 +425,13 @@ templ breakdown(parts []dnd5e.Part) {
 		}
 		<li class="flex justify-between gap-3 border-t pt-0.5 font-medium">
 			<span>Total</span>
-			<span class="tabular-nums">{ fmt.Sprint(dnd5e.Sum(parts)) }</span>
+			<span class="tabular-nums">{ utils.IfElse(slices.Contains(plainTotals, target), fmt.Sprint(dnd5e.Sum(parts)), dnd5e.Signed(dnd5e.Sum(parts))) }</span>
 		</li>
 	</ul>
 }
+
+// plainTotals are the breakdown targets that are values, not bonuses.
+var plainTotals = []string{dnd5e.ModAC, dnd5e.ModSpeed, dnd5e.ModPassive, "spell.dc"}
 
 // armorCard is the armor worn and what it makes of AC, then the armor in
 // the inventory to change into.
@@ -586,7 +604,7 @@ templ conditionsCard(s SheetView) {
 		}
 		if s.CanConditions {
 			<form class="inline-flex" hx-post={ s.cmdURL() } hx-on::after-request="this.reset()">
-				@input.Input(input.Props{Name: "cmd", Placeholder: "concentrate Bless", Class: "h-6 w-44 rounded-full px-2 text-xs md:text-xs"})
+				@input.Input(input.Props{Name: "cmd", Placeholder: "+ concentrate Bless", Class: "h-6 w-44 rounded-full border-dashed px-2 text-xs md:text-xs", Attributes: templ.Attributes{"aria-label": "Add a custom condition"}})
 			</form>
 		}
 	</div>
@@ -641,7 +659,7 @@ const commandsID = "command-help"
 templ commandBar(s SheetView) {
 	<div class="space-y-1">
 		<form hx-post={ s.cmdURL() } hx-on::after-request="if(event.detail.successful) this.reset()" class="flex flex-wrap gap-2">
-			@input.Input(input.Props{ID: "command-input", Name: "cmd", Class: "flex-1",Placeholder: "Command, e.g. hp -5, slot use 2, item add Rope", Attributes: templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "aria-keyshortcuts": "/ Tab Control+Space", "aria-describedby": "command-hint", "data-verbs": strings.Join(dnd5e.Verbs(), " "), "data-complete": fmt.Sprintf("/characters/%d/complete", s.ID)}})
+			@input.Input(input.Props{ID: "command-input", Name: "cmd", Class: "flex-1", Placeholder: "Command, e.g. hp -5, slot use 2, item add Rope", Attributes: templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "aria-keyshortcuts": "/ Tab Control+Space", "aria-describedby": "command-hint", "data-verbs": strings.Join(dnd5e.Verbs(), " "), "data-complete": fmt.Sprintf("/characters/%d/complete", s.ID)}})
 			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: with(dialog.TriggerFor(commandsID), templ.Attributes{"title": "Browse commands"})}) {
 				@icon.BookOpen()
 				<span class="hidden sm:inline">Commands</span>
@@ -793,7 +811,7 @@ templ spellSlots(s SheetView) {
 							@cmdButton(s, fmt.Sprintf("slot use %d", i+1), button.VariantOutline) {
 								Use
 							}
-							@cmdButton(s, fmt.Sprintf("slot restore %d", i+1), button.VariantGhost) {
+							@labeledCmdButton(s, fmt.Sprintf("slot restore %d", i+1), button.VariantGhost, fmt.Sprintf("Restore a level %d slot", i+1)) {
 								+
 							}
 						</div>
@@ -810,7 +828,7 @@ templ spellSlots(s SheetView) {
 						@cmdButton(s, "pact use", button.VariantOutline) {
 							Use
 						}
-						@cmdButton(s, "pact restore", button.VariantGhost) {
+						@labeledCmdButton(s, "pact restore", button.VariantGhost, "Restore a pact slot") {
 							+
 						}
 					</div>
@@ -959,10 +977,10 @@ templ inventoryCard(s SheetView) {
 						}
 						if s.CanSheet {
 							<span class="flex gap-1">
-								@cmdButton(s, fmt.Sprintf("item remove %q", it.Name), button.VariantGhost) {
+								@labeledCmdButton(s, fmt.Sprintf("item remove %q", it.Name), button.VariantGhost, "Remove one "+it.Name) {
 									−
 								}
-								@cmdButton(s, fmt.Sprintf("item add %q", it.Name), button.VariantGhost) {
+								@labeledCmdButton(s, fmt.Sprintf("item add %q", it.Name), button.VariantGhost, "Add one "+it.Name) {
 									+
 								}
 							</span>
@@ -1242,11 +1260,11 @@ templ actionRow(s SheetView, e actionEntry) {
 					<div class="grid gap-3 sm:grid-cols-2">
 						<div>
 							<div class="font-medium text-foreground">To hit</div>
-							@breakdown(s.C.Sheet.Explain(dnd5e.ModAttack + "." + e.Weapon))
+							@breakdown(s.C.Sheet, dnd5e.ModAttack+"."+e.Weapon)
 						</div>
 						<div>
 							<div class="font-medium text-foreground">Damage bonus</div>
-							@breakdown(s.C.Sheet.Explain(utils.IfElse(e.OffHand, "offhand", dnd5e.ModDamage) + "." + e.Weapon))
+							@breakdown(s.C.Sheet, utils.IfElse(e.OffHand, "offhand", dnd5e.ModDamage)+"."+e.Weapon)
 						</div>
 					</div>
 					if e.Why != "" {
@@ -1269,7 +1287,7 @@ templ actionRow(s SheetView, e actionEntry) {
 					@cmdButton(s, "use "+strconv.Quote(f.Name), button.VariantOutline) {
 						Use
 					}
-					@cmdButton(s, "restore "+strconv.Quote(f.Name), button.VariantGhost) {
+					@labeledCmdButton(s, "restore "+strconv.Quote(f.Name), button.VariantGhost, "Restore a use of "+f.Name) {
 						+
 					}
 				}

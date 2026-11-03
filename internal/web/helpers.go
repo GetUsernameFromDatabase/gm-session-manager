@@ -183,6 +183,16 @@ func (a *App) fail(c *gin.Context, status int, msg string) {
 	a.failBack(c, status, msg, PathHome, "Back to the start")
 }
 
+// gmOnly shows the error page to a player who opens a GM page; htmx
+// requests keep the bare 403 (fail would turn it into a 422 flash).
+func (a *App) gmOnly(c *gin.Context) {
+	if isHTMX(c) {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	a.fail(c, http.StatusForbidden, "Only the GM can open this page.")
+}
+
 // failBack is fail with the error page linking to backURL instead of home.
 func (a *App) failBack(c *gin.Context, status int, msg, backURL, backLabel string) {
 	c.Set(failMsgKey, msg)

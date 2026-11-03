@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -553,10 +554,13 @@ type gear struct {
 	weapons []dnd5e.Weapon
 	armor   *dnd5e.WornArmor
 	shield  bool
+	// names maps an equipment line ("Daggers") to its compendium entry
+	// ("Dagger"), so the inventory and the weapon share one item.
+	names map[string]string
 }
 
 func (a *App) gearFor(ctx context.Context, picked []compendium.EquipmentOption) (gear, error) {
-	var g gear
+	g := gear{names: map[string]string{}}
 	for _, o := range picked {
 		for _, it := range o.Items {
 			e, err := a.findItem(ctx, it.Name)
@@ -566,6 +570,7 @@ func (a *App) gearFor(ctx context.Context, picked []compendium.EquipmentOption) 
 			if err != nil {
 				return g, err
 			}
+			g.names[it.Name] = e.Name
 			d, err := compendium.DecodeData(compendium.KindItem, e.DataJson)
 			if err != nil {
 				return g, err
@@ -585,12 +590,16 @@ func (a *App) gearFor(ctx context.Context, picked []compendium.EquipmentOption) 
 	return g, nil
 }
 
-// findItem looks an equipment line up by name, singular too ("Daggers").
+// findItem looks an equipment line up by name, singular too ("Daggers",
+// "Pouches").
 func (a *App) findItem(ctx context.Context, name string) (sqlc.CompendiumEntry, error) {
 	slug := compendium.Slugify(name)
 	e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindItem), Slug: slug})
-	if errors.Is(err, sql.ErrNoRows) && strings.HasSuffix(slug, "s") {
-		return a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindItem), Slug: strings.TrimSuffix(slug, "s")})
+	for _, suffix := range []string{"s", "es"} {
+		if !errors.Is(err, sql.ErrNoRows) || !strings.HasSuffix(slug, suffix) {
+			break
+		}
+		e, err = a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindItem), Slug: strings.TrimSuffix(slug, suffix)})
 	}
 	return e, err
 }
@@ -599,10 +608,11 @@ func applyEquipment(s *dnd5e.Sheet, picked []compendium.EquipmentOption, g gear)
 	for _, o := range picked {
 		s.Coins.GP += o.GP
 		for _, it := range o.Items {
-			if i := slices.IndexFunc(s.Inventory, func(x dnd5e.Item) bool { return strings.EqualFold(x.Name, it.Name) }); i >= 0 {
+			name := cmp.Or(g.names[it.Name], it.Name)
+			if i := slices.IndexFunc(s.Inventory, func(x dnd5e.Item) bool { return strings.EqualFold(x.Name, name) }); i >= 0 {
 				s.Inventory[i].Qty += it.Qty
 			} else {
-				s.Inventory = append(s.Inventory, dnd5e.Item{Name: it.Name, Qty: it.Qty})
+				s.Inventory = append(s.Inventory, dnd5e.Item{Name: name, Qty: it.Qty})
 			}
 		}
 	}

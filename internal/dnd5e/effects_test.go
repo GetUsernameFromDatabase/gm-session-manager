@@ -102,6 +102,10 @@ func TestExplainSums(t *testing.T) {
 			t.Errorf("%s = %d, want %d: %+v", target, got, want, s.Explain(target))
 		}
 	}
+	s.Features = []Feature{{Name: "Alert"}}
+	if got := s.Initiative(); got != 3+s.ProficiencyBonus() {
+		t.Errorf("Alert init = %d, want %d", got, 3+s.ProficiencyBonus())
+	}
 }
 
 func TestArmorAndFeatureUses(t *testing.T) {

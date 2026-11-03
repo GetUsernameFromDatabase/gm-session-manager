@@ -271,7 +271,7 @@ func TestRequireAdmin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := gin.New()
 			r.Use(f.mgr.Middleware())
-			r.GET("/", RequireAdmin(), func(c *gin.Context) { c.Status(http.StatusOK) })
+			r.GET("/", RequireAdmin(nil), func(c *gin.Context) { c.Status(http.StatusOK) })
 			if w := serve(t, r, tt.remoteAddr, tt.cookie); w.Code != tt.want {
 				t.Errorf("status %d, want %d", w.Code, tt.want)
 			}

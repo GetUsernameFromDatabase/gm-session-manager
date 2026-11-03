@@ -45,11 +45,16 @@ func FromContext(c *gin.Context) Identity {
 	return id
 }
 
-// RequireAdmin rejects requests without admin rights.
-func RequireAdmin() gin.HandlerFunc {
+// RequireAdmin rejects requests without admin rights with deny, which must
+// abort, or with a bare 403 when deny is nil.
+func RequireAdmin(deny gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !FromContext(c).IsAdmin() {
-			c.AbortWithStatus(http.StatusForbidden)
+			if deny == nil {
+				c.AbortWithStatus(http.StatusForbidden)
+			} else {
+				deny(c)
+			}
 			return
 		}
 		c.Next()

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -118,5 +119,30 @@ func TestApplySpeciesSizeVision(t *testing.T) {
 		if s.Size != tt.wantSize || s.Vision != tt.wantVision {
 			t.Errorf("%q: size %q vision %q", tt.size, s.Size, s.Vision)
 		}
+	}
+}
+
+// TestApplyEquipmentMergesGear: an equipment line found in the compendium is
+// stored under the entry's name, so the weapon and the stack are one item.
+func TestApplyEquipmentMergesGear(t *testing.T) {
+	picked := []compendium.EquipmentOption{{Items: []compendium.EquipmentItem{{Name: "Daggers", Qty: 4}, {Name: "Pouches", Qty: 2}, {Name: "Rope", Qty: 1}}}}
+	dagger := dnd5e.Weapon{Name: "Dagger", Ability: "finesse", Dice: "1d4"}
+	g := gear{weapons: []dnd5e.Weapon{dagger}, names: map[string]string{"Daggers": "Dagger", "Pouches": "Pouch"}}
+	var s dnd5e.Sheet
+	applyEquipment(&s, picked, g)
+	sheetJSON, err := s.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err = dnd5e.ParseSheet(sheetJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, it := range s.Inventory {
+		got = append(got, fmt.Sprintf("%s %d %v", it.Name, it.Qty, it.Weapon != nil))
+	}
+	if want := []string{"Dagger 4 true", "Pouch 2 false", "Rope 1 false"}; !slices.Equal(got, want) {
+		t.Errorf("inventory %v, want %v", got, want)
 	}
 }

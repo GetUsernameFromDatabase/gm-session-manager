@@ -143,10 +143,11 @@ const closeDialogJS = "if (event.detail.successful) this.closest('[data-slot=dia
 templ noteFields(id, title, kind string) {
 	@field.Group(field.GroupProps{Class: "gap-4"}) {
 		@field.Field() {
-			@field.Label(field.LabelProps{For: id + "-title"}) {
+			// Not id-title: the dialog script gives that id to the dialog's heading.
+			@field.Label(field.LabelProps{For: id + "-title-input"}) {
 				Title
 			}
-			@input.Input(input.Props{ID: id + "-title", Name: "title", Value: title, Required: true})
+			@input.Input(input.Props{ID: id + "-title-input", Name: "title", Value: title, Required: true})
 		}
 		@field.Field() {
 			@field.Label(field.LabelProps{For: id + "-kind-trigger"}) {
