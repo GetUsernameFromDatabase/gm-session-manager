@@ -27,7 +27,7 @@ func TestRevertLevelUp(t *testing.T) {
 	start, _ := e.q().GetCharacter(ctx, e.characterID)
 	var after []int64
 	for range 2 {
-		if w := e.do(t, http.MethodPost, base, player, url.Values{"class": {"wizard"}}, false); w.Code != http.StatusSeeOther {
+		if w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}}), false); w.Code != http.StatusSeeOther {
 			t.Fatalf("level up: %d %s", w.Code, w.Body)
 		}
 		ch, _ := e.q().GetCharacter(ctx, e.characterID)
@@ -62,7 +62,9 @@ func TestRevertLevelUp(t *testing.T) {
 func TestLevelUpInvocations(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	for _, entry := range []sqlc.UpsertCompendiumEntryParams{testlock, testBlast} {
+	// A cantrip that deals no damage, so ticking it does not meet Eldritch Spear's prerequisite.
+	spark := sqlc.UpsertCompendiumEntryParams{Kind: "spell", Slug: "test-spark", Name: "Test Spark", SourceKey: "test", ContentHash: "x", DataJson: `{"level":0,"classes":["testlock"],"desc":"A harmless light."}`}
+	for _, entry := range []sqlc.UpsertCompendiumEntryParams{testlock, testBlast, spark} {
 		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
 			t.Fatal(err)
 		}
@@ -81,12 +83,13 @@ func TestLevelUpInvocations(t *testing.T) {
 		err  string // in the refused page
 	}{
 		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusSeeOther, ""},
-		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusUnprocessableEntity, "listed eldritch invocations"},                                                                       // taken
-		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}, "hp_roll": {"3"}}, http.StatusUnprocessableEntity, "choose 2 of the listed eldritch invocations"},                                       // level 2 adds two
-		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Test Blast"}}, http.StatusUnprocessableEntity, "Eldritch Spear needs Level 2+ Warlock, a Testlock Cantrip"}, // Test Blast not ticked
+		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusUnprocessableEntity, "listed eldritch invocations"},                                                     // taken
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}, "hp_roll": {"3"}}, http.StatusUnprocessableEntity, "choose 2 of the listed eldritch invocations"},                     // level 2 adds two
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Test Blast"}}, http.StatusUnprocessableEntity, "choose 1 cantrip: you ticked 0 cantrips"}, // Test Blast not ticked
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Test Blast"}, "spell": {"test-spark"}}, http.StatusUnprocessableEntity, "Eldritch Spear needs Level 2+ Warlock, a Testlock Cantrip"},
 		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Mage Hand"}, "spell": {"test-blast"}}, http.StatusUnprocessableEntity, "listed eldritch spear: cantrip"},
 		// Shadow Step needs Armor of Shadows, which the same level-up replaces.
-		{url.Values{"class": {"testlock"}, pick: {"Shadow Step", "Agonizing Blast"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "Shadow Step needs"},
+		{url.Values{"class": {"testlock"}, pick: {"Shadow Step", "Agonizing Blast"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}, "spell": {"test-blast"}}, http.StatusUnprocessableEntity, "Shadow Step needs"},
 		{url.Values{"class": {"testlock"}, pick: {"Shadow Step", "Eldritch Spear"}, spear: {"Test Blast"}, "spell": {"test-blast"}}, http.StatusSeeOther, ""},
 		// Shadow Step needs Armor of Shadows, so it cannot be replaced.
 		{url.Values{"class": {"testlock"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "listed replace one eldritch invocation"},
@@ -230,7 +233,7 @@ func TestLevelUpFeats(t *testing.T) {
 			player := e.token(t, auth.RolePlayer)
 			base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 			for range 3 {
-				if w := e.do(t, http.MethodPost, base, player, url.Values{"class": {"wizard"}}, false); w.Code != http.StatusSeeOther {
+				if w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}}), false); w.Code != http.StatusSeeOther {
 					t.Fatalf("level up: %d %s", w.Code, w.Body)
 				}
 			}
@@ -243,7 +246,7 @@ func TestLevelUpFeats(t *testing.T) {
 					offered("grappler"), offered("ability-score-improvement"), offered("archery"), offered("boon-of-fate"))
 			}
 			tc.form.Set("class", "wizard")
-			w := e.do(t, http.MethodPost, base, player, tc.form, false)
+			w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, tc.form), false)
 			if w.Code != tc.code {
 				t.Fatalf("level 4: %d %s", w.Code, w.Body)
 			}
@@ -280,7 +283,7 @@ func TestRevertLevelUpInterleaved(t *testing.T) {
 	}
 	levelUp := func() {
 		t.Helper()
-		if w := e.do(t, http.MethodPost, base, player, url.Values{"class": {"wizard"}}, false); w.Code != http.StatusSeeOther {
+		if w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}}), false); w.Code != http.StatusSeeOther {
 			t.Fatalf("level up: %d %s", w.Code, w.Body)
 		}
 	}

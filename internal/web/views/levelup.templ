@@ -8,6 +8,7 @@ import (
 	"gm-session-manager/internal/web/components/input"
 	"gm-session-manager/internal/web/components/label"
 	selectcomp "gm-session-manager/internal/web/components/select"
+	"gm-session-manager/internal/web/utils"
 	"net/url"
 	"slices"
 	"strings"
@@ -35,6 +36,7 @@ type LevelUpView struct {
 	// FeatChoices are each feat's own choices, by slug (Grappler's ability).
 	FeatChoices map[string][]ChoiceGroup
 	Spells      []Option
+	SpellNeed   SpellNeed
 	// Groups are the class options this level adds (invocations) and the
 	// feats' Spell Change.
 	Groups []ChoiceGroup
@@ -84,11 +86,44 @@ func sortedColumns(m map[string]string) []string {
 func spellCounts(cols map[string]string) string {
 	var out []string
 	for _, k := range sortedColumns(cols) {
-		if lk := strings.ToLower(k); strings.Contains(lk, "cantrip") || strings.Contains(lk, "spells") {
+		if cantrips, spells := SpellColumn(k); cantrips || spells {
 			out = append(out, k+" "+cols[k])
 		}
 	}
 	return strings.Join(out, " · ")
+}
+
+// SpellColumn tells whether a class table column is its cantrip total
+// ("Cantrips Known") or its level 1+ spell total ("Prepared Spells").
+func SpellColumn(name string) (cantrips, spells bool) {
+	lk := strings.ToLower(name)
+	cantrips = strings.Contains(lk, "cantrip")
+	return cantrips, !cantrips && strings.Contains(lk, "spells")
+}
+
+// SpellNeed is how many class spells a step asks for: exactly, or at most
+// when …UpTo (prepared spells). -1 is no limit (the class table has no such
+// column).
+type SpellNeed struct {
+	Cantrips, Spells         int
+	CantripsUpTo, SpellsUpTo bool
+}
+
+// String is the ask ("2 cantrips and up to 1 level 1+ spell"), or "" if none.
+func (n SpellNeed) String() string {
+	var out []string
+	if n.Cantrips > 0 {
+		out = append(out, utils.IfElse(n.CantripsUpTo, "up to ", "")+Plural(n.Cantrips, "cantrip"))
+	}
+	if n.Spells > 0 {
+		out = append(out, utils.IfElse(n.SpellsUpTo, "up to ", "")+Plural(n.Spells, "level 1+ spell"))
+	}
+	return strings.Join(out, " and ")
+}
+
+// Plural is "1 spell" or "2 spells".
+func Plural(n int, noun string) string {
+	return fmt.Sprintf("%d %s%s", n, noun, utils.IfElse(n == 1, "", "s"))
 }
 
 templ LevelUpPage(l Layout, v LevelUpView) {
@@ -245,7 +280,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 					for _, g := range v.Groups {
 						@choiceFieldset(g, v.Form)
 					}
-					@spellChecklist(v.Spells, p.Columns, v.Form["spell"])
+					@spellChecklist(v.Spells, p.Columns, v.SpellNeed, v.Form["spell"])
 				</div>
 			}
 			@card.Footer() {
@@ -258,11 +293,15 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 }
 
 // spellChecklist picks spells to learn or prepare, under the class table's
-// totals at the new level (cols), with a refused form's picked slugs ticked.
-templ spellChecklist(spells []Option, cols map[string]string, picked []string) {
+// totals at the new level (cols) and what they leave to pick (need), with a
+// refused form's picked slugs ticked.
+templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, picked []string) {
 	if len(spells) > 0 {
 		<div>
 			<div class="font-medium">Learn or prepare spells</div>
+			if s := need.String(); s != "" {
+				<p class="text-sm">Choose { s }.</p>
+			}
 			if counts := spellCounts(cols); counts != "" {
 				<p class="text-xs text-muted-foreground">Class table at this level: { counts } (totals, counting spells you already have).</p>
 			}

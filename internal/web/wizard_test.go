@@ -207,7 +207,8 @@ func TestFeatChoices(t *testing.T) {
 			"trait_versatile": {"Skilled"}, "trait_versatile_skilled_profs": {"Stealth", "Smith's Tools", "Insight"},
 		}, http.StatusSeeOther, func(sh dnd5e.Sheet) bool {
 			mm := slices.IndexFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == "magic-missile" })
-			return len(sh.Spells) == 3 && mm >= 0 && sh.Spells[mm].Prepared && sh.Spells[mm].Ability == "int" && sh.Spells[mm].Feat == "Magic Initiate (Wizard)" && sh.SpeciesAbility == "" &&
+			feat := slices.DeleteFunc(slices.Clone(sh.Spells), func(sp dnd5e.Spell) bool { return sp.Feat == "" })
+			return len(feat) == 3 && mm >= 0 && sh.Spells[mm].Prepared && sh.Spells[mm].Ability == "int" && sh.Spells[mm].Feat == "Magic Initiate (Wizard)" && sh.SpeciesAbility == "" &&
 				slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Magic Missile (free cast)" && f.Uses.Fixed == 1 }) &&
 				slices.Contains(sh.SkillProfs, "stealth") && slices.Contains(sh.SkillProfs, "insight") && slices.Contains(sh.OtherProfs, "Smith's Tools")
 		}},
@@ -243,7 +244,7 @@ func TestFeatChoices(t *testing.T) {
 					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
 				}
 			}
-			w := e.do(t, http.MethodPost, base+"choices", player, form, false)
+			w := e.do(t, http.MethodPost, base+"choices", player, creationSpells(t, e, form), false)
 			if w.Code != tc.code {
 				t.Fatalf("choices: %d %s", w.Code, w.Body)
 			}
@@ -462,6 +463,57 @@ func lostPicks(body string, form url.Values) []string {
 	return lost
 }
 
+// withSpells ticks the first offered spells the form lacks until it has as
+// many cantrips and level 1+ spells as need asks, so a test fails only on
+// its own picks.
+func withSpells(form url.Values, offered []views.Option, need views.SpellNeed) url.Values {
+	n := [2]int{need.Cantrips, need.Spells}
+	for _, o := range offered {
+		if slices.Contains(form["spell"], o.Slug) {
+			n[min(o.Level, 1)]--
+		}
+	}
+	for _, o := range offered {
+		if k := min(o.Level, 1); n[k] > 0 && !slices.Contains(form["spell"], o.Slug) {
+			form.Add("spell", o.Slug)
+			n[k]--
+		}
+	}
+	return form
+}
+
+// wizardLevelUp is form with the spells a Wizard level-up asks for.
+func wizardLevelUp(t *testing.T, e testEnv, form url.Values) url.Values {
+	t.Helper()
+	ch, err := e.q().GetCharacter(t.Context(), e.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := e.app.levelUpView(t.Context(), ch, "wizard", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return withSpells(form, v.Spells, v.SpellNeed)
+}
+
+// creationSpells is form with the spells the choices step asks for.
+func creationSpells(t *testing.T, e testEnv, form url.Values) url.Values {
+	t.Helper()
+	ch, err := e.q().GetCharacter(t.Context(), e.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh, err := dnd5e.ParseSheet(ch.SheetJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cr, err := e.app.creationChoices(t.Context(), sh, ch.CampaignID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return withSpells(form, cr.view.Spells, cr.view.SpellNeed)
+}
+
 // TestReadPicks: a group takes exactly its count, or all of fewer options; a
 // group offering "No change" may stay empty.
 func TestReadPicks(t *testing.T) {
@@ -614,7 +666,7 @@ func TestClassOptionChoices(t *testing.T) {
 // Shadow Step needs Armor of Shadows; Eldritch Spear a damaging cantrip
 // (testBlast).
 var testlock = sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testlock", Name: "Testlock", SourceKey: "test", ContentHash: "x", DataJson: `{"caster":"pact","hit_die":8,
-	"table":{"Cantrips":{"1":"1","2":"2"},"Eldritch Invocations":{"1":"1","2":"3"}},
+	"table":{"Cantrips":{"1":"0","2":"1"},"Eldritch Invocations":{"1":"1","2":"3"}},
 	"features":[{"name":"Eldritch Invocations","desc":"You gain one invocation. Whenever you gain a Testlock level, you can replace one of your invocations with another one for which you qualify.","levels":[1]},
 		{"name":"Eldritch Invocation Options","desc":"In order.\n\n### Agonizing Blast\n\n*Prerequisite: Level 2+ Warlock*\n\n**Repeatable.** More damage.\n\n### Armor of Shadows\n\nMage Armor.\n\n### Eldritch Spear\n\n*Prerequisite: Level 2+ Warlock, a Testlock Cantrip That Deals Damage*\n\nChoose one of your known Testlock cantrips that deals damage and has a range of 10+ feet.\n\n### Shadow Step\n\n*Prerequisite: Level 2+ Warlock, Armor of Shadows Invocation*\n\nTeleport."}]}`}
 

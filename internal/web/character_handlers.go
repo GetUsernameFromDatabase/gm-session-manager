@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -606,6 +607,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		return v, err
 	}
 	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet)
+	v.SpellNeed = spellNeed(plan.Columns, sheet, classSlug, v.Spells)
 	return v, err
 }
 
@@ -629,6 +631,69 @@ func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]
 		}
 	}
 	return out, nil
+}
+
+// spellNeed is what the class table's cantrip and spell totals (cols, at the
+// class level being reached) leave to pick: each total less the class's
+// spells on the sheet, at most what is offered. Lineage and feat spells
+// (their own ability or feat) do not count; untagged spells of older sheets
+// count while the sheet has this class only.
+func spellNeed(cols map[string]string, sheet dnd5e.Sheet, class string, offered []views.Option) views.SpellNeed {
+	has := slices.ContainsFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == class })
+	only := has && len(sheet.Classes) == 1
+	var have, avail [2]int // cantrips, level 1+
+	unsure := false        // untagged spells that may be this class's
+	for _, sp := range sheet.Spells {
+		if sp.Feat != "" || sp.Ability != "" {
+			continue
+		}
+		if sp.Class == class || sp.Class == "" && only {
+			have[min(sp.Level, 1)]++
+		}
+		unsure = unsure || sp.Class == "" && has && !only
+	}
+	for _, o := range offered {
+		avail[min(o.Level, 1)]++
+	}
+	// Without knowing which class taught them, the totals can only be upper limits.
+	need := views.SpellNeed{Cantrips: -1, Spells: -1, CantripsUpTo: unsure, SpellsUpTo: unsure}
+	for col, v := range cols {
+		n, err := strconv.Atoi(v)
+		cantrips, spells := views.SpellColumn(col)
+		switch {
+		case err != nil:
+		case cantrips:
+			need.Cantrips = min(max(n-have[0], 0), avail[0])
+		case spells:
+			need.Spells = min(max(n-have[1], 0), avail[1])
+			need.SpellsUpTo = unsure || strings.Contains(strings.ToLower(col), "prepared")
+		}
+	}
+	return need
+}
+
+// classSpellPicks are the spells ticked in the form for class, refused
+// unless offered and as many as need asks.
+func (a *App) classSpellPicks(c *gin.Context, class string, offered []views.Option, need views.SpellNeed, campaignID int64) ([]dnd5e.Spell, error) {
+	var spells []dnd5e.Spell
+	var got [2]int
+	for _, slug := range c.PostFormArray("spell") {
+		if !slices.ContainsFunc(offered, func(o views.Option) bool { return o.Slug == slug }) || slices.ContainsFunc(spells, func(sp dnd5e.Spell) bool { return sp.Slug == slug }) {
+			return nil, userError{errors.New("choose spells from the list")}
+		}
+		sp, err := a.compendiumSpell(c.Request.Context(), slug, campaignID)
+		if err != nil {
+			return nil, err
+		}
+		sp.Class = class
+		spells = append(spells, sp)
+		got[min(sp.Level, 1)]++
+	}
+	off := func(n, got int, upTo bool) bool { return n >= 0 && (got > n || !upTo && got < n) }
+	if off(need.Cantrips, got[0], need.CantripsUpTo) || off(need.Spells, got[1], need.SpellsUpTo) {
+		return nil, userError{fmt.Errorf("choose %s: you ticked %s and %s", cmp.Or(need.String(), "no spells here"), views.Plural(got[0], "cantrip"), views.Plural(got[1], "level 1+ spell"))}
+	}
+	return spells, nil
 }
 
 func (a *App) levelUpForm(c *gin.Context) {
@@ -709,16 +774,23 @@ func (a *App) levelUp(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	choice.Spells = slices.Clone(lineage)
-	for _, slug := range c.PostFormArray("spell") {
-		sp, err := a.compendiumSpell(ctx, slug, ch.CampaignID)
+	var spells []dnd5e.Spell
+	var spellErr error
+	var ue userError
+	if planErr == nil { // else LevelUp refuses (level 20) and plan is empty
+		offered, err := a.classSpellOptions(ctx, info.Slug, plan.Slots, plan.PactLevel, sheet)
 		if err != nil {
-			a.fail(c, http.StatusUnprocessableEntity, err.Error())
+			a.serverError(c, err)
 			return
 		}
-		sp.Class = info.Slug
-		choice.Spells = append(choice.Spells, sp)
+		// A refusal waits for readPicks, so the page re-renders as for any other.
+		spells, spellErr = a.classSpellPicks(c, info.Slug, offered, spellNeed(plan.Columns, sheet, info.Slug, offered), ch.CampaignID)
+		if spellErr != nil && !errors.As(spellErr, &ue) {
+			a.serverError(c, spellErr)
+			return
+		}
 	}
+	choice.Spells = append(slices.Clone(lineage), spells...)
 
 	// Spell Change and the feat's own choices apply after LevelUp has added the feat.
 	changes, err := a.featSpellChanges(ctx, sheet)
@@ -758,6 +830,9 @@ func (a *App) levelUp(c *gin.Context) {
 	}
 	picks, err := readPicks(c, groups)
 	if err == nil {
+		err = spellErr
+	}
+	if err == nil {
 		err = a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
 			before, err := dc.Sheet.JSON()
 			if err != nil {
@@ -777,7 +852,6 @@ func (a *App) levelUp(c *gin.Context) {
 			return q.CreateLevelUp(ctx, sqlc.CreateLevelUpParams{CharacterID: ch.ID, MaxHp: int64(maxHP), SheetJson: before})
 		})
 	}
-	var ue userError
 	if errors.As(err, &ue) {
 		v, verr := a.levelUpView(ctx, ch, info.Slug, false)
 		if verr != nil {

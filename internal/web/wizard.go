@@ -1020,6 +1020,7 @@ func (a *App) classChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, ca
 	if cr.view.Spells, err = a.classSpellOptions(ctx, cl.Slug, slots, pactLevel, sh); err != nil {
 		return err
 	}
+	cr.view.SpellNeed = spellNeed(cr.view.Columns, sh, cl.Slug, cr.view.Spells)
 	cantrips, err := a.optionCantrips(ctx, sh, info, cl.Level, campaignID)
 	if err != nil {
 		return err
@@ -1463,17 +1464,9 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if err != nil {
 			return nil, err
 		}
-		var spells []dnd5e.Spell
-		for _, slug := range c.PostFormArray("spell") {
-			if !slices.ContainsFunc(cr.view.Spells, func(o views.Option) bool { return o.Slug == slug }) {
-				return nil, userError{errors.New("choose spells from the list")}
-			}
-			sp, err := a.compendiumSpell(ctx, slug, ch.CampaignID)
-			if err != nil {
-				return nil, err
-			}
-			sp.Class = sheet.Classes[0].Slug
-			spells = append(spells, sp)
+		spells, err := a.classSpellPicks(c, sheet.Classes[0].Slug, cr.view.Spells, cr.view.SpellNeed, ch.CampaignID)
+		if err != nil {
+			return nil, err
 		}
 		learned, err := a.cantripData(ctx, append(slices.Clone(sheet.Spells), spells...), ch.CampaignID)
 		if err != nil {
