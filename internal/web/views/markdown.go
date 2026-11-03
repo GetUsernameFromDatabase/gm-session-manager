@@ -14,8 +14,8 @@ import (
 // Compendium text (SRD and homebrew) is GFM; hard wraps keep single newlines as line breaks.
 // The renderer stays safe (no WithUnsafe): raw HTML and javascript: links are dropped.
 var (
-	mdParser   = parser.New(parser.WithExtensions(extension.GFMParser))
-	mdRenderer = html.New(html.WithHardWraps(), html.WithExtensions(extension.GFMHTMLRenderer))
+	mdParser   = parser.New(parser.WithExtensions(extension.NewGFMParser()))
+	mdRenderer = html.New(html.WithHardWraps(), html.WithExtensions(extension.NewGFMHTMLRenderer()))
 )
 
 // renderMarkdown converts Markdown to sanitized HTML.
