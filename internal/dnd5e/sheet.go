@@ -127,6 +127,9 @@ type Spell struct {
 	// Ability is the spellcasting ability when it is not the class's (a
 	// species' spells use the one picked for them).
 	Ability string `json:"ability,omitempty" validate:"omitempty,oneof=str dex con int wis cha"`
+	// Feat is the feat that chose it ("Magic Initiate (Wizard)"), whose
+	// Spell Change may swap it.
+	Feat string `json:"feat,omitempty" validate:"max=200"`
 }
 
 // Item is an inventory line. Armor, Shield and Weapon carry the stats of

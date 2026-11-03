@@ -52,6 +52,8 @@ type ChoiceGroup struct {
 	Key, Title string
 	Count      int
 	Options    []compendium.NameDesc
+	// Sub are the choices an option brings, shown while it is picked.
+	Sub map[string][]ChoiceGroup
 }
 
 // WizardChoice is what a class, species or background gives.
@@ -357,8 +359,24 @@ templ wizardChoices(v WizardView) {
 }
 
 // choiceFieldset asks for up to g.Count of its options: radios for one,
-// checkboxes for more.
+// checkboxes for more. An option's own choices follow, hidden until it is
+// picked (app.js); outside the radio group, which would take their radios.
 templ choiceFieldset(g ChoiceGroup) {
+	<div class="space-y-4">
+		@choiceOptions(g)
+		for _, o := range g.Options {
+			if subs := g.Sub[o.Name]; len(subs) > 0 {
+				<div class="ml-6 space-y-4" data-show-for={ g.Key + "=" + o.Name } hidden>
+					for _, s := range subs {
+						@choiceFieldset(s)
+					}
+				</div>
+			}
+		}
+	</div>
+}
+
+templ choiceOptions(g ChoiceGroup) {
 	<fieldset class="space-y-2 rounded-md border p-3">
 		<legend class="px-1 font-medium">
 			{ g.Title }

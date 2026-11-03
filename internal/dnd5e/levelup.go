@@ -62,10 +62,11 @@ type LevelUpPlan struct {
 	Warnings []string
 }
 
-// asiFeature and epicBoon are the feature names that grant a feat or an
-// ability score increase, as named in the 2024 class tables.
+// ASIFeature and epicBoon are the feature names that grant a feat or an
+// ability score increase, as named in the 2024 class tables. ASIFeature is
+// also the 2024 feat of that name.
 const (
-	asiFeature = "Ability Score Improvement"
+	ASIFeature = "Ability Score Improvement"
 	epicBoon   = "Epic Boon"
 )
 
@@ -89,7 +90,7 @@ func (s Sheet) Plan(class ClassInfo) (LevelUpPlan, error) {
 		}
 		p.Features = append(p.Features, f)
 		switch {
-		case f.Name == asiFeature, f.Name == epicBoon:
+		case f.Name == ASIFeature, f.Name == epicBoon:
 			p.ASI = true
 		case f.Subclass, strings.HasSuffix(f.Name, " Subclass"):
 			p.NeedsSubclass = i < 0 || s.Classes[i].Subclass == ""

@@ -374,7 +374,8 @@ var (
 	reOrdinal  = regexp.MustCompile(`^(\d+)(?:st|nd|rd|th)$`)
 )
 
-var countWords = map[string]string{"one": "1", "two": "2", "three": "3", "four": "4"}
+// CountWords are the spelled-out counts source texts use ("two cantrips").
+var CountWords = map[string]string{"one": "1", "two": "2", "three": "3", "four": "4"}
 
 // featuresUnder reads features from headings: the prose before the first
 // feature is the description, and each heading starts a feature whose level
@@ -465,7 +466,7 @@ func wikidotClass(page string, blocks []block) ClassData {
 		case b.Label == "Skills":
 			traits[classTraits[0]] = b.Text
 			if m := reChoose.FindStringSubmatch(b.Text); m != nil {
-				traits[classTraits[0]] = "Choose " + cmp.Or(countWords[strings.ToLower(m[1])], m[1]) + ": " + m[2]
+				traits[classTraits[0]] = "Choose " + cmp.Or(CountWords[strings.ToLower(m[1])], m[1]) + ": " + m[2]
 			}
 		case b.Rows != nil && !table:
 			table = classTable(&d, levels, b.Rows)

@@ -165,6 +165,15 @@ WHERE kind = 'spell'
   AND EXISTS (SELECT 1 FROM json_each(compendium_entries.data_json, '$.classes') AS c WHERE c.value = CAST(sqlc.arg(class_slug) AS TEXT))
 ORDER BY level, name;
 
+-- name: ListItemsByCategory :many
+SELECT e.name, CAST(COALESCE(json_extract(e.data_json, '$.desc'), '') AS TEXT) AS description
+FROM compendium_entries AS e
+WHERE e.kind = 'item'
+  AND json_extract(e.data_json, '$.category') = CAST(sqlc.arg(category) AS TEXT)
+  AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
+ORDER BY e.name;
+
 -- name: ListSubclassesOf :many
 SELECT id, slug, name FROM compendium_entries
 WHERE kind = 'subclass' AND json_extract(data_json, '$.subclass_of') = CAST(sqlc.arg(class_slug) AS TEXT)

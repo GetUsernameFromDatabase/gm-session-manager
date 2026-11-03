@@ -31,8 +31,11 @@ type LevelUpView struct {
 	Plan       *dnd5e.LevelUpPlan
 	Subclasses []Option
 	Feats      []Option
-	Spells     []Option
-	// Groups are the class options this level adds (invocations).
+	// FeatChoices are each feat's own choices, by slug (Grappler's ability).
+	FeatChoices map[string][]ChoiceGroup
+	Spells      []Option
+	// Groups are the class options this level adds (invocations) and the
+	// feats' Spell Change.
 	Groups []ChoiceGroup
 	// LineageSpells are the species spells this character level teaches.
 	LineageSpells []dnd5e.Spell
@@ -212,6 +215,15 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 								@formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), "", "", "")
 							</div>
 							<p class="text-xs text-muted-foreground">Pick one ability for +2, two different abilities for +1 each, or a feat.</p>
+							for _, f := range v.Feats {
+								if groups := v.FeatChoices[f.Slug]; len(groups) > 0 {
+									<div class="space-y-4 pt-2" data-show-for={ "feat=" + f.Slug } hidden>
+										for _, g := range groups {
+											@choiceFieldset(g)
+										}
+									</div>
+								}
+							}
 						</fieldset>
 					}
 					if len(p.Features) > 0 {

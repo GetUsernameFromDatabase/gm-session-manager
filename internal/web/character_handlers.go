@@ -560,15 +560,43 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if err != nil {
 		return v, err
 	}
+	v.FeatChoices = map[string][]views.ChoiceGroup{}
 	for _, f := range feats {
+		if f.Name == dnd5e.ASIFeature {
+			continue // the form's ability selects are this feat
+		}
 		v.Feats = append(v.Feats, views.Option{Slug: f.Slug, Name: f.Name})
+		if !plan.ASI {
+			continue
+		}
+		groups, err := a.levelUpFeatChoices(ctx, f.Slug, f.Name, sheet, ch.CampaignID)
+		if err != nil {
+			return v, err
+		}
+		if len(groups) > 0 {
+			v.FeatChoices[f.Slug] = groupViews(groups)
+		}
 	}
-	v.Groups = groupViews(classOptionGroups(info, plan.ClassLevel, plan.ClassLevel-1, sheet.Features))
+	changes, err := a.featSpellChanges(ctx, sheet)
+	if err != nil {
+		return v, err
+	}
+	v.Groups = groupViews(append(classOptionGroups(info, plan.ClassLevel, plan.ClassLevel-1, sheet.Features), changes...))
 	if v.LineageSpells, err = a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID); err != nil {
 		return v, err
 	}
 	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet)
 	return v, err
+}
+
+// levelUpFeatChoices are the choices of the feat with this slug, taken at an
+// Ability Score Improvement.
+func (a *App) levelUpFeatChoices(ctx context.Context, slug, name string, sh dnd5e.Sheet, campaignID int64) ([]choiceGroup, error) {
+	td, err := a.textEntry(ctx, compendium.KindFeat, slug)
+	if err != nil || td == nil {
+		return nil, err
+	}
+	return a.featChoices(ctx, "feat_"+slug, name, td, "", sh, campaignID)
 }
 
 // classSpellOptions are the class's spells the slots (and pact slots) can
@@ -681,7 +709,21 @@ func (a *App) levelUp(c *gin.Context) {
 		choice.Spells = append(choice.Spells, sp)
 	}
 
-	groups := classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet.Features)
+	// Spell Change and the feat's own choices apply after LevelUp has added the feat.
+	changes, err := a.featSpellChanges(ctx, sheet)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	groups := append(classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet.Features), changes...)
+	if choice.Feat != "" {
+		fg, err := a.levelUpFeatChoices(ctx, c.PostForm("feat"), choice.Feat, sheet, ch.CampaignID)
+		if err != nil {
+			a.serverError(c, err)
+			return
+		}
+		groups = append(groups, fg...)
+	}
 	picks, err := readPicks(c, groups)
 	if err == nil {
 		err = a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {

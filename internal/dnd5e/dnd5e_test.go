@@ -277,7 +277,7 @@ var wizard = ClassInfo{
 	Features: []ClassFeature{
 		{Name: "Arcane Recovery", Levels: []int{1}},
 		{Name: "Wizard Subclass", Levels: []int{3}},
-		{Name: asiFeature, Levels: []int{4, 8}},
+		{Name: ASIFeature, Levels: []int{4, 8}},
 	},
 	Table: map[string]map[int]string{"Cantrips": {1: "3", 4: "4"}},
 }

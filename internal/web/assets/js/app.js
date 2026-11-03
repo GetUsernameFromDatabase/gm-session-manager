@@ -1002,6 +1002,18 @@
     if (url) htmx.ajax("GET", url, { target: "#builder", swap: "innerHTML" });
   });
 
+  // Choices: an option's own choices (a feat's spells) show while it is
+  // picked, as a checked radio or a select's value.
+  document.addEventListener("change", (e) => {
+    const form = e.target.form;
+    form?.querySelectorAll("[data-show-for]").forEach((el) => {
+      const rule = el.dataset.showFor;
+      const i = rule.indexOf("=");
+      const inputs = form.querySelectorAll(`[name="${CSS.escape(rule.slice(0, i))}"]`);
+      el.hidden = [...inputs].find((x) => !/^(radio|checkbox)$/.test(x.type) || x.checked)?.value !== rule.slice(i + 1);
+    });
+  });
+
   // NPC fields: picking a key in the add-field combobox adds a row for it
   // (or goes to the existing one); the picked item leaves the list. Rows are
   // numbered from the form's count, which Save reads.

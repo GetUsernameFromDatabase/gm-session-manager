@@ -746,6 +746,49 @@ func (q *Queries) ListHomebrewLinks(ctx context.Context) ([]ListHomebrewLinksRow
 	return items, nil
 }
 
+const listItemsByCategory = `-- name: ListItemsByCategory :many
+SELECT e.name, CAST(COALESCE(json_extract(e.data_json, '$.desc'), '') AS TEXT) AS description
+FROM compendium_entries AS e
+WHERE e.kind = 'item'
+  AND json_extract(e.data_json, '$.category') = CAST(?1 AS TEXT)
+  AND (e.scoped = 0 OR CAST(?2 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?2 AS INTEGER)))
+ORDER BY e.name
+`
+
+type ListItemsByCategoryParams struct {
+	Category   string
+	CampaignID int64
+}
+
+type ListItemsByCategoryRow struct {
+	Name        string
+	Description string
+}
+
+func (q *Queries) ListItemsByCategory(ctx context.Context, arg ListItemsByCategoryParams) ([]ListItemsByCategoryRow, error) {
+	rows, err := q.db.QueryContext(ctx, listItemsByCategory, arg.Category, arg.CampaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListItemsByCategoryRow{}
+	for rows.Next() {
+		var i ListItemsByCategoryRow
+		if err := rows.Scan(&i.Name, &i.Description); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMonsterHabitats = `-- name: ListMonsterHabitats :many
 SELECT entry_id, habitat FROM monster_habitats
 `

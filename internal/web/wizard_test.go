@@ -128,6 +128,106 @@ func TestCreationWizard(t *testing.T) {
 	}
 }
 
+// featFixtures are feats with choices, the spells and tools they offer, and
+// a species and background that grant them.
+var featFixtures = []sqlc.UpsertCompendiumEntryParams{
+	{Kind: "species", Slug: "human", Name: "Human", DataJson: `{"desc":"","parts":[{"name":"Versatile","desc":"You gain an Origin feat of your choice."}]}`},
+	{Kind: "feat", Slug: "alert", Name: "Alert", DataJson: `{"desc":"You add your Proficiency Bonus to Initiative.","category":"Origin"}`},
+	{Kind: "feat", Slug: "magic-initiate", Name: "Magic Initiate", DataJson: `{"desc":"You gain the following benefits.","category":"Origin","parts":[
+		{"name":"Two Cantrips","desc":"You learn two cantrips of your choice from the Cleric, Druid, or Wizard spell list. Intelligence, Wisdom, or Charisma is your spellcasting ability for this feat's spells."},
+		{"name":"Level One Spell","desc":"Choose a level 1 spell from the same list you selected for this feat's cantrips. You always have that spell prepared."}]}`},
+	{Kind: "feat", Slug: "skilled", Name: "Skilled", DataJson: `{"desc":"","category":"Origin","parts":[{"name":"","desc":"You gain proficiency in any combination of three skills or tools of your choice."}]}`},
+	{Kind: "feat", Slug: "grappler", Name: "Grappler", DataJson: `{"desc":"","category":"General","parts":[{"name":"Ability Score Increase","desc":"Increase your Strength or Dexterity score by 1, to a maximum of 20."}]}`},
+	{Kind: "feat", Slug: "boon-of-fate", Name: "Boon of Fate", DataJson: `{"desc":"","category":"Epic Boon","parts":[{"name":"Ability Score Increase","desc":"Increase one ability score of your choice by 1, to a maximum of 30."}]}`},
+	{Kind: "feat", Slug: "ability-score-improvement", Name: "Ability Score Improvement", DataJson: `{"desc":"","category":"General"}`},
+	{Kind: "background", Slug: "sage", Name: "Sage", DataJson: `{"desc":"","parts":[{"name":"Skill Proficiencies","desc":"Arcana and History","type":"skill_proficiency"},{"name":"Feat","desc":"Magic Initiate (Wizard)","type":"feat"}]}`},
+	{Kind: "spell", Slug: "light", Name: "Light", DataJson: `{"level":0,"classes":["cleric","wizard"]}`},
+	{Kind: "spell", Slug: "mage-hand", Name: "Mage Hand", DataJson: `{"level":0,"classes":["wizard"]}`},
+	{Kind: "spell", Slug: "guidance", Name: "Guidance", DataJson: `{"level":0,"classes":["cleric"]}`},
+	{Kind: "spell", Slug: "magic-missile", Name: "Magic Missile", DataJson: `{"level":1,"classes":["wizard"]}`},
+	{Kind: "spell", Slug: "shield", Name: "Shield", DataJson: `{"level":1,"classes":["wizard"]}`},
+	{Kind: "spell", Slug: "bless", Name: "Bless", DataJson: `{"level":1,"classes":["cleric"]}`},
+	{Kind: "item", Slug: "smiths-tools", Name: "Smith's Tools (20 GP)", DataJson: `{"category":"tools","desc":"Ability: Strength. Utilize: Pry open a door (DC 20)."}`},
+	{Kind: "item", Slug: "climbers-kit", Name: "Climber's Kit", DataJson: `{"category":"tools","desc":"A Climber's Kit includes boot tips and pitons."}`},
+}
+
+// loadFeatFixtures imports the test SRD and featFixtures.
+func loadFeatFixtures(t *testing.T, e testEnv) {
+	t.Helper()
+	ctx := t.Context()
+	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range featFixtures {
+		entry.SourceKey, entry.ContentHash = "test", "x"
+		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestFeatChoices: the background's Magic Initiate and Human Versatile's
+// Origin feat ask for their own spells, ability and proficiencies; only the
+// picked feat's choices apply, and a second Magic Initiate takes another list.
+func TestFeatChoices(t *testing.T) {
+	mi := "trait_versatile_magic-initiate"
+	for _, tc := range []struct {
+		name  string
+		form  url.Values
+		code  int
+		check func(sh dnd5e.Sheet) bool
+	}{
+		{"background Magic Initiate and Skilled", url.Values{
+			"feat_magic-initiate_wizard_cantrips": {"Light", "Mage Hand"}, "feat_magic-initiate_wizard_spell": {"Magic Missile"}, "feat_magic-initiate_ability": {"Intelligence"},
+			"trait_versatile": {"Skilled"}, "trait_versatile_skilled_profs": {"Stealth", "Smith's Tools", "Insight"},
+		}, http.StatusSeeOther, func(sh dnd5e.Sheet) bool {
+			mm := slices.IndexFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == "magic-missile" })
+			return len(sh.Spells) == 3 && mm >= 0 && sh.Spells[mm].Prepared && sh.Spells[mm].Ability == "int" && sh.Spells[mm].Feat == "Magic Initiate (Wizard)" && sh.SpeciesAbility == "" &&
+				slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Magic Missile (free cast)" && f.Uses.Fixed == 1 }) &&
+				slices.Contains(sh.SkillProfs, "stealth") && slices.Contains(sh.SkillProfs, "insight") && slices.Contains(sh.OtherProfs, "Smith's Tools")
+		}},
+		{"Versatile Magic Initiate takes another list", url.Values{
+			"trait_versatile": {"Magic Initiate"}, mi + "_list": {"Cleric"}, mi + "_cleric_cantrips": {"Guidance"}, mi + "_cleric_spell": {"Bless"}, mi + "_ability": {"Wisdom"},
+			// Choices of the feat not picked are ignored.
+			"trait_versatile_skilled_profs": {"Stealth"},
+		}, http.StatusSeeOther, func(sh dnd5e.Sheet) bool {
+			bless := slices.IndexFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == "bless" })
+			return bless >= 0 && sh.Spells[bless].Ability == "wis" && slices.Contains(sh.Feats, "Magic Initiate (Cleric)") &&
+				slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Magic Initiate (Cleric)" }) && !slices.Contains(sh.SkillProfs, "stealth")
+		}},
+		{"the background's list again", url.Values{"trait_versatile": {"Magic Initiate"}, mi + "_list": {"Wizard"}}, http.StatusUnprocessableEntity, nil},
+		{"too many cantrips", url.Values{"feat_magic-initiate_wizard_cantrips": {"Light", "Mage Hand", "Guidance"}}, http.StatusUnprocessableEntity, nil},
+		{"a kit is not a tool", url.Values{"trait_versatile": {"Skilled"}, "trait_versatile_skilled_profs": {"Climber's Kit"}}, http.StatusUnprocessableEntity, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newTestEnv(t)
+			ctx := t.Context()
+			loadFeatFixtures(t, e)
+			player := e.token(t, auth.RolePlayer)
+			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
+			for _, step := range []string{"class=wizard", "species=human", "background=sage"} {
+				step, pick, _ := strings.Cut(step, "=")
+				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
+					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
+				}
+			}
+			if w := e.do(t, http.MethodPost, base+"choices", player, tc.form, false); w.Code != tc.code {
+				t.Fatalf("choices: %d %s", w.Code, w.Body)
+			}
+			if tc.check == nil {
+				return
+			}
+			row, err := e.q().GetCharacter(ctx, e.characterID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sh, err := dnd5e.ParseSheet(row.SheetJson); err != nil || !tc.check(sh) {
+				t.Errorf("sheet: %v %s", err, row.SheetJson)
+			}
+		})
+	}
+}
+
 // TestClassOptionChoices: a "… Options" feature is offered as many times as
 // its table column says, without options above the character's level, and
 // each pick becomes a feature.
