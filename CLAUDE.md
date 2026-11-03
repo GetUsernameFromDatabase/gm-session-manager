@@ -92,7 +92,7 @@ Generated code and built assets are committed, except `internal/web/assets/vendo
 
 Then `go build ./...`, `go test ./...`, `golangci-lint run` and `graphify update .`. `./build.sh` is the full build (vendor JS, script bundle, tests, versioned binary in `dist/`); CI runs `./build.sh release` on `v*` tags (`./release.sh <version>` checks, tags and pushes one). Run the app with `./run.sh` (or `go run ./cmd/gm-session-manager`); see README.md for setup.
 
-Every change to `.templ`, CSS or JS is checked in a browser with the `browser-check` skill (Playwright MCP against `./run.sh browser`).
+Every change to `.templ`, CSS or JS is checked in a browser with the `browser-check` skill (Playwright MCP against `./run.sh browser`); pass it the changed pages and controls.
 
 ## graphify
 

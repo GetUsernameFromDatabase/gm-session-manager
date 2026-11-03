@@ -1,7 +1,7 @@
 # Graph Report - gm-session-manager  (2026-11-04)
 
 ## Corpus Check
-- 246 files · ~491,207 words
+- 246 files · ~491,300 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 51 file(s) not represented in the graph (top: .templ 43, .css 4, (none) 3)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `534ef1ee`
+- Built from commit: `452f9b69`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -671,7 +671,7 @@ Nodes (3): CreateBlockParams, ListReadableBlocksParams, NoteBlock
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `App` connect `App` to `compendium_templ.go`, `context.Context`, `.do`, `database/sql.NullInt64`, `github.com/gin-gonic/gin.Context`, `.serverError`, `perm.go`, `Character`, `State`, `.encounterView`, `Page`, `Queries`, `Sheet`, `Store`, `Slugify`, `LoadOrCreateCert`, `.homebrewWriter`, `Topic`, `.levelUp`, `.levelUpView`, `Hub`, `wizardChoice`, `time.Time`?**
-  _High betweenness centrality (0.044) - this node is a cross-community bridge._
+  _High betweenness centrality (0.043) - this node is a cross-community bridge._
 - **What connects `npx`, `@playwright/mcp`, `CGO_ENABLED` to the rest of the system?**
   _14 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `compendium_templ.go` be split into smaller, more focused modules?**

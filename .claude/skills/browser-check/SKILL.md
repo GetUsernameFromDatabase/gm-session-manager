@@ -1,9 +1,16 @@
 ---
 name: browser-check
 description: Check UI changes in a real browser with the Playwright MCP server against a test instance of the app. Use after any change to .templ, CSS or JS, before saying it is done, and when asked to look at, test or explore pages in the browser.
+context: fork
+agent: general-purpose
+model: sonnet
+argument-hint: <changed pages and controls>
 ---
 
 # Browser check
+
+You run as your own agent and cannot see the caller's conversation. Check only this: $ARGUMENTS
+If that names no page, say so and stop.
 
 ## The test instance
 
@@ -19,7 +26,8 @@ description: Check UI changes in a real browser with the Playwright MCP server a
 
 ## What to check
 
-- The changed pages only, at 390px and 1280px wide. Try the new or changed controls and check the console for errors (CSP included).
+- The changed pages only. Work the controls through `browser_snapshot`. Take at most one screenshot per page per width (390px, 1280px), after the controls are tried, not after every step. Read the console once per page (CSP errors included).
+- Report back in 15 lines or fewer: what you checked, what was wrong, console errors, and the screenshot names.
 - **Sample, don't crawl.** When exploring, open one page of each kind, not every entry. No scripted crawls and no `browser_run_code_unsafe` unless the user asks.
 - Read screenshots yourself and report what you saw. Save them with a `filename` under `data-test/playwright/` (the MCP output dir), never elsewhere in the repo. Give them descriptive names (`<page>-<width>.png`) and cite them by name in a handoff.
 - Test data in `data-test` is shared between sessions: don't delete campaigns or characters you did not create.
