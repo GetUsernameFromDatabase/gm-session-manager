@@ -141,8 +141,9 @@ func upsert(ctx context.Context, q *sqlc.Queries, src Source, e Entry) error {
 	return nil
 }
 
-// normalizeVersion changes whenever the normalized shape gains data, so
-// unchanged source files are imported again once to fill it in.
+// normalizeVersion salts the source hash. Bump it only when the parser
+// changes (the normalized shape gains data), so unchanged source files are
+// imported again once. Edits to the files are caught by the hash itself.
 const normalizeVersion = "4"
 
 // readSource reads the .json files of a source directory and hashes their

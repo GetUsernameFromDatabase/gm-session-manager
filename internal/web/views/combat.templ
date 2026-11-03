@@ -12,6 +12,7 @@ import (
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/dialog"
+	"gm-session-manager/internal/web/components/empty"
 	"gm-session-manager/internal/web/components/field"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
@@ -112,6 +113,20 @@ templ CombatPage(l Layout, v CombatView) {
 		if v.IsGM {
 			if v.Current != nil {
 				@Encounter(*v.Current)
+			} else if len(v.Encounters) == 0 {
+				@empty.Empty(empty.Props{Class: "border border-dashed"}) {
+					@empty.Header() {
+						@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+							@icon.Swords()
+						}
+						@empty.Title() {
+							No encounters yet
+						}
+						@empty.Description() {
+							Name one above, add characters and monsters, then start it.
+						}
+					}
+				}
 			}
 		} else {
 			@PlayerCombat(v.CampaignID, v.Want, v.Encounters, v.Current)
@@ -1010,27 +1025,16 @@ templ addCombatants(e EncounterView) {
 			}
 		}
 		@tabs.Content(tabs.ContentProps{Value: KindPC}) {
-			@addCombatantForm(e, "pc", KindPC, "Add PC", pcs)
+			@addCombatantForm(e, "pc", KindPC, "Choose a PC", "Add PC", pcs)
 		}
 		@tabs.Content(tabs.ContentProps{Value: KindNPC}) {
-			@addCombatantForm(e, "entity", KindNPC, "Add NPC", npcs)
+			@addCombatantForm(e, "entity", KindNPC, "Choose an NPC", "Add NPC", npcs)
 		}
 		@tabs.Content(tabs.ContentProps{Value: KindMonster}) {
 			// The result buttons post this form's count and HP switch with the
 			// monster; Enter in the search must not submit it.
 			<form class="flex flex-wrap items-center gap-3" onsubmit="event.preventDefault()">
-				// Results float above the input while it (or a result) has focus; the
-				// list is focusable so a click on a result keeps focus inside (Safari).
-				<div class="group/monster relative min-w-0 flex-1">
-					@input.Input(input.Props{Type: "search", Name: "q", Placeholder: "Search monsters…", Attributes: templ.Attributes{
-						"autocomplete": "off",
-						"hx-get":       fmt.Sprintf("/compendium/search?kind=monster&encounter=%d", e.Encounter.ID),
-						"hx-trigger":   "input changed delay:200ms, search",
-						"hx-target":    "next ul",
-						"hx-swap":      "innerHTML",
-					}})
-					<ul tabindex="-1" class="absolute bottom-full z-10 mb-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow outline-none empty:hidden not-group-focus-within/monster:hidden"></ul>
-				</div>
+				// Count and HP come first: the results hide once the search loses focus.
 				@field.Field(field.Props{Orientation: field.OrientationHorizontal, Class: "w-auto"}) {
 					@field.Label(field.LabelProps{For: fmt.Sprintf("add-count-%d", e.Encounter.ID)}) {
 						Count
@@ -1038,15 +1042,32 @@ templ addCombatants(e EncounterView) {
 					@input.Input(input.Props{ID: fmt.Sprintf("add-count-%d", e.Encounter.ID), Name: "count", Type: "number", Value: "1", Class: "w-16", Attributes: templ.Attributes{"min": "1", "max": "20", "inputmode": "numeric"}})
 				}
 				@hpVisibleSwitch(e, KindMonster)
+				// Results float above the input while it (or a result) has focus; the
+				// list is focusable so a click on a result keeps focus inside (Safari).
+				<div class="group/monster relative min-w-48 flex-1">
+					@input.Input(input.Props{Type: "search", Name: "q", Placeholder: "Search monsters…", Attributes: templ.Attributes{
+						"autocomplete": "off",
+						"aria-label":   "Search monsters",
+						"hx-get":       fmt.Sprintf("/compendium/search?kind=monster&encounter=%d", e.Encounter.ID),
+						"hx-trigger":   "input changed delay:200ms, search",
+						"hx-target":    "next ul",
+						"hx-swap":      "innerHTML",
+					}})
+					<ul tabindex="-1" class="absolute bottom-full z-10 mb-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow outline-none empty:hidden not-group-focus-within/monster:hidden"></ul>
+				</div>
 			</form>
 		}
 	}
 }
 
-templ addCombatantForm(e EncounterView, kind, tab, label string, items []selectcomp.ItemData) {
+templ addCombatantForm(e EncounterView, kind, tab, pick, label string, items []selectcomp.ItemData) {
+	{{ id := fmt.Sprintf("add-%s-%d", kind, e.Encounter.ID) }}
 	<form class="flex flex-wrap items-center gap-3" hx-post={ e.url("combatants") }>
 		<input type="hidden" name="kind" value={ kind }/>
-		@formSelect(fmt.Sprintf("add-%s-%d", kind, e.Encounter.ID), "id", items, "", "min-w-48 flex-1", "")
+		@field.Label(field.LabelProps{For: id + "-trigger", Class: "sr-only"}) {
+			{ pick }
+		}
+		@formSelect(id, "id", items, "", "min-w-48 flex-1", "")
 		@hpVisibleSwitch(e, tab)
 		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
 			{ label }

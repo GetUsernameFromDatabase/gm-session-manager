@@ -11,8 +11,8 @@ import (
 	"gm-session-manager/internal/web/components/dialog"
 	"gm-session-manager/internal/web/components/empty"
 	"gm-session-manager/internal/web/components/icon"
-	switchcomp "gm-session-manager/internal/web/components/switch"
 	"gm-session-manager/internal/web/components/input"
+	switchcomp "gm-session-manager/internal/web/components/switch"
 	"gm-session-manager/internal/web/components/textarea"
 	"gm-session-manager/internal/web/components/tooltip"
 	"gm-session-manager/internal/web/utils"
@@ -169,7 +169,7 @@ templ npcPortrait(e perm.Entity, class string) {
 	if look, ok := currentLook(e.Images); ok {
 		<img src={ LookItem(look).Src() } alt={ e.Name } loading="lazy" class={ utils.CN("aspect-square w-full rounded-lg border bg-muted object-cover transition", class) }/>
 	} else {
-		<div aria-hidden="true" class={ utils.CN("flex aspect-square w-full items-center justify-center rounded-lg border bg-muted font-serif text-4xl text-muted-foreground select-none transition", class) }>{ initials(e.Name) }</div>
+		<div aria-hidden="true" class={ utils.CN("flex aspect-square w-full items-center justify-center rounded-lg border bg-muted text-2xl font-medium text-muted-foreground select-none transition", class) }>{ initials(e.Name) }</div>
 	}
 }
 
@@ -251,7 +251,8 @@ templ EntityDetail(v EntityView) {
 // manages them.
 templ entityLooks(v EntityView) {
 	if len(v.E.Images) == 0 {
-		<div class="max-w-64 md:max-w-none">
+		// Small: without a look there is only initials to show.
+		<div class="max-w-32">
 			@npcPortrait(v.E, "")
 		</div>
 	}
@@ -284,26 +285,31 @@ templ looksSection(looks []perm.Look, base, hint string) {
 		if hint != "" {
 			<p class="text-xs text-muted-foreground">{ hint }</p>
 		}
-		<div class="flex flex-wrap items-start gap-4">
-			for _, img := range looks {
-				<figure class={ "space-y-1", utils.IfElse(img.IsCurrent, "w-64", "w-32") }>
-					<a href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ImageID)) } class="block rounded-lg">
-						<img src={ LookItem(img).Src() } alt={ img.Name } loading="lazy" class={ "aspect-square w-full rounded-lg border bg-muted object-cover", templ.KV("ring-2 ring-primary ring-offset-2 ring-offset-background", img.IsCurrent) }/>
-					</a>
-					<figcaption class="truncate text-xs" title={ img.Name }>
-						{ img.Name }
-						if img.IsCurrent {
-							<span class="sr-only">(current)</span>
-						}
-					</figcaption>
-					if base != "" {
-						@lookControls(base+fmt.Sprint(img.ImageID)+"/", img)
-					}
-				</figure>
-			}
-		</div>
+		@looksGrid(looks, base)
 		{ children... }
 	</section>
+}
+
+// looksGrid is the looks themselves, for a section or a card.
+templ looksGrid(looks []perm.Look, base string) {
+	<div class="flex flex-wrap items-start gap-4">
+		for _, img := range looks {
+			<figure class={ "space-y-1", utils.IfElse(img.IsCurrent, "w-64", "w-32") }>
+				<a href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ImageID)) } class="block rounded-lg">
+					<img src={ LookItem(img).Src() } alt={ img.Name } loading="lazy" class={ "aspect-square w-full rounded-lg border bg-muted object-cover", templ.KV("ring-2 ring-primary ring-offset-2 ring-offset-background", img.IsCurrent) }/>
+				</a>
+				<figcaption class="truncate text-xs" title={ img.Name }>
+					{ img.Name }
+					if img.IsCurrent {
+						<span class="sr-only">(current)</span>
+					}
+				</figcaption>
+				if base != "" {
+					@lookControls(base+fmt.Sprint(img.ImageID)+"/", img)
+				}
+			</figure>
+		}
+	</div>
 }
 
 // lookControls are the buttons under a look: reveal or hide, make current,
@@ -496,7 +502,10 @@ templ wikiText(s string, canOpen func(WikiLink) bool) {
 
 // wikiLink is one link as notes render it: an [[image]] shows the image.
 templ wikiLink(l WikiLink) {
-	<a class="wikilink" href={ templ.SafeURL(l.URL()) } data-mention={ l.Key() }
+	<a
+		class="wikilink"
+		href={ templ.SafeURL(l.URL()) }
+		data-mention={ l.Key() }
 		if l.Kind == "image" {
 			data-float={ cmp.Or(l.Float, "left") }
 		}

@@ -25,14 +25,14 @@ type LevelUpView struct {
 	Name        string
 	Level       int
 	// Sheet is the character before levelling, to show what changes.
-	Sheet       dnd5e.Sheet
-	Classes     []Option
-	Selected    string
-	Plan        *dnd5e.LevelUpPlan
-	Subclasses  []Option
-	Feats       []Option
-	Spells      []Option
-	Error       string
+	Sheet      dnd5e.Sheet
+	Classes    []Option
+	Selected   string
+	Plan       *dnd5e.LevelUpPlan
+	Subclasses []Option
+	Feats      []Option
+	Spells     []Option
+	Error      string
 }
 
 func slotSummary(slots [9]int) string {
@@ -67,6 +67,18 @@ func sortedColumns(m map[string]string) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// spellCounts is the class table's cantrip and spell totals ("Cantrips 2 ·
+// Prepared Spells 3"); slot columns are left out.
+func spellCounts(cols map[string]string) string {
+	var out []string
+	for _, k := range sortedColumns(cols) {
+		if lk := strings.ToLower(k); strings.Contains(lk, "cantrip") || strings.Contains(lk, "spells") {
+			out = append(out, k+" "+cols[k])
+		}
+	}
+	return strings.Join(out, " · ")
 }
 
 templ LevelUpPage(l Layout, v LevelUpView) {
@@ -153,9 +165,15 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 					<div>
 						<div class="font-medium">Spell slots after this level</div>
 						<p>
-							{ slotSummary(p.Slots) }
+							// A pure pact caster has no "none" to report.
+							if p.Pact == 0 || p.Slots != ([9]int{}) {
+								{ slotSummary(p.Slots) }
+								if p.Pact > 0 {
+									{ " · " }
+								}
+							}
 							if p.Pact > 0 {
-								· Pact { fmt.Sprint(p.Pact) } at level { fmt.Sprint(p.PactLevel) }
+								Pact { fmt.Sprint(p.Pact) } at level { fmt.Sprint(p.PactLevel) }
 							}
 						</p>
 					</div>
@@ -205,6 +223,9 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 					if len(v.Spells) > 0 {
 						<div>
 							<div class="font-medium">Learn or prepare spells</div>
+							if counts := spellCounts(p.Columns); counts != "" {
+								<p class="text-xs text-muted-foreground">Class table at this level: { counts } (totals, counting spells you already have).</p>
+							}
 							<div class="mt-1 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2">
 								for _, sp := range v.Spells {
 									@checkField("spell", sp.Slug, false) {

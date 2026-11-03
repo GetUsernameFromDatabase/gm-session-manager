@@ -29,6 +29,9 @@ bundle=internal/web$(sed -n 's/.*bundleSrc = "\(.*\)"/\1/p' internal/web/compone
 [ -f "$bundle" ] || { echo "missing $bundle (named in internal/web/components/scripts_bundle.go)" >&2; exit 1; }
 echo "$bundle"
 
+step "checking templ formatting"
+go tool templ fmt -fail internal/web/views # fixes the files too; rerun after go generate ./internal/web
+
 step "testing"
 go test ./... | { grep -v 'no test files' || true; } # pipefail keeps go test's exit status
 

@@ -76,6 +76,7 @@ A page region that updates in real time is a live view.
 - Validate request and session structs with `go-playground/validator` struct tags instead of ad hoc per-field checks.
 - Table-driven tests for all permission and visibility logic.
 - `golangci-lint run` must stay clean (`.golangci.yml`: gofmt, goimports with local prefix `gm-session-manager`, revive, gosec, bodyclose, unparam, …).
+- Formatters always win: keep what `templ fmt` and `golangci-lint fmt` change, including in files the change did not otherwise touch.
 
 ## Commands
 
@@ -84,7 +85,8 @@ Generated code and built assets are committed, except `internal/web/assets/vendo
 | Change | Command |
 |---|---|
 | `internal/db/migrations`, `internal/db/queries` | `go generate ./internal/db` (sqlc on PATH) |
-| `*.templ`, Tailwind classes | `go generate ./internal/web` (script bundle + templ + Tailwind standalone CLI on PATH) |
+| `*.templ`, Tailwind classes | `go generate ./internal/web` (script bundle + `templ fmt` + templ + Tailwind standalone CLI on PATH); `./build.sh` fails on unformatted templates |
+| Go formatting | `golangci-lint fmt` (gofmt + goimports, as `golangci-lint run` checks) |
 | shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./internal/web` |
 | browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |
 

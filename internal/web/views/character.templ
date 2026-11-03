@@ -103,7 +103,8 @@ templ CharacterSheet(s SheetView) {
 							{ p.text }
 						}
 					}
-					if s.C.Sheet.Level() > 0 {
+					// A single class already says the level.
+					if len(s.C.Sheet.Classes) > 1 {
 						{ " · Level " + fmt.Sprint(s.C.Sheet.Level()) }
 					}
 				</p>
@@ -119,16 +120,17 @@ templ CharacterSheet(s SheetView) {
 							Revert level-up
 						}
 					}
+					@button.Button(button.Props{Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "", "", ""))}) {
+						@icon.Pencil()
+						Change…
+					}
+					// Last, away from the everyday buttons.
 					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: templ.Attributes{
 						"hx-post":    fmt.Sprintf("/characters/%d/remove", s.ID),
 						"hx-confirm": "Delete " + s.C.Name + "? This logs out every device playing it. The GM can restore it.",
 						"aria-label": "Delete character", "title": "Delete character",
 					}}) {
 						@icon.Trash2()
-					}
-					@button.Button(button.Props{Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "", "", ""))}) {
-						@icon.Pencil()
-						Change…
 					}
 				</div>
 			}
@@ -171,25 +173,37 @@ templ CharacterSheet(s SheetView) {
 // decides which the rest of the table sees.
 templ characterLooks(s SheetView) {
 	if s.CanSheet || len(s.Looks) > 0 {
-		@looksSection(s.Looks, utils.IfElse(s.CanSheet, fmt.Sprintf("/characters/%d/images/", s.ID), ""),
-			utils.IfElse(s.CanSheet, "The current look is your portrait. Other players see only revealed looks.", "")) {
-			if s.CanSheet {
-				<form
-					class="group/busy max-w-md space-y-3"
-					data-busy
-					hx-post={ fmt.Sprintf("/characters/%d/images", s.ID) }
-					hx-encoding="multipart/form-data"
-				>
-					@sourceTabs(sourceField{
-						ID: fmt.Sprintf("look-source-%d", s.ID), Label: "Add a look", Placeholder: "https://…",
-						Accept: "image/png,image/jpeg,image/gif,image/webp", FileHint: "PNG, JPEG, GIF or WebP, up to 20 MB.",
-					})
-					@input.Input(input.Props{Name: "name", Placeholder: "Name (optional)", Attributes: templ.Attributes{"maxlength": "200", "aria-label": "Look name"}})
-					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-						Add look
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					Looks
+				}
+				if s.CanSheet {
+					@card.Description() {
+						The current look is your portrait. Other players see only revealed looks.
 					}
-					@busyIndicator("Uploading…")
-				</form>
+				}
+			}
+			@card.Content(card.ContentProps{Class: "space-y-4"}) {
+				@looksGrid(s.Looks, utils.IfElse(s.CanSheet, fmt.Sprintf("/characters/%d/images/", s.ID), ""))
+				if s.CanSheet {
+					<form
+						class="group/busy max-w-md space-y-3"
+						data-busy
+						hx-post={ fmt.Sprintf("/characters/%d/images", s.ID) }
+						hx-encoding="multipart/form-data"
+					>
+						@sourceTabs(sourceField{
+							ID: fmt.Sprintf("look-source-%d", s.ID), Label: "Add a look", Placeholder: "https://…",
+							Accept: "image/png,image/jpeg,image/gif,image/webp", FileHint: "PNG, JPEG, GIF or WebP, up to 20 MB.",
+						})
+						@input.Input(input.Props{Name: "name", Placeholder: "Name (optional)", Attributes: templ.Attributes{"maxlength": "200", "aria-label": "Look name"}})
+						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+							Add look
+						}
+						@busyIndicator("Uploading…")
+					</form>
+				}
 			}
 		}
 	}
@@ -222,14 +236,17 @@ templ vitalsStrip(s SheetView) {
 				<div class="text-xs text-muted-foreground">HP</div>
 				<div class="text-4xl leading-none font-semibold tabular-nums">
 					@editable(s, edit{"hp", "hp-set", ""}, "Change hit points", "") {
+						@editName(s, edit{"hp", "hp-set", ""}, "Change hit points")
 						<span { bind("text=hp")... }>{ fmt.Sprint(s.C.HP) }</span>
 					}
 					@editable(s, edit{"hp", "hp-max", ""}, "Change max hit points", "") {
+						@editName(s, edit{"hp", "hp-max", ""}, "Change max hit points")
 						<span class="text-xl text-muted-foreground">/{ fmt.Sprint(s.C.MaxHP) }</span>
 					}
 				</div>
 				if s.C.TempHP > 0 {
 					@editable(s, edit{"hp", "hp-temp", ""}, "Change temporary hit points", "") {
+						@editName(s, edit{"hp", "hp-temp", ""}, "Change temporary hit points")
 						<span class="text-xs text-sky-600 dark:text-sky-400" { bind("text=temp")... }>{ tempLabel(s.C.TempHP) }</span>
 					}
 				}
@@ -362,6 +379,15 @@ templ editable(s SheetView, to edit, label, class string) {
 	}
 }
 
+// editName names an editable that shows only a number, ahead of the number,
+// since an aria-label would hide the value.
+templ editName(s SheetView, to edit, label string) {
+	// The same test as editable's button.
+	if s.CanSheet && to.verb != "" {
+		<span class="sr-only">{ label + " " }</span>
+	}
+}
+
 // stat is one figure, followed by its children (a modifier warning); key
 // binds it when it changes often.
 templ stat(s SheetView, name, value, key string, to edit) {
@@ -378,6 +404,7 @@ templ stat(s SheetView, name, value, key string, to edit) {
 		}
 		<dd class="flex items-center gap-1 text-lg leading-tight font-semibold tabular-nums">
 			@editable(s, to, "Change "+name, "") {
+				@editName(s, to, "Change "+name)
 				<span
 					if key != "" {
 						{ bind("text="+key)... }
@@ -664,7 +691,8 @@ templ commandBar(s SheetView) {
 				@icon.BookOpen()
 				<span class="hidden sm:inline">Commands</span>
 			}
-			@button.Button(button.Props{Type: button.TypeSubmit, Disabled: true, Attributes: templ.Attributes{"data-command-run": true}}) {
+			// Outline while disabled: a faded primary looks broken.
+			@button.Button(button.Props{Type: button.TypeSubmit, Disabled: true, Class: "disabled:border-border disabled:bg-background disabled:text-foreground dark:disabled:border-input dark:disabled:bg-input/30", Attributes: templ.Attributes{"data-command-run": true}}) {
 				Run
 			}
 		</form>
@@ -863,6 +891,9 @@ templ spellsCard(s SheetView) {
 				if hasSlots {
 					@spellSlots(s)
 				}
+				if len(s.C.Sheet.Spells) == 0 {
+					<p class="text-sm text-muted-foreground">{ utils.IfElse(s.CanSheet, "No spells yet: add one below or level up.", "No spells yet.") }</p>
+				}
 				<ul class="divide-y text-sm">
 					for _, sp := range s.C.Sheet.Spells {
 						<li class="flex items-start justify-between gap-2 py-1">
@@ -903,9 +934,12 @@ templ spellsCard(s SheetView) {
 											}
 										}
 									}
-									@cmdButton(s, "spell remove "+sp.Slug, button.VariantDestructive) {
-										Remove
-									}
+									// htmx inherits hx-confirm, so the shared button stays as it is.
+									<span class="contents" hx-confirm={ "Remove " + sp.Name + "?" }>
+										@cmdButton(s, "spell remove "+sp.Slug, button.VariantDestructive) {
+											Remove
+										}
+									</span>
 								</span>
 							}
 						</li>

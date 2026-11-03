@@ -72,7 +72,7 @@ func NotesPage(l Layout, v NoteListView) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"mx-auto max-w-3xl\"><div class=\"mb-6 flex flex-wrap items-end justify-between gap-3\"><div><h1 class=\"text-3xl leading-tight font-semibold\">Notes</h1><p class=\"text-sm text-muted-foreground\">Game session logs, handouts, secrets and your own notes.</p></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"mx-auto max-w-3xl\"><div class=\"mb-6 flex flex-wrap items-center justify-between gap-3\"><div><h1 class=\"text-3xl leading-tight font-semibold\">Notes</h1><p class=\"text-sm text-muted-foreground\">Game session logs, handouts, secrets and your own notes.</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

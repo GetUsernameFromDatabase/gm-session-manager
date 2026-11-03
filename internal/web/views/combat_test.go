@@ -1,10 +1,32 @@
 package views
 
 import (
+	"strings"
 	"testing"
 
 	"gm-session-manager/internal/db/sqlc"
 )
+
+// TestCombatPageEmpty: the empty state shows only when there are no
+// encounters, not when the one asked for is missing.
+func TestCombatPageEmpty(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		encounters []sqlc.Encounter
+		want       bool
+	}{
+		{"no encounters", nil, true},
+		{"asked-for encounter missing", []sqlc.Encounter{{ID: 1, Name: "Fight"}}, false},
+	} {
+		var b strings.Builder
+		if err := CombatPage(Layout{}, CombatView{IsGM: true, CampaignID: 1, Encounters: tt.encounters}).Render(t.Context(), &b); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(b.String(), "No encounters yet"); got != tt.want {
+			t.Errorf("%s: empty state %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
 
 // TestTurnNamesFirstTurn: Previous stays empty until someone has acted.
 func TestTurnNamesFirstTurn(t *testing.T) {

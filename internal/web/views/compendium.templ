@@ -27,16 +27,16 @@ import (
 
 // CompendiumView is the compendium search page.
 type CompendiumView struct {
-	Query    string
-	Kind     string
-	Results  []sqlc.SearchCompendiumRow
+	Query   string
+	Kind    string
+	Results []sqlc.SearchCompendiumRow
 	// TextResults are search hits in the text only, listed below Results.
 	TextResults []sqlc.SearchCompendiumRow
-	Counts   []sqlc.CountCompendiumRow
+	Counts      []sqlc.CountCompendiumRow
 	// Habitat filters monsters (kind "monster" only); comma-separated.
 	Habitat       string
 	HabitatCounts []sqlc.CountHabitatsRow
-	IsGM     bool
+	IsGM          bool
 	// Homebrew is every homebrew entry, with the campaigns each player
 	// entry is linked to and the campaigns it could be, for the GM.
 	Homebrew      []sqlc.ListHomebrewRow
@@ -45,7 +45,7 @@ type CompendiumView struct {
 	// MyHomebrew is a player's own entries.
 	MyHomebrew []sqlc.ListHomebrewByOwnerRow
 	Import     ImportNotice
-	More     string // URL of the next batch when browsing; "" at the end
+	More       string // URL of the next batch when browsing; "" at the end
 	// Tab is the page tab to open (CompendiumTab*); "" is Browse.
 	Tab string
 }
@@ -365,9 +365,11 @@ templ homebrewLinks(v CompendiumView, entryID int64) {
 		if len(links) == 0 {
 			<span class="text-muted-foreground">in no campaign</span>
 		}
-		{{ others := slices.DeleteFunc(slices.Clone(v.Campaigns), func(c sqlc.Campaign) bool {
-			return slices.ContainsFunc(links, func(l sqlc.ListHomebrewLinksRow) bool { return l.CampaignID == c.ID })
-		}) }}
+		{{
+			others := slices.DeleteFunc(slices.Clone(v.Campaigns), func(c sqlc.Campaign) bool {
+				return slices.ContainsFunc(links, func(l sqlc.ListHomebrewLinksRow) bool { return l.CampaignID == c.ID })
+			})
+		}}
 		if len(others) > 0 {
 			<form class="flex items-center gap-1" hx-post={ fmt.Sprintf("/compendium/entries/%d/campaigns", entryID) }>
 				@formSelect("", "campaign_id", selectItems(others, func(c sqlc.Campaign) string { return fmt.Sprint(c.ID) }, func(c sqlc.Campaign) string { return c.Name }), "", "h-6 text-xs", "")
@@ -534,7 +536,7 @@ templ kindCounts(v CompendiumView) {
 				{{ on := slices.Contains(kindSet(v.Kind), c.Kind) }}
 				@badge.Badge(badge.Props{Href: kindHref(v.Query, c.Kind, v.Kind), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "h-7 gap-1.5 px-2.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on)}}) {
 					@kindIcon(c.Kind, utils.IfElse(on, "text-current", ""))
-					{ c.Kind }
+					@kindName(c.Kind)
 					<span class="tabular-nums opacity-60">{ fmt.Sprint(c.N) }</span>
 				}
 			}
@@ -688,7 +690,7 @@ templ kindBadge(kind string, homebrew bool) {
 	<span class="flex gap-1">
 		@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "gap-1"}) {
 			@kindIcon(kind, "")
-			{ kind }
+			@kindName(kind)
 		}
 		if homebrew {
 			@homebrewBadge()
@@ -696,10 +698,15 @@ templ kindBadge(kind string, homebrew bool) {
 	</span>
 }
 
+// kindName is a kind as a chip label, capitalized like other labels.
+templ kindName(kind string) {
+	<span class="first-letter:uppercase">{ kind }</span>
+}
+
 templ homebrewBadge() {
 	@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "gap-1"}) {
 		@icon.Feather()
-		homebrew
+		Homebrew
 	}
 }
 
@@ -786,35 +793,35 @@ templ SearchComboItems(rows []sqlc.SearchCompendiumRow) {
 }
 
 templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
-		if t.EncounterID != 0 {
-			// Combat picker is a dropdown: choosing a row adds the monster and closes it.
-			<li>
-				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start truncate", Attributes: templ.Attributes{
-					"hx-post":              fmt.Sprintf("/encounters/%d/combatants", t.EncounterID),
-					"hx-vals":              fmt.Sprintf(`{"kind":"monster","id":"%d"}`, r.ID),
-					"hx-on::after-request": "const u = this.closest('ul'); u.previousElementSibling.value = ''; u.replaceChildren()",
-				}}) {
-					{ r.Name }
-				}
-			</li>
-		} else if t.CharacterID != 0 {
-			@pickRow(r.ID, templ.Attributes{
-				"hx-post": fmt.Sprintf("/characters/%d/cmd", t.CharacterID), "hx-vals": cmdVals("spell add " + r.Slug),
-				"hx-on::after-request": "if (event.detail.successful) this.disabled = true",
-			}) {
+	if t.EncounterID != 0 {
+		// Combat picker is a dropdown: choosing a row adds the monster and closes it.
+		<li>
+			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start truncate", Attributes: templ.Attributes{
+				"hx-post":              fmt.Sprintf("/encounters/%d/combatants", t.EncounterID),
+				"hx-vals":              fmt.Sprintf(`{"kind":"monster","id":"%d"}`, r.ID),
+				"hx-on::after-request": "const u = this.closest('ul'); u.previousElementSibling.value = ''; u.replaceChildren()",
+			}}) {
 				{ r.Name }
 			}
-		} else {
-			<li class="flex items-center justify-between gap-2 py-0.5">
-				<a class="truncate hover:underline" { pickerLinkAttrs(t)... } href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", r.ID)) }>{ r.Name }</a>
-				switch  {
-					case t.EntityID != 0:
-						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", t.EntityID), "hx-vals": fmt.Sprintf(`{"entry":"%d"}`, r.ID)}}) {
-							Link
-						}
-				}
-			</li>
+		</li>
+	} else if t.CharacterID != 0 {
+		@pickRow(r.ID, templ.Attributes{
+			"hx-post": fmt.Sprintf("/characters/%d/cmd", t.CharacterID), "hx-vals": cmdVals("spell add " + r.Slug),
+			"hx-on::after-request": "if (event.detail.successful) this.disabled = true",
+		}) {
+			{ r.Name }
 		}
+	} else {
+		<li class="flex items-center justify-between gap-2 py-0.5">
+			<a class="truncate hover:underline" { pickerLinkAttrs(t)... } href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", r.ID)) }>{ r.Name }</a>
+			switch  {
+				case t.EntityID != 0:
+					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", t.EntityID), "hx-vals": fmt.Sprintf(`{"entry":"%d"}`, r.ID)}}) {
+						Link
+					}
+			}
+		</li>
+	}
 }
 
 // pickRow is a compendium result that acts when clicked (attrs post the
@@ -850,9 +857,9 @@ type EntryView struct {
 	// CanEdit is set for homebrew the viewer may change.
 	CanEdit bool
 	Entry   sqlc.CompendiumEntry
-	Source sqlc.CompendiumSource
-	Data   any
-	IsGM   bool
+	Source  sqlc.CompendiumSource
+	Data    any
+	IsGM    bool
 	// Habitats are a monster's, typed in by the GM.
 	Habitats []string
 	// Back links to the compendium list the entry was opened from, filters
@@ -1186,10 +1193,8 @@ templ spellBody(d *compendium.SpellData) {
 
 templ itemBody(d *compendium.ItemData) {
 	@subtitle() {
-		{ strings.ReplaceAll(d.Category, "-", " ") }
-		if d.Rarity != "" {
-			, { d.Rarity }
-		}
+		// One expression: templ puts a space after one that ends a line.
+		{ strings.ReplaceAll(d.Category, "-", " ") + commaPrefixed(d.Rarity) }
 		if d.Attunement {
 			(requires attunement)
 		}
@@ -1290,7 +1295,7 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 	@Page(l) {
 		<div class="flex items-start gap-2">
 			<div class="mr-auto">
-				switch {
+				switch  {
 					case v.Page.ID != "":
 						@PageHeader("Import preview", "Check and edit the page before saving it.")
 					case v.ID == 0:

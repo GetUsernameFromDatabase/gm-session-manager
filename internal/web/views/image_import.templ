@@ -174,7 +174,9 @@ func (v ImportView) catGroups() [][]ImportCategory {
 		byTarget[c.Target] = append(byTarget[c.Target], c)
 	}
 	for _, g := range byTarget {
-		slices.SortFunc(g, func(a, b ImportCategory) int { return strings.Compare(strings.ToLower(a.Source), strings.ToLower(b.Source)) })
+		slices.SortFunc(g, func(a, b ImportCategory) int {
+			return strings.Compare(strings.ToLower(a.Source), strings.ToLower(b.Source))
+		})
 		groups = append(groups, g)
 	}
 	sortKey := func(g []ImportCategory) string {
@@ -264,81 +266,81 @@ templ ImportReview(v ImportView) {
 		// Dimmed while busy; the delay keeps quick refreshes from flashing.
 		// Step 1 was choosing the CSV.
 		<div class="transition-opacity delay-150 group-aria-busy/busy:opacity-60">
-		<input type="hidden" name={ ImportRowsField }/>
-		@importStep(2, "Columns") {
-			<p class="mb-2 text-sm text-muted-foreground">These are guesses from the headers and values. Change any of them.</p>
-			<div
-				class="grid gap-3 sm:grid-cols-2 md:grid-cols-4"
-				hx-get={ v.url() }
-				hx-include="closest form"
-				hx-trigger="change"
-				hx-target="#import-review"
-				hx-swap="outerHTML"
-			>
-				@mappingField("Name", ImportColName, v.columnItems(false), v.Map.Name)
-				@mappingField("Link", ImportColLink, v.columnItems(false), v.Map.Link)
-				@mappingField("Category", ImportColCategory, v.columnItems(true), v.Map.Category)
-				@mappingField("Description", ImportColDescription, v.columnItems(true), v.Map.Description)
-			</div>
-			@columnOverview(v)
-		}
-		@importStep(3, "Keep only") {
-			@keepSection(v)
-		}
-		if len(v.Cats) > 0 {
-			@importStep(4, "Categories") {
-				<p class="mb-2 text-sm text-muted-foreground">
-					Each value keeps its own category unless you give several the same name: type the same name to merge them, or clear it for no category.
-					Values that differ only in case start out merged.
-				</p>
-				@categoryList(v.Categories)
-				// A change re-renders this list (regrouped and resorted) and the
-				// rows; inputs keep stable ids so htmx keeps the focus.
+			<input type="hidden" name={ ImportRowsField }/>
+			@importStep(2, "Columns") {
+				<p class="mb-2 text-sm text-muted-foreground">These are guesses from the headers and values. Change any of them.</p>
 				<div
-					id="import-categories"
-					class="space-y-2"
+					class="grid gap-3 sm:grid-cols-2 md:grid-cols-4"
 					hx-get={ v.url() }
 					hx-include="closest form"
 					hx-trigger="change"
-					hx-target="#import-categories"
-					hx-select="#import-categories"
-					hx-select-oob="#import-rows"
+					hx-target="#import-review"
 					hx-swap="outerHTML"
 				>
-					for _, group := range v.catGroups() {
-						if len(group) > 1 {
-							<div class="rounded-lg border-2 border-primary/50 bg-primary/5" data-merged>
-								<div class="flex items-center gap-2 px-2 pt-2 text-xs font-medium text-primary">
-									@icon.Merge(icon.Props{Size: 14})
-									Merged into { group[0].Target } ({ fmt.Sprint(len(group)) } values)
-								</div>
-								<div class="divide-y divide-primary/20">
-									for _, cat := range group {
-										@categoryRow(cat)
-									}
-								</div>
-							</div>
-						} else {
-							<div class="rounded-lg border">
-								@categoryRow(group[0])
-							</div>
-						}
-					}
+					@mappingField("Name", ImportColName, v.columnItems(false), v.Map.Name)
+					@mappingField("Link", ImportColLink, v.columnItems(false), v.Map.Link)
+					@mappingField("Category", ImportColCategory, v.columnItems(true), v.Map.Category)
+					@mappingField("Description", ImportColDescription, v.columnItems(true), v.Map.Description)
 				</div>
+				@columnOverview(v)
 			}
-		}
-		@importStep(utils.IfElse(len(v.Cats) > 0, 5, 4), "Rows") {
-			@importRows(v)
-		}
-		// Sticky, so the list need not be scrolled to its end to submit.
-		<div class="sticky bottom-3 z-30 flex flex-wrap items-center gap-3 rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur">
-			@button.Button(button.Props{Type: button.TypeSubmit}) {
-				@icon.Upload()
-				Import ticked rows
+			@importStep(3, "Keep only") {
+				@keepSection(v)
 			}
-			// Filled and kept current by app.js as rows are ticked.
-			<p id="import-summary" class="text-sm text-muted-foreground" aria-live="polite"></p>
-		</div>
+			if len(v.Cats) > 0 {
+				@importStep(4, "Categories") {
+					<p class="mb-2 text-sm text-muted-foreground">
+						Each value keeps its own category unless you give several the same name: type the same name to merge them, or clear it for no category.
+						Values that differ only in case start out merged.
+					</p>
+					@categoryList(v.Categories)
+					// A change re-renders this list (regrouped and resorted) and the
+					// rows; inputs keep stable ids so htmx keeps the focus.
+					<div
+						id="import-categories"
+						class="space-y-2"
+						hx-get={ v.url() }
+						hx-include="closest form"
+						hx-trigger="change"
+						hx-target="#import-categories"
+						hx-select="#import-categories"
+						hx-select-oob="#import-rows"
+						hx-swap="outerHTML"
+					>
+						for _, group := range v.catGroups() {
+							if len(group) > 1 {
+								<div class="rounded-lg border-2 border-primary/50 bg-primary/5" data-merged>
+									<div class="flex items-center gap-2 px-2 pt-2 text-xs font-medium text-primary">
+										@icon.Merge(icon.Props{Size: 14})
+										Merged into { group[0].Target } ({ fmt.Sprint(len(group)) } values)
+									</div>
+									<div class="divide-y divide-primary/20">
+										for _, cat := range group {
+											@categoryRow(cat)
+										}
+									</div>
+								</div>
+							} else {
+								<div class="rounded-lg border">
+									@categoryRow(group[0])
+								</div>
+							}
+						}
+					</div>
+				}
+			}
+			@importStep(utils.IfElse(len(v.Cats) > 0, 5, 4), "Rows") {
+				@importRows(v)
+			}
+			// Sticky, so the list need not be scrolled to its end to submit.
+			<div class="sticky bottom-3 z-30 flex flex-wrap items-center gap-3 rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur">
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					@icon.Upload()
+					Import ticked rows
+				}
+				// Filled and kept current by app.js as rows are ticked.
+				<p id="import-summary" class="text-sm text-muted-foreground" aria-live="polite"></p>
+			</div>
 		</div>
 	</form>
 }

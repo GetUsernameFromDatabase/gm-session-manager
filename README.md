@@ -154,13 +154,14 @@ data/                     DATA_DIR at runtime (database, tls, attachments, compe
 | Change | Command |
 | --- | --- |
 | `internal/db/migrations`, `internal/db/queries` | `go generate ./internal/db` (sqlc) |
-| `*.templ`, Tailwind classes | `go generate ./internal/web` (script bundle + templ + Tailwind) |
+| `*.templ`, Tailwind classes | `go generate ./internal/web` (script bundle + `templ fmt` + templ + Tailwind) |
+| Go formatting | `golangci-lint fmt` |
 | shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./internal/web` |
 | browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |
 
 Then `go build ./...`, `go test ./...` and `golangci-lint run`.
 
-`GSM_COMPENDIUM_DIR=data/compendium go test ./compendium -run TestRealSource -v`
+`GSM_COMPENDIUM_DIR=data/compendium go test ./internal/compendium -run TestRealSource -v`
 checks the importer against a real data download.
 
 ### Knowledge graph (graphify)
