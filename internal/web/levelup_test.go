@@ -10,6 +10,7 @@ import (
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
+	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 )
 
@@ -88,6 +89,47 @@ func TestLevelUpInvocations(t *testing.T) {
 	}
 	if sh.ClassSummary() != "Testlock 2" {
 		t.Errorf("classes %q", sh.ClassSummary())
+	}
+}
+
+// TestLevelUpLineage checks character level 3 adds the lineage spell and its
+// free cast per Long Rest.
+func TestLevelUpLineage(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	for _, entry := range []sqlc.UpsertCompendiumEntryParams{
+		testlock,
+		{Kind: "species", Slug: "testelf", Name: "Testelf", SourceKey: "test", ContentHash: "x", DataJson: `{"desc":"","parts":[
+			{"name":"Lineage","desc":"Choose a lineage.\n\n|Lineage|Level 1|Level 3|\n|---|---|---|\n|Drow|You know the Dancing Lights cantrip.|Faerie Fire|"}]}`},
+		{Kind: "spell", Slug: "faerie-fire", Name: "Faerie Fire", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1}`},
+	} {
+		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ch, _ := e.q().GetCharacter(ctx, e.characterID)
+	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
+	sh.Species, sh.SpeciesAbility = "Testelf", "wis"
+	sh.Features = append(sh.Features, dnd5e.Feature{Name: "Lineage (Drow)", Source: "Testelf"})
+	raw, _ := sh.JSON()
+	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, auth.RolePlayer)
+	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	for range 3 {
+		if w := e.do(t, http.MethodPost, base, player, url.Values{"class": {"testlock"}}, false); w.Code != http.StatusSeeOther {
+			t.Fatalf("level up: %d %s", w.Code, w.Body)
+		}
+	}
+	ch, _ = e.q().GetCharacter(ctx, e.characterID)
+	sh, _ = dnd5e.ParseSheet(ch.SheetJson)
+	if !slices.ContainsFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == "faerie-fire" && sp.Prepared && sp.Ability == "wis" }) {
+		t.Errorf("no prepared Faerie Fire with wis: %+v", sh.Spells)
+	}
+	i := slices.IndexFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Faerie Fire (free cast)" })
+	if i < 0 || sh.Features[i].Uses.Fixed != 1 || sh.Features[i].Uses.Reset != "long" {
+		t.Errorf("free cast feature: %+v", sh.Features)
 	}
 }
 

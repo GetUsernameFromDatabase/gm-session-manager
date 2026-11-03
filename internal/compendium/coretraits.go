@@ -127,26 +127,64 @@ func Options(desc string) []NameDesc {
 			out[i].Desc = strings.TrimSpace(out[i].Desc)
 		}
 	case strings.Contains(desc, "\n|"):
-		header := true
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if !strings.HasPrefix(line, "|") {
-				if len(out) > 0 {
-					break // the first table only
-				}
-				continue
-			}
-			cells := strings.Split(strings.Trim(line, "|"), "|")
-			if header || len(cells) < 2 || strings.HasPrefix(strings.TrimSpace(cells[0]), "-") {
-				header = false
-				continue
-			}
-			out = append(out, NameDesc{Name: strings.TrimSpace(cells[0]), Desc: strings.TrimSpace(cells[1])})
+		_, rows := firstTable(lines)
+		for _, cells := range rows {
+			out = append(out, NameDesc{Name: cells[0], Desc: cells[1]})
 		}
 	default:
 		for _, line := range lines {
 			if m := boldOption.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
 				out = append(out, NameDesc{Name: strings.TrimSuffix(m[1], "."), Desc: m[2]})
+			}
+		}
+	}
+	return out
+}
+
+// firstTable is the header and the rows (of two cells or more) of the
+// first table in lines, with trimmed cells.
+func firstTable(lines []string) (header []string, rows [][]string) {
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "|") {
+			if header != nil {
+				break
+			}
+			continue
+		}
+		cells := strings.Split(strings.Trim(line, "|"), "|")
+		for i := range cells {
+			cells[i] = strings.TrimSpace(cells[i])
+		}
+		switch {
+		case header == nil:
+			header = cells
+		case len(cells) >= 2 && !strings.HasPrefix(cells[0], "-"):
+			rows = append(rows, cells)
+		}
+	}
+	return header, rows
+}
+
+var levelColumn = regexp.MustCompile(`^Level (\d+)$`)
+
+// LevelSpells reads the "Level 3" and "Level 5" columns of a lineage
+// table: option name, then character level, then the spell learned.
+func LevelSpells(desc string) map[string]map[int]string {
+	header, rows := firstTable(strings.Split(desc, "\n"))
+	out := map[string]map[int]string{}
+	for i, h := range header {
+		m := levelColumn.FindStringSubmatch(h)
+		if m == nil || m[1] == "1" {
+			continue
+		}
+		level, _ := strconv.Atoi(m[1])
+		for _, cells := range rows {
+			if i < len(cells) && cells[i] != "" {
+				if out[cells[0]] == nil {
+					out[cells[0]] = map[int]string{}
+				}
+				out[cells[0]][level] = cells[i]
 			}
 		}
 	}

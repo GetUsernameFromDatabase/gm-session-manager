@@ -360,21 +360,10 @@ func addResistance(s *dnd5e.Sheet, damage string) {
 // speciesChoices asks the species' "Choose a lineage" traits and skill
 // choices, and collects the cantrips its other traits grant.
 func (a *App) speciesChoices(ctx context.Context, cr *creation, species string, campaignID int64) error {
-	if species == "" {
-		return nil
-	}
-	row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindSpecies), Slug: compendium.Slugify(species)})
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
+	parts, err := a.speciesParts(ctx, species)
 	if err != nil {
 		return err
 	}
-	d, err := compendium.DecodeData(compendium.KindSpecies, row.DataJson)
-	if err != nil {
-		return err
-	}
-	parts := d.(*compendium.TextData).Parts
 	var abilityFor string           // the trait whose spells take a picked ability
 	spellSlugs := map[string]bool{} // the spells the species can grant
 	for _, p := range parts {
@@ -429,6 +418,87 @@ func (a *App) speciesChoices(ctx context.Context, cr *creation, species string, 
 	return nil
 }
 
+// speciesParts are the traits of the compendium species of this name; none
+// when it has no entry (homebrew typed by hand).
+func (a *App) speciesParts(ctx context.Context, species string) ([]compendium.NameDesc, error) {
+	if species == "" {
+		return nil, nil
+	}
+	row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindSpecies), Slug: compendium.Slugify(species)})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	d, err := compendium.DecodeData(compendium.KindSpecies, row.DataJson)
+	if err != nil {
+		return nil, err
+	}
+	return d.(*compendium.TextData).Parts, nil
+}
+
+// lineageSpells are the spells the sheet's lineage pick teaches by character
+// level ("Level 3" and "Level 5" columns) whose free cast it lacks; one
+// already known from the class list still owes its free cast.
+func (a *App) lineageSpells(ctx context.Context, sh dnd5e.Sheet, level int, campaignID int64) ([]dnd5e.Spell, error) {
+	parts, err := a.speciesParts(ctx, sh.Species)
+	if err != nil {
+		return nil, err
+	}
+	var out []dnd5e.Spell
+	for _, p := range parts {
+		for _, o := range choiceOptions(p) {
+			if !slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool {
+				return f.Source == sh.Species && f.Name == fmt.Sprintf("%s (%s)", p.Name, o.Name)
+			}) {
+				continue
+			}
+			byLevel := compendium.LevelSpells(p.Desc)[o.Name]
+			var names []string
+			for _, l := range slices.Sorted(maps.Keys(byLevel)) {
+				if l <= level {
+					names = append(names, byLevel[l])
+				}
+			}
+			spells, err := a.spellsNamed(ctx, names, campaignID)
+			if err != nil {
+				return nil, err
+			}
+			ability := cmp.Or(sh.SpeciesAbility, lineageAbility(sh, o.Desc))
+			for _, sp := range spells {
+				if !slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == freeCast(sp, "").Name }) {
+					sp.Prepared, sp.Ability = true, ability
+					out = append(out, sp)
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// lineageAbility is the ability picked for a lineage option's spells, read
+// from its level-1 cantrip, for sheets made before SpeciesAbility.
+func lineageAbility(sh dnd5e.Sheet, optionDesc string) string {
+	for _, name := range compendium.Cantrips(optionDesc) {
+		if i := slices.IndexFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == compendium.Slugify(name) }); i >= 0 {
+			return sh.Spells[i].Ability
+		}
+	}
+	return ""
+}
+
+// freeCast is a lineage spell's one cast without a slot per Long Rest, as a
+// feature so the Actions card counts it. Like other species features it has
+// no level (Feature.Level is a class level).
+func freeCast(sp dnd5e.Spell, species string) dnd5e.Feature {
+	return dnd5e.Feature{
+		Name: sp.Name + " (free cast)", Source: species,
+		Description: "Cast *" + sp.Name + "* once without a spell slot; you regain this when you finish a Long Rest.",
+		Uses:        dnd5e.Uses{Fixed: 1, Reset: "long"},
+	}
+}
+
 // spellAbilityChoice picks Intelligence, Wisdom or Charisma for the spells
 // a species grants. It runs after the spells are added.
 func spellAbilityChoice(trait string, slugs map[string]bool) choiceGroup {
@@ -442,6 +512,7 @@ func spellAbilityChoice(trait string, slugs map[string]bool) choiceGroup {
 			if name != picked[0] {
 				continue
 			}
+			s.SpeciesAbility = ab
 			for i, sp := range s.Spells {
 				if slugs[sp.Slug] {
 					s.Spells[i].Ability = ab

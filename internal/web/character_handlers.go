@@ -564,6 +564,9 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		v.Feats = append(v.Feats, views.Option{Slug: f.Slug, Name: f.Name})
 	}
 	v.Groups = groupViews(classOptionGroups(info, plan.ClassLevel, plan.ClassLevel-1, sheet.Features))
+	if v.LineageSpells, err = a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID); err != nil {
+		return v, err
+	}
 	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet)
 	return v, err
 }
@@ -659,6 +662,16 @@ func (a *App) levelUp(c *gin.Context) {
 		}
 		choice.Feat, choice.FeatDesc = feat.Name, feat.BodyText
 	}
+	// A plan error (level 20) comes back from LevelUp below.
+	plan, _ := sheet.Plan(choice.Class)
+	// Lineage spells first, so AddSpell keeps them (with their ability) over
+	// the same spell ticked in the class list.
+	lineage, err := a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	choice.Spells = slices.Clone(lineage)
 	for _, slug := range c.PostFormArray("spell") {
 		sp, err := a.compendiumSpell(ctx, slug, ch.CampaignID)
 		if err != nil {
@@ -668,8 +681,6 @@ func (a *App) levelUp(c *gin.Context) {
 		choice.Spells = append(choice.Spells, sp)
 	}
 
-	// A plan error (level 20) comes back from LevelUp below.
-	plan, _ := sheet.Plan(choice.Class)
 	groups := classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet.Features)
 	picks, err := readPicks(c, groups)
 	if err == nil {
@@ -683,6 +694,9 @@ func (a *App) levelUp(c *gin.Context) {
 				return userError{err}
 			}
 			applyPicks(&dc.Sheet, groups, picks)
+			for _, sp := range lineage {
+				dc.Sheet.PutFeature(freeCast(sp, sheet.Species), nil)
+			}
 			return q.CreateLevelUp(ctx, sqlc.CreateLevelUpParams{CharacterID: ch.ID, MaxHp: int64(maxHP), SheetJson: before})
 		})
 	}

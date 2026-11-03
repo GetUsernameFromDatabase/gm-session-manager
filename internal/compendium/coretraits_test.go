@@ -63,6 +63,13 @@ func TestOptions(t *testing.T) {
 			t.Errorf("%s: %+v", tt.name, got)
 		}
 	}
+	lineage := "Choose a lineage.\n\n**Table: Lineages**\n\n|Lineage|Level 1|Level 3|Level 5|\n|---|---|---|---|\n|Drow|Dancing Lights.|Faerie Fire|Darkness|\n|High Elf|Prestidigitation.|Detect Magic||\n\n|Other|Level 3|\n|---|---|\n|Not|This|"
+	if got, want := LevelSpells(lineage), map[string]map[int]string{"Drow": {3: "Faerie Fire", 5: "Darkness"}, "High Elf": {3: "Detect Magic"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("LevelSpells: %v", got)
+	}
+	if got := LevelSpells("**Forest Gnome.** You know the *Minor Illusion* cantrip."); len(got) != 0 {
+		t.Errorf("LevelSpells without a table: %v", got)
+	}
 	if OptionLevel("*Prerequisite: Level 5+ Warlock*") != 5 || OptionLevel("Mage Armor.") != 0 {
 		t.Error("OptionLevel")
 	}

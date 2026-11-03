@@ -34,7 +34,9 @@ type LevelUpView struct {
 	Spells     []Option
 	// Groups are the class options this level adds (invocations).
 	Groups []ChoiceGroup
-	Error  string
+	// LineageSpells are the species spells this character level teaches.
+	LineageSpells []dnd5e.Spell
+	Error         string
 }
 
 func slotSummary(slots [9]int) string {
@@ -143,6 +145,9 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 										<span class="text-muted-foreground">({ strings.Join(fx, "; ") })</span>
 									}
 								</li>
+							}
+							for _, sp := range v.LineageSpells {
+								<li>{ v.Sheet.Species } spell: { sp.Name } (always prepared, once free per Long Rest)</li>
 							}
 							if p.ASI {
 								<li>Ability Score Improvement or a feat</li>

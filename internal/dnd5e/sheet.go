@@ -354,11 +354,14 @@ func IsModTarget(target string) bool {
 
 // Sheet is the 2024 5e part of a character, stored as sheet_json.
 type Sheet struct {
-	Species    string         `json:"species,omitempty"    validate:"max=200"`
-	Background string         `json:"background,omitempty" validate:"max=200"`
-	Backstory  string         `json:"backstory,omitempty"  validate:"max=20000"`
-	Classes    []ClassLevel   `json:"classes"              validate:"dive"`
-	Scores     map[string]int `json:"abilities"            validate:"dive,keys,oneof=str dex con int wis cha,endkeys,min=1,max=30"`
+	Species string `json:"species,omitempty" validate:"max=200"`
+	// SpeciesAbility is the spellcasting ability picked for the species'
+	// spells, kept for the ones its lineage teaches at later levels.
+	SpeciesAbility string         `json:"species_ability,omitempty" validate:"omitempty,oneof=int wis cha"`
+	Background     string         `json:"background,omitempty" validate:"max=200"`
+	Backstory      string         `json:"backstory,omitempty"  validate:"max=20000"`
+	Classes        []ClassLevel   `json:"classes"              validate:"dive"`
+	Scores         map[string]int `json:"abilities"            validate:"dive,keys,oneof=str dex con int wis cha,endkeys,min=1,max=30"`
 	// ACBonus is added to AC whatever is worn; AC is the base AC older
 	// sheets set by hand, turned into ACBonus by ParseSheet.
 	ACBonus int    `json:"ac_bonus,omitempty"   validate:"min=-20,max=30"`

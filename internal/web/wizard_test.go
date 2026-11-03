@@ -111,6 +111,9 @@ func TestCreationWizard(t *testing.T) {
 	}
 	// The choices: the ancestry names its feature. Fire Bolt, picked from the
 	// class list, is another ancestry's cantrip, so it keeps the class's ability.
+	if sh.SpeciesAbility != "wis" {
+		t.Errorf("species ability %q", sh.SpeciesAbility)
+	}
 	if !slices.Equal(sh.Languages, []string{"Common", "Dwarvish", "Elvish"}) || !slices.Contains(sh.SkillProfs, "perception") ||
 		len(sh.Spells) != 1 || sh.Spells[0].Slug != "fire-bolt" || sh.Spells[0].Ability != "" || !slices.Contains(sh.Feats, "Alert") {
 		t.Errorf("languages %q skills %q spells %+v feats %q", sh.Languages, sh.SkillProfs, sh.Spells, sh.Feats)
@@ -247,6 +250,68 @@ func TestSpeciesResistance(t *testing.T) {
 	cr.groups[i].apply(&sh, []string{"Red"})
 	if !slices.Equal(sh.Resistances, []string{"poison", "fire"}) {
 		t.Errorf("resistances %q", sh.Resistances)
+	}
+}
+
+// TestLineageSpells: the picked lineage's "Level 3"/"Level 5" spells come at
+// those character levels, prepared, with the ability of its cantrip.
+func TestLineageSpells(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	for _, entry := range []sqlc.UpsertCompendiumEntryParams{
+		{Kind: "species", Slug: "testelf", Name: "Testelf", DataJson: `{"desc":"","parts":[
+			{"name":"Lineage","desc":"Choose a lineage.\n\n|Lineage|Level 1|Level 3|Level 5|\n|---|---|---|---|\n|Drow|You also know the Dancing Lights cantrip.|Faerie Fire|Darkness|\n|Wood|You know the Druidcraft cantrip.|Longstrider|Pass without Trace|"}]}`},
+		{Kind: "spell", Slug: "faerie-fire", Name: "Faerie Fire", DataJson: `{"level":1}`},
+		{Kind: "spell", Slug: "darkness", Name: "Darkness", DataJson: `{"level":2}`},
+	} {
+		entry.SourceKey, entry.ContentHash = "test", "x"
+		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	drow := dnd5e.NewSheet()
+	drow.Species = "Testelf"
+	drow.Features = []dnd5e.Feature{{Name: "Lineage (Drow)", Source: "Testelf"}}
+	drow.Spells = []dnd5e.Spell{{Slug: "dancing-lights", Name: "Dancing Lights", Ability: "int"}}
+	// Faerie Fire from the class list, so its free cast is still owed.
+	knowsFire := drow
+	knowsFire.Spells = append(slices.Clone(drow.Spells), dnd5e.Spell{Slug: "faerie-fire", Name: "Faerie Fire", Level: 1})
+	withFire := knowsFire
+	withFire.Features = append(slices.Clone(drow.Features), dnd5e.Feature{Name: "Faerie Fire (free cast)", Source: "Testelf"})
+	noPick := drow
+	noPick.Features = nil
+	// The cantrip was swapped; the ability picked at creation is kept.
+	swapped := drow
+	swapped.Spells, swapped.SpeciesAbility = nil, "wis"
+	for _, tt := range []struct {
+		name    string
+		sheet   dnd5e.Sheet
+		level   int
+		want    []string
+		ability string
+	}{
+		{"level 2", drow, 2, nil, "int"},
+		{"level 3", drow, 3, []string{"faerie-fire"}, "int"},
+		{"level 5 catches up", drow, 5, []string{"faerie-fire", "darkness"}, "int"},
+		{"level 5 has level 3's", withFire, 5, []string{"darkness"}, "int"},
+		{"known from the class list", knowsFire, 3, []string{"faerie-fire"}, "int"},
+		{"no lineage picked", noPick, 5, nil, "int"},
+		{"cantrip swapped", swapped, 3, []string{"faerie-fire"}, "wis"},
+	} {
+		got, err := e.app.lineageSpells(ctx, tt.sheet, tt.level, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var slugs []string
+		for _, sp := range got {
+			slugs = append(slugs, sp.Slug)
+			if !sp.Prepared || sp.Ability != tt.ability {
+				t.Errorf("%s: %+v not prepared with %s", tt.name, sp, tt.ability)
+			}
+		}
+		if !slices.Equal(slugs, tt.want) {
+			t.Errorf("%s: %q, want %q", tt.name, slugs, tt.want)
+		}
 	}
 }
 
