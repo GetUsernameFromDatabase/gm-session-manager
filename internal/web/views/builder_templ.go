@@ -104,6 +104,8 @@ func (s SheetView) builderVerbs() []builderVerb {
 			{"other-remove", "Remove other", "prof remove other", ""},
 			{"lang-add", "Add language", "prof add language", ""},
 			{"res-add", "Add resistance", "prof add resistance", ""},
+			{"imm-add", "Add immunity", "prof add immunity", ""},
+			{"vuln-add", "Add vulnerability", "prof add vulnerability", ""},
 		}},
 		{"details", "Details", []builderOp{
 			{"set-name", "Name", "set name", ""},
@@ -340,7 +342,7 @@ func chip(s SheetView, verb, op, label string, on bool) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 184, Col: 9}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 186, Col: 9}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -517,7 +519,20 @@ func opGroup(key string) string {
 
 // profTabGroups are the proficiency tabs by opGroup; each opens its add form.
 var profTabGroups = []struct{ Key, Label string }{
-	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"res", "Resistances"}, {"other", "Other"},
+	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"res", "Resistances"},
+	{"imm", "Immunities"}, {"vuln", "Vulnerabilities"}, {"other", "Other"},
+}
+
+// damageList is what a damage defense op edits: the command's noun, the
+// add field's label and the sheet's list.
+func (s SheetView) damageList(key string) (noun, label string, list []string) {
+	switch key {
+	case "imm-add":
+		return "immunity", "Add an immunity", s.C.Sheet.Immunities
+	case "vuln-add":
+		return "vulnerability", "Add a vulnerability", s.C.Sheet.Vulnerabilities
+	}
+	return "resistance", "Add a resistance", s.C.Sheet.Resistances
 }
 
 func profTabs(s SheetView, o builderOp) templ.Component {
@@ -577,7 +592,7 @@ func profTabs(s SheetView, o builderOp) templ.Component {
 						var templ_7745c5c3_Var16 string
 						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(t.Label)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 283, Col: 14}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 298, Col: 14}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 						if templ_7745c5c3_Err != nil {
@@ -667,7 +682,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templruntime.NewAttributeExpression(s.cmdURL()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 327, Col: 23}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 342, Col: 23}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 			if templ_7745c5c3_Err != nil {
@@ -680,7 +695,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 			var templ_7745c5c3_Var19 string
 			templ_7745c5c3_Var19, templ_7745c5c3_Err = templruntime.NewAttributeExpression(o.Prefix).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 330, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 345, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 			if templ_7745c5c3_Err != nil {
@@ -693,7 +708,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templruntime.NewAttributeExpression(subject).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 331, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 346, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 			if templ_7745c5c3_Err != nil {
@@ -706,7 +721,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 333, Col: 38}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 348, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -719,7 +734,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(dnd5e.Signed(f.Bonus))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 334, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 349, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -761,7 +776,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 					var templ_7745c5c3_Var24 string
 					templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(profLabels[l])
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 341, Col: 21}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 356, Col: 21}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 					if templ_7745c5c3_Err != nil {
@@ -827,7 +842,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 				var templ_7745c5c3_Var27 string
 				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 353, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 368, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 				if templ_7745c5c3_Err != nil {
@@ -965,7 +980,7 @@ func modEditForm(s SheetView, subject string) templ.Component {
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templruntime.NewAttributeExpression(s.cmdURL()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 418, Col: 23}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 433, Col: 23}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 			if templ_7745c5c3_Err != nil {
@@ -978,7 +993,7 @@ func modEditForm(s SheetView, subject string) templ.Component {
 			var templ_7745c5c3_Var32 string
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templruntime.NewAttributeExpression(m.Target).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 422, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 437, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 			if templ_7745c5c3_Err != nil {
@@ -991,7 +1006,7 @@ func modEditForm(s SheetView, subject string) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templruntime.NewAttributeExpression(m.Note).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 423, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 438, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 			if templ_7745c5c3_Err != nil {
@@ -1126,7 +1141,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templruntime.NewAttributeExpression(s.cmdURL()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 449, Col: 22}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 464, Col: 22}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 			if templ_7745c5c3_Err != nil {
@@ -1154,7 +1169,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 				var templ_7745c5c3_Var40 string
 				templ_7745c5c3_Var40, templ_7745c5c3_Err = templruntime.NewAttributeExpression(builderURL(s, verb, o.Key, "")).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 452, Col: 47}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 467, Col: 47}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 				if templ_7745c5c3_Err != nil {
@@ -1172,7 +1187,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templruntime.NewAttributeExpression(toJSON(maxes)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 454, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 469, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 			if templ_7745c5c3_Err != nil {
@@ -1185,7 +1200,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templruntime.NewAttributeExpression(toJSON(values)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 455, Col: 29}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 470, Col: 29}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 			if templ_7745c5c3_Err != nil {
@@ -1222,7 +1237,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 		var templ_7745c5c3_Var44 string
 		templ_7745c5c3_Var44, templ_7745c5c3_Err = templruntime.NewAttributeExpression(o.Prefix).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 458, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 473, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var44)
 		if templ_7745c5c3_Err != nil {
@@ -1235,7 +1250,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 		var templ_7745c5c3_Var45 string
 		templ_7745c5c3_Var45, templ_7745c5c3_Err = templruntime.NewAttributeExpression(o.Sign).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 459, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 474, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var45)
 		if templ_7745c5c3_Err != nil {
@@ -1322,7 +1337,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(o.submitLabel())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 473, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 488, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
@@ -1371,7 +1386,7 @@ func itemDetails() templ.Component {
 
 // stayOpen are forms (op key to verb) used several times in a row: after a
 // submit they reload with the sheet's new choices instead of closing the dialog.
-var stayOpen = map[string]string{"feature-remove": "features", "lang-add": "profs", "res-add": "profs"}
+var stayOpen = map[string]string{"feature-remove": "features", "lang-add": "profs", "res-add": "profs", "imm-add": "profs", "vuln-add": "profs"}
 
 // removableList shows what a form adds, each name with a button that
 // removes it at once (prefix plus the name as subject).
@@ -1404,7 +1419,7 @@ func removableList(s SheetView, prefix string, names []string) templ.Component {
 			var templ_7745c5c3_Var52 string
 			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(n)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 501, Col: 7}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 516, Col: 7}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 			if templ_7745c5c3_Err != nil {
@@ -1569,7 +1584,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 					var templ_7745c5c3_Var57 string
 					templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(o.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 563, Col: 14}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 578, Col: 14}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 					if templ_7745c5c3_Err != nil {
@@ -1668,7 +1683,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			var templ_7745c5c3_Var61 string
 			templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(s.C.Sheet.ArmorClass()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 581, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 596, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 			if templ_7745c5c3_Err != nil {
@@ -1871,7 +1886,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			var templ_7745c5c3_Var67 string
 			templ_7745c5c3_Var67, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.Source).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 627, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 642, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var67)
 			if templ_7745c5c3_Err != nil {
@@ -1943,13 +1958,14 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "res-add":
-			templ_7745c5c3_Err = removableList(s, "prof remove resistance", capitalized(s.C.Sheet.Resistances)).Render(ctx, templ_7745c5c3_Buffer)
+		case "res-add", "imm-add", "vuln-add":
+			noun, label, list := s.damageList(o.Key)
+			templ_7745c5c3_Err = removableList(s, "prof remove "+noun, capitalized(list)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			missing := slices.DeleteFunc(slices.Clone(dnd5e.DamageTypes), func(d string) bool { return slices.Contains(s.C.Sheet.Resistances, d) })
-			templ_7745c5c3_Err = subjectField("Add a resistance", selectItems(missing, func(d string) string { return d }, func(d string) string { return capitalized([]string{d})[0] }), "").Render(ctx, templ_7745c5c3_Buffer)
+			missing := slices.DeleteFunc(slices.Clone(dnd5e.DamageTypes), func(d string) bool { return slices.Contains(list, d) })
+			templ_7745c5c3_Err = subjectField(label, selectItems(missing, func(d string) string { return d }, func(d string) string { return capitalized([]string{d})[0] }), "").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2101,7 +2117,7 @@ func subjectField(label string, items []selectcomp.ItemData, class string) templ
 				var templ_7745c5c3_Var73 string
 				templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 728, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 744, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 				if templ_7745c5c3_Err != nil {
@@ -2180,7 +2196,7 @@ func nameField(label, value string, fixed bool) templ.Component {
 				var templ_7745c5c3_Var77 string
 				templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 743, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 759, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 				if templ_7745c5c3_Err != nil {
@@ -2274,7 +2290,7 @@ func textField(label, value, placeholder string, required bool) templ.Component 
 				var templ_7745c5c3_Var82 string
 				templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 757, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 773, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 				if templ_7745c5c3_Err != nil {
@@ -2346,7 +2362,7 @@ func numberField(label string, lo, hi, value int, focus bool) templ.Component {
 				var templ_7745c5c3_Var86 string
 				templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 768, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 784, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var86))
 				if templ_7745c5c3_Err != nil {
@@ -2865,7 +2881,7 @@ func featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, s
 			var templ_7745c5c3_Var106 string
 			templ_7745c5c3_Var106, templ_7745c5c3_Err = templruntime.NewAttributeExpression(toJSON(f.Uses.ByLevel)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 872, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 888, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var106)
 			if templ_7745c5c3_Err != nil {
@@ -2878,7 +2894,7 @@ func featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, s
 			var templ_7745c5c3_Var107 string
 			templ_7745c5c3_Var107, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.Uses.Class).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 873, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 889, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var107)
 			if templ_7745c5c3_Err != nil {
@@ -3267,7 +3283,7 @@ func modText(m dnd5e.CustomMod) templ.Component {
 		var templ_7745c5c3_Var119 string
 		templ_7745c5c3_Var119, templ_7745c5c3_Err = templ.JoinStringErrs(dnd5e.Signed(m.Value))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 989, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1005, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var119))
 		if templ_7745c5c3_Err != nil {
@@ -3280,7 +3296,7 @@ func modText(m dnd5e.CustomMod) templ.Component {
 		var templ_7745c5c3_Var120 string
 		templ_7745c5c3_Var120, templ_7745c5c3_Err = templ.JoinStringErrs(modTargetLabel(m.Target))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 989, Col: 105}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1005, Col: 105}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var120))
 		if templ_7745c5c3_Err != nil {
@@ -3293,7 +3309,7 @@ func modText(m dnd5e.CustomMod) templ.Component {
 		var templ_7745c5c3_Var121 string
 		templ_7745c5c3_Var121, templ_7745c5c3_Err = templ.JoinStringErrs(m.Note)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 989, Col: 153}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1005, Col: 153}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var121))
 		if templ_7745c5c3_Err != nil {
@@ -3391,7 +3407,7 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 					var templ_7745c5c3_Var125 string
 					templ_7745c5c3_Var125, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1018, Col: 35}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1034, Col: 35}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var125))
 					if templ_7745c5c3_Err != nil {
@@ -3404,7 +3420,7 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 					var templ_7745c5c3_Var126 string
 					templ_7745c5c3_Var126, templ_7745c5c3_Err = templ.JoinStringErrs(p.Detail)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1019, Col: 58}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1035, Col: 58}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var126))
 					if templ_7745c5c3_Err != nil {
@@ -3430,7 +3446,7 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 				var templ_7745c5c3_Var127 string
 				templ_7745c5c3_Var127, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1024, Col: 13}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1040, Col: 13}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var127))
 				if templ_7745c5c3_Err != nil {
@@ -3443,7 +3459,7 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 				var templ_7745c5c3_Var128 string
 				templ_7745c5c3_Var128, templ_7745c5c3_Err = templ.JoinStringErrs(p.Detail)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1025, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1041, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var128))
 				if templ_7745c5c3_Err != nil {
@@ -3696,7 +3712,7 @@ func BuilderPickItems(characterID int64, picks []BuilderPick) templ.Component {
 				var templ_7745c5c3_Var138 string
 				templ_7745c5c3_Var138, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1087, Col: 11}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1103, Col: 11}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var138))
 				if templ_7745c5c3_Err != nil {
@@ -3709,7 +3725,7 @@ func BuilderPickItems(characterID int64, picks []BuilderPick) templ.Component {
 				var templ_7745c5c3_Var139 string
 				templ_7745c5c3_Var139, templ_7745c5c3_Err = templ.JoinStringErrs(p.Detail)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1088, Col: 57}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1104, Col: 57}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var139))
 				if templ_7745c5c3_Err != nil {
@@ -3781,7 +3797,7 @@ func armorForm(s SheetView) templ.Component {
 			var templ_7745c5c3_Var141 string
 			templ_7745c5c3_Var141, templ_7745c5c3_Err = templ.JoinStringErrs(sh.Armor.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1110, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1126, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var141))
 			if templ_7745c5c3_Err != nil {
@@ -3794,7 +3810,7 @@ func armorForm(s SheetView) templ.Component {
 			var templ_7745c5c3_Var142 string
 			templ_7745c5c3_Var142, templ_7745c5c3_Err = templ.JoinStringErrs(sh.Armor.Type)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1110, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1126, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var142))
 			if templ_7745c5c3_Err != nil {
@@ -3907,7 +3923,7 @@ func coinForm(s SheetView, focus string) templ.Component {
 		var templ_7745c5c3_Var146 string
 		templ_7745c5c3_Var146, templ_7745c5c3_Err = templruntime.NewAttributeExpression(s.cmdURL()).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1141, Col: 22}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1157, Col: 22}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var146)
 		if templ_7745c5c3_Err != nil {
@@ -3945,7 +3961,7 @@ func coinForm(s SheetView, focus string) templ.Component {
 					var templ_7745c5c3_Var149 string
 					templ_7745c5c3_Var149, templ_7745c5c3_Err = templ.JoinStringErrs(c.name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1148, Col: 14}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1164, Col: 14}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var149))
 					if templ_7745c5c3_Err != nil {
@@ -3968,7 +3984,7 @@ func coinForm(s SheetView, focus string) templ.Component {
 				var templ_7745c5c3_Var150 string
 				templ_7745c5c3_Var150, templ_7745c5c3_Err = templruntime.NewAttributeExpression("was_" + c.name).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1151, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1167, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var150)
 				if templ_7745c5c3_Err != nil {
@@ -3981,7 +3997,7 @@ func coinForm(s SheetView, focus string) templ.Component {
 				var templ_7745c5c3_Var151 string
 				templ_7745c5c3_Var151, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(c.n)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1151, Col: 74}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1167, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var151)
 				if templ_7745c5c3_Err != nil {

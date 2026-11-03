@@ -12,6 +12,7 @@ import (
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/hub"
 )
 
@@ -61,6 +62,16 @@ func TestJoinOpenCampaign(t *testing.T) {
 	c := sessionCookie(w)
 	if c == nil || !e.alive(t, c.Value) {
 		t.Fatal("open join did not log the device in")
+	}
+	// A new sheet has nothing to catch up at the next startup.
+	chars, err := e.q().ListCharactersByCampaign(t.Context(), e.campaignID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range chars {
+		if s, err := dnd5e.ParseSheet(ch.SheetJson); ch.Name == "Bob" && (err != nil || s.EffectsVersion != dnd5e.EffectsVersion) {
+			t.Errorf("new sheet effects version %d (%v)", s.EffectsVersion, err)
+		}
 	}
 	// A device with a session cannot join again without logging out.
 	if w := e.do(t, http.MethodPost, fmt.Sprintf("/join/%d/create", e.campaignID), c.Value, url.Values{"name": {"Eve"}}, false); sessionCookie(w) != nil {

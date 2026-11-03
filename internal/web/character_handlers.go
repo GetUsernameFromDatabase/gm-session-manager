@@ -98,15 +98,22 @@ func coinCommand(c *gin.Context) string {
 type hpForm struct {
 	Op     string `form:"hp_op"     validate:"oneof=damage heal temp"`
 	Amount int    `form:"hp_amount" validate:"min=1"`
+	// Type is the damage type, " " (the select's Other) or empty for untyped.
+	Type string `form:"hp_type"`
 }
 
-// hpCommand turns the HP quick form into damage, healing or temp HP.
+// hpCommand turns the HP quick form into damage (of a type), healing or
+// temp HP.
 func hpCommand(c *gin.Context) (dnd5e.Command, error) {
 	var f hpForm
 	if err := c.ShouldBind(&f); err != nil {
 		return dnd5e.Command{}, errors.New("enter how many hit points, 1 or more")
 	}
-	return dnd5e.Parse(map[string]string{"damage": "hp -", "heal": "hp +", "temp": "temp "}[f.Op] + strconv.Itoa(f.Amount))
+	line := map[string]string{"damage": "hp -", "heal": "hp +", "temp": "temp "}[f.Op] + strconv.Itoa(f.Amount)
+	if kind := strings.TrimSpace(f.Type); f.Op == "damage" && kind != "" {
+		return dnd5e.Parse(line, kind) // Parse checks the type
+	}
+	return dnd5e.Parse(line)
 }
 
 // builderArgs are the command builder's fields, in the order the commands
@@ -215,6 +222,11 @@ func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Comma
 		}
 	}
 	return a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
+		conds, err := q.ListConditionsByCharacter(ctx, sql.NullInt64{Int64: ch.ID, Valid: true})
+		if err != nil {
+			return err
+		}
+		env.Petrified = petrified(conds)
 		fx, err := cmd.Apply(dc, env)
 		if err != nil {
 			return userError{err}

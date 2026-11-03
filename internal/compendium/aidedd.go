@@ -177,7 +177,7 @@ func setStat(d *MonsterData, label, v string) {
 	case "Damage Immunities", "Condition Immunities":
 		d.Immunity = joinNonEmpty("; ", d.Immunity, v)
 	case "Damage Vulnerabilities":
-		d.Desc = joinText(d.Desc, "Vulnerabilities: "+v)
+		d.Vulnerability = v
 	case "Senses":
 		d.Senses = v
 	case "Languages":

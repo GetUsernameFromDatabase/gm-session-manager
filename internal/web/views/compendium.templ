@@ -1105,7 +1105,7 @@ templ monsterBody(d *compendium.MonsterData) {
 			}
 		</dl>
 	}
-	if len(d.Saves) > 0 || len(d.Skills) > 0 || d.Resistance != "" || d.Immunity != "" || d.Senses != "" || d.Languages != "" || d.CR != "" {
+	if len(d.Saves) > 0 || len(d.Skills) > 0 || d.Resistance != "" || d.Immunity != "" || d.Vulnerability != "" || d.Senses != "" || d.Languages != "" || d.CR != "" {
 		@rule()
 	}
 	if len(d.Saves) > 0 {
@@ -1119,6 +1119,9 @@ templ monsterBody(d *compendium.MonsterData) {
 	}
 	if d.Immunity != "" {
 		<p><strong>Immunities</strong> { d.Immunity }</p>
+	}
+	if d.Vulnerability != "" {
+		<p><strong>Vulnerabilities</strong> { d.Vulnerability }</p>
 	}
 	if d.Senses != "" {
 		<p><strong>Senses</strong> { d.Senses }</p>
@@ -1394,6 +1397,7 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 					@inlineField("Languages", "languages", v.Input.Languages, "w-full", templ.Attributes{"placeholder": "Common, Abyssal"})
 					@inlineField("Resistances", "resistances", v.Input.Resistances, "w-full", templ.Attributes{"placeholder": "cold, fire"})
 					@inlineField("Immunities", "immunities", v.Input.Immunities, "w-full", templ.Attributes{"placeholder": "poison; frightened"})
+					@inlineField("Vulnerabilities", "vulnerabilities", v.Input.Vulnerable, "w-full", templ.Attributes{"placeholder": "radiant"})
 				</div>
 				<h2 class={ utils.CN(sectionHeading, "pt-3") }>Traits and actions</h2>
 				// Each section is one paragraph per entry, as "Name. What it does…".

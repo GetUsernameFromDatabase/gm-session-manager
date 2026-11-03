@@ -95,6 +95,8 @@ func (s SheetView) builderVerbs() []builderVerb {
 			{"other-remove", "Remove other", "prof remove other", ""},
 			{"lang-add", "Add language", "prof add language", ""},
 			{"res-add", "Add resistance", "prof add resistance", ""},
+			{"imm-add", "Add immunity", "prof add immunity", ""},
+			{"vuln-add", "Add vulnerability", "prof add vulnerability", ""},
 		}},
 		{"details", "Details", []builderOp{
 			{"set-name", "Name", "set name", ""},
@@ -272,7 +274,20 @@ func opGroup(key string) string {
 
 // profTabGroups are the proficiency tabs by opGroup; each opens its add form.
 var profTabGroups = []struct{ Key, Label string }{
-	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"res", "Resistances"}, {"other", "Other"},
+	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"res", "Resistances"},
+	{"imm", "Immunities"}, {"vuln", "Vulnerabilities"}, {"other", "Other"},
+}
+
+// damageList is what a damage defense op edits: the command's noun, the
+// add field's label and the sheet's list.
+func (s SheetView) damageList(key string) (noun, label string, list []string) {
+	switch key {
+	case "imm-add":
+		return "immunity", "Add an immunity", s.C.Sheet.Immunities
+	case "vuln-add":
+		return "vulnerability", "Add a vulnerability", s.C.Sheet.Vulnerabilities
+	}
+	return "resistance", "Add a resistance", s.C.Sheet.Resistances
 }
 
 templ profTabs(s SheetView, o builderOp) {
@@ -490,7 +505,7 @@ templ itemDetails() {
 
 // stayOpen are forms (op key to verb) used several times in a row: after a
 // submit they reload with the sheet's new choices instead of closing the dialog.
-var stayOpen = map[string]string{"feature-remove": "features", "lang-add": "profs", "res-add": "profs"}
+var stayOpen = map[string]string{"feature-remove": "features", "lang-add": "profs", "res-add": "profs", "imm-add": "profs", "vuln-add": "profs"}
 
 // removableList shows what a form adds, each name with a button that
 // removes it at once (prefix plus the name as subject).
@@ -637,10 +652,11 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 		case "lang-add":
 			@removableList(s, "prof remove language", s.C.Sheet.Languages)
 			@nameField("Add a language", "", false)
-		case "res-add":
-			@removableList(s, "prof remove resistance", capitalized(s.C.Sheet.Resistances))
-			{{ missing := slices.DeleteFunc(slices.Clone(dnd5e.DamageTypes), func(d string) bool { return slices.Contains(s.C.Sheet.Resistances, d) }) }}
-			@subjectField("Add a resistance", selectItems(missing, func(d string) string { return d }, func(d string) string { return capitalized([]string{d})[0] }), "")
+		case "res-add", "imm-add", "vuln-add":
+			{{ noun, label, list := s.damageList(o.Key) }}
+			@removableList(s, "prof remove "+noun, capitalized(list))
+			{{ missing := slices.DeleteFunc(slices.Clone(dnd5e.DamageTypes), func(d string) bool { return slices.Contains(list, d) }) }}
+			@subjectField(label, selectItems(missing, func(d string) string { return d }, func(d string) string { return capitalized([]string{d})[0] }), "")
 		case "weapon-add":
 			if w := s.weapon(subject); w != nil {
 				@weaponFields(s, *w, true)

@@ -98,26 +98,27 @@ type MonsterAction struct {
 
 // MonsterData is a creature statblock.
 type MonsterData struct {
-	Size       string          `json:"size,omitempty"`
-	Type       string          `json:"type,omitempty"`
-	Alignment  string          `json:"alignment,omitempty"`
-	AC         int             `json:"ac"`
-	ACDetail   string          `json:"ac_detail,omitempty"`
-	HP         int             `json:"hp"`
-	HitDice    string          `json:"hit_dice,omitempty"`
-	Initiative int             `json:"initiative"`
-	Speed      map[string]int  `json:"speed,omitempty"`
-	Abilities  map[string]int  `json:"abilities,omitempty"`
-	Saves      map[string]int  `json:"saves,omitempty"`
-	Skills     map[string]int  `json:"skills,omitempty"`
-	CR         string          `json:"cr,omitempty"`
-	Senses     string          `json:"senses,omitempty"`
-	Languages  string          `json:"languages,omitempty"`
-	Resistance string          `json:"resistances,omitempty"`
-	Immunity   string          `json:"immunities,omitempty"`
-	Traits     []NameDesc      `json:"traits,omitempty"`
-	Actions    []MonsterAction `json:"actions,omitempty"`
-	Desc       string          `json:"desc,omitempty"`
+	Size          string          `json:"size,omitempty"`
+	Type          string          `json:"type,omitempty"`
+	Alignment     string          `json:"alignment,omitempty"`
+	AC            int             `json:"ac"`
+	ACDetail      string          `json:"ac_detail,omitempty"`
+	HP            int             `json:"hp"`
+	HitDice       string          `json:"hit_dice,omitempty"`
+	Initiative    int             `json:"initiative"`
+	Speed         map[string]int  `json:"speed,omitempty"`
+	Abilities     map[string]int  `json:"abilities,omitempty"`
+	Saves         map[string]int  `json:"saves,omitempty"`
+	Skills        map[string]int  `json:"skills,omitempty"`
+	CR            string          `json:"cr,omitempty"`
+	Senses        string          `json:"senses,omitempty"`
+	Languages     string          `json:"languages,omitempty"`
+	Resistance    string          `json:"resistances,omitempty"`
+	Immunity      string          `json:"immunities,omitempty"`
+	Vulnerability string          `json:"vulnerabilities,omitempty"`
+	Traits        []NameDesc      `json:"traits,omitempty"`
+	Actions       []MonsterAction `json:"actions,omitempty"`
+	Desc          string          `json:"desc,omitempty"`
 }
 
 // SpellData is a spell.

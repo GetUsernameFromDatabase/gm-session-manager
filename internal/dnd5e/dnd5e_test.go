@@ -2,6 +2,7 @@ package dnd5e
 
 import (
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -409,6 +410,90 @@ func TestLanguages(t *testing.T) {
 	}
 }
 
+// TestDefenses: immunity takes all damage, resistance halves it (rounding
+// down) and vulnerability doubles it after that; a conditional defense
+// counts only when picked, and Petrified resists untyped damage too.
+func TestDefenses(t *testing.T) {
+	d := Defenses{List: []Defense{
+		{Kind: DefResist, Types: []string{"cold", "fire"}},
+		{Kind: DefImmune, Types: []string{"poison"}},
+		{Kind: DefVulnerable, Types: []string{"fire", "radiant"}},
+		{Kind: DefResist, Types: []string{"bludgeoning"}, When: "from nonmagical attacks"},
+	}}
+	for _, tt := range []struct {
+		n         int
+		kind      string
+		when      int
+		resistAll bool
+		want      int
+	}{
+		{9, "cold", -1, false, 4},
+		{9, "poison", -1, false, 0},
+		{9, "radiant", -1, false, 18},
+		{9, "fire", -1, false, 8}, // resisted and vulnerable
+		{9, "", -1, false, 9},
+		{9, "bludgeoning", -1, false, 9},
+		{9, "bludgeoning", 3, false, 4},
+		{9, "cold", 3, false, 4}, // the pick covers bludgeoning only
+		{9, "", -1, true, 4},
+		{9, "cold", -1, true, 4}, // resistance does not stack
+		{9, "radiant", -1, true, 8},
+	} {
+		d.ResistAll = tt.resistAll
+		if got := d.Taken(tt.n, tt.kind, tt.when); got != tt.want {
+			t.Errorf("Taken(%d, %q, %d) petrified %v = %d, want %d", tt.n, tt.kind, tt.when, tt.resistAll, got, tt.want)
+		}
+	}
+
+	for _, tt := range []struct {
+		text string
+		want []Defense
+	}{
+		{"cold, fire; bludgeoning, piercing, and slashing from nonmagical attacks", []Defense{
+			{Kind: DefResist, Types: []string{"cold", "fire"}},
+			{Kind: DefResist, Types: []string{"bludgeoning", "piercing", "slashing"}, When: "from nonmagical attacks"},
+		}},
+		{"Poison; frightened, poisoned", []Defense{{Kind: DefResist, Types: []string{"poison"}}}},
+		{"poison, poisoned, charmed", []Defense{{Kind: DefResist, Types: []string{"poison"}}}},
+		{"fire damage", []Defense{{Kind: DefResist, Types: []string{"fire"}}}},
+		{"bludgeoning from nonmagical attacks that aren't adamantine", []Defense{
+			{Kind: DefResist, Types: []string{"bludgeoning"}, When: "from nonmagical attacks that aren't adamantine"},
+		}},
+		{"", nil},
+	} {
+		if got := ParseDefenses(DefResist, tt.text); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("ParseDefenses(%q) = %+v, want %+v", tt.text, got, tt.want)
+		}
+	}
+
+	c := Character{Name: "Tam", HP: 30, MaxHP: 30, Sheet: NewSheet()}
+	c.Sheet.Resistances, c.Sheet.Vulnerabilities = []string{"fire"}, []string{"cold"}
+	for _, tt := range []struct {
+		line      string
+		petrified bool
+		hp        int
+	}{
+		{"hp -9 fire", false, 26},
+		{"hp -9 Cold", false, 8},
+		{"hp -9", true, 4},
+		{"hp =30", false, 30},
+		{"hp -9", false, 21},
+	} {
+		cmd, err := Parse(tt.line)
+		if err == nil {
+			_, err = cmd.Apply(&c, Env{Petrified: tt.petrified})
+		}
+		if err != nil || c.HP != tt.hp {
+			t.Errorf("%s: HP %d, want %d (%v)", tt.line, c.HP, tt.hp, err)
+		}
+	}
+	for _, bad := range []string{"hp -9 pizza", "hp +9 fire", "hp =9 fire"} {
+		if _, err := Parse(bad); err == nil {
+			t.Errorf("%s parsed", bad)
+		}
+	}
+}
+
 func TestResistances(t *testing.T) {
 	c := Character{Name: "Tam", Sheet: NewSheet()}
 	for _, tt := range []struct {
@@ -431,6 +516,25 @@ func TestResistances(t *testing.T) {
 	}
 	if !slices.Equal(c.Sheet.Resistances, []string{"fire"}) {
 		t.Errorf("%q", c.Sheet.Resistances)
+	}
+	for _, tt := range []struct {
+		line string
+		ok   bool
+	}{
+		{"prof add immunity poison", true},
+		{"prof add vulnerability Radiant", true},
+		{"prof add immunity pizza", false},
+	} {
+		cmd, err := Parse(tt.line)
+		if err == nil {
+			_, err = cmd.Apply(&c, Env{})
+		}
+		if (err == nil) != tt.ok {
+			t.Errorf("%s: %v", tt.line, err)
+		}
+	}
+	if !slices.Equal(c.Sheet.Immunities, []string{"poison"}) || !slices.Equal(c.Sheet.Vulnerabilities, []string{"radiant"}) {
+		t.Errorf("immunities %q, vulnerabilities %q", c.Sheet.Immunities, c.Sheet.Vulnerabilities)
 	}
 	s := Sheet{Classes: []ClassLevel{{Name: "Warlock"}}}
 	if s.SpellAbilityOf(Spell{}) != "cha" || s.SpellAbilityOf(Spell{Ability: "int"}) != "int" {

@@ -65,6 +65,8 @@ type CombatantView struct {
 	Portrait string
 	// Marker names its piece on the physical table, GM only.
 	Marker string
+	// Defenses are how it takes damage, for the GM and the player's own row.
+	Defenses dnd5e.Defenses
 }
 
 // EncounterView is the tracker for one encounter.
@@ -353,7 +355,7 @@ templ ownCombatant(c CombatantView) {
 			</div>
 		</div>
 		@hpMeter(c, "w-full")
-		@hpQuickForm(fmt.Sprintf("/characters/%d/cmd", c.CharacterID), true)
+		@hpQuickForm(fmt.Sprintf("/characters/%d/cmd", c.CharacterID), true, c.Defenses)
 		@conditionList(c.Conditions, true)
 	</div>
 }
@@ -629,10 +631,17 @@ templ hpText(c CombatantView) {
 
 // hpQuickForm damages, heals or adds temporary HP through a character's
 // commands: on the sheet, and on the player's own row in combat (compact).
-templ hpQuickForm(cmdURL string, compact bool) {
+// A character with defenses picks the damage type. Not reset() after a
+// submit: it would put the type's value back but not its label.
+templ hpQuickForm(cmdURL string, compact bool, d dnd5e.Defenses) {
 	{{ size := utils.IfElse(compact, button.SizeXs, button.SizeSm) }}
-	<form class="flex items-center gap-2" hx-post={ cmdURL } hx-on::after-request="this.reset()">
+	{{ items, typeID := damageTypeItems(d), utils.IfElse(compact, "hp-own-type", "hp-quick-type") }}
+	<form class="flex flex-wrap items-center gap-2" hx-post={ cmdURL } hx-on::after-request="if (event.detail.successful) this.hp_amount.value = ''">
 		@input.Input(input.Props{Name: "hp_amount", Type: "number", Class: utils.IfElse(compact, "h-6 w-16", "w-20"), Placeholder: "0", Required: true, Attributes: templ.Attributes{"min": "1", "inputmode": "numeric", "aria-label": "Hit points"}})
+		if len(items) > 1 {
+			<label for={ typeID + "-trigger" } class="sr-only">Damage type</label>
+			@formSelect(typeID, "hp_type", items, "", utils.IfElse(compact, "h-6 w-48 text-xs", "w-48"), damageTypeList)
+		}
 		@button.Button(button.Props{Type: button.TypeSubmit, Size: size, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "hp_op", "value": "damage"}}) {
 			Damage
 		}
@@ -642,7 +651,15 @@ templ hpQuickForm(cmdURL string, compact bool) {
 		@button.Button(button.Props{Type: button.TypeSubmit, Size: size, Variant: button.VariantOutline, Attributes: templ.Attributes{"name": "hp_op", "value": "temp"}}) {
 			Temp
 		}
+		@petrifiedNote(d, "basis-full")
 	</form>
+}
+
+// petrifiedNote says why damage is halved whatever its type.
+templ petrifiedNote(d dnd5e.Defenses, class string) {
+	if d.ResistAll {
+		<p class={ "text-xs text-muted-foreground", class }>Petrified: all damage is halved.</p>
+	}
 }
 
 // initiativeInput is the GM's initiative field, with a button that rolls
@@ -758,13 +775,24 @@ templ hpDialog(c CombatantView) {
 					Set
 				}
 			</form>
-			<form class="grid gap-4 border-t pt-4" hx-post={ fmt.Sprintf("/combatants/%d/hp", c.ID) } hx-on::after-request="if (event.detail.successful) { this.reset(); this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click() }">
+			// Not reset(): it would put the damage type's value back but not its label.
+			<form class="grid gap-4 border-t pt-4" hx-post={ fmt.Sprintf("/combatants/%d/hp", c.ID) } hx-on::after-request="if (event.detail.successful) { this.amount.value = ''; this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click() }">
 				@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
 					@field.Label(field.LabelProps{For: id + "-amount"}) {
 						Amount
 					}
 					@input.Input(input.Props{ID: id + "-amount", Name: "amount", Type: "number", Class: "w-24", Attributes: templ.Attributes{"min": "0", "max": fmt.Sprint(MaxHPInput), "inputmode": "numeric", "autofocus": true}})
 				}
+				// Damage of a type no defense names is "Other".
+				if items := damageTypeItems(c.Defenses); len(items) > 1 {
+					@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
+						@field.Label(field.LabelProps{For: id + "-type-trigger"}) {
+							Damage type
+						}
+						@formSelect(id+"-type", "type", items, "", "w-56 min-w-0", damageTypeList)
+					}
+				}
+				@petrifiedNote(c.Defenses, "")
 				@dialog.Footer() {
 					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.Close(ctx)}) {
 						Cancel
@@ -955,6 +983,33 @@ func selectItems[T any](xs []T, value, label func(T) string) []selectcomp.ItemDa
 	items := make([]selectcomp.ItemData, 0, len(xs))
 	for _, x := range xs {
 		items = append(items, selectcomp.ItemData{Value: value(x), Label: label(x)})
+	}
+	return items
+}
+
+// damageTypeList lets the damage types' list grow past its trigger, as
+// conditional ones ("… from nonmagical attacks") are long.
+const damageTypeList = "w-auto min-w-(--anchor-width) max-w-[calc(100vw-2rem)]"
+
+// damageTypeItems offers untyped damage first, then each type a defense
+// names, then each conditional defense's types as "<type>@<index>"
+// (damageChoice reads them back).
+func damageTypeItems(d dnd5e.Defenses) []selectcomp.ItemData {
+	d.ResistAll = false // Petrified has its own note
+	effect := map[int]string{0: "immune, none", 2: "resisted, half", 4: "resisted and vulnerable", 8: "vulnerable, double"}
+	items := []selectcomp.ItemData{{Value: " ", Label: "Other"}}
+	for _, t := range dnd5e.DamageTypes {
+		if slices.ContainsFunc(d.List, func(def dnd5e.Defense) bool { return def.When == "" && slices.Contains(def.Types, t) }) {
+			items = append(items, selectcomp.ItemData{Value: t, Label: fmt.Sprintf("%s (%s)", capitalized([]string{t})[0], effect[d.Taken(4, t, -1)])})
+		}
+	}
+	for i, def := range d.List {
+		if def.When == "" {
+			continue
+		}
+		for _, t := range def.Types {
+			items = append(items, selectcomp.ItemData{Value: fmt.Sprintf("%s@%d", t, i), Label: fmt.Sprintf("%s %s (%s)", capitalized([]string{t})[0], def.When, effect[d.Taken(4, t, i)])})
+		}
 	}
 	return items
 }

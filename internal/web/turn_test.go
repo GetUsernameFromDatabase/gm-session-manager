@@ -11,6 +11,7 @@ import (
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/perm"
 )
 
@@ -99,6 +100,95 @@ func TestRollInitiative(t *testing.T) {
 		got, _ := e.q().GetCombatant(ctx, cb.ID)
 		if !got.Initiative.Valid || got.Initiative.Int64 < 1 || got.Initiative.Int64 > 20 {
 			t.Fatalf("initiative %v outside 1..20", got.Initiative)
+		}
+	}
+}
+
+// TestCombatDefenses: the GM's damage follows a statblock's resistances,
+// immunities, vulnerabilities and conditional defenses, and Petrified; a
+// player damages their own character by type, and never sees another
+// combatant's defenses.
+func TestCombatDefenses(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "testgoyle", Name: "Testgoyle", SourceKey: "test", ContentHash: "x",
+		DataJson: `{"ac":15,"hp":60,"resistances":"cold; bludgeoning from nonmagical attacks","immunities":"poison; poisoned","vulnerabilities":"radiant"}`}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "testgoyle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	mon, err := e.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, MonsterRef: nullID(m.ID), Name: "Testgoyle", Hp: 60, MaxHp: 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, CharacterID: nullID(e.characterID), Name: "pc"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.app.updateCharacter(ctx, e.characterID, func(_ *sqlc.Queries, dc *dnd5e.Character) error {
+		dc.Sheet.Resistances, dc.HP, dc.MaxHP = []string{"fire"}, 30, 30
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	hpURL := fmt.Sprintf("/combatants/%d/hp", mon.ID)
+	hp := int64(60)
+	for _, tt := range []struct {
+		kind  string
+		taken int64 // -1: refused
+	}{
+		{" ", 9}, {"cold", 4}, {"poison", 0}, {"radiant", 18},
+		{"bludgeoning", 9}, {"bludgeoning@1", 4},
+		{"bludgeoning@0", -1}, {"cold@1", -1}, {"pizza", -1},
+	} {
+		w := e.do(t, http.MethodPost, hpURL, gm, url.Values{"op": {"damage"}, "amount": {"9"}, "type": {tt.kind}}, true)
+		if tt.taken < 0 {
+			if w.Code == http.StatusOK {
+				t.Errorf("%q accepted", tt.kind)
+			}
+			continue
+		}
+		hp -= tt.taken
+		if cb, _ := e.q().GetCombatant(ctx, mon.ID); cb.Hp != hp {
+			t.Errorf("%q: HP %d, want %d", tt.kind, cb.Hp, hp)
+		}
+	}
+	e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/condition", mon.ID), gm, url.Values{"slug": {"petrified"}}, true)
+	e.do(t, http.MethodPost, hpURL, gm, url.Values{"op": {"damage"}, "amount": {"9"}}, true)
+	if cb, _ := e.q().GetCombatant(ctx, mon.ID); cb.Hp != hp-4 {
+		t.Errorf("petrified: HP %d, want %d", cb.Hp, hp-4)
+	}
+
+	cmd := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	e.do(t, http.MethodPost, cmd, player, url.Values{"hp_op": {"damage"}, "hp_amount": {"9"}, "hp_type": {"fire"}}, true)
+	if ch, _ := e.q().GetCharacter(ctx, e.characterID); ch.Hp != 26 {
+		t.Errorf("player's fire damage: HP %d, want 26", ch.Hp)
+	}
+	if w := e.do(t, http.MethodPost, cmd, player, url.Values{"hp_op": {"damage"}, "hp_amount": {"9"}, "hp_type": {"pizza"}}, true); w.Code == http.StatusOK {
+		t.Error("player's unknown damage type accepted")
+	}
+
+	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
+		t.Fatal(err)
+	}
+	combat := fmt.Sprintf("/campaigns/%d/combat", e.campaignID)
+	view := e.do(t, http.MethodGet, combat, player, nil, false).Body.String()
+	if !strings.Contains(view, `name="hp_type"`) || !strings.Contains(view, "Fire (resisted, half)") {
+		t.Error("player's own row has no damage type")
+	}
+	for _, leak := range []string{"Cold (resisted", "immune, none", "nonmagical", "Petrified: all damage"} {
+		if strings.Contains(view, leak) {
+			t.Errorf("player view shows the monster's %q", leak)
+		}
+	}
+	gmView := e.do(t, http.MethodGet, combat, gm, nil, false).Body.String()
+	for _, want := range []string{"Cold (resisted, half)", "Poison (immune, none)", "Radiant (vulnerable, double)", "Bludgeoning from nonmagical attacks (resisted, half)", "Petrified: all damage is halved."} {
+		if !strings.Contains(gmView, want) {
+			t.Errorf("GM view misses %q", want)
 		}
 	}
 }

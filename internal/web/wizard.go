@@ -380,6 +380,14 @@ func applyTraitText(s *dnd5e.Sheet, text string) {
 	}
 }
 
+// resistsPick reports whether a trait naming p with "Resistance"
+// (Dragonborn's Damage Resistance) resists the damage type picked in p.
+func resistsPick(parts []compendium.NameDesc, p compendium.NameDesc) bool {
+	return slices.ContainsFunc(parts, func(q compendium.NameDesc) bool {
+		return q.Name != p.Name && strings.Contains(q.Desc, p.Name) && strings.Contains(q.Desc, "Resistance")
+	})
+}
+
 func addResistance(s *dnd5e.Sheet, damage string) {
 	if d := strings.ToLower(damage); slices.Contains(dnd5e.DamageTypes, d) && !slices.Contains(s.Resistances, d) {
 		s.Resistances = append(s.Resistances, d)
@@ -401,12 +409,7 @@ func (a *App) speciesChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, 
 			continue
 		}
 		if opts := choiceOptions(p); len(opts) > 0 {
-			// A trait naming this one with "Resistance" (Dragonborn's Damage
-			// Resistance) resists the damage type picked here.
-			resists := slices.ContainsFunc(parts, func(q compendium.NameDesc) bool {
-				return q.Name != p.Name && strings.Contains(q.Desc, p.Name) && strings.Contains(q.Desc, "Resistance")
-			})
-			g, spells, err := a.lineageChoice(ctx, p, opts, species, resists, campaignID)
+			g, spells, err := a.lineageChoice(ctx, p, opts, species, resistsPick(parts, p), campaignID)
 			if err != nil {
 				return err
 			}

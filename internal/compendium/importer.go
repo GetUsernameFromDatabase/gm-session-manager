@@ -144,7 +144,7 @@ func upsert(ctx context.Context, q *sqlc.Queries, src Source, e Entry) error {
 // normalizeVersion salts the source hash. Bump it only when the parser
 // changes (the normalized shape gains data), so unchanged source files are
 // imported again once. Edits to the files are caught by the hash itself.
-const normalizeVersion = "4"
+const normalizeVersion = "5"
 
 // readSource reads the .json files of a source directory and hashes their
 // names and contents, so re-importing unchanged files is a no-op.
@@ -237,6 +237,7 @@ type HomebrewInput struct {
 	Senses        string `form:"senses"            validate:"max=300"`
 	Resistances   string `form:"resistances"       validate:"max=500"`
 	Immunities    string `form:"immunities"        validate:"max=500"`
+	Vulnerable    string `form:"vulnerabilities"   validate:"max=500"`
 	Actions       string `form:"actions"           validate:"max=100000"`
 	BonusActions  string `form:"bonus_actions"     validate:"max=50000"`
 	Reactions     string `form:"reactions"         validate:"max=50000"`
@@ -297,7 +298,7 @@ func HomebrewInputFor(kind, name, desc string, data any) HomebrewInput {
 		in.Size, in.MonsterType, in.Alignment, in.ACDetail, in.HitDice, in.Initiative = d.Size, d.Type, d.Alignment, d.ACDetail, d.HitDice, d.Initiative
 		in.MonsterSpeed, in.MonsterSaves, in.MonsterSkills = speedText(d.Speed), bonusText(d.Saves), bonusText(d.Skills)
 		in.Str, in.Dex, in.Con, in.Int, in.Wis, in.Cha = d.Abilities["str"], d.Abilities["dex"], d.Abilities["con"], d.Abilities["int"], d.Abilities["wis"], d.Abilities["cha"]
-		in.Senses, in.Languages, in.Resistances, in.Immunities, in.Traits = d.Senses, d.Languages, d.Resistance, d.Immunity, TraitsText(d.Traits)
+		in.Senses, in.Languages, in.Resistances, in.Immunities, in.Vulnerable, in.Traits = d.Senses, d.Languages, d.Resistance, d.Immunity, d.Vulnerability, TraitsText(d.Traits)
 		in.Actions, in.BonusActions = actionsText(d.Actions, actionTypes[0]), actionsText(d.Actions, actionTypes[1])
 		in.Reactions, in.Legendary = actionsText(d.Actions, actionTypes[2]), actionsText(d.Actions, actionTypes[3])
 	case *SpellData:
@@ -409,7 +410,7 @@ func (in HomebrewInput) Entry() (Entry, error) {
 			Size: strings.TrimSpace(in.Size), Type: strings.TrimSpace(in.MonsterType), Alignment: strings.TrimSpace(in.Alignment),
 			AC: in.AC, ACDetail: strings.TrimSpace(in.ACDetail), HP: in.HP, HitDice: strings.TrimSpace(in.HitDice), Initiative: in.Initiative,
 			Speed: parseSpeed(in.MonsterSpeed), Abilities: map[string]int{}, Saves: parseBonuses(in.MonsterSaves, true), Skills: parseBonuses(in.MonsterSkills, false),
-			CR: in.CR, Senses: in.Senses, Languages: in.Languages, Resistance: in.Resistances, Immunity: in.Immunities,
+			CR: in.CR, Senses: in.Senses, Languages: in.Languages, Resistance: in.Resistances, Immunity: in.Immunities, Vulnerability: in.Vulnerable,
 			Traits: ParseTraits(in.Traits), Actions: parseActions(in.Actions, in.BonusActions, in.Reactions, in.Legendary), Desc: in.Desc,
 		}
 		for k, v := range map[string]int{"str": in.Str, "dex": in.Dex, "con": in.Con, "int": in.Int, "wis": in.Wis, "cha": in.Cha} {

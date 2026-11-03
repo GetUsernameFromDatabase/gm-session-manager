@@ -253,7 +253,9 @@ func (a *App) joinCreate(c *gin.Context) {
 // returning the character's id.
 func (a *App) createAndLogin(c *gin.Context, campaignID int64, name string) (int64, error) {
 	ctx := c.Request.Context()
-	sheet, err := dnd5e.NewSheet().JSON()
+	s := dnd5e.NewSheet()
+	s.EffectsVersion = dnd5e.EffectsVersion // nothing to catch up; NewSheet stays 0 for old rows
+	sheet, err := s.JSON()
 	if err != nil {
 		return 0, err
 	}

@@ -13,6 +13,7 @@ import (
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -55,6 +56,28 @@ func TestPagesRender(t *testing.T) {
 	for i, r := range rows {
 		if w := e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/initiative", r.ID), gm, url.Values{"initiative": {fmt.Sprint(10 + i)}}, true); w.Code != http.StatusOK {
 			t.Fatalf("initiative: %d %s", w.Code, w.Body)
+		}
+		if r.CharacterID.Valid { // a PC's resistance halves damage of its type only
+			hpURL, id := fmt.Sprintf("/combatants/%d/hp", r.ID), r.CharacterID.Int64
+			if err := e.app.updateCharacter(ctx, id, func(_ *sqlc.Queries, dc *dnd5e.Character) error {
+				dc.Sheet.Resistances, dc.HP, dc.MaxHP = []string{"fire"}, 30, 30
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			for _, tt := range []struct {
+				kind string
+				hp   int64
+			}{{"fire", 26}, {" ", 17}, {"cold", 8}} {
+				e.do(t, http.MethodPost, hpURL, gm, url.Values{"op": {"damage"}, "amount": {"9"}, "type": {tt.kind}}, true)
+				if ch, _ := e.q().GetCharacter(ctx, id); ch.Hp != tt.hp {
+					t.Fatalf("%q damage: HP %d, want %d", tt.kind, ch.Hp, tt.hp)
+				}
+			}
+			if w := e.do(t, http.MethodPost, hpURL, gm, url.Values{"op": {"damage"}, "amount": {"9"}, "type": {"pizza"}}, true); w.Code == http.StatusOK {
+				t.Fatal("unknown damage type accepted")
+			}
+			e.do(t, http.MethodPost, hpURL, gm, url.Values{"op": {"heal"}, "amount": {"30"}, "type": {"fire"}}, true)
 		}
 		if r.EntityID.Valid && !r.MonsterRef.Valid { // Mira has no stats: max HP starts her at full
 			e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/hp", r.ID), gm, url.Values{"op": {"set"}, "max_hp": {"12"}}, true)

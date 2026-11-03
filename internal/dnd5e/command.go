@@ -40,6 +40,8 @@ type Env struct {
 	// IsShield when that is a shield instead.
 	Armor    WornArmor
 	IsShield bool
+	// Petrified is the character's condition, which resists all damage.
+	Petrified bool
 }
 
 // NewCommand wraps a change built by code instead of parsed from text, for
@@ -104,6 +106,8 @@ func (c Character) clone() Character {
 	s.OtherProfs = slices.Clone(s.OtherProfs)
 	s.Languages = slices.Clone(s.Languages)
 	s.Resistances = slices.Clone(s.Resistances)
+	s.Immunities = slices.Clone(s.Immunities)
+	s.Vulnerabilities = slices.Clone(s.Vulnerabilities)
 	s.Spells = slices.Clone(s.Spells)
 	s.Inventory = slices.Clone(s.Inventory)
 	s.Features = slices.Clone(s.Features)
@@ -329,7 +333,11 @@ func scoped(scope perm.CharacterScope, fn func(c *Character, env Env, fx *Effect
 }
 
 func parseHP(args []string) (Command, error) {
-	if err := want(args, 1, "hp -5 | hp +3 | hp =20"); err != nil {
+	const usage = "hp -5 | hp -5 fire | hp +3 | hp =20"
+	if len(args) == 2 && strings.HasPrefix(args[0], "-") {
+		return parseDamage(args, usage)
+	}
+	if err := want(args, 1, usage); err != nil {
 		return Command{}, err
 	}
 	if args[0] == "" || !strings.ContainsAny(args[0][:1], "+-=") {
@@ -339,10 +347,36 @@ func parseHP(args []string) (Command, error) {
 	if err != nil {
 		return Command{}, err
 	}
-	return scoped(perm.ScopeHP, func(c *Character, _ Env, _ *Effects) error {
+	return scoped(perm.ScopeHP, func(c *Character, env Env, _ *Effects) error {
+		if !a.set && a.n < 0 { // untyped damage still meets Petrified's resistance
+			a = Damage(c.defenses(env).Taken(-a.n, "", -1))
+		}
 		c.ApplyHP(a)
 		return nil
 	}), nil
+}
+
+// parseDamage reads "hp -9 fire": damage of a type, after the sheet's
+// defenses.
+func parseDamage(args []string, usage string) (Command, error) {
+	a, err := parseAmount(args[0], false)
+	if err != nil {
+		return Command{}, err
+	}
+	kind := strings.ToLower(args[1])
+	if !slices.Contains(DamageTypes, kind) {
+		return Command{}, fmt.Errorf("unknown damage type %q (usage: %s)", args[1], usage)
+	}
+	return scoped(perm.ScopeHP, func(c *Character, env Env, _ *Effects) error {
+		c.ApplyHP(Damage(c.defenses(env).Taken(-a.n, kind, -1)))
+		return nil
+	}), nil
+}
+
+func (c *Character) defenses(env Env) Defenses {
+	d := c.Sheet.Defenses()
+	d.ResistAll = env.Petrified
+	return d
 }
 
 // ApplyHP applies damage (temporary HP first), healing (capped at max) or a
@@ -895,7 +929,7 @@ func parseProfSet(args []string) (Command, error) {
 }
 
 func parseProf(args []string) (Command, error) {
-	const usage = "prof add|remove skill|save|expertise|other|language|resistance <value> | prof set skill|save <key> <level>"
+	const usage = "prof add|remove skill|save|expertise|other|language|resistance|immunity|vulnerability <value> | prof set skill|save <key> <level>"
 	if len(args) < 3 {
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
@@ -927,12 +961,16 @@ func parseProf(args []string) (Command, error) {
 		pick = func(s *Sheet) *[]string { return &s.OtherProfs }
 	case "language":
 		pick = func(s *Sheet) *[]string { return &s.Languages }
-	case "resistance":
+	case "resistance", "immunity", "vulnerability":
 		value = strings.ToLower(value)
 		if !slices.Contains(DamageTypes, value) {
 			return Command{}, fmt.Errorf("unknown damage type %q", value)
 		}
-		pick = func(s *Sheet) *[]string { return &s.Resistances }
+		pick = map[string]func(s *Sheet) *[]string{
+			"resistance":    func(s *Sheet) *[]string { return &s.Resistances },
+			"immunity":      func(s *Sheet) *[]string { return &s.Immunities },
+			"vulnerability": func(s *Sheet) *[]string { return &s.Vulnerabilities },
+		}[kind]
 	default:
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}

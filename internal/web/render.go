@@ -250,6 +250,9 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 				}
 			}
 		}
+		if v.IsGM || cv.IsOwn { // a player never learns another combatant's defenses
+			cv.Defenses = combatantDefenses(r, cv.Conditions)
+		}
 		ev.Combatants = append(ev.Combatants, cv)
 	}
 	if v.IsGM {

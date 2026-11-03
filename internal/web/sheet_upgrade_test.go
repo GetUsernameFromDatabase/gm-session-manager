@@ -1,6 +1,7 @@
 package web
 
 import (
+	"slices"
 	"testing"
 
 	"gm-session-manager/internal/compendium"
@@ -46,5 +47,44 @@ func TestUpgradeSheets(t *testing.T) {
 	}
 	if !got.Features[0].Uses.Prof || got.Features[1].Uses.Prof || got.Features[1].Uses.Fixed != 1 || got.Features[1].Uses.Used != 1 || got.EffectsVersion != dnd5e.EffectsVersion {
 		t.Errorf("features %+v, version %d", got.Features, got.EffectsVersion)
+	}
+}
+
+// TestCatchUpResistances: an old sheet gets its species' fixed resistances
+// and those of the lineage it picked; one with resistances keeps them.
+func TestCatchUpResistances(t *testing.T) {
+	d, err := compendium.DecodeData(compendium.KindSpecies, `{"desc":"","parts":[
+		{"name":"Draconic Ancestry","desc":"Choose the kind of dragon.\n\n| Dragon | Damage Type |\n|---|---|\n| Red | Fire |\n| White | Cold |"},
+		{"name":"Damage Resistance","desc":"You have Resistance to the damage type determined by your Draconic Ancestry trait."},
+		{"name":"Fiendish Legacy","desc":"Choose a legacy.\n\n| Legacy | Level 1 |\n|---|---|\n| Abyssal | You have Resistance to Poison damage. |\n| Infernal | You have Resistance to Fire damage. |"},
+		{"name":"Tough Hide","desc":"You have Resistance to Acid damage."}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := d.(*compendium.TextData).Parts
+	picked := func(names ...string) []dnd5e.Feature {
+		var fs []dnd5e.Feature
+		for _, n := range names {
+			fs = append(fs, dnd5e.Feature{Name: n, Source: "Testborn"})
+		}
+		return fs
+	}
+	for _, tt := range []struct {
+		name     string
+		features []dnd5e.Feature
+		want     []string
+	}{
+		{"no picks", nil, []string{"acid"}},
+		{"ancestry", picked("Draconic Ancestry (White)"), []string{"cold", "acid"}},
+		{"legacy", picked("Fiendish Legacy (Abyssal)"), []string{"poison", "acid"}},
+		{"other species' feature", []dnd5e.Feature{{Name: "Draconic Ancestry (Red)", Source: "Elf"}}, []string{"acid"}},
+	} {
+		s := dnd5e.Sheet{Species: "Testborn", Features: tt.features}
+		if !catchUpResistances(&s, parts) || !slices.Equal(s.Resistances, tt.want) {
+			t.Errorf("%s: %q, want %q", tt.name, s.Resistances, tt.want)
+		}
+	}
+	if s := (dnd5e.Sheet{Species: "Testborn"}); catchUpResistances(&s, nil) || len(s.Resistances) != 0 {
+		t.Errorf("unknown species: %q", s.Resistances)
 	}
 }

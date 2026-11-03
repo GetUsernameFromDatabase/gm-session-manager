@@ -257,6 +257,26 @@ func initiativeMod(r sqlc.ListCombatantsRow) int {
 	return 0
 }
 
+// combatantDefenses are how a combatant takes damage: a PC's sheet or a
+// statblock's free text, all of it resisted while Petrified.
+func combatantDefenses(r sqlc.ListCombatantsRow, conds []sqlc.Condition) dnd5e.Defenses {
+	var d dnd5e.Defenses
+	if s, ok := pcSheet(r); ok {
+		d = s.Defenses()
+	} else if r.MonsterData.Valid {
+		if m, err := compendium.DecodeData(compendium.KindMonster, r.MonsterData.String); err == nil {
+			md := m.(*compendium.MonsterData)
+			d.List = slices.Concat(dnd5e.ParseDefenses(dnd5e.DefResist, md.Resistance), dnd5e.ParseDefenses(dnd5e.DefImmune, md.Immunity), dnd5e.ParseDefenses(dnd5e.DefVulnerable, md.Vulnerability))
+		}
+	}
+	d.ResistAll = petrified(conds)
+	return d
+}
+
+func petrified(conds []sqlc.Condition) bool {
+	return slices.ContainsFunc(conds, func(c sqlc.Condition) bool { return c.Slug == "petrified" })
+}
+
 // outOfFight reports a combatant whose turn is skipped: a monster or NPC at
 // 0 HP, or a PC who failed three death saves (a PC at 0 HP still rolls them).
 func outOfFight(r sqlc.ListCombatantsRow) bool {
@@ -435,15 +455,24 @@ func (a *App) combatantAction(c *gin.Context) {
 // rollInitiative rolls d20 plus the combatant's initiative bonus: the one
 // roll the app makes, so the GM can set up a fight quickly.
 func (a *App) rollInitiative(ctx context.Context, cb sqlc.Combatant) (sql.NullInt64, error) {
-	rows, err := a.Store.ListCombatants(ctx, cb.EncounterID)
+	r, err := a.combatantRow(ctx, cb)
 	if err != nil {
 		return sql.NullInt64{}, err
 	}
+	return sql.NullInt64{Int64: int64(rand.IntN(20) + 1 + initiativeMod(r)), Valid: true}, nil //nolint:gosec // a game die, not a secret
+}
+
+// combatantRow is cb with its character's or statblock's data.
+func (a *App) combatantRow(ctx context.Context, cb sqlc.Combatant) (sqlc.ListCombatantsRow, error) {
+	rows, err := a.Store.ListCombatants(ctx, cb.EncounterID)
+	if err != nil {
+		return sqlc.ListCombatantsRow{}, err
+	}
 	i := slices.IndexFunc(rows, func(r sqlc.ListCombatantsRow) bool { return r.ID == cb.ID })
 	if i < 0 {
-		return sql.NullInt64{}, sql.ErrNoRows
+		return sqlc.ListCombatantsRow{}, sql.ErrNoRows
 	}
-	return sql.NullInt64{Int64: int64(rand.IntN(20) + 1 + initiativeMod(rows[i])), Valid: true}, nil //nolint:gosec // a game die, not a secret
+	return rows[i], nil
 }
 
 // combatantHP applies damage or healing, or sets HP, temporary HP and a
@@ -458,17 +487,61 @@ func (a *App) combatantHP(c *gin.Context, cb sqlc.Combatant) error {
 	if !ok || n < 0 || n > views.MaxHPInput {
 		return userError{fmt.Errorf("enter an amount from 0 to %d", views.MaxHPInput)}
 	}
-	amount := dnd5e.Damage(int(n))
-	if c.PostForm("op") == "heal" {
-		amount = dnd5e.Heal(int(n))
-	}
+	heal, kind := c.PostForm("op") == "heal", strings.TrimSpace(c.PostForm("type"))
 	if cb.CharacterID.Valid {
-		return a.updateCharacter(ctx, cb.CharacterID.Int64, func(_ *sqlc.Queries, dc *dnd5e.Character) error {
-			dc.ApplyHP(amount)
-			return nil
-		})
+		ch, err := a.Store.GetCharacter(ctx, cb.CharacterID.Int64)
+		if err != nil {
+			return err
+		}
+		line, raw := fmt.Sprintf("hp -%d", n), []string{kind}
+		if heal || kind == "" {
+			raw = nil
+		}
+		if heal {
+			line = fmt.Sprintf("hp +%d", n)
+		}
+		cmd, err := dnd5e.Parse(line, raw...)
+		if err != nil {
+			return userError{err}
+		}
+		return a.runCommand(ctx, ch, cmd) // the player's rules, Petrified included
 	}
-	return a.updateMonster(ctx, cb.ID, func(m *dnd5e.Character) { m.ApplyHP(amount) })
+	if heal {
+		return a.updateMonster(ctx, cb.ID, func(m *dnd5e.Character) { m.ApplyHP(dnd5e.Heal(int(n))) })
+	}
+	r, err := a.combatantRow(ctx, cb)
+	if err != nil {
+		return err
+	}
+	conds, err := a.Store.ListConditionsByEncounter(ctx, cb.EncounterID)
+	if err != nil {
+		return err
+	}
+	conds = slices.DeleteFunc(conds, func(c sqlc.Condition) bool { return c.CombatantID.Int64 != cb.ID })
+	d := combatantDefenses(r, conds)
+	kind, when, err := damageChoice(kind, d)
+	if err != nil {
+		return err
+	}
+	return a.updateMonster(ctx, cb.ID, func(m *dnd5e.Character) { m.ApplyHP(dnd5e.Damage(d.Taken(int(n), kind, when))) })
+}
+
+// damageChoice reads the HP dialog's damage type (views.damageTypeItems):
+// "fire", or "bludgeoning@3" when conditional defense 3 holds; empty is
+// untyped.
+func damageChoice(v string, d dnd5e.Defenses) (kind string, when int, err error) {
+	kind, at, conditional := strings.Cut(v, "@")
+	if kind != "" && !slices.Contains(dnd5e.DamageTypes, kind) {
+		return "", 0, userError{fmt.Errorf("unknown damage type %q", kind)}
+	}
+	if !conditional {
+		return kind, -1, nil
+	}
+	when, err = strconv.Atoi(at)
+	if err != nil || when < 0 || when >= len(d.List) || d.List[when].When == "" || !slices.Contains(d.List[when].Types, kind) {
+		return "", 0, userError{errors.New("that defense changed; pick the damage type again")}
+	}
+	return kind, when, nil
 }
 
 // updateMonster reads, changes and writes a monster's HP in one

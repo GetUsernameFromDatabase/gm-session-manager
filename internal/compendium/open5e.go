@@ -190,6 +190,7 @@ type o5eCreature struct {
 	Languages      string      `json:"languages_desc"`
 	Resistances    string      `json:"damage_resistances_display"`
 	Immunities     string      `json:"damage_immunities_display"`
+	Vulnerable     string      `json:"damage_vulnerabilities_display"`
 	CondImmunities string      `json:"condition_immunities_display"`
 	Environments   []string    `json:"environments"`
 }
@@ -233,7 +234,7 @@ func (n normalizer) monsters() ([]Entry, error) {
 		d := MonsterData{
 			Size: label(c.Size), Type: c.Type, Alignment: c.Alignment, AC: c.AC, ACDetail: c.ACDetail,
 			HP: c.HP, HitDice: c.HitDice, CR: formatCR(string(c.CR)), Languages: c.Languages,
-			Resistance: c.Resistances, Immunity: joinNonEmpty("; ", c.Immunities, c.CondImmunities),
+			Resistance: c.Resistances, Immunity: joinNonEmpty("; ", c.Immunities, c.CondImmunities), Vulnerability: c.Vulnerable,
 			Speed: map[string]int{}, Abilities: map[string]int{}, Saves: map[string]int{}, Skills: map[string]int{},
 		}
 		if c.Initiative != nil {

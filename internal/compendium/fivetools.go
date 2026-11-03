@@ -169,7 +169,7 @@ func ParseFiveTools(body []byte, slug string) (book, image string, e Entry, err 
 		Speed: map[string]int{}, Saves: map[string]int{}, Skills: map[string]int{},
 		Abilities: map[string]int{"str": m.Str, "dex": m.Dex, "con": m.Con, "int": m.Int, "wis": m.Wis, "cha": m.Cha},
 		Senses:    stripTags(strings.Join(m.Senses, ", ")), Languages: stripTags(strings.Join(m.Languages, ", ")),
-		Resistance: ftList(m.Resist, "resist"),
+		Resistance: ftList(m.Resist, "resist"), Vulnerability: ftList(m.Vulnerable, "vulnerable"),
 		Immunity:   joinNonEmpty("; ", ftList(m.Immune, "immune"), ftList(m.ConditionImmune, "conditionImmune")),
 		Initiative: abilityMod(m.Dex),
 	}
@@ -226,10 +226,6 @@ func ParseFiveTools(body []byte, slug string) (book, image string, e Entry, err 
 	if json.Unmarshal(m.CR, &d.CR) != nil && json.Unmarshal(m.CR, &cr) == nil {
 		d.CR = cr.CR
 	}
-	if v := ftList(m.Vulnerable, "vulnerable"); v != "" {
-		d.Desc = "Vulnerabilities: " + v
-	}
-
 	for _, t := range m.Trait {
 		d.Traits = append(d.Traits, NameDesc{Name: stripTags(t.Name), Desc: ftEntries(t.Entries)})
 	}

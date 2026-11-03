@@ -54,6 +54,13 @@ func (s SheetView) condition(slug string) (sqlc.Condition, bool) {
 	return s.Conditions[i], true
 }
 
+// defenses are the sheet's, resisting all damage while Petrified.
+func (s SheetView) defenses() dnd5e.Defenses {
+	d := s.C.Sheet.Defenses()
+	_, d.ResistAll = s.condition("petrified")
+	return d
+}
+
 // tapSize lifts small sheet controls to 32px on phones.
 const tapSize = "max-sm:h-8 max-sm:px-3"
 
@@ -268,7 +275,7 @@ templ vitalsStrip(s SheetView) {
 						@icon.Heart(icon.Props{Class: "text-rose-600"})
 					}
 					@popover.Content(popover.ContentProps{Align: popover.AlignEnd, Class: "w-auto"}) {
-						@hpQuickForm(s.cmdURL(), false)
+						@hpQuickForm(s.cmdURL(), false, s.defenses())
 					}
 				}
 			}
@@ -320,6 +327,13 @@ templ statsCard(s SheetView) {
 				@stat(s, "Size", cmp.Or(s.C.Sheet.Size, "—"), "", edit{"details", "set-size", ""})
 				@stat(s, "Vision", cmp.Or(s.C.Sheet.Vision, "Normal"), "", edit{"details", "set-vision", ""})
 				@stat(s, "Resistances", cmp.Or(strings.Join(capitalized(s.C.Sheet.Resistances), ", "), "None"), "", edit{"profs", "res-add", ""})
+				// Rare, so shown only when set; the builder's tabs add them.
+				if len(s.C.Sheet.Immunities) > 0 {
+					@stat(s, "Immunities", strings.Join(capitalized(s.C.Sheet.Immunities), ", "), "", edit{"profs", "imm-add", ""})
+				}
+				if len(s.C.Sheet.Vulnerabilities) > 0 {
+					@stat(s, "Vulnerabilities", strings.Join(capitalized(s.C.Sheet.Vulnerabilities), ", "), "", edit{"profs", "vuln-add", ""})
+				}
 			</dl>
 			if s.CanSheet {
 				<div class="mt-3 flex flex-wrap gap-2">
@@ -548,6 +562,8 @@ var statTips = map[string]string{
 	"Hit dice":           "Spend these on a short rest to heal; a long rest restores them.",
 	"Vision":             "What you can see in darkness and dim light without a light source.",
 	"Resistances":        "Damage of these types is halved.",
+	"Immunities":         "Damage of these types is ignored.",
+	"Vulnerabilities":    "Damage of these types is doubled.",
 }
 
 // capitalized are keys such as damage types as names: "fire" is "Fire".

@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -383,7 +384,9 @@ type Sheet struct {
 	OtherProfs []string `json:"other_profs"          validate:"dive,required,max=200"`
 	Languages  []string `json:"languages"            validate:"dive,required,max=100"`
 	// Resistances are the damage types (DamageTypes) the character resists.
-	Resistances []string `json:"resistances,omitempty" validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`
+	Resistances     []string `json:"resistances,omitempty"     validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`
+	Immunities      []string `json:"immunities,omitempty"      validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`
+	Vulnerabilities []string `json:"vulnerabilities,omitempty" validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`
 	// HitDiceUsed counts spent hit dice across all classes.
 	HitDiceUsed int         `json:"hit_dice_used" validate:"min=0"`
 	Slots       [9]Slot     `json:"spell_slots"   validate:"dive"`
@@ -416,6 +419,95 @@ func (s Sheet) SetUp(step string) bool { return slices.Contains(s.SetupDone, ste
 
 // DamageTypes are the 2024 damage types, lowercase.
 var DamageTypes = []string{"acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"}
+
+// Defense kinds.
+const (
+	DefResist     = "resist"
+	DefImmune     = "immune"
+	DefVulnerable = "vulnerable"
+)
+
+// Defense is how a creature takes damage of some types. When is the
+// condition of a conditional one ("from nonmagical attacks"); empty is always.
+type Defense struct {
+	Kind  string
+	Types []string
+	When  string
+}
+
+// Defenses are a creature's resistances, immunities and vulnerabilities;
+// ResistAll is resistance to all damage (Petrified).
+type Defenses struct {
+	List      []Defense
+	ResistAll bool
+}
+
+// Taken is n damage of kind (empty: untyped) after defenses: every
+// unconditional one naming kind, plus List[when] when the GM says its
+// condition holds (when < 0: none). Immunity takes it all, resistance
+// halves it rounding down, then vulnerability doubles it.
+func (d Defenses) Taken(n int, kind string, when int) int {
+	resist, vulnerable := d.ResistAll, false
+	for i, def := range d.List {
+		if kind == "" || !slices.Contains(def.Types, kind) || (def.When != "" && i != when) {
+			continue
+		}
+		switch def.Kind {
+		case DefImmune:
+			return 0
+		case DefResist:
+			resist = true
+		case DefVulnerable:
+			vulnerable = true
+		}
+	}
+	if resist {
+		n /= 2
+	}
+	if vulnerable {
+		n *= 2
+	}
+	return n
+}
+
+// Defenses are the sheet's resistances, immunities and vulnerabilities.
+func (s Sheet) Defenses() Defenses {
+	var d Defenses
+	for _, def := range []Defense{{Kind: DefResist, Types: s.Resistances}, {Kind: DefImmune, Types: s.Immunities}, {Kind: DefVulnerable, Types: s.Vulnerabilities}} {
+		if len(def.Types) > 0 {
+			d.List = append(d.List, def)
+		}
+	}
+	return d
+}
+
+var reWord = regexp.MustCompile(`[a-z']+`)
+
+// ParseDefenses reads a statblock's free text ("cold, fire; bludgeoning,
+// piercing from nonmagical attacks") as defenses of kind, one per
+// ;-separated part. A part's words besides its damage types, condition
+// names, commas, "and" and "damage" are its condition; a part naming no
+// damage type (condition immunities: "frightened, poisoned") is dropped.
+func ParseDefenses(kind, text string) []Defense {
+	var out []Defense
+	for part := range strings.SplitSeq(strings.ToLower(text), ";") {
+		def := Defense{Kind: kind}
+		var rest []string
+		for _, w := range reWord.FindAllString(part, -1) {
+			switch {
+			case slices.Contains(DamageTypes, w):
+				def.Types = append(def.Types, w)
+			case w != "and" && w != "damage" && !slices.Contains(Conditions, w): // "poison, poisoned" is not conditional
+				rest = append(rest, w)
+			}
+		}
+		if len(def.Types) > 0 {
+			def.When = strings.Join(rest, " ")
+			out = append(out, def)
+		}
+	}
+	return out
+}
 
 // StandardLanguages is the 2024 Standard Languages table, which a new
 // character picks two from besides Common.
