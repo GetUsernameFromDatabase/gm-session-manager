@@ -102,9 +102,17 @@ func TestExplainSums(t *testing.T) {
 			t.Errorf("%s = %d, want %d: %+v", target, got, want, s.Explain(target))
 		}
 	}
-	s.Features = []Feature{{Name: "Alert"}}
-	if got := s.Initiative(); got != 3+s.ProficiencyBonus() {
-		t.Errorf("Alert init = %d, want %d", got, 3+s.ProficiencyBonus())
+	for _, tt := range []struct {
+		desc string
+		want int
+	}{
+		{"When you roll Initiative, you can add your Proficiency Bonus to the roll.", 3 + s.ProficiencyBonus()},
+		{"You gain a +5 bonus to initiative.", 3}, // 2014: a flat bonus, added as a modifier
+	} {
+		s.Features = []Feature{{Name: "Alert", Description: tt.desc}}
+		if got := s.Initiative(); got != tt.want {
+			t.Errorf("Alert %q: init = %d, want %d", tt.desc, got, tt.want)
+		}
 	}
 }
 

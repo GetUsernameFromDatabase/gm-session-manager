@@ -1,6 +1,8 @@
 package web
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -118,6 +120,30 @@ func TestApplySpeciesSizeVision(t *testing.T) {
 		applySpecies(&s, "Test", &compendium.TextData{Parts: parts})
 		if s.Size != tt.wantSize || s.Vision != tt.wantVision {
 			t.Errorf("%q: size %q vision %q", tt.size, s.Size, s.Vision)
+		}
+	}
+}
+
+// TestFindItemPlurals: equipment lines match their entry singular too.
+func TestFindItemPlurals(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	for _, slug := range []string{"dagger", "pouch", "glass"} {
+		entry := sqlc.UpsertCompendiumEntryParams{Kind: string(compendium.KindItem), Slug: slug, Name: slug, DataJson: "{}", SourceKey: "test", ContentHash: "x"}
+		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tt := range []struct{ line, want string }{
+		{"Dagger", "dagger"}, {"Daggers", "dagger"}, {"Pouches", "pouch"}, {"Glasses", "glass"}, {"Ropes", ""},
+	} {
+		got, err := e.app.findItem(ctx, tt.line)
+		if tt.want == "" {
+			if !errors.Is(err, sql.ErrNoRows) {
+				t.Errorf("%s: got %q, %v; want no rows", tt.line, got.Slug, err)
+			}
+		} else if err != nil || got.Slug != tt.want {
+			t.Errorf("%s: got %q, %v; want %q", tt.line, got.Slug, err, tt.want)
 		}
 	}
 }

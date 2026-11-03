@@ -39,8 +39,11 @@ func (s Sheet) Explain(target string) []Part {
 		return append(s.speedBase(), s.modParts(ModSpeed)...)
 	case target == ModInit:
 		parts := []Part{s.abilityPart("dex")}
-		// The Alert feat's bonus grows with level, which a fixed modifier cannot.
-		if s.hasFeature("Alert") {
+		// The 2024 Alert feat's bonus grows with level, which a fixed modifier
+		// cannot; 2014 Alert's flat +5 is a modifier like any other.
+		if slices.ContainsFunc(s.Features, func(f Feature) bool {
+			return strings.EqualFold(f.Name, "Alert") && strings.Contains(strings.ToLower(f.Description), "add your proficiency bonus")
+		}) {
 			parts = append(parts, Part{Label: "Alert (proficiency bonus)", Value: s.ProficiencyBonus()})
 		}
 		return append(parts, s.modParts(ModInit)...)
