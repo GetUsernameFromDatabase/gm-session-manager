@@ -569,7 +569,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		if err != nil {
 			return v, err
 		}
-		if td == nil || !meetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel) {
+		if td == nil || !meetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel, nil) {
 			continue
 		}
 		v.Feats = append(v.Feats, views.Option{Slug: f.Slug, Name: f.Name})
@@ -585,7 +585,11 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if err != nil {
 		return v, err
 	}
-	v.Groups = groupViews(append(classOptionGroups(info, plan.ClassLevel, plan.ClassLevel-1, sheet.Features), changes...))
+	cantrips, err := a.optionCantrips(ctx, sheet, info, plan.ClassLevel, ch.CampaignID)
+	if err != nil {
+		return v, err
+	}
+	v.Groups = groupViews(append(classOptionGroups(info, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), changes...))
 	if v.LineageSpells, err = a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID); err != nil {
 		return v, err
 	}
@@ -700,6 +704,7 @@ func (a *App) levelUp(c *gin.Context) {
 			a.fail(c, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
+		sp.Class = info.Slug
 		choice.Spells = append(choice.Spells, sp)
 	}
 
@@ -709,7 +714,18 @@ func (a *App) levelUp(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	groups := append(classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet.Features), changes...)
+	cantrips, err := a.optionCantrips(ctx, sheet, choice.Class, plan.ClassLevel, ch.CampaignID)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	// The cantrips the sheet will know, for checkNewOptions.
+	learned, err := a.cantripData(ctx, append(slices.Clone(sheet.Spells), choice.Spells...), ch.CampaignID)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	groups := append(classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), changes...)
 	if choice.Feat != "" {
 		slug := c.PostForm("feat")
 		td, err := a.textEntry(ctx, compendium.KindFeat, slug)
@@ -717,7 +733,7 @@ func (a *App) levelUp(c *gin.Context) {
 			a.serverError(c, err)
 			return
 		}
-		if planErr == nil && !meetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel) {
+		if planErr == nil && !meetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel, nil) {
 			a.fail(c, http.StatusUnprocessableEntity, choice.Feat+" needs "+td.Prerequisite+".")
 			return
 		}
@@ -740,6 +756,9 @@ func (a *App) levelUp(c *gin.Context) {
 				return userError{err}
 			}
 			applyPicks(&dc.Sheet, groups, picks)
+			if err := checkNewOptions(choice.Class, sheet, dc.Sheet, plan.ClassLevel, learned); err != nil {
+				return err
+			}
 			for _, sp := range lineage {
 				dc.Sheet.PutFeature(freeCast(sp, sheet.Species), nil)
 			}

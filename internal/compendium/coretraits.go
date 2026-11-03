@@ -104,7 +104,7 @@ func EquipmentOptions(s string) []EquipmentOption {
 
 var (
 	boldOption   = regexp.MustCompile(`^(?:- )?\*\*(.+?)\*\*\.?\s*(.*)$`)
-	prereqLevel  = regexp.MustCompile(`Prerequisite:\s*Level (\d+)\+`)
+	prereqText   = regexp.MustCompile(`Prerequisite:\s*([^*\n]+)`)
 	knownCantrip = regexp.MustCompile(`know the ([^.]+?) cantrips?\b`)
 )
 
@@ -191,15 +191,13 @@ func LevelSpells(desc string) map[string]map[int]string {
 	return out
 }
 
-// OptionLevel is the class level an option's "Prerequisite: Level 5+ …"
-// asks for, or 0.
-func OptionLevel(desc string) int {
-	m := prereqLevel.FindStringSubmatch(desc)
-	if m == nil {
-		return 0
+// OptionPrerequisite is an option's "*Prerequisite: Level 5+ Warlock, Pact
+// of the Blade Invocation*", without the label, or "".
+func OptionPrerequisite(desc string) string {
+	if m := prereqText.FindStringSubmatch(desc); m != nil {
+		return strings.TrimSpace(m[1])
 	}
-	n, _ := strconv.Atoi(m[1])
-	return n
+	return ""
 }
 
 // Cantrips are the spells text grants with "know the *Mending* and

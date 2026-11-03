@@ -231,34 +231,166 @@ func TestFeatChoices(t *testing.T) {
 	}
 }
 
-// TestMeetsPrerequisite checks each clause of a feat's prerequisite must hold.
+func testCantrip(class, rng, desc string) knownCantrip {
+	return knownCantrip{Name: "Test", SpellData: compendium.SpellData{Classes: []string{class}, Range: rng, Desc: desc}}
+}
+
+// TestCantripFits: an invocation's cantrip must be on the list and deal
+// damage, by an attack roll or with a range when it says so.
+func TestCantripFits(t *testing.T) {
+	const attackDesc, saveDesc = "Make a melee spell attack. The target takes 1d8 Necrotic damage.", "Wisdom saving throw or take 1d8 Necrotic damage."
+	for _, tc := range []struct {
+		name     string
+		c        knownCantrip
+		attack   bool
+		minRange int
+		want     bool
+	}{
+		{"damage", testCantrip("warlock", "60 feet", saveDesc), false, 0, true},
+		{"no damage", testCantrip("warlock", "30 feet", "A spectral hand appears."), false, 0, false},
+		{"other list", testCantrip("wizard", "60 feet", saveDesc), false, 0, false},
+		{"attack roll", testCantrip("warlock", "Touch", attackDesc), true, 0, true},
+		{"saving throw is no attack", testCantrip("warlock", "60 feet", saveDesc), true, 0, false},
+		{"touch is under 10 feet", testCantrip("warlock", "Touch", attackDesc), false, 10, false},
+		{"self cone is under 10 feet", testCantrip("warlock", "Self (15-foot cone)", saveDesc), false, 10, false},
+		{"120 feet", testCantrip("warlock", "120 feet", attackDesc), false, 10, true},
+		{"120 ft.", testCantrip("warlock", "120 ft.", attackDesc), false, 10, true},
+		{"1 mile", testCantrip("warlock", "1 mile", attackDesc), false, 10, true},
+		{"5 feet", testCantrip("warlock", "5 feet", attackDesc), false, 10, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := cantripFits(tc.c, "Warlock", tc.attack, tc.minRange); got != tc.want {
+				t.Errorf("cantripFits = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestMeetsPrerequisite checks each clause of a feat's or invocation's
+// prerequisite must hold.
 func TestMeetsPrerequisite(t *testing.T) {
 	style := []dnd5e.Feature{{Name: "Fighting Style"}}
+	blade := []dnd5e.Feature{{Name: "Eldritch Invocation: Pact of the Blade"}}
+	blast := []knownCantrip{testCantrip("warlock", "120 feet", "Make a ranged spell attack. The target takes 1d10 Force damage.")}
+	toll := []knownCantrip{testCantrip("warlock", "60 feet", "The target must succeed on a Wisdom saving throw or take 1d8 Necrotic damage.")}
+	hand := []knownCantrip{testCantrip("warlock", "30 feet", "A spectral hand appears.")}
+	frost := []knownCantrip{testCantrip("wizard", "60 feet", "Make a ranged spell attack. The target takes 1d8 Cold damage.")}
+	const damage, attack = "Level 2+ Warlock, a Warlock Cantrip That Deals Damage", "Level 2+ Warlock, a Warlock Cantrip That Deals Damage via an Attack Roll"
 	for _, tc := range []struct {
 		name     string
 		prereq   string
 		level    int
 		str, dex int
 		features []dnd5e.Feature
+		cantrips []knownCantrip
 		want     bool
 	}{
-		{"none", "", 1, 10, 10, nil, true},
-		{"level too low", "Level 4+", 3, 10, 10, nil, false},
-		{"level reached", "Level 4+", 4, 10, 10, nil, true},
-		{"Epic Boon at 18", "Level 19+", 18, 10, 10, nil, false},
-		{"Epic Boon at 19", "Level 19+", 19, 10, 10, nil, true},
-		{"either score", "Level 4+, Strength or Dexterity 13+", 4, 12, 14, nil, true},
-		{"neither score", "Level 4+, Strength or Dexterity 13+", 4, 12, 12, nil, false},
-		{"feature missing", "Fighting Style Feature", 4, 10, 10, nil, false},
-		{"feature held", "Fighting Style Feature", 1, 10, 10, style, true},
-		{"one of two features", "Spellcasting or Pact Magic Feature", 4, 10, 10, []dnd5e.Feature{{Name: "Pact Magic"}}, true},
-		{"level met, feature not", "Level 19+, Spellcasting Feature", 19, 10, 10, style, false},
-		{"unknown clause passes", "Proficiency with Heavy armor", 1, 10, 10, nil, true},
+		{"none", "", 1, 10, 10, nil, nil, true},
+		{"level too low", "Level 4+", 3, 10, 10, nil, nil, false},
+		{"level reached", "Level 4+", 4, 10, 10, nil, nil, true},
+		{"Epic Boon at 18", "Level 19+", 18, 10, 10, nil, nil, false},
+		{"Epic Boon at 19", "Level 19+", 19, 10, 10, nil, nil, true},
+		{"either score", "Level 4+, Strength or Dexterity 13+", 4, 12, 14, nil, nil, true},
+		{"neither score", "Level 4+, Strength or Dexterity 13+", 4, 12, 12, nil, nil, false},
+		{"feature missing", "Fighting Style Feature", 4, 10, 10, nil, nil, false},
+		{"feature held", "Fighting Style Feature", 1, 10, 10, style, nil, true},
+		{"one of two features", "Spellcasting or Pact Magic Feature", 4, 10, 10, []dnd5e.Feature{{Name: "Pact Magic"}}, nil, true},
+		{"level met, feature not", "Level 19+, Spellcasting Feature", 19, 10, 10, style, nil, false},
+		{"unknown clause passes", "Proficiency with Heavy armor", 1, 10, 10, nil, nil, true},
+		{"class level too low", "Level 5+ Warlock", 4, 10, 10, nil, nil, false},
+		{"class level reached", "Level 5+ Warlock", 5, 10, 10, nil, nil, true},
+		{"invocation missing", "Level 5+ Warlock, Pact of the Blade Invocation", 5, 10, 10, style, nil, false},
+		{"invocation held", "Level 5+ Warlock, Pact of the Blade Invocation", 5, 10, 10, blade, nil, true},
+		{"no cantrip", damage, 2, 10, 10, nil, nil, false},
+		{"cantrip without damage", damage, 2, 10, 10, nil, hand, false},
+		{"damaging cantrip of another list", damage, 2, 10, 10, nil, frost, false},
+		{"damaging cantrip", damage, 2, 10, 10, nil, blast, true},
+		{"saving throw cantrip", damage, 2, 10, 10, nil, toll, true},
+		{"saving throw is no attack roll", attack, 2, 10, 10, nil, toll, false},
+		{"attack roll cantrip", attack, 2, 10, 10, nil, blast, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sh := dnd5e.Sheet{Scores: map[string]int{"str": tc.str, "dex": tc.dex}, Features: tc.features}
-			if got := meetsPrerequisite(tc.prereq, sh, tc.level); got != tc.want {
+			if got := meetsPrerequisite(tc.prereq, sh, tc.level, tc.cantrips); got != tc.want {
 				t.Errorf("meetsPrerequisite(%q) = %v, want %v", tc.prereq, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestCheckNewOptions: an option a level-up added must meet its prerequisite
+// on the result and name a cantrip the sheet knows; older ones are not checked.
+func TestCheckNewOptions(t *testing.T) {
+	info, err := classInfo(sqlc.CompendiumEntry{Slug: testlock.Slug, Name: testlock.Name, DataJson: testlock.DataJson})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := func(name string) dnd5e.Feature {
+		for _, f := range info.Features {
+			for _, o := range compendium.Options(f.Description) {
+				if strings.HasPrefix(name, o.Name) {
+					return dnd5e.Feature{Name: "Eldritch Invocation: " + name, Source: "Testlock", Description: o.Desc}
+				}
+			}
+		}
+		t.Fatalf("no option %s", name)
+		return dnd5e.Feature{}
+	}
+	blast := []knownCantrip{{Name: "Test Blast", SpellData: compendium.SpellData{Classes: []string{"testlock"}, Range: "120 feet", Desc: "takes 1d10 Force damage"}}}
+	armor, step, spear := opt("Armor of Shadows"), opt("Shadow Step"), opt("Eldritch Spear (Test Blast)")
+	for _, tc := range []struct {
+		name          string
+		before, after []dnd5e.Feature
+		cantrips      []knownCantrip
+		err           string
+	}{
+		{"picked together", nil, []dnd5e.Feature{armor, step}, nil, ""},
+		{"prerequisite missing", nil, []dnd5e.Feature{step}, nil, "Shadow Step needs"},
+		{"held before is not checked", []dnd5e.Feature{step}, []dnd5e.Feature{step}, nil, ""},
+		{"cantrip known", nil, []dnd5e.Feature{spear}, blast, ""},
+		{"cantrip not known", nil, []dnd5e.Feature{opt("Eldritch Spear (Fire Bolt)")}, blast, "needs Fire Bolt"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkNewOptions(info, dnd5e.Sheet{Features: tc.before}, dnd5e.Sheet{Features: tc.after}, 2, tc.cantrips)
+			if (tc.err == "") != (err == nil) || err != nil && !strings.Contains(err.Error(), tc.err) {
+				t.Errorf("checkNewOptions = %v, want %q", err, tc.err)
+			}
+		})
+	}
+}
+
+// TestCreationOptionCheck: creation refuses an invocation whose prerequisite
+// the finished step does not meet, like a level-up. Shadow Cloak, a level 1
+// option needing Armor of Shadows, is offered next to it but not alone.
+func TestCreationOptionCheck(t *testing.T) {
+	cloak := testlock
+	cloak.DataJson = strings.Replace(testlock.DataJson, "### Shadow Step", `### Shadow Cloak\n\n*Prerequisite: Armor of Shadows Invocation*\n\nCloak.\n\n### Shadow Step`, 1)
+	const pick = "class_eldritch-invocation"
+	for _, tc := range []struct {
+		name string
+		form url.Values
+		code int
+		err  string
+	}{
+		{"prerequisite held", url.Values{pick: {"Armor of Shadows"}}, http.StatusSeeOther, ""},
+		{"prerequisite missing", url.Values{pick: {"Shadow Cloak"}}, http.StatusUnprocessableEntity, "Shadow Cloak needs Armor of Shadows Invocation"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newTestEnv(t)
+			loadFeatFixtures(t, e)
+			if err := e.q().UpsertCompendiumEntry(t.Context(), cloak); err != nil {
+				t.Fatal(err)
+			}
+			player := e.token(t, auth.RolePlayer)
+			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
+			for _, step := range []string{"class=testlock", "species=human"} {
+				step, pick, _ := strings.Cut(step, "=")
+				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
+					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
+				}
+			}
+			if w := e.do(t, http.MethodPost, base+"choices", player, tc.form, false); w.Code != tc.code || !strings.Contains(w.Body.String(), tc.err) {
+				t.Errorf("choices: %d, want %d with %q", w.Code, tc.code, tc.err)
 			}
 		})
 	}
@@ -297,19 +429,30 @@ func TestClassOptionChoices(t *testing.T) {
 	}) {
 		t.Errorf("features %+v", sh.Features)
 	}
-	// At level 2 the column grows by 2; the level 2 option opens up and the
-	// one taken is gone.
+	// At level 2 the column grows by 2; the level 2 options whose prerequisite
+	// holds open up (not Eldritch Spear: no cantrip) and the one taken is gone.
 	info, err := classInfo(sqlc.CompendiumEntry{Slug: testlock.Slug, Name: testlock.Name, DataJson: testlock.DataJson})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gs := classOptionGroups(info, 2, 1, sh.Features); len(gs) != 1 || gs[0].Count != 2 || len(gs[0].Options) != 1 || gs[0].Options[0].Name != "Agonizing Blast" {
+	names := func(g choiceGroup) []string {
+		var out []string
+		for _, o := range g.Options {
+			out = append(out, o.Name)
+		}
+		return out
+	}
+	if gs := classOptionGroups(info, 2, 1, sh, nil); len(gs) != 2 || gs[0].Count != 2 || !slices.Equal(names(gs[0]), []string{"Agonizing Blast", "Shadow Step"}) {
 		t.Errorf("level 2: %+v", groupViews(gs))
+	}
+	// Without Armor of Shadows, Shadow Step is offered next to it: picked together, they hold.
+	if gs := classOptionGroups(info, 2, 1, dnd5e.NewSheet(), nil); len(gs) != 1 || !slices.Equal(names(gs[0]), []string{"Agonizing Blast", "Armor of Shadows", "Shadow Step"}) {
+		t.Errorf("level 2, same group: %+v", groupViews(gs))
 	}
 	// A Repeatable option stays on offer and is added again under a new name.
 	for range 2 {
-		gs := classOptionGroups(info, 2, 1, sh.Features)
-		if len(gs) != 1 || len(gs[0].Options) != 1 {
+		gs := classOptionGroups(info, 2, 1, sh, nil)
+		if len(gs) == 0 || !slices.Contains(names(gs[0]), "Agonizing Blast") {
 			t.Fatalf("repeatable: %+v", groupViews(gs))
 		}
 		gs[0].apply(&sh, []string{"Agonizing Blast"})
@@ -319,13 +462,26 @@ func TestClassOptionChoices(t *testing.T) {
 			t.Errorf("no %q in %+v", name, sh.Features)
 		}
 	}
+	// An Eldritch Spear held without its cantrip (taken before the check) does
+	// not make Armor of Shadows look needed: both stay replaceable.
+	spearDesc := compendium.Options(info.Features[1].Description)[2].Desc
+	old := dnd5e.Sheet{Features: []dnd5e.Feature{{Name: "Eldritch Invocation: Armor of Shadows", Description: "Mage Armor."}, {Name: "Eldritch Invocation: Eldritch Spear", Description: spearDesc}}}
+	gs := classOptionGroups(info, 3, 2, old, nil)
+	if i := slices.IndexFunc(gs, func(g choiceGroup) bool { return g.Key == "replace_eldritch-invocation" }); i < 0 || !slices.Equal(names(gs[i]), []string{keepSpells, "Armor of Shadows", "Eldritch Spear"}) {
+		t.Errorf("swap with a stale option: %+v", groupViews(gs))
+	}
 }
 
 // testlock is a pact caster with invocations: one at level 1, three at 2.
+// Shadow Step needs Armor of Shadows; Eldritch Spear a damaging cantrip
+// (testBlast).
 var testlock = sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testlock", Name: "Testlock", SourceKey: "test", ContentHash: "x", DataJson: `{"caster":"pact","hit_die":8,
-	"table":{"Eldritch Invocations":{"1":"1","2":"3"}},
-	"features":[{"name":"Eldritch Invocations","desc":"You gain one invocation.","levels":[1]},
-		{"name":"Eldritch Invocation Options","desc":"In order.\n\n### Agonizing Blast\n\n*Prerequisite: Level 2+ Warlock*\n\n**Repeatable.** More damage.\n\n### Armor of Shadows\n\nMage Armor."}]}`}
+	"table":{"Cantrips":{"1":"1","2":"2"},"Eldritch Invocations":{"1":"1","2":"3"}},
+	"features":[{"name":"Eldritch Invocations","desc":"You gain one invocation. Whenever you gain a Testlock level, you can replace one of your invocations with another one for which you qualify.","levels":[1]},
+		{"name":"Eldritch Invocation Options","desc":"In order.\n\n### Agonizing Blast\n\n*Prerequisite: Level 2+ Warlock*\n\n**Repeatable.** More damage.\n\n### Armor of Shadows\n\nMage Armor.\n\n### Eldritch Spear\n\n*Prerequisite: Level 2+ Warlock, a Testlock Cantrip That Deals Damage*\n\nChoose one of your known Testlock cantrips that deals damage and has a range of 10+ feet.\n\n### Shadow Step\n\n*Prerequisite: Level 2+ Warlock, Armor of Shadows Invocation*\n\nTeleport."}]}`}
+
+var testBlast = sqlc.UpsertCompendiumEntryParams{Kind: "spell", Slug: "test-blast", Name: "Test Blast", SourceKey: "test", ContentHash: "x",
+	DataJson: `{"level":0,"classes":["testlock"],"range":"120 feet","desc":"Make a ranged spell attack. On a hit, the target takes 1d10 Force damage."}`}
 
 // TestApplyTraitText: trait text sets darkvision, a speed increase and
 // resistances, but "the damage type determined by…" names none.

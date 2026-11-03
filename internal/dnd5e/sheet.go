@@ -130,6 +130,9 @@ type Spell struct {
 	// Feat is the feat that chose it ("Magic Initiate (Wizard)"), whose
 	// Spell Change may swap it.
 	Feat string `json:"feat,omitempty" validate:"max=200"`
+	// Class is the slug of the class whose list taught it, so a multiclass's
+	// cantrip counts for that class only ("a Warlock cantrip").
+	Class string `json:"class,omitempty" validate:"max=100"`
 }
 
 // Item is an inventory line. Armor, Shield and Weapon carry the stats of

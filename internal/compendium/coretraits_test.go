@@ -70,8 +70,8 @@ func TestOptions(t *testing.T) {
 	if got := LevelSpells("**Forest Gnome.** You know the *Minor Illusion* cantrip."); len(got) != 0 {
 		t.Errorf("LevelSpells without a table: %v", got)
 	}
-	if OptionLevel("*Prerequisite: Level 5+ Warlock*") != 5 || OptionLevel("Mage Armor.") != 0 {
-		t.Error("OptionLevel")
+	if got := OptionPrerequisite("*Prerequisite: Level 5+ Warlock, Pact of the Blade Invocation*\n\nText."); got != "Level 5+ Warlock, Pact of the Blade Invocation" || OptionPrerequisite("Mage Armor.") != "" {
+		t.Errorf("OptionPrerequisite: %q", got)
 	}
 	for in, want := range map[string][]string{
 		"You also know the Dancing Lights cantrip.":                  {"Dancing Lights"},

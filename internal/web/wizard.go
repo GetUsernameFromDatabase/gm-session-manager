@@ -255,6 +255,9 @@ type creation struct {
 	groups []choiceGroup
 	// cantrips are species cantrips that come without a choice (Thaumaturgy).
 	cantrips []dnd5e.Spell
+	// check refuses class options the finished step does not qualify for
+	// (checkNewOptions); nil without a compendium class.
+	check func(before, after dnd5e.Sheet, learned []knownCantrip) error
 }
 
 // choiceGroup is a creation choice and what picking from it does.
@@ -281,7 +284,7 @@ func (a *App) creationChoices(ctx context.Context, sh dnd5e.Sheet, campaignID in
 	// After the species' groups, so the feat's ability is the last to set its spells'.
 	cr.groups = append(cr.groups, featGroups...)
 	if len(sh.Classes) > 0 {
-		if err := a.classChoices(ctx, &cr, sh); err != nil {
+		if err := a.classChoices(ctx, &cr, sh, campaignID); err != nil {
 			return cr, err
 		}
 	}
@@ -560,7 +563,7 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 		if err != nil {
 			return choiceGroup{}, false, err
 		}
-		if td == nil || td.Category != "Origin" || !meetsPrerequisite(td.Prerequisite, sh, sh.Level()) {
+		if td == nil || td.Category != "Origin" || !meetsPrerequisite(td.Prerequisite, sh, sh.Level(), nil) {
 			continue
 		}
 		opts = append(opts, compendium.NameDesc{Name: n.Name, Desc: textMarkdown(td)})
@@ -631,15 +634,44 @@ func featList(full string) (string, string) {
 }
 
 var (
-	rePrereqLevel   = regexp.MustCompile(`^Level (\d+)\+$`)
-	rePrereqScore   = regexp.MustCompile(`^(.+) (\d+)\+$`)
-	rePrereqFeature = regexp.MustCompile(`^(.+) Feature$`)
+	rePrereqLevel      = regexp.MustCompile(`^Level (\d+)\+(?: \w+)?$`)
+	rePrereqScore      = regexp.MustCompile(`^(.+) (\d+)\+$`)
+	rePrereqFeature    = regexp.MustCompile(`^(.+) Feature$`)
+	rePrereqInvocation = regexp.MustCompile(`^(.+) Invocation$`)
+	rePrereqCantrip    = regexp.MustCompile(`(?i)^an? (.+?) cantrip that deals damage( via an attack roll)?$`)
+	reSpellDamage      = regexp.MustCompile(`\d+d\d+ \w+ damage`)
+	reSpellRange       = regexp.MustCompile(`(?i)^(\d+)\s*(?:feet|foot|ft\b\.?|(miles?)\b)`)
+	reOptionCantrip    = regexp.MustCompile(`(?i)choose one of your known (\w+) cantrips that (deals damage|requires an attack roll)(?: and has a range of (\d+)\+ feet)?`)
 )
 
-// meetsPrerequisite reports whether a sheet at this character level meets a
-// feat's prerequisite ("Level 4+, Strength or Dexterity 13+", "Fighting Style
-// Feature"); every clause must hold.
-func meetsPrerequisite(prereq string, sh dnd5e.Sheet, level int) bool {
+// knownCantrip is a class cantrip a sheet knows, or may learn this level-up.
+type knownCantrip struct {
+	Name string
+	compendium.SpellData
+}
+
+// cantripFits reports whether c is a cantrip of class's list that deals
+// damage, by a spell attack if attack, with a range of minRange feet or more
+// ("120 feet", "120 ft.", "1 mile"; Touch and Self count as 0).
+func cantripFits(c knownCantrip, class string, attack bool, minRange int) bool {
+	feet := 0
+	if m := reSpellRange.FindStringSubmatch(c.Range); m != nil {
+		feet, _ = strconv.Atoi(m[1])
+		if m[2] != "" {
+			feet *= 5280
+		}
+	}
+	return slices.Contains(c.Classes, compendium.Slugify(class)) && reSpellDamage.MatchString(c.Desc) &&
+		(!attack || strings.Contains(c.Desc, "spell attack")) && feet >= minRange
+}
+
+// meetsPrerequisite reports whether a sheet meets a feat's or class option's
+// prerequisite ("Level 4+, Strength or Dexterity 13+", "Fighting Style
+// Feature", "Level 5+ Warlock, Pact of the Blade Invocation", "a Warlock
+// Cantrip That Deals Damage"); every clause must hold. level is the character
+// level for feats and the class level for class options; cantrips are the
+// sheet's class cantrips (cantripData).
+func meetsPrerequisite(prereq string, sh dnd5e.Sheet, level int, cantrips []knownCantrip) bool {
 	for _, clause := range strings.FieldsFunc(prereq, func(r rune) bool { return r == ',' || r == ';' }) {
 		clause = strings.TrimSpace(clause)
 		var scores []string // "Strength or Dexterity" of "… 13+"
@@ -659,6 +691,17 @@ func meetsPrerequisite(prereq string, sh dnd5e.Sheet, level int) bool {
 		} else if m := rePrereqFeature.FindStringSubmatch(clause); m != nil {
 			names := strings.Split(m[1], " or ")
 			if !slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return slices.Contains(names, f.Name) }) {
+				return false
+			}
+		} else if m := rePrereqInvocation.FindStringSubmatch(clause); m != nil {
+			if !slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool {
+				kind, name, _ := strings.Cut(f.Name, ": ")
+				return strings.HasSuffix(kind, " Invocation") && name == m[1]
+			}) {
+				return false
+			}
+		} else if m := rePrereqCantrip.FindStringSubmatch(clause); m != nil {
+			if !slices.ContainsFunc(cantrips, func(c knownCantrip) bool { return cantripFits(c, m[1], m[2] != "", 0) }) {
 				return false
 			}
 		}
@@ -952,7 +995,7 @@ func skillPick(p compendium.NameDesc) (choiceGroup, bool) {
 
 // classChoices offers the class's spells and its "… Options" features
 // (Eldritch Invocation Options) as many as its table column gives.
-func (a *App) classChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet) error {
+func (a *App) classChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, campaignID int64) error {
 	cl := sh.Classes[0]
 	row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindClass), Slug: cl.Slug})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -970,15 +1013,76 @@ func (a *App) classChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet) er
 	if cr.view.Spells, err = a.classSpellOptions(ctx, cl.Slug, slots, pactLevel, sh); err != nil {
 		return err
 	}
-	cr.groups = append(cr.groups, classOptionGroups(info, cl.Level, 0, sh.Features)...)
+	cantrips, err := a.optionCantrips(ctx, sh, info, cl.Level, campaignID)
+	if err != nil {
+		return err
+	}
+	cr.groups = append(cr.groups, classOptionGroups(info, cl.Level, 0, sh, cantrips)...)
+	cr.check = func(before, after dnd5e.Sheet, learned []knownCantrip) error {
+		return checkNewOptions(info, before, after, cl.Level, learned)
+	}
 	return nil
+}
+
+// cantripData are the compendium entries of these spells' class cantrips
+// (not a species' or a feat's), for "a Warlock Cantrip That Deals Damage". A
+// cantrip learned from one class's list (Spell.Class) counts for that class
+// only; older sheets without it count for every list it is on.
+func (a *App) cantripData(ctx context.Context, spells []dnd5e.Spell, campaignID int64) ([]knownCantrip, error) {
+	var out []knownCantrip
+	for _, sp := range spells {
+		if sp.Level != 0 || sp.Feat != "" || sp.Ability != "" {
+			continue
+		}
+		row, err := a.entryBySlug(ctx, compendium.KindSpell, sp.Slug, campaignID)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		d, err := compendium.DecodeData(compendium.KindSpell, row.DataJson)
+		if err != nil {
+			return nil, err
+		}
+		c := knownCantrip{Name: sp.Name, SpellData: *d.(*compendium.SpellData)}
+		if sp.Class != "" {
+			c.Classes = []string{sp.Class}
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// optionCantrips are the cantrips reaching classLevel in info may count for
+// its options: the sheet's, and the class list's when the Cantrips column
+// grows (one may be learned in the same step, creation included).
+func (a *App) optionCantrips(ctx context.Context, sh dnd5e.Sheet, info dnd5e.ClassInfo, classLevel int, campaignID int64) ([]knownCantrip, error) {
+	could := sh
+	could.Spells = slices.Clone(sh.Spells)
+	now, _ := strconv.Atoi(info.ColumnsAt(classLevel)["Cantrips"])
+	was, _ := strconv.Atoi(info.ColumnsAt(classLevel - 1)["Cantrips"])
+	if now > was {
+		rows, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: info.Slug, MaxLevel: 0})
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			could.AddSpell(dnd5e.Spell{Slug: r.Slug, Name: r.Name, Class: info.Slug})
+		}
+	}
+	return a.cantripData(ctx, could.Spells, campaignID)
 }
 
 // classOptionGroups offer a class's "… Options" features (Eldritch
 // Invocation Options) as many times as the matching table column grows
-// from class level before to level. Options above level, or already taken
-// and not repeatable, are left out.
-func classOptionGroups(info dnd5e.ClassInfo, level, before int, have []dnd5e.Feature) []choiceGroup {
+// from class level before to level. Options whose prerequisite the sheet
+// does not meet, or already taken and not repeatable, are left out; options
+// picked together count for each other (checkNewOptions checks the result).
+// An option that applies to one of your cantrips asks which. On a level-up
+// (before > 0) whose feature text allows it, one taken option may be
+// replaced, unless another taken option needs it.
+func classOptionGroups(info dnd5e.ClassInfo, level, before int, sh dnd5e.Sheet, cantrips []knownCantrip) []choiceGroup {
 	now, was := info.ColumnsAt(level), info.ColumnsAt(before)
 	var out []choiceGroup
 	for _, f := range info.Features {
@@ -986,37 +1090,198 @@ func classOptionGroups(info dnd5e.ClassInfo, level, before int, have []dnd5e.Fea
 		if !ok {
 			continue
 		}
-		var opts []compendium.NameDesc
-		for _, o := range compendium.Options(f.Description) {
-			taken := slices.ContainsFunc(have, func(h dnd5e.Feature) bool { return h.Name == kind+": "+o.Name })
-			if compendium.OptionLevel(o.Desc) <= level && (!taken || strings.Contains(o.Desc, "**Repeatable.**")) {
-				opts = append(opts, o)
-			}
-		}
+		o := optionKind{info: info, kind: kind, level: level, all: compendium.Options(f.Description), cantrips: cantrips}
+		opts := o.eligible(sh)
 		for _, col := range slices.Sorted(maps.Keys(now)) {
 			n, _ := strconv.Atoi(now[col])
 			m, _ := strconv.Atoi(was[col])
 			if n <= m || len(opts) == 0 || !strings.HasPrefix(f.Name, strings.TrimSuffix(col, "s")) {
 				continue
 			}
-			g := views.ChoiceGroup{Key: "class_" + compendium.Slugify(kind), Title: col, Count: n - m, Options: opts}
-			out = append(out, choiceGroup{g, func(s *dnd5e.Sheet, picked []string) {
-				for _, name := range picked {
-					o := opts[slices.IndexFunc(opts, func(o compendium.NameDesc) bool { return o.Name == name })]
-					name := kind + ": " + o.Name
-					// A Repeatable option taken again is a new feature, not a replacement.
-					for n := 2; slices.ContainsFunc(s.Features, func(h dnd5e.Feature) bool { return strings.EqualFold(h.Name, name) }); n++ {
-						name = fmt.Sprintf("%s: %s (%d)", kind, o.Name, n)
-					}
-					feat := dnd5e.Feature{Name: name, Source: info.Name, Level: level, Description: o.Desc}
-					mods := dnd5e.ParseEffects(feat.Name, feat.Description, info.Table, info.Name).Apply(&feat)
-					s.PutFeature(feat, mods)
-				}
-			}, nil})
+			out = append(out, o.group("class_"+compendium.Slugify(kind), col, n-m, opts, sh, nil))
+		}
+		if g, ok := o.swap(before, sh); ok {
+			out = append(out, g)
 		}
 	}
 	return out
 }
+
+// optionKind is one "… Options" feature of a class (Eldritch Invocation) at
+// the class level being reached.
+type optionKind struct {
+	info     dnd5e.ClassInfo
+	kind     string
+	level    int
+	all      []compendium.NameDesc
+	cantrips []knownCantrip
+}
+
+// eligible are the options sh may take: prerequisite met, not taken unless
+// Repeatable, a cantrip left to choose if they ask for one. Options eligible
+// together count for each other's prerequisites ("Pact of the Blade
+// Invocation"), until no more open up.
+func (k optionKind) eligible(sh dnd5e.Sheet) []compendium.NameDesc {
+	var opts []compendium.NameDesc
+	for grown := true; grown; {
+		with := sh
+		with.Features = slices.Clone(sh.Features)
+		for _, o := range opts {
+			with.Features = append(with.Features, dnd5e.Feature{Name: k.kind + ": " + o.Name})
+		}
+		var next []compendium.NameDesc
+		for _, o := range k.all {
+			taken := slices.ContainsFunc(sh.Features, func(h dnd5e.Feature) bool { return h.Name == k.kind+": "+o.Name })
+			cs, asks := k.cantripChoices(sh, o)
+			if meetsPrerequisite(compendium.OptionPrerequisite(o.Desc), with, k.level, k.cantrips) && (!taken || isRepeatable(o)) && (!asks || len(cs) > 0) {
+				next = append(next, o)
+			}
+		}
+		grown, opts = len(next) > len(opts), next
+	}
+	return opts
+}
+
+// cantripChoices are the cantrips an option's "Choose one of your known
+// Warlock cantrips that deals damage" may name, less those sh took it for
+// already; asks reports whether its text asks.
+func (k optionKind) cantripChoices(sh dnd5e.Sheet, o compendium.NameDesc) (out []compendium.NameDesc, asks bool) {
+	m := reOptionCantrip.FindStringSubmatch(o.Desc)
+	if m == nil {
+		return nil, false
+	}
+	minRange, _ := strconv.Atoi(m[3])
+	for _, c := range k.cantrips {
+		if cantripFits(c, m[1], strings.EqualFold(m[2], "requires an attack roll"), minRange) &&
+			!slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == k.name(o, c.Name) }) {
+			out = append(out, compendium.NameDesc{Name: c.Name})
+		}
+	}
+	return out, true
+}
+
+// name is the feature an option becomes: "Eldritch Invocation: Agonizing
+// Blast (Eldritch Blast)" with a cantrip.
+func (k optionKind) name(o compendium.NameDesc, cantrip string) string {
+	if cantrip != "" {
+		return fmt.Sprintf("%s: %s (%s)", k.kind, o.Name, cantrip)
+	}
+	return k.kind + ": " + o.Name
+}
+
+// add puts option o on s as a feature, for cantrip if it asks for one.
+func (k optionKind) add(s *dnd5e.Sheet, o compendium.NameDesc, cantrip string) {
+	name := k.name(o, cantrip)
+	// A Repeatable option taken again is a new feature, not a replacement.
+	for n := 2; slices.ContainsFunc(s.Features, func(h dnd5e.Feature) bool { return strings.EqualFold(h.Name, name) }); n++ {
+		name = fmt.Sprintf("%s (%d)", k.name(o, cantrip), n)
+	}
+	feat := dnd5e.Feature{Name: name, Source: k.info.Name, Level: k.level, Description: o.Desc}
+	mods := dnd5e.ParseEffects(feat.Name, feat.Description, k.info.Table, k.info.Name).Apply(&feat)
+	s.PutFeature(feat, mods)
+}
+
+// group asks for count of opts. An option that asks for a cantrip is added
+// by its own "Agonizing Blast: cantrip" choice below it. first runs before
+// each pick and may skip it (a swap removes the replaced option).
+func (k optionKind) group(key, title string, count int, opts []compendium.NameDesc, sh dnd5e.Sheet, first func(*dnd5e.Sheet, compendium.NameDesc) bool) choiceGroup {
+	sub := map[string][]choiceGroup{}
+	for _, o := range opts {
+		if cs, asks := k.cantripChoices(sh, o); asks {
+			g := views.ChoiceGroup{Key: key + "_" + compendium.Slugify(o.Name), Title: o.Name + ": cantrip", Count: 1, Options: cs}
+			sub[o.Name] = []choiceGroup{{g, func(s *dnd5e.Sheet, picked []string) { k.add(s, o, picked[0]) }, nil}}
+		}
+	}
+	return choiceGroup{views.ChoiceGroup{Key: key, Title: title, Count: count, Options: opts}, func(s *dnd5e.Sheet, picked []string) {
+		for _, name := range picked {
+			o := opts[slices.IndexFunc(opts, func(o compendium.NameDesc) bool { return o.Name == name })]
+			if first != nil && !first(s, o) {
+				continue
+			}
+			if _, ok := sub[o.Name]; !ok {
+				k.add(s, o, "")
+			}
+		}
+	}, sub}
+}
+
+// swap is "Replace one Eldritch Invocation": No change, or a taken option no
+// other taken option needs, then one it may be replaced with.
+func (k optionKind) swap(before int, sh dnd5e.Sheet) (choiceGroup, bool) {
+	kind := k.kind
+	if before == 0 || !slices.ContainsFunc(k.info.Features, func(f dnd5e.ClassFeature) bool {
+		return f.Name == kind+"s" && strings.Contains(f.Description, "replace one of your")
+	}) {
+		return choiceGroup{}, false
+	}
+	key := "replace_" + compendium.Slugify(kind)
+	opts := []compendium.NameDesc{{Name: keepSpells}}
+	sub := map[string][]choiceGroup{}
+	for _, old := range sh.Features {
+		if !strings.HasPrefix(old.Name, kind+": ") {
+			continue
+		}
+		without := sh
+		without.Features = slices.DeleteFunc(slices.Clone(sh.Features), func(f dnd5e.Feature) bool { return f.Name == old.Name })
+		if slices.ContainsFunc(without.Features, func(f dnd5e.Feature) bool {
+			p := compendium.OptionPrerequisite(f.Description)
+			// Only one that holds now and fails without old needs it.
+			return strings.HasPrefix(f.Name, kind+": ") && meetsPrerequisite(p, sh, k.level, k.cantrips) && !meetsPrerequisite(p, without, k.level, k.cantrips)
+		}) {
+			continue // another option needs it
+		}
+		with := slices.DeleteFunc(k.eligible(without), func(o compendium.NameDesc) bool {
+			return old.Name == kind+": "+o.Name || strings.HasPrefix(old.Name, kind+": "+o.Name+" (") // "… (2)", "… (Eldritch Blast)"
+		})
+		if len(with) == 0 {
+			continue
+		}
+		label := strings.TrimPrefix(old.Name, kind+": ")
+		opts = append(opts, compendium.NameDesc{Name: label})
+		sub[label] = []choiceGroup{k.group(key+"_"+compendium.Slugify(label), "Replace "+label+" with", 1, with, without, func(s *dnd5e.Sheet, o compendium.NameDesc) bool {
+			// Taken again by the same level-up and not Repeatable: keep old.
+			if !isRepeatable(o) && slices.ContainsFunc(s.Features, func(f dnd5e.Feature) bool { return f.Name == kind+": "+o.Name }) {
+				return false
+			}
+			s.Features = slices.DeleteFunc(s.Features, func(f dnd5e.Feature) bool { return f.Name == old.Name })
+			s.Modifiers = slices.DeleteFunc(s.Modifiers, func(m dnd5e.CustomMod) bool { return m.Source == old.Name })
+			return true
+		})}
+	}
+	if len(sub) == 0 {
+		return choiceGroup{}, false
+	}
+	return choiceGroup{views.ChoiceGroup{Key: key, Title: "Replace one " + kind, Count: 1, Options: opts}, nil, sub}, true
+}
+
+// checkNewOptions refuses a level-up whose new class options (after, not in
+// before) miss their prerequisite on the result, or name a cantrip it does
+// not know: picks made together were offered for each other.
+func checkNewOptions(info dnd5e.ClassInfo, before, after dnd5e.Sheet, level int, cantrips []knownCantrip) error {
+	for _, f := range after.Features {
+		kind, name, _ := strings.Cut(f.Name, ": ")
+		if f.Source != info.Name || slices.ContainsFunc(before.Features, func(b dnd5e.Feature) bool { return b.Name == f.Name }) ||
+			!slices.ContainsFunc(info.Features, func(cf dnd5e.ClassFeature) bool { return cf.Name == kind+" Options" }) {
+			continue
+		}
+		base, cantrip, _ := strings.Cut(name, " (")
+		if p := compendium.OptionPrerequisite(f.Description); !meetsPrerequisite(p, after, level, cantrips) {
+			return userError{fmt.Errorf("%s needs %s", base, p)}
+		}
+		k := optionKind{kind: kind, cantrips: cantrips}
+		o := compendium.NameDesc{Name: base, Desc: f.Description}
+		if cs, asks := k.cantripChoices(before, o); asks {
+			cantrip = strings.TrimSuffix(cantrip, ")")
+			if !slices.ContainsFunc(cs, func(c compendium.NameDesc) bool { return c.Name == cantrip }) {
+				return userError{fmt.Errorf("%s needs %s among your cantrips: tick it under spells", o.Name, cantrip)}
+			}
+		}
+	}
+	return nil
+}
+
+// isRepeatable reports whether a class option may be taken more than once.
+func isRepeatable(o compendium.NameDesc) bool { return strings.Contains(o.Desc, "**Repeatable.**") }
 
 // spellsNamed are the compendium spells of these names; ones it lacks are
 // left out.
@@ -1195,9 +1460,16 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			if err != nil {
 				return nil, err
 			}
+			sp.Class = sheet.Classes[0].Slug
 			spells = append(spells, sp)
 		}
+		learned, err := a.cantripData(ctx, append(slices.Clone(sheet.Spells), spells...), ch.CampaignID)
+		if err != nil {
+			return nil, err
+		}
 		return once(func(s *dnd5e.Sheet, _ *dnd5e.Character) error {
+			before := *s
+			before.Features = slices.Clone(s.Features)
 			// The species' spells come before the picks, which set their
 			// ability; the class's after, so they keep the class's.
 			for _, sp := range cr.cantrips {
@@ -1206,6 +1478,9 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			applyPicks(s, cr.groups, picks)
 			for _, sp := range spells {
 				s.AddSpell(sp)
+			}
+			if cr.check != nil {
+				return cr.check(before, *s, learned)
 			}
 			return nil
 		}), nil

@@ -56,38 +56,70 @@ func TestRevertLevelUp(t *testing.T) {
 }
 
 // TestLevelUpInvocations: each level asks for the invocations its column
-// adds, only from the options open at that level.
+// adds, only from the options whose prerequisite (level, another invocation,
+// a damaging cantrip) holds on the result, Eldritch Spear asks for its
+// cantrip, and a later level may replace one.
 func TestLevelUpInvocations(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	if err := e.q().UpsertCompendiumEntry(ctx, testlock); err != nil {
-		t.Fatal(err)
+	for _, entry := range []sqlc.UpsertCompendiumEntryParams{testlock, testBlast} {
+		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+			t.Fatal(err)
+		}
 	}
 	player := e.token(t, auth.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	if w := e.do(t, http.MethodGet, base+"?class=testlock", player, nil, false); !strings.Contains(w.Body.String(), "Eldritch Invocations") || strings.Contains(w.Body.String(), "Agonizing Blast") {
 		t.Errorf("level 1 form lacks the pick or offers a level 2 option")
 	}
+	const pick, spear, replace = "class_eldritch-invocation", "class_eldritch-invocation_eldritch-spear", "replace_eldritch-invocation"
+	// Level 2 grows the Cantrips column, so Eldritch Spear is offered for
+	// Test Blast, learned in the same level-up.
 	for _, step := range []struct {
 		form url.Values
 		code int
+		err  string // in the refused page
 	}{
-		{url.Values{"class": {"testlock"}, "class_eldritch-invocation": {"Armor of Shadows"}}, http.StatusSeeOther},
-		{url.Values{"class": {"testlock"}, "class_eldritch-invocation": {"Armor of Shadows"}}, http.StatusUnprocessableEntity}, // taken
-		{url.Values{"class": {"testlock"}, "class_eldritch-invocation": {"Agonizing Blast"}}, http.StatusSeeOther},
+		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusSeeOther, ""},
+		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusUnprocessableEntity, "listed eldritch invocations"},                                                    // taken
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}, spear: {"Test Blast"}}, http.StatusUnprocessableEntity, "Eldritch Spear needs Level 2+ Warlock, a Testlock Cantrip"}, // Test Blast not ticked
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}, spear: {"Mage Hand"}, "spell": {"test-blast"}}, http.StatusUnprocessableEntity, "listed eldritch spear: cantrip"},
+		// Shadow Step needs Armor of Shadows, which the same level-up replaces.
+		{url.Values{"class": {"testlock"}, pick: {"Shadow Step"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "Shadow Step needs"},
+		{url.Values{"class": {"testlock"}, pick: {"Shadow Step", "Eldritch Spear"}, spear: {"Test Blast"}, "spell": {"test-blast"}}, http.StatusSeeOther, ""},
+		// Shadow Step needs Armor of Shadows, so it cannot be replaced.
+		{url.Values{"class": {"testlock"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "listed replace one eldritch invocation"},
+		{url.Values{"class": {"testlock"}, replace: {"Shadow Step"}, "replace_eldritch-invocation_shadow-step": {"Agonizing Blast"}}, http.StatusSeeOther, ""},
 	} {
-		if w := e.do(t, http.MethodPost, base, player, step.form, false); w.Code != step.code {
-			t.Fatalf("%v: %d, want %d", step.form, w.Code, step.code)
+		if w := e.do(t, http.MethodPost, base, player, step.form, false); w.Code != step.code || !strings.Contains(w.Body.String(), step.err) {
+			t.Fatalf("%v: %d, want %d with %q", step.form, w.Code, step.code, step.err)
 		}
 	}
 	ch, _ := e.q().GetCharacter(ctx, e.characterID)
 	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
-	for _, name := range []string{"Eldritch Invocation: Armor of Shadows", "Eldritch Invocation: Agonizing Blast"} {
+	for _, name := range []string{"Eldritch Invocation: Armor of Shadows", "Eldritch Invocation: Eldritch Spear (Test Blast)", "Eldritch Invocation: Agonizing Blast"} {
 		if !slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == name }) {
 			t.Errorf("missing %s: %s", name, ch.SheetJson)
 		}
 	}
-	if sh.ClassSummary() != "Testlock 2" {
+	if slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Eldritch Invocation: Shadow Step" }) {
+		t.Errorf("Shadow Step not replaced: %s", ch.SheetJson)
+	}
+	if !slices.ContainsFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == "test-blast" && sp.Class == "testlock" }) {
+		t.Errorf("Test Blast without its class: %+v", sh.Spells)
+	}
+	// Learned from another class's list, Test Blast is no Testlock cantrip.
+	const prereq = "a Testlock Cantrip That Deals Damage"
+	for class, want := range map[string]bool{"": true, "testlock": true, "sorcerer": false} {
+		cs, err := e.app.cantripData(ctx, []dnd5e.Spell{{Slug: "test-blast", Name: "Test Blast", Class: class}}, ch.CampaignID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := meetsPrerequisite(prereq, dnd5e.Sheet{}, 2, cs); got != want {
+			t.Errorf("taught by %q: %v, want %v", class, got, want)
+		}
+	}
+	if sh.ClassSummary() != "Testlock 3" {
 		t.Errorf("classes %q", sh.ClassSummary())
 	}
 }
