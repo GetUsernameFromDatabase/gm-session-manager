@@ -17,6 +17,7 @@ import (
 	"gm-session-manager/internal/web/components/input"
 	"gm-session-manager/internal/web/components/label"
 	selectcomp "gm-session-manager/internal/web/components/select"
+	"net/url"
 	"slices"
 	"strings"
 )
@@ -49,6 +50,8 @@ type LevelUpView struct {
 	// LineageSpells are the species spells this character level teaches.
 	LineageSpells []dnd5e.Spell
 	Error         string
+	// Form is the refused form's values, ticked again; nil on a fresh page.
+	Form url.Values
 }
 
 func slotSummary(slots [9]int) string {
@@ -246,7 +249,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.Class.Slug).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 119, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 122, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 		if templ_7745c5c3_Err != nil {
@@ -295,7 +298,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var10 string
 					templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(p.Class.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 123, Col: 19}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 126, Col: 19}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 					if templ_7745c5c3_Err != nil {
@@ -308,7 +311,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var11 string
 					templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.ClassLevel))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 123, Col: 48}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 126, Col: 48}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 					if templ_7745c5c3_Err != nil {
@@ -321,7 +324,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var12 string
 					templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.NewLevel))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 123, Col: 92}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 126, Col: 92}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 					if templ_7745c5c3_Err != nil {
@@ -367,7 +370,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var14 string
 					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(w)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 129, Col: 132}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 132, Col: 132}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 					if templ_7745c5c3_Err != nil {
@@ -385,7 +388,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 				var templ_7745c5c3_Var15 string
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.AverageHP))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 134, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 137, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 				if templ_7745c5c3_Err != nil {
@@ -403,7 +406,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var16 string
 					templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(dnd5e.Signed(v.Sheet.ProficiencyBonus()))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 136, Col: 72}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 139, Col: 72}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 					if templ_7745c5c3_Err != nil {
@@ -416,7 +419,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var17 string
 					templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(dnd5e.Signed(pb))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 136, Col: 97}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 139, Col: 97}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 					if templ_7745c5c3_Err != nil {
@@ -435,7 +438,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var18 string
 					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(slotSummary(before))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 139, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 142, Col: 45}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 					if templ_7745c5c3_Err != nil {
@@ -448,7 +451,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var19 string
 					templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(slotSummary(p.Slots))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 139, Col: 74}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 142, Col: 74}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 					if templ_7745c5c3_Err != nil {
@@ -467,7 +470,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var20 string
 					templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.Pact))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 142, Col: 43}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 145, Col: 43}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 					if templ_7745c5c3_Err != nil {
@@ -480,7 +483,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var21 string
 					templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.PactLevel))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 142, Col: 80}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 145, Col: 80}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 					if templ_7745c5c3_Err != nil {
@@ -499,7 +502,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var22 string
 					templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 146, Col: 30}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 149, Col: 30}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 					if templ_7745c5c3_Err != nil {
@@ -517,7 +520,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 						var templ_7745c5c3_Var23 string
 						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(strings.Join(fx, "; "))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 148, Col: 71}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 151, Col: 71}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 						if templ_7745c5c3_Err != nil {
@@ -541,7 +544,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var24 string
 					templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(v.Sheet.Species)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 153, Col: 29}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 156, Col: 29}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 					if templ_7745c5c3_Err != nil {
@@ -554,7 +557,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var25 string
 					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(sp.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 153, Col: 48}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 156, Col: 48}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 					if templ_7745c5c3_Err != nil {
@@ -585,7 +588,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var26 string
 					templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(p.Class.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 162, Col: 37}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 165, Col: 37}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 					if templ_7745c5c3_Err != nil {
@@ -608,7 +611,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var27 string
 					templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.Class.HitDie))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 169, Col: 69}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 172, Col: 69}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 					if templ_7745c5c3_Err != nil {
@@ -621,7 +624,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var28 string
 					templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.AverageHP))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 169, Col: 126}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 172, Col: 126}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 					if templ_7745c5c3_Err != nil {
@@ -639,7 +642,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var29 string
 					templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.AverageHP))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 171, Col: 59}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 174, Col: 59}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 					if templ_7745c5c3_Err != nil {
@@ -652,7 +655,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var30 string
 					templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.Class.HitDie))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 171, Col: 133}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 174, Col: 133}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 					if templ_7745c5c3_Err != nil {
@@ -662,7 +665,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = input.Input(input.Props{Name: "hp_roll", Type: "number", Class: "mt-1 w-28", Placeholder: "roll", Attributes: templ.Attributes{"min": "1", "max": fmt.Sprint(p.Class.HitDie)}}).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = input.Input(input.Props{Name: "hp_roll", Type: "number", Class: "mt-1 w-28", Placeholder: "roll", Value: v.Form.Get("hp_roll"), Attributes: templ.Attributes{"min": "1", "max": fmt.Sprint(p.Class.HitDie)}}).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -675,7 +678,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var31 string
 					templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(slotSummary(p.Slots))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 180, Col: 30}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 183, Col: 30}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 					if templ_7745c5c3_Err != nil {
@@ -689,7 +692,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 						var templ_7745c5c3_Var32 string
 						templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(" · ")
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 182, Col: 17}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 185, Col: 17}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 						if templ_7745c5c3_Err != nil {
@@ -709,7 +712,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var33 string
 					templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.Pact))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 186, Col: 33}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 189, Col: 33}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 					if templ_7745c5c3_Err != nil {
@@ -722,7 +725,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					var templ_7745c5c3_Var34 string
 					templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.PactLevel))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 186, Col: 70}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 189, Col: 70}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 					if templ_7745c5c3_Err != nil {
@@ -746,7 +749,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 						var templ_7745c5c3_Var35 string
 						templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 195, Col: 16}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 198, Col: 16}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 						if templ_7745c5c3_Err != nil {
@@ -759,7 +762,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 						var templ_7745c5c3_Var36 string
 						templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(p.Columns[k])
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 195, Col: 34}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 198, Col: 34}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 						if templ_7745c5c3_Err != nil {
@@ -802,7 +805,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = formSelect("subclass", "subclass", optionItems("Decide later", v.Subclasses, func(o Option) string { return o.Name }), "", "", "").Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = formSelect("subclass", "subclass", optionItems("Decide later", v.Subclasses, func(o Option) string { return o.Name }), v.Form.Get("subclass"), "", "").Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -816,11 +819,11 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = abilitySelect("asi1", "+1 or +2 to").Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = abilitySelect("asi1", "+1 or +2 to", v.Form.Get("asi1")).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = abilitySelect("asi2", "and +1 to").Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = abilitySelect("asi2", "and +1 to", v.Form.Get("asi2")).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -828,7 +831,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), "", "", "").Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), v.Form.Get("feat"), "", "").Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -845,53 +848,63 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 							var templ_7745c5c3_Var38 string
 							templ_7745c5c3_Var38, templ_7745c5c3_Err = templruntime.NewAttributeExpression("feat=" + f.Slug).Resolve(ctx)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 220, Col: 69}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 223, Col: 69}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\" hidden>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\"")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							for _, g := range groups {
-								templ_7745c5c3_Err = choiceFieldset(g).Render(ctx, templ_7745c5c3_Buffer)
+							if v.Form.Get("feat") != f.Slug {
+								templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, " hidden")
 								if templ_7745c5c3_Err != nil {
 									return templ_7745c5c3_Err
 								}
 							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</div>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, ">")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							for _, g := range groups {
+								templ_7745c5c3_Err = choiceFieldset(g, v.Form).Render(ctx, templ_7745c5c3_Buffer)
+								if templ_7745c5c3_Err != nil {
+									return templ_7745c5c3_Err
+								}
+							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</div>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "</fieldset>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "</fieldset>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
 				if len(p.Features) > 0 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<div><div class=\"font-medium\">New features</div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "<div><div class=\"font-medium\">New features</div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					for _, f := range p.Features {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "<details class=\"mt-1\"><summary class=\"cursor-pointer\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "<details class=\"mt-1\"><summary class=\"cursor-pointer\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var39 string
 						templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 234, Col: 49}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 237, Col: 49}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</summary><div class=\"mt-1 text-muted-foreground\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</summary><div class=\"mt-1 text-muted-foreground\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -899,27 +912,27 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</div></details>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</div></details>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "</div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
 				for _, g := range v.Groups {
-					templ_7745c5c3_Err = choiceFieldset(g).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = choiceFieldset(g, v.Form).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = spellChecklist(v.Spells, p.Columns).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = spellChecklist(v.Spells, p.Columns, v.Form["spell"]).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -953,14 +966,14 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "Gain level ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "Gain level ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var42 string
 					templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(p.NewLevel))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 250, Col: 40}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 253, Col: 40}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 					if templ_7745c5c3_Err != nil {
@@ -984,7 +997,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "</form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "</form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -993,8 +1006,8 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 }
 
 // spellChecklist picks spells to learn or prepare, under the class table's
-// totals at the new level (cols).
-func spellChecklist(spells []Option, cols map[string]string) templ.Component {
+// totals at the new level (cols), with a refused form's picked slugs ticked.
+func spellChecklist(spells []Option, cols map[string]string, picked []string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1012,30 +1025,30 @@ func spellChecklist(spells []Option, cols map[string]string) templ.Component {
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
 		if len(spells) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "<div><div class=\"font-medium\">Learn or prepare spells</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<div><div class=\"font-medium\">Learn or prepare spells</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if counts := spellCounts(cols); counts != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "<p class=\"text-xs text-muted-foreground\">Class table at this level: ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<p class=\"text-xs text-muted-foreground\">Class table at this level: ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var44 string
 				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(counts)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 264, Col: 80}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 267, Col: 80}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, " (totals, counting spells you already have).</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, " (totals, counting spells you already have).</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<div class=\"mt-1 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<div class=\"mt-1 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1055,48 +1068,48 @@ func spellChecklist(spells []Option, cols map[string]string) templ.Component {
 					var templ_7745c5c3_Var46 string
 					templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(sp.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 269, Col: 15}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 272, Col: 15}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, " <span class=\"text-xs text-muted-foreground\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, " <span class=\"text-xs text-muted-foreground\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if sp.Level == 0 {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "cantrip")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "cantrip")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "L")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "L")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var47 string
 						templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(sp.Level))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 274, Col: 31}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 277, Col: 31}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "</span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					return nil
 				})
-				templ_7745c5c3_Err = checkField("spell", sp.Slug, false).Render(templ.WithChildren(ctx, templ_7745c5c3_Var45), templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = checkField("spell", sp.Slug, slices.Contains(picked, sp.Slug)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var45), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "</div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "</div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1105,7 +1118,7 @@ func spellChecklist(spells []Option, cols map[string]string) templ.Component {
 	})
 }
 
-func abilitySelect(name, label string) templ.Component {
+func abilitySelect(name, label, value string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1122,24 +1135,24 @@ func abilitySelect(name, label string) templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "<span class=\"text-muted-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "<span class=\"text-muted-foreground\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var49 string
 		templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 285, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 288, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "</span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "</span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = formSelect("", name, abilityItems, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = formSelect("", name, abilityItems, value, "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

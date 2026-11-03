@@ -8,6 +8,7 @@ import (
 	"gm-session-manager/internal/web/components/input"
 	"gm-session-manager/internal/web/components/label"
 	selectcomp "gm-session-manager/internal/web/components/select"
+	"net/url"
 	"slices"
 	"strings"
 )
@@ -40,6 +41,8 @@ type LevelUpView struct {
 	// LineageSpells are the species spells this character level teaches.
 	LineageSpells []dnd5e.Spell
 	Error         string
+	// Form is the refused form's values, ticked again; nil on a fresh page.
+	Form url.Values
 }
 
 func slotSummary(slots [9]int) string {
@@ -169,7 +172,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 							<p>First level: maximum hit die (d{ fmt.Sprint(p.Class.HitDie) }) plus Constitution: <strong>+{ fmt.Sprint(p.AverageHP) }</strong>.</p>
 						} else {
 							<p>Take the fixed <strong>+{ fmt.Sprint(p.AverageHP) }</strong>, or enter what you rolled on the d{ fmt.Sprint(p.Class.HitDie) } (Constitution is added for you).</p>
-							@input.Input(input.Props{Name: "hp_roll", Type: "number", Class: "mt-1 w-28", Placeholder: "roll", Attributes: templ.Attributes{"min": "1", "max": fmt.Sprint(p.Class.HitDie)}})
+							@input.Input(input.Props{Name: "hp_roll", Type: "number", Class: "mt-1 w-28", Placeholder: "roll", Value: v.Form.Get("hp_roll"), Attributes: templ.Attributes{"min": "1", "max": fmt.Sprint(p.Class.HitDie)}})
 						}
 					</div>
 					<div>
@@ -202,24 +205,24 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 							@label.Label(label.Props{For: "subclass-trigger", Class: "mb-1"}) {
 								Subclass
 							}
-							@formSelect("subclass", "subclass", optionItems("Decide later", v.Subclasses, func(o Option) string { return o.Name }), "", "", "")
+							@formSelect("subclass", "subclass", optionItems("Decide later", v.Subclasses, func(o Option) string { return o.Name }), v.Form.Get("subclass"), "", "")
 						</div>
 					}
 					if p.ASI {
 						<fieldset class="space-y-2">
 							<legend class="font-medium">Ability Score Improvement or feat</legend>
 							<div class="flex flex-wrap items-center gap-2">
-								@abilitySelect("asi1", "+1 or +2 to")
-								@abilitySelect("asi2", "and +1 to")
+								@abilitySelect("asi1", "+1 or +2 to", v.Form.Get("asi1"))
+								@abilitySelect("asi2", "and +1 to", v.Form.Get("asi2"))
 								<span class="text-muted-foreground">or feat</span>
-								@formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), "", "", "")
+								@formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), v.Form.Get("feat"), "", "")
 							</div>
 							<p class="text-xs text-muted-foreground">Pick one ability for +2, two different abilities for +1 each, or a feat.</p>
 							for _, f := range v.Feats {
 								if groups := v.FeatChoices[f.Slug]; len(groups) > 0 {
-									<div class="space-y-4 pt-2" data-show-for={ "feat=" + f.Slug } hidden>
+									<div class="space-y-4 pt-2" data-show-for={ "feat=" + f.Slug } hidden?={ v.Form.Get("feat") != f.Slug }>
 										for _, g := range groups {
-											@choiceFieldset(g)
+											@choiceFieldset(g, v.Form)
 										}
 									</div>
 								}
@@ -240,9 +243,9 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 						</div>
 					}
 					for _, g := range v.Groups {
-						@choiceFieldset(g)
+						@choiceFieldset(g, v.Form)
 					}
-					@spellChecklist(v.Spells, p.Columns)
+					@spellChecklist(v.Spells, p.Columns, v.Form["spell"])
 				</div>
 			}
 			@card.Footer() {
@@ -255,8 +258,8 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 }
 
 // spellChecklist picks spells to learn or prepare, under the class table's
-// totals at the new level (cols).
-templ spellChecklist(spells []Option, cols map[string]string) {
+// totals at the new level (cols), with a refused form's picked slugs ticked.
+templ spellChecklist(spells []Option, cols map[string]string, picked []string) {
 	if len(spells) > 0 {
 		<div>
 			<div class="font-medium">Learn or prepare spells</div>
@@ -265,7 +268,7 @@ templ spellChecklist(spells []Option, cols map[string]string) {
 			}
 			<div class="mt-1 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2">
 				for _, sp := range spells {
-					@checkField("spell", sp.Slug, false) {
+					@checkField("spell", sp.Slug, slices.Contains(picked, sp.Slug)) {
 						{ sp.Name }
 						<span class="text-xs text-muted-foreground">
 							if sp.Level == 0 {
@@ -281,9 +284,9 @@ templ spellChecklist(spells []Option, cols map[string]string) {
 	}
 }
 
-templ abilitySelect(name, label string) {
+templ abilitySelect(name, label, value string) {
 	<span class="text-muted-foreground">{ label }</span>
-	@formSelect("", name, abilityItems, "", "", "")
+	@formSelect("", name, abilityItems, value, "", "")
 }
 
 var abilityItems = append([]selectcomp.ItemData{{Value: "", Label: "—"}},

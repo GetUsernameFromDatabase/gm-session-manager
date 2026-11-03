@@ -784,7 +784,7 @@ func (a *App) levelUp(c *gin.Context) {
 			a.serverError(c, verr)
 			return
 		}
-		v.Error = ue.Error()
+		v.Error, v.Form = ue.Error(), c.Request.PostForm
 		camp, _ := a.Store.GetCampaign(ctx, ch.CampaignID)
 		a.render(c, http.StatusUnprocessableEntity, views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v))
 		return

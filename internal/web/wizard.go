@@ -1326,7 +1326,7 @@ func (a *App) wizardSave(c *gin.Context) {
 			a.serverError(c, verr)
 			return
 		}
-		v.Error = ue.Error()
+		v.Error, v.Form = ue.Error(), c.Request.PostForm
 		a.renderWizard(c, http.StatusUnprocessableEntity, w, ch, v)
 		return
 	}

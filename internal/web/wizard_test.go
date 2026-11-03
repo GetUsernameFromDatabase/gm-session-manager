@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"html"
 	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -79,6 +81,23 @@ func TestCreationWizard(t *testing.T) {
 		{"details", url.Values{"name": {"Wren"}, "backstory": {"Raised in a library."}, "size": {"medium"}, "vision": {"Darkvision 60 ft"}}, "/review"},
 		{"review", nil, fmt.Sprintf("/characters/%d", e.characterID)},
 	} {
+		if step.step == "background" {
+			// Refused, the page keeps the increases asked for: two the same, or
+			// +1 to all three taking Wisdom above 20.
+			high := maps.Clone(scores)
+			high.Set("wis", "20")
+			for _, bad := range []struct{ scores, form url.Values }{
+				{scores, url.Values{"pick": {"sage"}, "mode": {"two"}, "plus2": {"wis"}, "plus1": {"wis"}}},
+				{high, url.Values{"pick": {"sage"}, "mode": {"three"}}},
+			} {
+				e.do(t, http.MethodPost, base+"/abilities", player, bad.scores, false)
+				w := e.do(t, http.MethodPost, base+"/background", player, bad.form, false)
+				if lost := lostPicks(w.Body.String(), bad.form); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 {
+					t.Errorf("background %v: %d, lost %v", bad.form, w.Code, lost)
+				}
+			}
+			e.do(t, http.MethodPost, base+"/abilities", player, scores, false)
+		}
 		if step.step == "choices" {
 			for _, bad := range []url.Values{{"language": {"Elvish", "Dwarvish", "Orc"}}, {"trait_keen-senses": {"Arcana"}}} {
 				if w := e.do(t, http.MethodPost, base+"/choices", player, bad, false); w.Code != http.StatusUnprocessableEntity {
@@ -224,8 +243,12 @@ func TestFeatChoices(t *testing.T) {
 					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
 				}
 			}
-			if w := e.do(t, http.MethodPost, base+"choices", player, form, false); w.Code != tc.code {
+			w := e.do(t, http.MethodPost, base+"choices", player, form, false)
+			if w.Code != tc.code {
 				t.Fatalf("choices: %d %s", w.Code, w.Body)
+			}
+			if lost := lostPicks(w.Body.String(), form); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
+				t.Errorf("refused page lost %v", lost)
 			}
 			if tc.check == nil {
 				return
@@ -390,14 +413,53 @@ func TestClassSkillCount(t *testing.T) {
 		}
 		form := url.Values{"pick": {"testfighter"}, "skill": tc.skills}
 		path, player := fmt.Sprintf("/characters/%d/create/class", e.characterID), e.token(t, auth.RolePlayer)
-		if w := e.do(t, http.MethodPost, path, player, form, false); w.Code != tc.code {
+		w := e.do(t, http.MethodPost, path, player, form, false)
+		if w.Code != tc.code {
 			t.Errorf("%v: %d, want %d", tc.skills, w.Code, tc.code)
+		}
+		if lost := lostPicks(w.Body.String(), form); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
+			t.Errorf("%v: refused page lost %v", tc.skills, lost)
 		}
 		// Chosen already, the step changes nothing and asks for no skills.
 		if w := e.do(t, http.MethodPost, path, player, url.Values{"pick": {"testfighter"}}, false); tc.code == http.StatusSeeOther && w.Code != http.StatusSeeOther {
 			t.Errorf("class again: %d", w.Code)
 		}
 	}
+}
+
+var (
+	reInput   = regexp.MustCompile(`<input[^>]*>`)
+	reChecked = regexp.MustCompile(`\schecked[\s/>]`)
+)
+
+// lostPicks are the posted values a refused page offers but does not show
+// again (a box left unticked, a select or field holding another value), or
+// whose own choices it keeps hidden. Attribute order does not matter.
+func lostPicks(body string, form url.Values) []string {
+	tags := reInput.FindAllString(body, -1)
+	var lost []string
+	for k, vs := range form {
+		name := ` name="` + html.EscapeString(k) + `"`
+		for _, v := range vs {
+			value := ` value="` + html.EscapeString(v) + `"`
+			offered, kept := false, false
+			for _, tag := range tags {
+				if !strings.Contains(tag, name) {
+					continue
+				}
+				box, has := strings.Contains(tag, `type="checkbox"`) || strings.Contains(tag, `type="radio"`), strings.Contains(tag, value)
+				offered = offered || has || !box
+				kept = kept || has && (!box || reChecked.MatchString(tag))
+			}
+			if offered && !kept {
+				lost = append(lost, k+"="+v)
+			}
+			if strings.Contains(body, `data-show-for="`+html.EscapeString(k+"="+v)+`" hidden`) {
+				lost = append(lost, k+"="+v+" (its choices)")
+			}
+		}
+	}
+	return lost
 }
 
 // TestReadPicks: a group takes exactly its count, or all of fewer options; a

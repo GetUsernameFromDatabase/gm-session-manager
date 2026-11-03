@@ -27,8 +27,7 @@
       "Bash(gh pr create:*)",
       "Bash(git commit:*)",
       "Bash(go run *)",
-      "Bash(git add:*)",
-      "mcp__playwright__browser_run_code_unsafe"
+      "Bash(git add:*)"
     ],
     "deny": [
       "Read(*.env)",

@@ -12,6 +12,7 @@ import (
 	"gm-session-manager/internal/web/components/radiogroup"
 	"gm-session-manager/internal/web/components/textarea"
 	"gm-session-manager/internal/web/utils"
+	"net/url"
 	"slices"
 	"strings"
 )
@@ -29,6 +30,8 @@ type WizardView struct {
 	// Sheet is the character as it stands, read-only.
 	Sheet SheetView
 	Error string
+	// Form is the refused form's values, ticked again; nil on a fresh page.
+	Form url.Values
 	// Options are the compendium's classes, species or backgrounds;
 	// Picked is the one being looked at and Choice what it gives.
 	Options   []Option
@@ -205,7 +208,7 @@ templ wizardPick(v WizardView) {
 									<legend class="font-medium">Choose { fmt.Sprint(c.SkillCount) } skills</legend>
 									<div class="mt-1 grid grid-cols-2 gap-1 sm:grid-cols-3">
 										for _, k := range c.Skills {
-											@checkField("skill", k, false) {
+											@checkField("skill", k, slices.Contains(v.Form["skill"], k)) {
 												{ skillName(k) }
 											}
 										}
@@ -213,7 +216,7 @@ templ wizardPick(v WizardView) {
 								</fieldset>
 							}
 							if v.Step == "background" && len(c.Abilities) == 3 {
-								@backgroundAbilities(c)
+								@backgroundAbilities(c, v.Form)
 							}
 							if len(c.Features) > 0 {
 								<div>
@@ -279,17 +282,18 @@ templ wizardFacts(c *WizardChoice) {
 
 // backgroundAbilities raises the background's abilities: +2 and +1, or +1
 // to all three.
-templ backgroundAbilities(c *WizardChoice) {
+templ backgroundAbilities(c *WizardChoice, form url.Values) {
 	{{ items := selectItems(c.Abilities, func(a string) string { return a }, func(a string) string { return dnd5e.AbilityNames[a] }) }}
+	{{ three := form.Get("mode") == "three" }}
 	<fieldset class="space-y-2">
 		<legend class="font-medium">Ability score increases</legend>
 		<div class="flex flex-wrap items-center gap-2">
-			<label class="flex items-center gap-1"><input type="radio" name="mode" value="two" checked/> +2 to</label>
-			@formSelect("", "plus2", items, c.Abilities[0], "", "")
+			<label class="flex items-center gap-1"><input type="radio" name="mode" value="two" checked?={ !three }/> +2 to</label>
+			@formSelect("", "plus2", items, cmp.Or(form.Get("plus2"), c.Abilities[0]), "", "")
 			<span>and +1 to</span>
-			@formSelect("", "plus1", items, c.Abilities[1], "", "")
+			@formSelect("", "plus1", items, cmp.Or(form.Get("plus1"), c.Abilities[1]), "", "")
 		</div>
-		<label class="flex items-center gap-1"><input type="radio" name="mode" value="three"/> +1 to all three</label>
+		<label class="flex items-center gap-1"><input type="radio" name="mode" value="three" checked?={ three }/> +1 to all three</label>
 		<p class="text-xs text-muted-foreground">No score goes above 20. Set your base scores in the previous step first.</p>
 	</fieldset>
 }
@@ -349,9 +353,9 @@ templ wizardChoices(v WizardView) {
 		<form method="post" class="space-y-4 text-sm">
 			if c := v.Choices; c != nil {
 				for _, g := range c.Groups {
-					@choiceFieldset(g)
+					@choiceFieldset(g, v.Form)
 				}
-				@spellChecklist(c.Spells, c.Columns)
+				@spellChecklist(c.Spells, c.Columns, v.Form["spell"])
 			}
 			@wizardNav(v, "Save choices")
 		</form>
@@ -361,14 +365,15 @@ templ wizardChoices(v WizardView) {
 // choiceFieldset asks for up to g.Count of its options: radios for one,
 // checkboxes for more. An option's own choices follow, hidden until it is
 // picked (app.js); outside the radio group, which would take their radios.
-templ choiceFieldset(g ChoiceGroup) {
+// form holds a refused form's picks, ticked again.
+templ choiceFieldset(g ChoiceGroup, form url.Values) {
 	<div class="space-y-4">
-		@choiceOptions(g)
+		@choiceOptions(g, form)
 		for _, o := range g.Options {
 			if subs := g.Sub[o.Name]; len(subs) > 0 {
-				<div class="ml-6 space-y-4" data-show-for={ g.Key + "=" + o.Name } hidden>
+				<div class="ml-6 space-y-4" data-show-for={ g.Key + "=" + o.Name } hidden?={ !slices.Contains(form[g.Key], o.Name) }>
 					for _, s := range subs {
-						@choiceFieldset(s)
+						@choiceFieldset(s, form)
 					}
 				</div>
 			}
@@ -376,7 +381,7 @@ templ choiceFieldset(g ChoiceGroup) {
 	</div>
 }
 
-templ choiceOptions(g ChoiceGroup) {
+templ choiceOptions(g ChoiceGroup, form url.Values) {
 	<fieldset class="space-y-2 rounded-md border p-3">
 		<legend class="px-1 font-medium">
 			{ g.Title }
@@ -385,7 +390,7 @@ templ choiceOptions(g ChoiceGroup) {
 			}
 		</legend>
 		if g.Count == 1 {
-			@radiogroup.RadioGroup(radiogroup.Props{Name: g.Key, Class: "gap-2", Attributes: templ.Attributes{"aria-label": g.Title}}) {
+			@radiogroup.RadioGroup(radiogroup.Props{Name: g.Key, DefaultValue: form.Get(g.Key), Class: "gap-2", Attributes: templ.Attributes{"aria-label": g.Title}}) {
 				for i, o := range g.Options {
 					<div>
 						@label.Label(label.Props{For: fmt.Sprintf("%s-%d", g.Key, i), Class: "font-normal"}) {
@@ -400,7 +405,7 @@ templ choiceOptions(g ChoiceGroup) {
 			<div class="grid gap-2 sm:grid-cols-2">
 				for _, o := range g.Options {
 					<div>
-						@checkField(g.Key, o.Name, false) {
+						@checkField(g.Key, o.Name, slices.Contains(form[g.Key], o.Name)) {
 							{ o.Name }
 						}
 						@optionDesc(o.Desc)

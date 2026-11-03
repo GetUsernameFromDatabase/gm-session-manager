@@ -82,7 +82,7 @@ func TestLevelUpInvocations(t *testing.T) {
 	}{
 		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusSeeOther, ""},
 		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusUnprocessableEntity, "listed eldritch invocations"},                                                                       // taken
-		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}}, http.StatusUnprocessableEntity, "choose 2 of the listed eldritch invocations"},                                                         // level 2 adds two
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}, "hp_roll": {"3"}}, http.StatusUnprocessableEntity, "choose 2 of the listed eldritch invocations"},                                       // level 2 adds two
 		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Test Blast"}}, http.StatusUnprocessableEntity, "Eldritch Spear needs Level 2+ Warlock, a Testlock Cantrip"}, // Test Blast not ticked
 		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Mage Hand"}, "spell": {"test-blast"}}, http.StatusUnprocessableEntity, "listed eldritch spear: cantrip"},
 		// Shadow Step needs Armor of Shadows, which the same level-up replaces.
@@ -92,8 +92,12 @@ func TestLevelUpInvocations(t *testing.T) {
 		{url.Values{"class": {"testlock"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "listed replace one eldritch invocation"},
 		{url.Values{"class": {"testlock"}, replace: {"Shadow Step"}, "replace_eldritch-invocation_shadow-step": {"Agonizing Blast"}}, http.StatusSeeOther, ""},
 	} {
-		if w := e.do(t, http.MethodPost, base, player, step.form, false); w.Code != step.code || !strings.Contains(w.Body.String(), step.err) {
+		w := e.do(t, http.MethodPost, base, player, step.form, false)
+		if w.Code != step.code || !strings.Contains(w.Body.String(), step.err) {
 			t.Fatalf("%v: %d, want %d with %q", step.form, w.Code, step.code, step.err)
+		}
+		if lost := lostPicks(w.Body.String(), step.form); step.code == http.StatusUnprocessableEntity && len(lost) > 0 {
+			t.Errorf("%v: refused page lost %v", step.form, lost)
 		}
 	}
 	ch, _ := e.q().GetCharacter(ctx, e.characterID)
@@ -239,8 +243,12 @@ func TestLevelUpFeats(t *testing.T) {
 					offered("grappler"), offered("ability-score-improvement"), offered("archery"), offered("boon-of-fate"))
 			}
 			tc.form.Set("class", "wizard")
-			if w := e.do(t, http.MethodPost, base, player, tc.form, false); w.Code != tc.code {
+			w := e.do(t, http.MethodPost, base, player, tc.form, false)
+			if w.Code != tc.code {
 				t.Fatalf("level 4: %d %s", w.Code, w.Body)
+			}
+			if lost := lostPicks(w.Body.String(), tc.form); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
+				t.Errorf("refused page lost %v", lost)
 			}
 			if tc.check == nil {
 				return
