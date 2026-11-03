@@ -560,7 +560,7 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 		if err != nil {
 			return choiceGroup{}, false, err
 		}
-		if td == nil || td.Category != "Origin" {
+		if td == nil || td.Category != "Origin" || !meetsPrerequisite(td.Prerequisite, sh, sh.Level()) {
 			continue
 		}
 		opts = append(opts, compendium.NameDesc{Name: n.Name, Desc: textMarkdown(td)})
@@ -628,6 +628,43 @@ func (a *App) backgroundFeatChoices(ctx context.Context, sh dnd5e.Sheet, campaig
 func featList(full string) (string, string) {
 	name, list, _ := strings.Cut(full, " (")
 	return name, strings.TrimSuffix(list, ")")
+}
+
+var (
+	rePrereqLevel   = regexp.MustCompile(`^Level (\d+)\+$`)
+	rePrereqScore   = regexp.MustCompile(`^(.+) (\d+)\+$`)
+	rePrereqFeature = regexp.MustCompile(`^(.+) Feature$`)
+)
+
+// meetsPrerequisite reports whether a sheet at this character level meets a
+// feat's prerequisite ("Level 4+, Strength or Dexterity 13+", "Fighting Style
+// Feature"); every clause must hold.
+func meetsPrerequisite(prereq string, sh dnd5e.Sheet, level int) bool {
+	for _, clause := range strings.FieldsFunc(prereq, func(r rune) bool { return r == ',' || r == ';' }) {
+		clause = strings.TrimSpace(clause)
+		var scores []string // "Strength or Dexterity" of "… 13+"
+		ms := rePrereqScore.FindStringSubmatch(clause)
+		if ms != nil {
+			scores = abilityKeys(strings.ReplaceAll(ms[1], " or ", ", "))
+		}
+		if m := rePrereqLevel.FindStringSubmatch(clause); m != nil {
+			if n, _ := strconv.Atoi(m[1]); level < n {
+				return false
+			}
+		} else if len(scores) > 0 {
+			n, _ := strconv.Atoi(ms[2])
+			if !slices.ContainsFunc(scores, func(k string) bool { return sh.Score(k) >= n }) {
+				return false
+			}
+		} else if m := rePrereqFeature.FindStringSubmatch(clause); m != nil {
+			names := strings.Split(m[1], " or ")
+			if !slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return slices.Contains(names, f.Name) }) {
+				return false
+			}
+		}
+		// shortcut: other clauses ("Proficiency with Heavy armor") pass unchecked; add a rule when a source uses one.
+	}
+	return true
 }
 
 var (

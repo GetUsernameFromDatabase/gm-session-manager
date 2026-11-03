@@ -562,14 +562,18 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	}
 	v.FeatChoices = map[string][]views.ChoiceGroup{}
 	for _, f := range feats {
-		if f.Name == dnd5e.ASIFeature {
-			continue // the form's ability selects are this feat
+		if !plan.ASI || f.Name == dnd5e.ASIFeature {
+			continue // the form's ability selects are the ASI feat
 		}
-		v.Feats = append(v.Feats, views.Option{Slug: f.Slug, Name: f.Name})
-		if !plan.ASI {
+		td, err := a.textEntry(ctx, compendium.KindFeat, f.Slug)
+		if err != nil {
+			return v, err
+		}
+		if td == nil || !meetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel) {
 			continue
 		}
-		groups, err := a.levelUpFeatChoices(ctx, f.Slug, f.Name, sheet, ch.CampaignID)
+		v.Feats = append(v.Feats, views.Option{Slug: f.Slug, Name: f.Name})
+		groups, err := a.featChoices(ctx, "feat_"+f.Slug, f.Name, td, "", sheet, ch.CampaignID)
 		if err != nil {
 			return v, err
 		}
@@ -587,16 +591,6 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	}
 	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet)
 	return v, err
-}
-
-// levelUpFeatChoices are the choices of the feat with this slug, taken at an
-// Ability Score Improvement.
-func (a *App) levelUpFeatChoices(ctx context.Context, slug, name string, sh dnd5e.Sheet, campaignID int64) ([]choiceGroup, error) {
-	td, err := a.textEntry(ctx, compendium.KindFeat, slug)
-	if err != nil || td == nil {
-		return nil, err
-	}
-	return a.featChoices(ctx, "feat_"+slug, name, td, "", sh, campaignID)
 }
 
 // classSpellOptions are the class's spells the slots (and pact slots) can
@@ -691,7 +685,7 @@ func (a *App) levelUp(c *gin.Context) {
 		choice.Feat, choice.FeatDesc = feat.Name, feat.BodyText
 	}
 	// A plan error (level 20) comes back from LevelUp below.
-	plan, _ := sheet.Plan(choice.Class)
+	plan, planErr := sheet.Plan(choice.Class)
 	// Lineage spells first, so AddSpell keeps them (with their ability) over
 	// the same spell ticked in the class list.
 	lineage, err := a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID)
@@ -717,7 +711,17 @@ func (a *App) levelUp(c *gin.Context) {
 	}
 	groups := append(classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet.Features), changes...)
 	if choice.Feat != "" {
-		fg, err := a.levelUpFeatChoices(ctx, c.PostForm("feat"), choice.Feat, sheet, ch.CampaignID)
+		slug := c.PostForm("feat")
+		td, err := a.textEntry(ctx, compendium.KindFeat, slug)
+		if err != nil {
+			a.serverError(c, err)
+			return
+		}
+		if planErr == nil && !meetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel) {
+			a.fail(c, http.StatusUnprocessableEntity, choice.Feat+" needs "+td.Prerequisite+".")
+			return
+		}
+		fg, err := a.featChoices(ctx, "feat_"+slug, choice.Feat, td, "", sheet, ch.CampaignID)
 		if err != nil {
 			a.serverError(c, err)
 			return

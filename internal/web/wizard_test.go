@@ -137,8 +137,10 @@ var featFixtures = []sqlc.UpsertCompendiumEntryParams{
 		{"name":"Two Cantrips","desc":"You learn two cantrips of your choice from the Cleric, Druid, or Wizard spell list. Intelligence, Wisdom, or Charisma is your spellcasting ability for this feat's spells."},
 		{"name":"Level One Spell","desc":"Choose a level 1 spell from the same list you selected for this feat's cantrips. You always have that spell prepared."}]}`},
 	{Kind: "feat", Slug: "skilled", Name: "Skilled", DataJson: `{"desc":"","category":"Origin","parts":[{"name":"","desc":"You gain proficiency in any combination of three skills or tools of your choice."}]}`},
-	{Kind: "feat", Slug: "grappler", Name: "Grappler", DataJson: `{"desc":"","category":"General","parts":[{"name":"Ability Score Increase","desc":"Increase your Strength or Dexterity score by 1, to a maximum of 20."}]}`},
-	{Kind: "feat", Slug: "boon-of-fate", Name: "Boon of Fate", DataJson: `{"desc":"","category":"Epic Boon","parts":[{"name":"Ability Score Increase","desc":"Increase one ability score of your choice by 1, to a maximum of 30."}]}`},
+	{Kind: "feat", Slug: "veteran", Name: "Veteran", DataJson: `{"desc":"An Origin feat with a prerequisite.","category":"Origin","prerequisite":"Level 4+"}`},
+	{Kind: "feat", Slug: "grappler", Name: "Grappler", DataJson: `{"desc":"","category":"General","prerequisite":"Level 4+, Strength or Dexterity 13+","parts":[{"name":"Ability Score Increase","desc":"Increase your Strength or Dexterity score by 1, to a maximum of 20."}]}`},
+	{Kind: "feat", Slug: "archery", Name: "Archery", DataJson: `{"desc":"","category":"Fighting Style","prerequisite":"Fighting Style Feature"}`},
+	{Kind: "feat", Slug: "boon-of-fate", Name: "Boon of Fate", DataJson: `{"desc":"","category":"Epic Boon","prerequisite":"Level 19+","parts":[{"name":"Ability Score Increase","desc":"Increase one ability score of your choice by 1, to a maximum of 30."}]}`},
 	{Kind: "feat", Slug: "ability-score-improvement", Name: "Ability Score Improvement", DataJson: `{"desc":"","category":"General"}`},
 	{Kind: "background", Slug: "sage", Name: "Sage", DataJson: `{"desc":"","parts":[{"name":"Skill Proficiencies","desc":"Arcana and History","type":"skill_proficiency"},{"name":"Feat","desc":"Magic Initiate (Wizard)","type":"feat"}]}`},
 	{Kind: "spell", Slug: "light", Name: "Light", DataJson: `{"level":0,"classes":["cleric","wizard"]}`},
@@ -196,6 +198,7 @@ func TestFeatChoices(t *testing.T) {
 				slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Magic Initiate (Cleric)" }) && !slices.Contains(sh.SkillProfs, "stealth")
 		}},
 		{"the background's list again", url.Values{"trait_versatile": {"Magic Initiate"}, mi + "_list": {"Wizard"}}, http.StatusUnprocessableEntity, nil},
+		{"an Origin feat whose prerequisite is unmet", url.Values{"trait_versatile": {"Veteran"}}, http.StatusUnprocessableEntity, nil},
 		{"too many cantrips", url.Values{"feat_magic-initiate_wizard_cantrips": {"Light", "Mage Hand", "Guidance"}}, http.StatusUnprocessableEntity, nil},
 		{"a kit is not a tool", url.Values{"trait_versatile": {"Skilled"}, "trait_versatile_skilled_profs": {"Climber's Kit"}}, http.StatusUnprocessableEntity, nil},
 	} {
@@ -223,6 +226,39 @@ func TestFeatChoices(t *testing.T) {
 			}
 			if sh, err := dnd5e.ParseSheet(row.SheetJson); err != nil || !tc.check(sh) {
 				t.Errorf("sheet: %v %s", err, row.SheetJson)
+			}
+		})
+	}
+}
+
+// TestMeetsPrerequisite checks each clause of a feat's prerequisite must hold.
+func TestMeetsPrerequisite(t *testing.T) {
+	style := []dnd5e.Feature{{Name: "Fighting Style"}}
+	for _, tc := range []struct {
+		name     string
+		prereq   string
+		level    int
+		str, dex int
+		features []dnd5e.Feature
+		want     bool
+	}{
+		{"none", "", 1, 10, 10, nil, true},
+		{"level too low", "Level 4+", 3, 10, 10, nil, false},
+		{"level reached", "Level 4+", 4, 10, 10, nil, true},
+		{"Epic Boon at 18", "Level 19+", 18, 10, 10, nil, false},
+		{"Epic Boon at 19", "Level 19+", 19, 10, 10, nil, true},
+		{"either score", "Level 4+, Strength or Dexterity 13+", 4, 12, 14, nil, true},
+		{"neither score", "Level 4+, Strength or Dexterity 13+", 4, 12, 12, nil, false},
+		{"feature missing", "Fighting Style Feature", 4, 10, 10, nil, false},
+		{"feature held", "Fighting Style Feature", 1, 10, 10, style, true},
+		{"one of two features", "Spellcasting or Pact Magic Feature", 4, 10, 10, []dnd5e.Feature{{Name: "Pact Magic"}}, true},
+		{"level met, feature not", "Level 19+, Spellcasting Feature", 19, 10, 10, style, false},
+		{"unknown clause passes", "Proficiency with Heavy armor", 1, 10, 10, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sh := dnd5e.Sheet{Scores: map[string]int{"str": tc.str, "dex": tc.dex}, Features: tc.features}
+			if got := meetsPrerequisite(tc.prereq, sh, tc.level); got != tc.want {
+				t.Errorf("meetsPrerequisite(%q) = %v, want %v", tc.prereq, got, tc.want)
 			}
 		})
 	}

@@ -148,8 +148,9 @@ func TestLevelUpFeats(t *testing.T) {
 		{"Grappler raises Strength", 15, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusSeeOther,
 			func(sh dnd5e.Sheet) bool { return sh.Scores["str"] == 16 && slices.Contains(sh.Feats, "Grappler") }},
 		{"Grappler at the maximum", 20, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusUnprocessableEntity, nil},
-		{"an Epic Boon raises any ability", 15, url.Values{"feat": {"boon-of-fate"}, "feat_boon-of-fate_raise": {"Charisma"}}, http.StatusSeeOther,
-			func(sh dnd5e.Sheet) bool { return sh.Scores["cha"] == 11 }},
+		{"Grappler without Strength or Dexterity 13", 8, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusUnprocessableEntity, nil},
+		{"an Epic Boon before level 19", 15, url.Values{"feat": {"boon-of-fate"}, "feat_boon-of-fate_raise": {"Charisma"}}, http.StatusUnprocessableEntity, nil},
+		{"a Fighting Style feat without the feature", 15, url.Values{"feat": {"archery"}}, http.StatusUnprocessableEntity, nil},
 		{"a second Magic Initiate takes another list", 15, url.Values{"feat": {"magic-initiate"}, mi + "_list": {"Cleric"}, mi + "_cleric_cantrips": {"Guidance"}, mi + "_cleric_spell": {"Bless"}, mi + "_ability": {"Wisdom"}}, http.StatusSeeOther,
 			func(sh dnd5e.Sheet) bool {
 				return slices.Contains(sh.Feats, "Magic Initiate (Cleric)") && slices.ContainsFunc(sh.Spells, func(sp dnd5e.Spell) bool {
@@ -177,7 +178,7 @@ func TestLevelUpFeats(t *testing.T) {
 			loadFeatFixtures(t, e)
 			ch, _ := e.q().GetCharacter(ctx, e.characterID)
 			sh, _ := dnd5e.ParseSheet(ch.SheetJson)
-			sh.Scores["str"] = tc.str
+			sh.Scores["str"], sh.Scores["dex"] = tc.str, 10 // Grappler needs either at 13
 			sh.Feats = []string{"Magic Initiate (Wizard)"}
 			sh.Spells = []dnd5e.Spell{
 				{Slug: "light", Name: "Light", Ability: "int", Feat: "Magic Initiate (Wizard)"},
@@ -195,9 +196,13 @@ func TestLevelUpFeats(t *testing.T) {
 					t.Fatalf("level up: %d %s", w.Code, w.Body)
 				}
 			}
-			// The Ability Score Improvement feat is the form's own selects.
-			if body := e.do(t, http.MethodGet, base+"?class=wizard", player, nil, false).Body.String(); !strings.Contains(body, "grappler") || strings.Contains(body, "ability-score-improvement") {
-				t.Errorf("level 4 feats: grappler offered %v, Ability Score Improvement offered %v", strings.Contains(body, "grappler"), strings.Contains(body, "ability-score-improvement"))
+			// The Ability Score Improvement feat is the form's own selects; feats
+			// whose prerequisite the sheet does not meet are left out.
+			body := e.do(t, http.MethodGet, base+"?class=wizard", player, nil, false).Body.String()
+			offered := func(slug string) bool { return strings.Contains(body, `value="`+slug+`"`) }
+			if offered("grappler") != (tc.str >= 13) || offered("ability-score-improvement") || offered("archery") || offered("boon-of-fate") {
+				t.Errorf("level 4 feats: grappler %v, Ability Score Improvement %v, archery %v, boon %v",
+					offered("grappler"), offered("ability-score-improvement"), offered("archery"), offered("boon-of-fate"))
 			}
 			tc.form.Set("class", "wizard")
 			if w := e.do(t, http.MethodPost, base, player, tc.form, false); w.Code != tc.code {
