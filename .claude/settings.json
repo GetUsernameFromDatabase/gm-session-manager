@@ -18,13 +18,17 @@
       "Bash(go tool templ *)",
       "Bash(shadcn-templ *)",
       "Bash(go tool shadcn-templ *)",
-      "Bash(node --check internal/web/assets/js/app.js)"
+      "Bash(node --check internal/web/assets/js/app.js)",
+      "mcp__playwright",
+      "Bash(touch data-test/restart)",
+      "Bash(touch data-test/stop)"
     ],
     "ask": [
       "Bash(gh pr create:*)",
       "Bash(git commit:*)",
       "Bash(go run *)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "mcp__playwright__browser_run_code_unsafe"
     ],
     "deny": [
       "Read(*.env)",
@@ -43,15 +47,6 @@
   },
   "hooks": {
     "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ${CLAUDE_PROJECT_DIR}/.claude/hooks/sed-hook.py"
-          }
-        ]
-      },
       {
         "matcher": "Bash|Grep",
         "hooks": [

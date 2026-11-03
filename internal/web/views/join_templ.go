@@ -814,7 +814,7 @@ func JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err strin
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "Your name <span class=\"text-destructive\" aria-hidden=\"true\">*</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "Your name")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

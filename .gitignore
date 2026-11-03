@@ -1,5 +1,7 @@
 .env
 /data/
+# ./run.sh browser: test data and Playwright output
+/data-test/
 *.exe
 # Downloaded by `go run ./cmd/vendorjs`
 /internal/web/assets/vendor/

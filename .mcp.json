@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@0.0.84",
+        "--browser",
+        "msedge",
+        "--ignore-https-errors",
+        "--isolated",
+        "--headless",
+        "--output-dir",
+        "data-test/playwright"
+      ]
+    }
+  }
+}

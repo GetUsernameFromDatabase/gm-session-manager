@@ -169,7 +169,7 @@ templ JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err stri
 			// app.js copies the name into each form and remembers it on this device.
 			<div class="mb-8 space-y-2">
 				@label.Label(label.Props{For: "player-name", Class: "text-base font-semibold"}) {
-					Your name <span class="text-destructive" aria-hidden="true">*</span>
+					Your name
 				}
 				@input.Input(input.Props{ID: "player-name", Placeholder: "So the GM knows who you are", Required: true, Attributes: templ.Attributes{"maxlength": "12", "autocomplete": "nickname", "aria-describedby": "player-name-error"}})
 				<p id="player-name-error" class="text-sm text-destructive" hidden>Enter your name so the GM knows who you are.</p>
