@@ -81,11 +81,12 @@ func TestLevelUpInvocations(t *testing.T) {
 		err  string // in the refused page
 	}{
 		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusSeeOther, ""},
-		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusUnprocessableEntity, "listed eldritch invocations"},                                                    // taken
-		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}, spear: {"Test Blast"}}, http.StatusUnprocessableEntity, "Eldritch Spear needs Level 2+ Warlock, a Testlock Cantrip"}, // Test Blast not ticked
-		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}, spear: {"Mage Hand"}, "spell": {"test-blast"}}, http.StatusUnprocessableEntity, "listed eldritch spear: cantrip"},
+		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusUnprocessableEntity, "listed eldritch invocations"},                                                                       // taken
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}}, http.StatusUnprocessableEntity, "choose 2 of the listed eldritch invocations"},                                                         // level 2 adds two
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Test Blast"}}, http.StatusUnprocessableEntity, "Eldritch Spear needs Level 2+ Warlock, a Testlock Cantrip"}, // Test Blast not ticked
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Mage Hand"}, "spell": {"test-blast"}}, http.StatusUnprocessableEntity, "listed eldritch spear: cantrip"},
 		// Shadow Step needs Armor of Shadows, which the same level-up replaces.
-		{url.Values{"class": {"testlock"}, pick: {"Shadow Step"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "Shadow Step needs"},
+		{url.Values{"class": {"testlock"}, pick: {"Shadow Step", "Agonizing Blast"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "Shadow Step needs"},
 		{url.Values{"class": {"testlock"}, pick: {"Shadow Step", "Eldritch Spear"}, spear: {"Test Blast"}, "spell": {"test-blast"}}, http.StatusSeeOther, ""},
 		// Shadow Step needs Armor of Shadows, so it cannot be replaced.
 		{url.Values{"class": {"testlock"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "listed replace one eldritch invocation"},
@@ -149,8 +150,9 @@ func TestLevelUpLineage(t *testing.T) {
 	}
 	player := e.token(t, auth.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
-	for range 3 {
-		if w := e.do(t, http.MethodPost, base, player, url.Values{"class": {"testlock"}}, false); w.Code != http.StatusSeeOther {
+	// Each level's new invocations: one, two, none.
+	for _, picks := range [][]string{{"Armor of Shadows"}, {"Agonizing Blast", "Shadow Step"}, nil} {
+		if w := e.do(t, http.MethodPost, base, player, url.Values{"class": {"testlock"}, "class_eldritch-invocation": picks}, false); w.Code != http.StatusSeeOther {
 			t.Fatalf("level up: %d %s", w.Code, w.Body)
 		}
 	}

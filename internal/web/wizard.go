@@ -305,6 +305,7 @@ func groupViews(groups []choiceGroup) []views.ChoiceGroup {
 	out := make([]views.ChoiceGroup, len(groups))
 	for i, g := range groups {
 		out[i] = g.ChoiceGroup
+		out[i].Count = min(g.Count, len(g.Options)) // as readPicks needs
 		for o, sub := range g.sub {
 			if out[i].Sub == nil {
 				out[i].Sub = map[string][]views.ChoiceGroup{}
@@ -315,16 +316,19 @@ func groupViews(groups []choiceGroup) []views.ChoiceGroup {
 	return out
 }
 
-// readPicks reads each group's picks from the form: up to its count, only
-// of its options, each once. Only the picked options' own choices are read.
+// readPicks reads each group's picks from the form: its count (or all of
+// fewer options), only of its options, each once. A group offering "No
+// change" may be left empty. Only the picked options' own choices are read.
 func readPicks(c *gin.Context, groups []choiceGroup) (map[string][]string, error) {
 	picks := map[string][]string{}
 	for _, g := range groups {
 		picked := slices.Compact(slices.Sorted(slices.Values(c.PostFormArray(g.Key))))
-		if len(picked) > g.Count || slices.ContainsFunc(picked, func(p string) bool {
+		need := min(g.Count, len(g.Options))
+		optional := len(picked) == 0 && slices.ContainsFunc(g.Options, func(o compendium.NameDesc) bool { return o.Name == keepSpells })
+		if (len(picked) != need && !optional) || slices.ContainsFunc(picked, func(p string) bool {
 			return !slices.ContainsFunc(g.Options, func(o compendium.NameDesc) bool { return o.Name == p })
 		}) {
-			return nil, userError{fmt.Errorf("choose up to %d of the listed %s", g.Count, strings.ToLower(g.Title))}
+			return nil, userError{fmt.Errorf("choose %d of the listed %s", need, strings.ToLower(g.Title))}
 		}
 		picks[g.Key] = picked
 		for _, p := range picked {
@@ -1362,6 +1366,10 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if pick == "" {
 			return nil, nil
 		}
+		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
+		if err != nil || sheet.SetUp(step) {
+			return nil, err // chosen already: the skills would be ignored
+		}
 		row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindClass), Slug: pick})
 		if err != nil {
 			return nil, err
@@ -1372,9 +1380,10 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		}
 		data, _ := compendium.DecodeData(compendium.KindClass, row.DataJson)
 		choice := wizardChoice(row, data)
-		skills := c.PostFormArray("skill")
-		if len(skills) > choice.SkillCount || slices.ContainsFunc(skills, func(k string) bool { return !slices.Contains(choice.Skills, k) }) {
-			return nil, userError{fmt.Errorf("choose up to %d of the listed skills", choice.SkillCount)}
+		skills := slices.Compact(slices.Sorted(slices.Values(c.PostFormArray("skill"))))
+		need := min(choice.SkillCount, len(choice.Skills))
+		if len(skills) != need || slices.ContainsFunc(skills, func(k string) bool { return !slices.Contains(choice.Skills, k) }) {
+			return nil, userError{fmt.Errorf("choose %d of the listed skills", need)}
 		}
 		return once(func(s *dnd5e.Sheet, cc *dnd5e.Character) error {
 			if s.Level() > 0 {

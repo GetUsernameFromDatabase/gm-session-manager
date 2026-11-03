@@ -4,16 +4,21 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/web/views"
 )
 
 // TestCreationWizard walks a new character through every step and checks
@@ -180,7 +185,6 @@ func TestFeatChoices(t *testing.T) {
 		check func(sh dnd5e.Sheet) bool
 	}{
 		{"background Magic Initiate and Skilled", url.Values{
-			"feat_magic-initiate_wizard_cantrips": {"Light", "Mage Hand"}, "feat_magic-initiate_wizard_spell": {"Magic Missile"}, "feat_magic-initiate_ability": {"Intelligence"},
 			"trait_versatile": {"Skilled"}, "trait_versatile_skilled_profs": {"Stealth", "Smith's Tools", "Insight"},
 		}, http.StatusSeeOther, func(sh dnd5e.Sheet) bool {
 			mm := slices.IndexFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == "magic-missile" })
@@ -189,7 +193,7 @@ func TestFeatChoices(t *testing.T) {
 				slices.Contains(sh.SkillProfs, "stealth") && slices.Contains(sh.SkillProfs, "insight") && slices.Contains(sh.OtherProfs, "Smith's Tools")
 		}},
 		{"Versatile Magic Initiate takes another list", url.Values{
-			"trait_versatile": {"Magic Initiate"}, mi + "_list": {"Cleric"}, mi + "_cleric_cantrips": {"Guidance"}, mi + "_cleric_spell": {"Bless"}, mi + "_ability": {"Wisdom"},
+			"trait_versatile": {"Magic Initiate"}, mi + "_list": {"Cleric"}, mi + "_cleric_cantrips": {"Guidance", "Light"}, mi + "_cleric_spell": {"Bless"}, mi + "_ability": {"Wisdom"},
 			// Choices of the feat not picked are ignored.
 			"trait_versatile_skilled_profs": {"Stealth"},
 		}, http.StatusSeeOther, func(sh dnd5e.Sheet) bool {
@@ -200,8 +204,14 @@ func TestFeatChoices(t *testing.T) {
 		{"the background's list again", url.Values{"trait_versatile": {"Magic Initiate"}, mi + "_list": {"Wizard"}}, http.StatusUnprocessableEntity, nil},
 		{"an Origin feat whose prerequisite is unmet", url.Values{"trait_versatile": {"Veteran"}}, http.StatusUnprocessableEntity, nil},
 		{"too many cantrips", url.Values{"feat_magic-initiate_wizard_cantrips": {"Light", "Mage Hand", "Guidance"}}, http.StatusUnprocessableEntity, nil},
-		{"a kit is not a tool", url.Values{"trait_versatile": {"Skilled"}, "trait_versatile_skilled_profs": {"Climber's Kit"}}, http.StatusUnprocessableEntity, nil},
+		{"a kit is not a tool", url.Values{"trait_versatile": {"Skilled"}, "trait_versatile_skilled_profs": {"Stealth", "Insight", "Climber's Kit"}}, http.StatusUnprocessableEntity, nil},
+		{"too few cantrips", url.Values{"feat_magic-initiate_wizard_cantrips": {"Light"}}, http.StatusUnprocessableEntity, nil},
+		{"one language of two", url.Values{"language": {"Elvish"}}, http.StatusUnprocessableEntity, nil},
 	} {
+		// Every choice the step asks for, so each case fails only on its own.
+		form := url.Values{"language": {"Elvish", "Dwarvish"}, "trait_versatile": {"Alert"},
+			"feat_magic-initiate_wizard_cantrips": {"Light", "Mage Hand"}, "feat_magic-initiate_wizard_spell": {"Magic Missile"}, "feat_magic-initiate_ability": {"Intelligence"}}
+		maps.Copy(form, tc.form)
 		t.Run(tc.name, func(t *testing.T) {
 			e := newTestEnv(t)
 			ctx := t.Context()
@@ -214,7 +224,7 @@ func TestFeatChoices(t *testing.T) {
 					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
 				}
 			}
-			if w := e.do(t, http.MethodPost, base+"choices", player, tc.form, false); w.Code != tc.code {
+			if w := e.do(t, http.MethodPost, base+"choices", player, form, false); w.Code != tc.code {
 				t.Fatalf("choices: %d %s", w.Code, w.Body)
 			}
 			if tc.check == nil {
@@ -359,6 +369,70 @@ func TestCheckNewOptions(t *testing.T) {
 	}
 }
 
+// TestClassSkillCount: the class step takes exactly its skill count, of its
+// listed skills, each once.
+func TestClassSkillCount(t *testing.T) {
+	class := sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testfighter", Name: "Testfighter", SourceKey: "test", ContentHash: "x",
+		DataJson: `{"hit_die":10,"desc":"|Skill Proficiencies|Choose 2: Athletics, Insight, or Stealth|"}`}
+	for _, tc := range []struct {
+		skills []string
+		code   int
+	}{
+		{[]string{"athletics", "insight"}, http.StatusSeeOther},
+		{[]string{"athletics"}, http.StatusUnprocessableEntity},
+		{[]string{"athletics", "athletics"}, http.StatusUnprocessableEntity},
+		{[]string{"athletics", "perception"}, http.StatusUnprocessableEntity},
+		{[]string{"athletics", "insight", "stealth"}, http.StatusUnprocessableEntity},
+	} {
+		e := newTestEnv(t)
+		if err := e.q().UpsertCompendiumEntry(t.Context(), class); err != nil {
+			t.Fatal(err)
+		}
+		form := url.Values{"pick": {"testfighter"}, "skill": tc.skills}
+		path, player := fmt.Sprintf("/characters/%d/create/class", e.characterID), e.token(t, auth.RolePlayer)
+		if w := e.do(t, http.MethodPost, path, player, form, false); w.Code != tc.code {
+			t.Errorf("%v: %d, want %d", tc.skills, w.Code, tc.code)
+		}
+		// Chosen already, the step changes nothing and asks for no skills.
+		if w := e.do(t, http.MethodPost, path, player, url.Values{"pick": {"testfighter"}}, false); tc.code == http.StatusSeeOther && w.Code != http.StatusSeeOther {
+			t.Errorf("class again: %d", w.Code)
+		}
+	}
+}
+
+// TestReadPicks: a group takes exactly its count, or all of fewer options; a
+// group offering "No change" may stay empty.
+func TestReadPicks(t *testing.T) {
+	opts := func(names ...string) []compendium.NameDesc {
+		var out []compendium.NameDesc
+		for _, n := range names {
+			out = append(out, compendium.NameDesc{Name: n})
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name  string
+		group views.ChoiceGroup
+		form  url.Values
+		ok    bool
+	}{
+		{"full count", views.ChoiceGroup{Key: "k", Count: 2, Options: opts("A", "B", "C")}, url.Values{"k": {"A", "B"}}, true},
+		{"too few", views.ChoiceGroup{Key: "k", Count: 2, Options: opts("A", "B", "C")}, url.Values{"k": {"A"}}, false},
+		{"a pick twice", views.ChoiceGroup{Key: "k", Count: 2, Options: opts("A", "B", "C")}, url.Values{"k": {"A", "A"}}, false},
+		{"fewer options than the count", views.ChoiceGroup{Key: "k", Count: 2, Options: opts("A")}, url.Values{"k": {"A"}}, true},
+		{"no options", views.ChoiceGroup{Key: "k", Count: 1}, nil, true},
+		{"No change left empty", views.ChoiceGroup{Key: "k", Count: 1, Options: opts(keepSpells, "A")}, nil, true},
+		{"empty without No change", views.ChoiceGroup{Key: "k", Count: 1, Options: opts("A")}, nil, false},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(tc.form.Encode()))
+		c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if _, err := readPicks(c, []choiceGroup{{tc.group, nil, nil}}); (err == nil) != tc.ok {
+			t.Errorf("%s: %v", tc.name, err)
+		}
+	}
+}
+
 // TestCreationOptionCheck: creation refuses an invocation whose prerequisite
 // the finished step does not meet, like a level-up. Shadow Cloak, a level 1
 // option needing Armor of Shadows, is offered next to it but not alone.
@@ -389,7 +463,9 @@ func TestCreationOptionCheck(t *testing.T) {
 					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
 				}
 			}
-			if w := e.do(t, http.MethodPost, base+"choices", player, tc.form, false); w.Code != tc.code || !strings.Contains(w.Body.String(), tc.err) {
+			form := url.Values{"language": {"Elvish", "Dwarvish"}, "trait_versatile": {"Alert"}}
+			maps.Copy(form, tc.form)
+			if w := e.do(t, http.MethodPost, base+"choices", player, form, false); w.Code != tc.code || !strings.Contains(w.Body.String(), tc.err) {
 				t.Errorf("choices: %d, want %d with %q", w.Code, tc.code, tc.err)
 			}
 		})
