@@ -1017,7 +1017,7 @@ func (a *App) classChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, ca
 	}
 	cr.view.Columns = info.ColumnsAt(cl.Level)
 	slots, _, pactLevel := dnd5e.SlotMaxima(sh.Classes)
-	if cr.view.Spells, err = a.classSpellOptions(ctx, cl.Slug, slots, pactLevel, sh); err != nil {
+	if cr.view.Spells, err = a.classSpellOptions(ctx, cl.Slug, slots, pactLevel, sh, cr.cantrips); err != nil {
 		return err
 	}
 	cr.view.SpellNeed = spellNeed(info, cl.Level, sh, cr.view.Spells)
@@ -1482,6 +1482,10 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			}
 			applyPicks(s, cr.groups, picks)
 			for _, sp := range spells {
+				// A lineage or feat picked in this form taught it: it would not be a class pick.
+				if slices.ContainsFunc(s.Spells, func(have dnd5e.Spell) bool { return have.Slug == sp.Slug }) {
+					return fieldError{userError{fmt.Errorf("%s comes from your species or feat already: choose another spell", sp.Name)}, "spell"}
+				}
 				s.AddSpell(sp)
 			}
 			if cr.check != nil {

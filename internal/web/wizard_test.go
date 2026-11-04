@@ -170,6 +170,9 @@ var featFixtures = []sqlc.UpsertCompendiumEntryParams{
 	{Kind: "spell", Slug: "light", Name: "Light", DataJson: `{"level":0,"classes":["cleric","wizard"]}`},
 	{Kind: "spell", Slug: "mage-hand", Name: "Mage Hand", DataJson: `{"level":0,"classes":["wizard"]}`},
 	{Kind: "spell", Slug: "guidance", Name: "Guidance", DataJson: `{"level":0,"classes":["cleric"]}`},
+	// Enough Wizard cantrips besides the feat's Light and Mage Hand.
+	{Kind: "spell", Slug: "ray-of-frost", Name: "Ray of Frost", DataJson: `{"level":0,"classes":["wizard"]}`},
+	{Kind: "spell", Slug: "minor-illusion", Name: "Minor Illusion", DataJson: `{"level":0,"classes":["wizard"]}`},
 	{Kind: "spell", Slug: "magic-missile", Name: "Magic Missile", DataJson: `{"level":1,"classes":["wizard"]}`},
 	{Kind: "spell", Slug: "shield", Name: "Shield", DataJson: `{"level":1,"classes":["wizard"]}`},
 	{Kind: "spell", Slug: "bless", Name: "Bless", DataJson: `{"level":1,"classes":["cleric"]}`},
@@ -260,6 +263,71 @@ func TestFeatChoices(t *testing.T) {
 			}
 			if sh, err := dnd5e.ParseSheet(row.SheetJson); err != nil || !tc.check(sh) {
 				t.Errorf("sheet: %v %s", err, row.SheetJson)
+			}
+		})
+	}
+}
+
+// TestCreationSpeciesSpells: a class pick the species teaches in the same
+// step is refused (a lineage picked in the form) or not offered (a fixed
+// cantrip), so the class pick is not lost to the species' copy.
+func TestCreationSpeciesSpells(t *testing.T) {
+	const lineage = "trait_gnomish-lineage"
+	for _, tc := range []struct {
+		name, species string
+		form          url.Values
+		code          int
+	}{
+		{"the picked lineage's cantrip", "testgnome", url.Values{lineage: {"Forest"}, "spell": {"light"}}, http.StatusUnprocessableEntity},
+		{"another lineage's cantrip", "testgnome", url.Values{lineage: {"Rock"}, "spell": {"light"}}, http.StatusSeeOther},
+		{"a fixed cantrip", "testglow", url.Values{}, http.StatusSeeOther},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newTestEnv(t)
+			ctx := t.Context()
+			loadFeatFixtures(t, e)
+			for _, entry := range []sqlc.UpsertCompendiumEntryParams{
+				{Kind: "species", Slug: "testgnome", Name: "Testgnome", DataJson: `{"desc":"","parts":[
+					{"name":"Gnomish Lineage","desc":"Choose a lineage.\n\n|Lineage|Level 1|\n|---|---|\n|Forest|You know the Light cantrip.|\n|Rock|You know the Guidance cantrip.|"}]}`},
+				{Kind: "species", Slug: "testglow", Name: "Testglow", DataJson: `{"desc":"","parts":[{"name":"Glow","desc":"You know the Light cantrip."}]}`},
+			} {
+				entry.SourceKey, entry.ContentHash = "test", "x"
+				if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+					t.Fatal(err)
+				}
+			}
+			player := e.token(t, auth.RolePlayer)
+			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
+			for _, step := range []string{"class=wizard", "species=" + tc.species} {
+				step, pick, _ := strings.Cut(step, "=")
+				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
+					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
+				}
+			}
+			ch, _ := e.q().GetCharacter(ctx, e.characterID)
+			sh, _ := dnd5e.ParseSheet(ch.SheetJson)
+			cr, err := e.app.creationChoices(ctx, sh, ch.CampaignID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if offersLight := slices.ContainsFunc(cr.view.Spells, func(o views.Option) bool { return o.Slug == "light" }); offersLight == (tc.species == "testglow") {
+				t.Errorf("class list offers Light: %v", offersLight)
+			}
+			tc.form["language"] = []string{"Elvish", "Dwarvish"}
+			w := e.do(t, http.MethodPost, base+"choices", player, creationSpells(t, e, tc.form), false)
+			if w.Code != tc.code {
+				t.Fatalf("choices: %d %s", w.Code, w.Body)
+			}
+			if tc.code == http.StatusUnprocessableEntity {
+				if lost := lostPicks(w.Body.String(), tc.form); len(lost) > 0 || !errorAt(w.Body.String(), "spell") {
+					t.Errorf("refused page lost %v, or the error is not at the spells", lost)
+				}
+				return
+			}
+			ch, _ = e.q().GetCharacter(ctx, e.characterID)
+			sh, _ = dnd5e.ParseSheet(ch.SheetJson)
+			if lights := slices.DeleteFunc(slices.Clone(sh.Spells), func(sp dnd5e.Spell) bool { return sp.Slug != "light" }); len(lights) != 1 {
+				t.Errorf("Light %d times: %+v", len(lights), sh.Spells)
 			}
 		})
 	}
@@ -469,10 +537,14 @@ func lostPicks(body string, form url.Values) []string {
 	return lost
 }
 
-// withSpells ticks the first offered spells the form lacks until it has as
-// many cantrips and level 1+ spells as need asks, so a test fails only on
-// its own picks.
+// withSpells ticks the first offered spells the form lacks (also by name, as
+// a feat's pick) until it has as many cantrips and level 1+ spells as need
+// asks, so a test fails only on its own picks.
 func withSpells(form url.Values, offered []views.Option, need views.SpellNeed) url.Values {
+	var named []string
+	for _, vs := range form {
+		named = append(named, vs...)
+	}
 	n := [2]int{need.Cantrips, need.Spells}
 	for _, o := range offered {
 		if slices.Contains(form["spell"], o.Slug) {
@@ -480,7 +552,7 @@ func withSpells(form url.Values, offered []views.Option, need views.SpellNeed) u
 		}
 	}
 	for _, o := range offered {
-		if k := min(o.Level, 1); n[k] > 0 && !slices.Contains(form["spell"], o.Slug) {
+		if k := min(o.Level, 1); n[k] > 0 && !slices.Contains(form["spell"], o.Slug) && !slices.Contains(named, o.Name) {
 			form.Add("spell", o.Slug)
 			n[k]--
 		}

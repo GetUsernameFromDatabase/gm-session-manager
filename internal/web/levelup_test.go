@@ -12,6 +12,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/web/views"
 )
 
 // TestRevertLevelUp checks level-ups revert newest first, back to the sheet
@@ -136,7 +137,7 @@ func TestLevelUpInvocations(t *testing.T) {
 }
 
 // TestLevelUpLineage checks character level 3 adds the lineage spell and its
-// free cast per Long Rest.
+// free cast per Long Rest, and the class list does not offer it then.
 func TestLevelUpLineage(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
@@ -144,7 +145,7 @@ func TestLevelUpLineage(t *testing.T) {
 		testlock,
 		{Kind: "species", Slug: "testelf", Name: "Testelf", SourceKey: "test", ContentHash: "x", DataJson: `{"desc":"","parts":[
 			{"name":"Lineage","desc":"Choose a lineage.\n\n|Lineage|Level 1|Level 3|\n|---|---|---|\n|Drow|You know the Dancing Lights cantrip.|Faerie Fire|"}]}`},
-		{Kind: "spell", Slug: "faerie-fire", Name: "Faerie Fire", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1}`},
+		{Kind: "spell", Slug: "faerie-fire", Name: "Faerie Fire", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1,"classes":["testlock"]}`},
 	} {
 		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
 			t.Fatal(err)
@@ -161,7 +162,18 @@ func TestLevelUpLineage(t *testing.T) {
 	player := e.token(t, auth.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	// Each level's new invocations: one, two, none.
-	for _, picks := range [][]string{{"Armor of Shadows"}, {"Agonizing Blast", "Shadow Step"}, nil} {
+	for i, picks := range [][]string{{"Armor of Shadows"}, {"Agonizing Blast", "Shadow Step"}, nil} {
+		if i == 2 {
+			ch, _ := e.q().GetCharacter(ctx, e.characterID)
+			v, err := e.app.levelUpView(ctx, ch, "testlock", false)
+			if err != nil || slices.ContainsFunc(v.Spells, func(o views.Option) bool { return o.Slug == "faerie-fire" }) {
+				t.Errorf("class list offers the lineage's Faerie Fire: %v %+v", err, v.Spells)
+			}
+			form := url.Values{"class": {"testlock"}, "spell": {"faerie-fire"}}
+			if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusUnprocessableEntity {
+				t.Errorf("Faerie Fire as a class pick: %d", w.Code)
+			}
+		}
 		if w := e.do(t, http.MethodPost, base, player, url.Values{"class": {"testlock"}, "class_eldritch-invocation": picks}, false); w.Code != http.StatusSeeOther {
 			t.Fatalf("level up: %d %s", w.Code, w.Body)
 		}

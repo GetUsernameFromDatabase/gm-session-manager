@@ -230,6 +230,10 @@ func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Comma
 		}
 		env.Petrified = petrified(conds)
 		fx, err := cmd.Apply(dc, env)
+		var ue userError
+		if errors.As(err, &ue) {
+			return err // keeps a fieldError's field
+		}
 		if err != nil {
 			return userError{err}
 		}
@@ -622,14 +626,15 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if v.LineageSpells, err = a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID); err != nil {
 		return v, err
 	}
-	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet)
+	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet, v.LineageSpells)
 	v.SpellNeed = spellNeed(info, plan.ClassLevel, sheet, v.Spells)
 	return v, err
 }
 
 // classSpellOptions are the class's spells the slots (and pact slots) can
-// cast that the sheet does not have yet.
-func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]int, pactLevel int, sheet dnd5e.Sheet) ([]views.Option, error) {
+// cast that the sheet does not have yet, nor learns in this step (taught:
+// lineage spells, which AddSpell would keep over the class pick).
+func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]int, pactLevel int, sheet dnd5e.Sheet, taught []dnd5e.Spell) ([]views.Option, error) {
 	maxLevel := pactLevel
 	for i, n := range slots {
 		if n > 0 {
@@ -640,9 +645,10 @@ func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]
 	if err != nil {
 		return nil, err
 	}
+	known := slices.Concat(sheet.Spells, taught)
 	var out []views.Option
 	for _, s := range spells {
-		if !slices.ContainsFunc(sheet.Spells, func(have dnd5e.Spell) bool { return have.Slug == s.Slug }) {
+		if !slices.ContainsFunc(known, func(have dnd5e.Spell) bool { return have.Slug == s.Slug }) {
 			out = append(out, views.Option{Slug: s.Slug, Name: s.Name, Level: int(s.Level)})
 		}
 	}
@@ -813,8 +819,7 @@ func (a *App) levelUp(c *gin.Context) {
 	}
 	// A plan error (level 20) comes back from LevelUp below.
 	plan, planErr := sheet.Plan(choice.Class)
-	// Lineage spells first, so AddSpell keeps them (with their ability) over
-	// the same spell ticked in the class list.
+	// The class list does not offer the lineage's spells of this level.
 	lineage, err := a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID)
 	if err != nil {
 		a.serverError(c, err)
@@ -824,7 +829,7 @@ func (a *App) levelUp(c *gin.Context) {
 	var spellErr error
 	var ue userError
 	if planErr == nil { // else LevelUp refuses (level 20) and plan is empty
-		offered, err := a.classSpellOptions(ctx, info.Slug, plan.Slots, plan.PactLevel, sheet)
+		offered, err := a.classSpellOptions(ctx, info.Slug, plan.Slots, plan.PactLevel, sheet, lineage)
 		if err != nil {
 			a.serverError(c, err)
 			return
