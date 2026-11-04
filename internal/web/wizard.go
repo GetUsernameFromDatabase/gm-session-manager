@@ -1020,7 +1020,7 @@ func (a *App) classChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, ca
 	if cr.view.Spells, err = a.classSpellOptions(ctx, cl.Slug, slots, pactLevel, sh); err != nil {
 		return err
 	}
-	cr.view.SpellNeed = spellNeed(cr.view.Columns, sh, cl.Slug, cr.view.Spells)
+	cr.view.SpellNeed = spellNeed(info, cl.Level, sh, cr.view.Spells)
 	cantrips, err := a.optionCantrips(ctx, sh, info, cl.Level, campaignID)
 	if err != nil {
 		return err

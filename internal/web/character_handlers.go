@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -622,7 +623,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		return v, err
 	}
 	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet)
-	v.SpellNeed = spellNeed(plan.Columns, sheet, classSlug, v.Spells)
+	v.SpellNeed = spellNeed(info, plan.ClassLevel, sheet, v.Spells)
 	return v, err
 }
 
@@ -648,12 +649,39 @@ func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]
 	return out, nil
 }
 
-// spellNeed is what the class table's cantrip and spell totals (cols, at the
-// class level being reached) leave to pick: each total less the class's
-// spells on the sheet, at most what is offered. Lineage and feat spells
+var (
+	bookStart    = regexp.MustCompile(`(?i)starts with (\w+) level 1 \w+ spells`)
+	bookPerLevel = regexp.MustCompile(`(?i)level after 1, add (\w+) \w+ spells`)
+)
+
+// spellbook is how many level 1+ spells the class's spellbook holds at a
+// class level ("starts with six level 1 Wizard spells … add two"), or 0 if
+// its features describe none.
+func spellbook(info dnd5e.ClassInfo, level int) int {
+	count := func(re *regexp.Regexp) int {
+		for _, f := range info.Features {
+			if m := re.FindStringSubmatch(f.Description); m != nil {
+				n, _ := strconv.Atoi(cmp.Or(compendium.CountWords[strings.ToLower(m[1])], m[1]))
+				return n
+			}
+		}
+		return 0
+	}
+	start := count(bookStart)
+	if start == 0 {
+		return 0
+	}
+	return start + count(bookPerLevel)*(level-1)
+}
+
+// spellNeed is what the class table's cantrip and spell totals (at the class
+// level being reached) leave to pick: each total less the class's spells on
+// the sheet, at most what is offered. A spellbook's size replaces the spell
+// total, exactly: its list is prepared from the book. Lineage and feat spells
 // (their own ability or feat) do not count; untagged spells of older sheets
 // count while the sheet has this class only.
-func spellNeed(cols map[string]string, sheet dnd5e.Sheet, class string, offered []views.Option) views.SpellNeed {
+func spellNeed(info dnd5e.ClassInfo, level int, sheet dnd5e.Sheet, offered []views.Option) views.SpellNeed {
+	class, book := info.Slug, spellbook(info, level)
 	has := slices.ContainsFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == class })
 	only := has && len(sheet.Classes) == 1
 	var have, avail [2]int // cantrips, level 1+
@@ -672,7 +700,7 @@ func spellNeed(cols map[string]string, sheet dnd5e.Sheet, class string, offered 
 	}
 	// Without knowing which class taught them, the totals can only be upper limits.
 	need := views.SpellNeed{Cantrips: -1, Spells: -1, CantripsUpTo: unsure, SpellsUpTo: unsure}
-	for col, v := range cols {
+	for col, v := range info.ColumnsAt(level) {
 		n, err := strconv.Atoi(v)
 		cantrips, spells := views.SpellColumn(col)
 		switch {
@@ -683,6 +711,9 @@ func spellNeed(cols map[string]string, sheet dnd5e.Sheet, class string, offered 
 			need.Spells = min(max(n-have[1], 0), avail[1])
 			need.SpellsUpTo = unsure || strings.Contains(strings.ToLower(col), "prepared")
 		}
+	}
+	if book > 0 {
+		need.Spells, need.SpellsUpTo, need.Book = min(max(book-have[1], 0), avail[1]), unsure, true
 	}
 	return need
 }
@@ -799,7 +830,7 @@ func (a *App) levelUp(c *gin.Context) {
 			return
 		}
 		// A refusal waits for readPicks, so the page re-renders as for any other.
-		spells, spellErr = a.classSpellPicks(c, info.Slug, offered, spellNeed(plan.Columns, sheet, info.Slug, offered), ch.CampaignID)
+		spells, spellErr = a.classSpellPicks(c, info.Slug, offered, spellNeed(info, plan.ClassLevel, sheet, offered), ch.CampaignID)
 		if spellErr != nil && !errors.As(spellErr, &ue) {
 			a.serverError(c, spellErr)
 			return

@@ -107,10 +107,11 @@ func SpellColumn(name string) (cantrips, spells bool) {
 
 // SpellNeed is how many class spells a step asks for: exactly, or at most
 // when …UpTo (prepared spells). -1 is no limit (the class table has no such
-// column).
+// column). Book marks the spells as a spellbook's.
 type SpellNeed struct {
 	Cantrips, Spells         int
 	CantripsUpTo, SpellsUpTo bool
+	Book                     bool
 }
 
 // String is the ask ("2 cantrips and up to 1 level 1+ spell"), or "" if none.
@@ -120,7 +121,7 @@ func (n SpellNeed) String() string {
 		out = append(out, utils.IfElse(n.CantripsUpTo, "up to ", "")+Plural(n.Cantrips, "cantrip"))
 	}
 	if n.Spells > 0 {
-		out = append(out, utils.IfElse(n.SpellsUpTo, "up to ", "")+Plural(n.Spells, "level 1+ spell"))
+		out = append(out, utils.IfElse(n.SpellsUpTo, "up to ", "")+Plural(n.Spells, "level 1+ spell")+utils.IfElse(n.Book, " for your spellbook", ""))
 	}
 	return strings.Join(out, " and ")
 }

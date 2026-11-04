@@ -3,7 +3,7 @@ name: browser-check
 description: Check UI changes in a real browser with the Playwright MCP server against a test instance of the app. Use after any change to .templ, CSS or JS, before saying it is done, and when asked to look at, test or explore pages in the browser.
 context: fork
 agent: general-purpose
-model: sonnet
+model: haiku
 argument-hint: <changed pages and controls>
 ---
 

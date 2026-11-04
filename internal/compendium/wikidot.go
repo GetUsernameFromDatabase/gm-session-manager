@@ -375,7 +375,7 @@ var (
 )
 
 // CountWords are the spelled-out counts source texts use ("two cantrips").
-var CountWords = map[string]string{"one": "1", "two": "2", "three": "3", "four": "4"}
+var CountWords = map[string]string{"one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6"}
 
 // featuresUnder reads features from headings: the prose before the first
 // feature is the description, and each heading starts a feature whose level
