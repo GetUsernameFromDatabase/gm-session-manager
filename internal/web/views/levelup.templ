@@ -254,7 +254,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 								@abilitySelect("asi1", "+1 or +2 to", v.Form.Get("asi1"))
 								@abilitySelect("asi2", "and +1 to", v.Form.Get("asi2"))
 								<span class="text-muted-foreground">or feat</span>
-								@formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), v.Form.Get("feat"), "", "")
+								@formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), v.Form.Get("feat"), "", "w-auto min-w-(--anchor-width) max-w-[calc(100vw-2rem)]")
 							</div>
 							<p class="text-xs text-muted-foreground">Pick one ability for +2, two different abilities for +1 each, or a feat.</p>
 							for _, f := range v.Feats {
