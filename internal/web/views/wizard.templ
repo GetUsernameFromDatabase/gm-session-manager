@@ -360,7 +360,7 @@ templ wizardChoices(v WizardView) {
 				for _, g := range c.Groups {
 					@choiceFieldset(g, v.Form, v.fieldErr())
 				}
-				@spellChecklist(c.Spells, c.Columns, c.SpellNeed, v.Form["spell"], v.fieldErr())
+				@spellChecklist(c.Spells, c.Columns, c.SpellNeed, v.Form, v.fieldErr())
 			}
 			@wizardNav(v, "Save choices")
 		</form>

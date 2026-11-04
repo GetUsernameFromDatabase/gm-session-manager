@@ -1005,14 +1005,22 @@
   });
 
   // Choices: an option's own choices (a feat's spells) show while it is
-  // picked, as a checked radio or a select's value.
+  // picked, as a checked radio or a select's value. A spell a picked lineage
+  // already teaches (data-hide-for, JSON rules) is hidden and not posted.
+  const isPicked = (form, rule) => {
+    const i = rule.indexOf("=");
+    const inputs = form.querySelectorAll(`[name="${CSS.escape(rule.slice(0, i))}"]`);
+    return [...inputs].find((x) => !/^(radio|checkbox)$/.test(x.type) || x.checked)?.value === rule.slice(i + 1);
+  };
   document.addEventListener("change", (e) => {
     const form = e.target.form;
     form?.querySelectorAll("[data-show-for]").forEach((el) => {
-      const rule = el.dataset.showFor;
-      const i = rule.indexOf("=");
-      const inputs = form.querySelectorAll(`[name="${CSS.escape(rule.slice(0, i))}"]`);
-      el.hidden = [...inputs].find((x) => !/^(radio|checkbox)$/.test(x.type) || x.checked)?.value !== rule.slice(i + 1);
+      el.hidden = !isPicked(form, el.dataset.showFor);
+    });
+    form?.querySelectorAll("[data-hide-for]").forEach((el) => {
+      const hide = JSON.parse(el.dataset.hideFor).some((rule) => isPicked(form, rule));
+      el.hidden = hide;
+      el.querySelector("input[type=checkbox]").disabled = hide;
     });
   });
 

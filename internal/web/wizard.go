@@ -255,6 +255,8 @@ type creation struct {
 	groups []choiceGroup
 	// cantrips are species cantrips that come without a choice (Thaumaturgy).
 	cantrips []dnd5e.Spell
+	// taught maps a spell slug to the lineage rules ("<group key>=<option>") that grant it.
+	taught map[string][]string
 	// check refuses class options the finished step does not qualify for
 	// (checkNewOptions); nil without a compendium class.
 	check func(before, after dnd5e.Sheet, learned []knownCantrip) error
@@ -273,7 +275,7 @@ type choiceGroup struct {
 // level-1 class leave open: a lineage, a skill, the feat's spells or
 // proficiencies, two languages, invocations and spells.
 func (a *App) creationChoices(ctx context.Context, sh dnd5e.Sheet, campaignID int64) (creation, error) {
-	var cr creation
+	cr := creation{taught: map[string][]string{}}
 	featGroups, err := a.backgroundFeatChoices(ctx, sh, campaignID)
 	if err != nil {
 		return cr, err
@@ -413,13 +415,16 @@ func (a *App) speciesChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, 
 			continue
 		}
 		if opts := choiceOptions(p); len(opts) > 0 {
-			g, spells, err := a.lineageChoice(ctx, p, opts, species, resistsPick(parts, p), campaignID)
+			g, byOption, err := a.lineageChoice(ctx, p, opts, species, resistsPick(parts, p), campaignID)
 			if err != nil {
 				return err
 			}
 			cr.groups = append(cr.groups, g)
-			for _, sp := range spells {
-				spellSlugs[sp.Slug] = true
+			for _, name := range slices.Sorted(maps.Keys(byOption)) {
+				for _, sp := range byOption[name] {
+					spellSlugs[sp.Slug] = true
+					cr.taught[sp.Slug] = append(cr.taught[sp.Slug], g.Key+"="+name)
+				}
 			}
 			if reSpellAbility.MatchString(p.Desc) {
 				abilityFor = p.Name
@@ -947,17 +952,15 @@ func (a *App) toolNames(ctx context.Context, campaignID int64) ([]string, error)
 // lineageChoice picks one of a trait's options: the feature is named after
 // it, starts with its text, and its cantrips, speed, darkvision and
 // resistance apply (resists: the option names a damage type to resist). It
-// also returns the spells its options can grant.
-func (a *App) lineageChoice(ctx context.Context, p compendium.NameDesc, opts []compendium.NameDesc, species string, resists bool, campaignID int64) (choiceGroup, []dnd5e.Spell, error) {
+// also returns the spells each option can grant, by option name.
+func (a *App) lineageChoice(ctx context.Context, p compendium.NameDesc, opts []compendium.NameDesc, species string, resists bool, campaignID int64) (choiceGroup, map[string][]dnd5e.Spell, error) {
 	cantrips := map[string][]dnd5e.Spell{}
-	var all []dnd5e.Spell
 	for _, o := range opts {
 		spells, err := a.spellsNamed(ctx, compendium.Cantrips(o.Desc), campaignID)
 		if err != nil {
 			return choiceGroup{}, nil, err
 		}
 		cantrips[o.Name] = spells
-		all = append(all, spells...)
 	}
 	g := views.ChoiceGroup{Key: "trait_" + compendium.Slugify(p.Name), Title: p.Name, Count: 1, Options: opts}
 	return choiceGroup{g, func(s *dnd5e.Sheet, picked []string) {
@@ -978,7 +981,7 @@ func (a *App) lineageChoice(ctx context.Context, p compendium.NameDesc, opts []c
 		if resists {
 			addResistance(s, o.Desc)
 		}
-	}, nil}, all, nil
+	}, nil}, cantrips, nil
 }
 
 // skillPick reads "proficiency in the Insight, Perception, or Survival
@@ -1019,6 +1022,9 @@ func (a *App) classChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, ca
 	slots, _, pactLevel := dnd5e.SlotMaxima(sh.Classes)
 	if cr.view.Spells, err = a.classSpellOptions(ctx, cl.Slug, slots, pactLevel, sh, cr.cantrips); err != nil {
 		return err
+	}
+	for i, sp := range cr.view.Spells {
+		cr.view.Spells[i].TaughtBy = cr.taught[sp.Slug]
 	}
 	cr.view.SpellNeed = spellNeed(info, cl.Level, sh, cr.view.Spells)
 	cantrips, err := a.optionCantrips(ctx, sh, info, cl.Level, campaignID)

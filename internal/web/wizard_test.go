@@ -313,14 +313,27 @@ func TestCreationSpeciesSpells(t *testing.T) {
 			if offersLight := slices.ContainsFunc(cr.view.Spells, func(o views.Option) bool { return o.Slug == "light" }); offersLight == (tc.species == "testglow") {
 				t.Errorf("class list offers Light: %v", offersLight)
 			}
+			// The lineage that teaches Light hides it from the class list while picked.
+			if i := slices.IndexFunc(cr.view.Spells, func(o views.Option) bool { return o.Slug == "light" }); tc.species == "testgnome" && i >= 0 {
+				if got := cr.view.Spells[i].TaughtBy; !slices.Equal(got, []string{"trait_gnomish-lineage=Forest"}) {
+					t.Errorf("Light taught by %v, want the Forest lineage", got)
+				}
+			}
 			tc.form["language"] = []string{"Elvish", "Dwarvish"}
 			w := e.do(t, http.MethodPost, base+"choices", player, creationSpells(t, e, tc.form), false)
 			if w.Code != tc.code {
 				t.Fatalf("choices: %d %s", w.Code, w.Body)
 			}
 			if tc.code == http.StatusUnprocessableEntity {
-				if lost := lostPicks(w.Body.String(), tc.form); len(lost) > 0 || !errorAt(w.Body.String(), "spell") {
+				body := w.Body.String()
+				// Light is dropped on purpose: the picked Forest lineage teaches it.
+				lost := slices.DeleteFunc(lostPicks(body, tc.form), func(l string) bool { return l == "spell=light" })
+				if len(lost) > 0 || !errorAt(body, "spell") {
 					t.Errorf("refused page lost %v, or the error is not at the spells", lost)
+				}
+				// Unticked, not disabled, so it can be picked once shown again.
+				if row := reHiddenRow.FindStringSubmatch(body); row == nil || !strings.Contains(row[1], `value="light"`) || reChecked.MatchString(row[1]) || reDisabled.MatchString(row[1]) {
+					t.Errorf("Light row not hidden and unticked: %v", row)
 				}
 				return
 			}
@@ -499,6 +512,10 @@ func TestClassSkillCount(t *testing.T) {
 var (
 	reInput   = regexp.MustCompile(`<input[^>]*>`)
 	reChecked = regexp.MustCompile(`\schecked[\s/>]`)
+	// reHiddenRow is a spell row hidden because a picked lineage teaches it.
+	reHiddenRow = regexp.MustCompile(`(?s)data-hide-for="[^"]*" hidden>(.*?)</div>`)
+	// reDisabled is a disabled attribute (not a disabled: class variant).
+	reDisabled = regexp.MustCompile(`\s(aria-|data-)?disabled[\s=/>]`)
 )
 
 // errorAt reports whether a refused page shows its error at the field key

@@ -1,6 +1,7 @@
 package views
 
 import (
+	"encoding/json"
 	"fmt"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/web/components/button"
@@ -19,6 +20,9 @@ type Option struct {
 	Slug  string
 	Name  string
 	Level int
+	// TaughtBy are "<group key>=<option>" rules: a lineage picked on the same page
+	// already teaches this spell, so it is not offered while one of them is picked.
+	TaughtBy []string
 }
 
 // LevelUpView is the level-up helper.
@@ -285,7 +289,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 					for _, g := range v.Groups {
 						@choiceFieldset(g, v.Form, v.fieldErr())
 					}
-					@spellChecklist(v.Spells, p.Columns, v.SpellNeed, v.Form["spell"], v.fieldErr())
+					@spellChecklist(v.Spells, p.Columns, v.SpellNeed, v.Form, v.fieldErr())
 				</div>
 			}
 			@card.Footer() {
@@ -299,8 +303,8 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 
 // spellChecklist picks spells to learn or prepare, under the class table's
 // totals at the new level (cols) and what they leave to pick (need), with a
-// refused form's picked slugs ticked.
-templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, picked []string, fe FieldError) {
+// refused form's picked slugs ticked and its lineage picks applied.
+templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, form url.Values, fe FieldError) {
 	if len(spells) > 0 {
 		<div>
 			<div class="font-medium">Learn or prepare spells</div>
@@ -313,20 +317,39 @@ templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, pi
 			}
 			<div class="mt-1 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2">
 				for _, sp := range spells {
-					@checkField("spell", sp.Slug, slices.Contains(picked, sp.Slug)) {
-						{ sp.Name }
-						<span class="text-xs text-muted-foreground">
-							if sp.Level == 0 {
-								cantrip
-							} else {
-								L{ fmt.Sprint(sp.Level) }
-							}
-						</span>
-					}
+					// A taught spell is left unticked, not disabled: the checkbox's
+					// aria-disabled would outlive app.js showing it again.
+					<div data-hide-for={ taughtRules(sp.TaughtBy) } hidden?={ taughtPicked(sp.TaughtBy, form) }>
+						@checkField("spell", sp.Slug, slices.Contains(form["spell"], sp.Slug) && !taughtPicked(sp.TaughtBy, form)) {
+							{ sp.Name }
+							<span class="text-xs text-muted-foreground">
+								if sp.Level == 0 {
+									cantrip
+								} else {
+									L{ fmt.Sprint(sp.Level) }
+								}
+							</span>
+						}
+					</div>
 				}
 			</div>
 		</div>
 	}
+}
+
+// taughtPicked reports whether a lineage picked on the form teaches the spell
+// (one of its rules is picked), so the spell is hidden and not posted.
+func taughtPicked(rules []string, form url.Values) bool {
+	return slices.ContainsFunc(rules, func(r string) bool {
+		key, val, _ := strings.Cut(r, "=")
+		return slices.Contains(form[key], val)
+	})
+}
+
+// taughtRules is the rules as a JSON array for app.js (never null).
+func taughtRules(rules []string) string {
+	b, _ := json.Marshal(append([]string{}, rules...))
+	return string(b)
 }
 
 templ abilitySelect(name, label, value string) {
