@@ -1209,6 +1209,9 @@ func (s SheetView) actions() map[string][]actionEntry {
 		out["spells"] = append(out["spells"], actionEntry{Name: sp.Name, Detail: detail, SpellSlug: sp.Slug, Kind: kind})
 	}
 	for i, f := range sh.Features {
+		if f.Action == "" {
+			f.Action = s.freeCastAction(f.Name)
+		}
 		kind := f.Action
 		if kind == "magic" {
 			kind = "action"
@@ -1226,6 +1229,20 @@ func (s SheetView) actions() map[string][]actionEntry {
 		slices.SortStableFunc(entries, func(a, b actionEntry) int { return kindOrder(a.Kind) - kindOrder(b.Kind) })
 	}
 	return out
+}
+
+// freeCastAction is what a lineage spell's free cast (see freeCast in
+// wizard.go) takes: its spell's casting time, or "" when that is longer.
+func (s SheetView) freeCastAction(name string) string {
+	spell, ok := strings.CutSuffix(name, " (free cast)")
+	if !ok {
+		return ""
+	}
+	i := slices.IndexFunc(s.C.Sheet.Spells, func(sp dnd5e.Spell) bool { return sp.Name == spell })
+	if i < 0 || s.SpellData[s.C.Sheet.Spells[i].Slug] == nil {
+		return ""
+	}
+	return strings.TrimPrefix(castingKind(s.SpellData[s.C.Sheet.Spells[i].Slug].CastingTime), "other")
 }
 
 func kindOrder(kind string) int {
