@@ -912,8 +912,8 @@ func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet) ([]choiceGro
 }
 
 // swapFeatSpell puts repl in old's place, prepared and cast as old was, and
-// renames old's free cast. A repl the same level-up already taught (ticked in
-// the class list) leaves old as it is.
+// renames old's free cast. A repl the same level-up already taught (the
+// lineage's spell of this level) leaves old as it is.
 func swapFeatSpell(s *dnd5e.Sheet, old, repl dnd5e.Spell) {
 	i := slices.IndexFunc(s.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == old.Slug })
 	if i < 0 || slices.ContainsFunc(s.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == repl.Slug }) {
@@ -1481,12 +1481,8 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 				s.AddSpell(sp)
 			}
 			applyPicks(s, cr.groups, picks)
-			for _, sp := range spells {
-				// A lineage or feat picked in this form taught it: it would not be a class pick.
-				if slices.ContainsFunc(s.Spells, func(have dnd5e.Spell) bool { return have.Slug == sp.Slug }) {
-					return fieldError{userError{fmt.Errorf("%s comes from your species or feat already: choose another spell", sp.Name)}, "spell"}
-				}
-				s.AddSpell(sp)
+			if err := addClassSpells(s, spells); err != nil {
+				return err
 			}
 			if cr.check != nil {
 				return cr.check(before, *s, learned)

@@ -199,22 +199,23 @@ func TestLevelUpFeats(t *testing.T) {
 		str   int
 		form  url.Values
 		code  int
+		msg   string // a refusal's message, shown at the class spells
 		check func(sh dnd5e.Sheet) bool
 	}{
-		{"Grappler raises Strength", 15, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusSeeOther,
+		{"Grappler raises Strength", 15, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusSeeOther, "",
 			func(sh dnd5e.Sheet) bool { return sh.Scores["str"] == 16 && slices.Contains(sh.Feats, "Grappler") }},
-		{"Grappler at the maximum", 20, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusUnprocessableEntity, nil},
-		{"Grappler without Strength or Dexterity 13", 8, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusUnprocessableEntity, nil},
-		{"an Epic Boon before level 19", 15, url.Values{"feat": {"boon-of-fate"}, "feat_boon-of-fate_raise": {"Charisma"}}, http.StatusUnprocessableEntity, nil},
-		{"a Fighting Style feat without the feature", 15, url.Values{"feat": {"archery"}}, http.StatusUnprocessableEntity, nil},
-		{"a second Magic Initiate takes another list", 15, url.Values{"feat": {"magic-initiate"}, mi + "_list": {"Cleric"}, mi + "_cleric_cantrips": {"Guidance"}, mi + "_cleric_spell": {"Bless"}, mi + "_ability": {"Wisdom"}}, http.StatusSeeOther,
+		{"Grappler at the maximum", 20, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusUnprocessableEntity, "", nil},
+		{"Grappler without Strength or Dexterity 13", 8, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusUnprocessableEntity, "", nil},
+		{"an Epic Boon before level 19", 15, url.Values{"feat": {"boon-of-fate"}, "feat_boon-of-fate_raise": {"Charisma"}}, http.StatusUnprocessableEntity, "", nil},
+		{"a Fighting Style feat without the feature", 15, url.Values{"feat": {"archery"}}, http.StatusUnprocessableEntity, "", nil},
+		{"a second Magic Initiate takes another list", 15, url.Values{"feat": {"magic-initiate"}, mi + "_list": {"Cleric"}, mi + "_cleric_cantrips": {"Guidance"}, mi + "_cleric_spell": {"Bless"}, mi + "_ability": {"Wisdom"}}, http.StatusSeeOther, "",
 			func(sh dnd5e.Sheet) bool {
 				return slices.Contains(sh.Feats, "Magic Initiate (Cleric)") && slices.ContainsFunc(sh.Spells, func(sp dnd5e.Spell) bool {
 					return sp.Slug == "bless" && sp.Ability == "wis" && sp.Feat == "Magic Initiate (Cleric)"
 				})
 			}},
-		{"not the list taken already", 15, url.Values{"feat": {"magic-initiate"}, mi + "_list": {"Wizard"}}, http.StatusUnprocessableEntity, nil},
-		{"Spell Change", 15, url.Values{change: {"Magic Missile"}, change + "_magic-missile": {"Shield"}}, http.StatusSeeOther,
+		{"not the list taken already", 15, url.Values{"feat": {"magic-initiate"}, mi + "_list": {"Wizard"}}, http.StatusUnprocessableEntity, "", nil},
+		{"Spell Change", 15, url.Values{change: {"Magic Missile"}, change + "_magic-missile": {"Shield"}}, http.StatusSeeOther, "",
 			func(sh dnd5e.Sheet) bool {
 				return !slices.ContainsFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == "magic-missile" }) &&
 					slices.ContainsFunc(sh.Spells, func(sp dnd5e.Spell) bool {
@@ -222,16 +223,19 @@ func TestLevelUpFeats(t *testing.T) {
 					}) &&
 					slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Shield (free cast)" && f.Uses.Fixed == 1 })
 			}},
-		{"Spell Change to a spell ticked in the class list", 15, url.Values{"spell": {"shield"}, change: {"Magic Missile"}, change + "_magic-missile": {"Shield"}}, http.StatusSeeOther,
-			func(sh dnd5e.Sheet) bool {
-				shields := slices.DeleteFunc(slices.Clone(sh.Spells), func(sp dnd5e.Spell) bool { return sp.Slug != "shield" })
-				return len(shields) == 1 && slices.ContainsFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == "magic-missile" })
-			}},
+		{"Spell Change to a spell ticked in the class list", 15, url.Values{"spell": {"shield"}, change: {"Magic Missile"}, change + "_magic-missile": {"Shield"}}, http.StatusUnprocessableEntity,
+			"Shield comes from your species or feat already", nil},
+		{"a new Magic Initiate's spell ticked in the class list", 15, url.Values{"spell": {"detect-magic"}, "feat": {"magic-initiate"}, mi + "_list": {"Cleric"}, mi + "_cleric_cantrips": {"Guidance"}, mi + "_cleric_spell": {"Detect Magic"}, mi + "_ability": {"Wisdom"}}, http.StatusUnprocessableEntity,
+			"Detect Magic comes from your species or feat already", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newTestEnv(t)
 			ctx := t.Context()
 			loadFeatFixtures(t, e)
+			// On both lists, so a Cleric Magic Initiate can pick a Wizard class spell.
+			if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "spell", Slug: "detect-magic", Name: "Detect Magic", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1,"classes":["cleric","wizard"]}`}); err != nil {
+				t.Fatal(err)
+			}
 			ch, _ := e.q().GetCharacter(ctx, e.characterID)
 			sh, _ := dnd5e.ParseSheet(ch.SheetJson)
 			sh.Scores["str"], sh.Scores["dex"] = tc.str, 10 // Grappler needs either at 13
@@ -267,6 +271,9 @@ func TestLevelUpFeats(t *testing.T) {
 			}
 			if lost := lostPicks(w.Body.String(), tc.form); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
 				t.Errorf("refused page lost %v", lost)
+			}
+			if tc.msg != "" && (!errorAt(w.Body.String(), "spell") || !strings.Contains(w.Body.String(), tc.msg)) {
+				t.Errorf("no %q at the class spells: %s", tc.msg, w.Body)
 			}
 			if tc.check == nil {
 				return

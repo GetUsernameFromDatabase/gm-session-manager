@@ -748,6 +748,19 @@ func (a *App) classSpellPicks(c *gin.Context, class string, offered []views.Opti
 	return spells, nil
 }
 
+// addClassSpells adds the class picks after the lineage's and feats' spells
+// of the same step, refusing one those taught already: it would not count as
+// a class pick.
+func addClassSpells(s *dnd5e.Sheet, spells []dnd5e.Spell) error {
+	for _, sp := range spells {
+		if slices.ContainsFunc(s.Spells, func(have dnd5e.Spell) bool { return have.Slug == sp.Slug }) {
+			return fieldError{userError{fmt.Errorf("%s comes from your species or feat already: choose another spell", sp.Name)}, "spell"}
+		}
+		s.AddSpell(sp)
+	}
+	return nil
+}
+
 func (a *App) levelUpForm(c *gin.Context) {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
@@ -841,7 +854,8 @@ func (a *App) levelUp(c *gin.Context) {
 			return
 		}
 	}
-	choice.Spells = append(slices.Clone(lineage), spells...)
+	// The class picks go in after the feats' (addClassSpells), so a clash is refused.
+	choice.Spells = lineage
 
 	// Spell Change and the feat's own choices apply after LevelUp has added the feat.
 	changes, err := a.featSpellChanges(ctx, sheet)
@@ -855,7 +869,7 @@ func (a *App) levelUp(c *gin.Context) {
 		return
 	}
 	// The cantrips the sheet will know, for checkNewOptions.
-	learned, err := a.cantripData(ctx, append(slices.Clone(sheet.Spells), choice.Spells...), ch.CampaignID)
+	learned, err := a.cantripData(ctx, slices.Concat(sheet.Spells, lineage, spells), ch.CampaignID)
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -894,6 +908,9 @@ func (a *App) levelUp(c *gin.Context) {
 				return userError{err}
 			}
 			applyPicks(&dc.Sheet, groups, picks)
+			if err := addClassSpells(&dc.Sheet, spells); err != nil {
+				return err
+			}
 			if err := checkNewOptions(choice.Class, sheet, dc.Sheet, plan.ClassLevel, learned); err != nil {
 				return err
 			}
