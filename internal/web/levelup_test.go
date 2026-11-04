@@ -102,6 +102,9 @@ func TestLevelUpInvocations(t *testing.T) {
 		if lost := lostPicks(w.Body.String(), step.form); step.code == http.StatusUnprocessableEntity && len(lost) > 0 {
 			t.Errorf("%v: refused page lost %v", step.form, lost)
 		}
+		if strings.Contains(step.err, "of the listed eldritch invocations") && !errorAt(w.Body.String(), pick) {
+			t.Errorf("%v: error not at the invocations", step.form)
+		}
 	}
 	ch, _ := e.q().GetCharacter(ctx, e.characterID)
 	sh, _ := dnd5e.ParseSheet(ch.SheetJson)

@@ -7,6 +7,7 @@ import (
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
+	"gm-session-manager/internal/web/components/field"
 	"gm-session-manager/internal/web/components/input"
 	"gm-session-manager/internal/web/components/label"
 	"gm-session-manager/internal/web/components/radiogroup"
@@ -30,6 +31,8 @@ type WizardView struct {
 	// Sheet is the character as it stands, read-only.
 	Sheet SheetView
 	Error string
+	// ErrorFor is the form field Error is about, shown there; "" at the top.
+	ErrorFor string
 	// Form is the refused form's values, ticked again; nil on a fresh page.
 	Form url.Values
 	// Options are the compendium's classes, species or backgrounds;
@@ -116,7 +119,7 @@ templ WizardPage(l Layout, v WizardView) {
 				</a>
 			}
 		</nav>
-		if v.Error != "" {
+		if v.Error != "" && v.ErrorFor == "" {
 			@Notice(v.Error, true, "mb-4")
 		}
 		switch v.Step {
@@ -207,6 +210,7 @@ templ wizardPick(v WizardView) {
 							if v.Step == "class" && c.SkillCount > 0 {
 								<fieldset>
 									<legend class="font-medium">Choose { fmt.Sprint(c.SkillCount) } skills</legend>
+									@v.fieldErr().at("skill")
 									<div class="mt-1 grid grid-cols-2 gap-1 sm:grid-cols-3">
 										for _, k := range c.Skills {
 											@checkField("skill", k, slices.Contains(v.Form["skill"], k)) {
@@ -354,27 +358,41 @@ templ wizardChoices(v WizardView) {
 		<form method="post" class="space-y-4 text-sm">
 			if c := v.Choices; c != nil {
 				for _, g := range c.Groups {
-					@choiceFieldset(g, v.Form)
+					@choiceFieldset(g, v.Form, v.fieldErr())
 				}
-				@spellChecklist(c.Spells, c.Columns, c.SpellNeed, v.Form["spell"])
+				@spellChecklist(c.Spells, c.Columns, c.SpellNeed, v.Form["spell"], v.fieldErr())
 			}
 			@wizardNav(v, "Save choices")
 		</form>
 	}
 }
 
+// FieldError is a refused form's error and the field it is about.
+type FieldError struct{ Key, Msg string }
+
+func (v WizardView) fieldErr() FieldError { return FieldError{Key: v.ErrorFor, Msg: v.Error} }
+
+// at shows the error when it is about key; app.js scrolls to it.
+templ (fe FieldError) at(key string) {
+	if fe.Key == key {
+		@field.Error(field.ErrorProps{Attributes: templ.Attributes{"data-error-for": key}}) {
+			{ fe.Msg }
+		}
+	}
+}
+
 // choiceFieldset asks for up to g.Count of its options: radios for one,
 // checkboxes for more. An option's own choices follow, hidden until it is
 // picked (app.js); outside the radio group, which would take their radios.
-// form holds a refused form's picks, ticked again.
-templ choiceFieldset(g ChoiceGroup, form url.Values) {
+// form holds a refused form's picks, ticked again, and fe its error.
+templ choiceFieldset(g ChoiceGroup, form url.Values, fe FieldError) {
 	<div class="space-y-4">
-		@choiceOptions(g, form)
+		@choiceOptions(g, form, fe)
 		for _, o := range g.Options {
 			if subs := g.Sub[o.Name]; len(subs) > 0 {
 				<div class="ml-6 space-y-4" data-show-for={ g.Key + "=" + o.Name } hidden?={ !slices.Contains(form[g.Key], o.Name) }>
 					for _, s := range subs {
-						@choiceFieldset(s, form)
+						@choiceFieldset(s, form, fe)
 					}
 				</div>
 			}
@@ -382,14 +400,15 @@ templ choiceFieldset(g ChoiceGroup, form url.Values) {
 	</div>
 }
 
-templ choiceOptions(g ChoiceGroup, form url.Values) {
-	<fieldset class="space-y-2 rounded-md border p-3">
+templ choiceOptions(g ChoiceGroup, form url.Values, fe FieldError) {
+	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe.Key == g.Key) }>
 		<legend class="px-1 font-medium">
 			{ g.Title }
 			if g.Count > 1 {
 				<span class="font-normal text-muted-foreground">(choose { fmt.Sprint(g.Count) })</span>
 			}
 		</legend>
+		@fe.at(g.Key)
 		if g.Count == 1 {
 			@radiogroup.RadioGroup(radiogroup.Props{Name: g.Key, DefaultValue: form.Get(g.Key), Class: "gap-2", Attributes: templ.Attributes{"aria-label": g.Title}}) {
 				for i, o := range g.Options {

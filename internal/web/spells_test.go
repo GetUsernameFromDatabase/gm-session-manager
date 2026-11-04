@@ -98,8 +98,8 @@ func TestSpellCounts(t *testing.T) {
 		if w.Code != step.code || !strings.Contains(w.Body.String(), step.err) {
 			t.Fatalf("%v: %d, want %d with %q", form, w.Code, step.code, step.err)
 		}
-		if lost := lostPicks(w.Body.String(), form); step.code == http.StatusUnprocessableEntity && len(lost) > 0 {
-			t.Errorf("%v: refused page lost %v", form, lost)
+		if lost := lostPicks(w.Body.String(), form); step.code == http.StatusUnprocessableEntity && (len(lost) > 0 || !errorAt(w.Body.String(), "spell")) {
+			t.Errorf("%v: refused page lost %v or its error is not at the spells", form, lost)
 		}
 	}
 	ch, _ := e.q().GetCharacter(t.Context(), e.characterID)

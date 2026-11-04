@@ -418,8 +418,8 @@ func TestClassSkillCount(t *testing.T) {
 		if w.Code != tc.code {
 			t.Errorf("%v: %d, want %d", tc.skills, w.Code, tc.code)
 		}
-		if lost := lostPicks(w.Body.String(), form); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
-			t.Errorf("%v: refused page lost %v", tc.skills, lost)
+		if lost := lostPicks(w.Body.String(), form); tc.code == http.StatusUnprocessableEntity && (len(lost) > 0 || !errorAt(w.Body.String(), "skill")) {
+			t.Errorf("%v: refused page lost %v or its error is not at the skills", tc.skills, lost)
 		}
 		// Chosen already, the step changes nothing and asks for no skills.
 		if w := e.do(t, http.MethodPost, path, player, url.Values{"pick": {"testfighter"}}, false); tc.code == http.StatusSeeOther && w.Code != http.StatusSeeOther {
@@ -432,6 +432,12 @@ var (
 	reInput   = regexp.MustCompile(`<input[^>]*>`)
 	reChecked = regexp.MustCompile(`\schecked[\s/>]`)
 )
+
+// errorAt reports whether a refused page shows its error at the field key
+// instead of the top.
+func errorAt(body, key string) bool {
+	return strings.Contains(body, `data-error-for="`+html.EscapeString(key)+`"`)
+}
 
 // lostPicks are the posted values a refused page offers but does not show
 // again (a box left unticked, a select or field holding another value), or

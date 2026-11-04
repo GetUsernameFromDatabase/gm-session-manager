@@ -239,6 +239,21 @@ func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Comma
 // userError marks an error caused by the request, shown to the user as is.
 type userError struct{ error }
 
+// fieldError is a userError about one form field, shown next to it.
+type fieldError struct {
+	userError
+	field string
+}
+
+func (e fieldError) Unwrap() error { return e.userError }
+
+// errorField is the form field err is about, "" for none.
+func errorField(err error) string {
+	var fe fieldError
+	errors.As(err, &fe)
+	return fe.field
+}
+
 func (a *App) commandFailed(c *gin.Context, err error) bool {
 	var ue userError
 	switch {
@@ -679,7 +694,7 @@ func (a *App) classSpellPicks(c *gin.Context, class string, offered []views.Opti
 	var got [2]int
 	for _, slug := range c.PostFormArray("spell") {
 		if !slices.ContainsFunc(offered, func(o views.Option) bool { return o.Slug == slug }) || slices.ContainsFunc(spells, func(sp dnd5e.Spell) bool { return sp.Slug == slug }) {
-			return nil, userError{errors.New("choose spells from the list")}
+			return nil, fieldError{userError{errors.New("choose spells from the list")}, "spell"}
 		}
 		sp, err := a.compendiumSpell(c.Request.Context(), slug, campaignID)
 		if err != nil {
@@ -691,7 +706,7 @@ func (a *App) classSpellPicks(c *gin.Context, class string, offered []views.Opti
 	}
 	off := func(n, got int, upTo bool) bool { return n >= 0 && (got > n || !upTo && got < n) }
 	if off(need.Cantrips, got[0], need.CantripsUpTo) || off(need.Spells, got[1], need.SpellsUpTo) {
-		return nil, userError{fmt.Errorf("choose %s: you ticked %s and %s", cmp.Or(need.String(), "no spells here"), views.Plural(got[0], "cantrip"), views.Plural(got[1], "level 1+ spell"))}
+		return nil, fieldError{userError{fmt.Errorf("choose %s: you ticked %s and %s", cmp.Or(need.String(), "no spells here"), views.Plural(got[0], "cantrip"), views.Plural(got[1], "level 1+ spell"))}, "spell"}
 	}
 	return spells, nil
 }
@@ -858,7 +873,7 @@ func (a *App) levelUp(c *gin.Context) {
 			a.serverError(c, verr)
 			return
 		}
-		v.Error, v.Form = ue.Error(), c.Request.PostForm
+		v.Error, v.ErrorFor, v.Form = ue.Error(), errorField(err), c.Request.PostForm
 		camp, _ := a.Store.GetCampaign(ctx, ch.CampaignID)
 		a.render(c, http.StatusUnprocessableEntity, views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v))
 		return

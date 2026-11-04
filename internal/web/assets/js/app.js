@@ -462,6 +462,8 @@
     showThumbs(files);
   });
   document.addEventListener("DOMContentLoaded", () => {
+    // A refused form reloads at the top: bring its error into view.
+    document.querySelector("[data-error-for]")?.scrollIntoView({ block: "center" });
     const input = document.getElementById("player-name");
     if (!input) return;
     try {

@@ -328,7 +328,7 @@ func readPicks(c *gin.Context, groups []choiceGroup) (map[string][]string, error
 		if (len(picked) != need && !optional) || slices.ContainsFunc(picked, func(p string) bool {
 			return !slices.ContainsFunc(g.Options, func(o compendium.NameDesc) bool { return o.Name == p })
 		}) {
-			return nil, userError{fmt.Errorf("choose %d of the listed %s", need, strings.ToLower(g.Title))}
+			return nil, fieldError{userError{fmt.Errorf("choose %d of the listed %s", need, strings.ToLower(g.Title))}, g.Key}
 		}
 		picks[g.Key] = picked
 		for _, p := range picked {
@@ -1281,7 +1281,7 @@ func checkNewOptions(info dnd5e.ClassInfo, before, after dnd5e.Sheet, level int,
 		if cs, asks := k.cantripChoices(before, o); asks {
 			cantrip = strings.TrimSuffix(cantrip, ")")
 			if !slices.ContainsFunc(cs, func(c compendium.NameDesc) bool { return c.Name == cantrip }) {
-				return userError{fmt.Errorf("%s needs %s among your cantrips: tick it under spells", o.Name, cantrip)}
+				return fieldError{userError{fmt.Errorf("%s needs %s among your cantrips: tick it under spells", o.Name, cantrip)}, "spell"}
 			}
 		}
 	}
@@ -1327,7 +1327,7 @@ func (a *App) wizardSave(c *gin.Context) {
 			a.serverError(c, verr)
 			return
 		}
-		v.Error, v.Form = ue.Error(), c.Request.PostForm
+		v.Error, v.ErrorFor, v.Form = ue.Error(), errorField(err), c.Request.PostForm
 		a.renderWizard(c, http.StatusUnprocessableEntity, w, ch, v)
 		return
 	}
@@ -1384,7 +1384,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		skills := slices.Compact(slices.Sorted(slices.Values(c.PostFormArray("skill"))))
 		need := min(choice.SkillCount, len(choice.Skills))
 		if len(skills) != need || slices.ContainsFunc(skills, func(k string) bool { return !slices.Contains(choice.Skills, k) }) {
-			return nil, userError{fmt.Errorf("choose %d of the listed skills", need)}
+			return nil, fieldError{userError{fmt.Errorf("choose %d of the listed skills", need)}, "skill"}
 		}
 		return once(func(s *dnd5e.Sheet, cc *dnd5e.Character) error {
 			if s.Level() > 0 {

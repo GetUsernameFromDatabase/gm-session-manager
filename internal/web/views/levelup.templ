@@ -43,9 +43,13 @@ type LevelUpView struct {
 	// LineageSpells are the species spells this character level teaches.
 	LineageSpells []dnd5e.Spell
 	Error         string
+	// ErrorFor is the form field Error is about, shown there; "" at the top.
+	ErrorFor string
 	// Form is the refused form's values, ticked again; nil on a fresh page.
 	Form url.Values
 }
+
+func (v LevelUpView) fieldErr() FieldError { return FieldError{Key: v.ErrorFor, Msg: v.Error} }
 
 func slotSummary(slots [9]int) string {
 	out := ""
@@ -129,7 +133,7 @@ func Plural(n int, noun string) string {
 templ LevelUpPage(l Layout, v LevelUpView) {
 	@Page(l) {
 		@PageHeader("Level up "+v.Name, fmt.Sprintf("Currently level %d. Structured parts are filled in for you; you can still change anything afterwards with commands.", v.Level))
-		if v.Error != "" {
+		if v.Error != "" && v.ErrorFor == "" {
 			@Notice(v.Error, true, "mb-4")
 		}
 		<form method="get" class="mb-6 flex items-center gap-2" onchange="this.submit()">
@@ -257,7 +261,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 								if groups := v.FeatChoices[f.Slug]; len(groups) > 0 {
 									<div class="space-y-4 pt-2" data-show-for={ "feat=" + f.Slug } hidden?={ v.Form.Get("feat") != f.Slug }>
 										for _, g := range groups {
-											@choiceFieldset(g, v.Form)
+											@choiceFieldset(g, v.Form, v.fieldErr())
 										}
 									</div>
 								}
@@ -278,9 +282,9 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 						</div>
 					}
 					for _, g := range v.Groups {
-						@choiceFieldset(g, v.Form)
+						@choiceFieldset(g, v.Form, v.fieldErr())
 					}
-					@spellChecklist(v.Spells, p.Columns, v.SpellNeed, v.Form["spell"])
+					@spellChecklist(v.Spells, p.Columns, v.SpellNeed, v.Form["spell"], v.fieldErr())
 				</div>
 			}
 			@card.Footer() {
@@ -295,10 +299,11 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 // spellChecklist picks spells to learn or prepare, under the class table's
 // totals at the new level (cols) and what they leave to pick (need), with a
 // refused form's picked slugs ticked.
-templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, picked []string) {
+templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, picked []string, fe FieldError) {
 	if len(spells) > 0 {
 		<div>
 			<div class="font-medium">Learn or prepare spells</div>
+			@fe.at("spell")
 			if s := need.String(); s != "" {
 				<p class="text-sm">Choose { s }.</p>
 			}
