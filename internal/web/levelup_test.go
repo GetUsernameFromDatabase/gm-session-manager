@@ -145,7 +145,9 @@ func TestLevelUpLineage(t *testing.T) {
 		testlock,
 		{Kind: "species", Slug: "testelf", Name: "Testelf", SourceKey: "test", ContentHash: "x", DataJson: `{"desc":"","parts":[
 			{"name":"Lineage","desc":"Choose a lineage.\n\n|Lineage|Level 1|Level 3|\n|---|---|---|\n|Drow|You know the Dancing Lights cantrip.|Faerie Fire|"}]}`},
-		{Kind: "spell", Slug: "faerie-fire", Name: "Faerie Fire", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1,"classes":["testlock"]}`},
+		{Kind: "spell", Slug: "faerie-fire", Name: "Faerie Fire", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1,"classes":["testlock","testmage"]}`},
+		{Kind: "spell", Slug: "test-ward", Name: "Test Ward", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1,"classes":["testmage"]}`},
+		{Kind: "spell", Slug: "test-hex", Name: "Test Hex", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1,"classes":["testmage"]}`},
 	} {
 		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
 			t.Fatal(err)
@@ -155,6 +157,9 @@ func TestLevelUpLineage(t *testing.T) {
 	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
 	sh.Species, sh.SpeciesAbility = "Testelf", "wis"
 	sh.Features = append(sh.Features, dnd5e.Feature{Name: "Lineage (Drow)", Source: "Testelf"})
+	mi, change := "Magic Initiate (Testmage)", "change_magic-initiate-testmage"
+	sh.Feats = append(sh.Feats, mi)
+	sh.Spells = append(sh.Spells, dnd5e.Spell{Slug: "test-ward", Name: "Test Ward", Level: 1, Prepared: true, Ability: "wis", Feat: mi})
 	raw, _ := sh.JSON()
 	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
 		t.Fatal(err)
@@ -172,6 +177,23 @@ func TestLevelUpLineage(t *testing.T) {
 			form := url.Values{"class": {"testlock"}, "spell": {"faerie-fire"}}
 			if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusUnprocessableEntity {
 				t.Errorf("Faerie Fire as a class pick: %d", w.Code)
+			}
+			// Nor does the feat's Spell Change, which would drop the pick.
+			j := slices.IndexFunc(v.Groups, func(g views.ChoiceGroup) bool { return g.Key == change })
+			if j < 0 {
+				t.Fatalf("no Spell Change: %+v", v.Groups)
+			}
+			with := v.Groups[j].Sub["Test Ward"][0].Options
+			has := func(n string) bool {
+				return slices.ContainsFunc(with, func(o compendium.NameDesc) bool { return o.Name == n })
+			}
+			if has("Faerie Fire") || !has("Test Hex") {
+				t.Errorf("Spell Change offers %+v", with)
+			}
+			form = url.Values{"class": {"testlock"}, change: {"Test Ward"}, change + "_test-ward": {"Faerie Fire"}}
+			w := e.do(t, http.MethodPost, base, player, form, false)
+			if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || !errorAt(body, change+"_test-ward") || len(lostPicks(body, form)) > 0 {
+				t.Errorf("Faerie Fire as a Spell Change: %d, lost %v", w.Code, lostPicks(body, form))
 			}
 		}
 		if w := e.do(t, http.MethodPost, base, player, url.Values{"class": {"testlock"}, "class_eldritch-invocation": picks}, false); w.Code != http.StatusSeeOther {

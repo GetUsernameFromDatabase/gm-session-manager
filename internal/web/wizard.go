@@ -877,8 +877,9 @@ const keepSpells = "No change"
 
 // featSpellChanges offer each feat's Spell Change on level-up: one spell the
 // feat chose ("Magic Initiate (Wizard)") may become another of the same
-// level from its list.
-func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet) ([]choiceGroup, error) {
+// level from its list, but not one the sheet has or this step teaches (taught).
+func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet, taught []dnd5e.Spell) ([]choiceGroup, error) {
+	known := slices.Concat(sh.Spells, taught)
 	var out []choiceGroup
 	for _, feat := range sh.Feats {
 		_, list := featList(feat)
@@ -897,7 +898,7 @@ func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet) ([]choiceGro
 			var with []compendium.NameDesc
 			spells := map[string]dnd5e.Spell{}
 			for _, r := range rows {
-				if int(r.Level) == old.Level && !slices.ContainsFunc(sh.Spells, func(h dnd5e.Spell) bool { return h.Slug == r.Slug }) {
+				if int(r.Level) == old.Level && !slices.ContainsFunc(known, func(h dnd5e.Spell) bool { return h.Slug == r.Slug }) {
 					with = append(with, compendium.NameDesc{Name: r.Name})
 					spells[r.Name] = dnd5e.Spell{Slug: r.Slug, Name: r.Name, Level: int(r.Level)}
 				}
@@ -917,8 +918,8 @@ func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet) ([]choiceGro
 }
 
 // swapFeatSpell puts repl in old's place, prepared and cast as old was, and
-// renames old's free cast. A repl the same level-up already taught (the
-// lineage's spell of this level) leaves old as it is.
+// renames old's free cast. A repl the sheet already has leaves old as it is:
+// featSpellChanges offers none, but this keeps a duplicate off the sheet.
 func swapFeatSpell(s *dnd5e.Sheet, old, repl dnd5e.Spell) {
 	i := slices.IndexFunc(s.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == old.Slug })
 	if i < 0 || slices.ContainsFunc(s.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == repl.Slug }) {

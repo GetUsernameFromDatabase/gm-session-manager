@@ -614,7 +614,10 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 			v.FeatChoices[f.Slug] = groupViews(groups)
 		}
 	}
-	changes, err := a.featSpellChanges(ctx, sheet)
+	if v.LineageSpells, err = a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID); err != nil {
+		return v, err
+	}
+	changes, err := a.featSpellChanges(ctx, sheet, v.LineageSpells)
 	if err != nil {
 		return v, err
 	}
@@ -623,9 +626,6 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		return v, err
 	}
 	v.Groups = groupViews(append(classOptionGroups(info, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), changes...))
-	if v.LineageSpells, err = a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID); err != nil {
-		return v, err
-	}
 	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet, v.LineageSpells)
 	v.SpellNeed = spellNeed(info, plan.ClassLevel, sheet, v.Spells)
 	return v, err
@@ -858,7 +858,7 @@ func (a *App) levelUp(c *gin.Context) {
 	choice.Spells = lineage
 
 	// Spell Change and the feat's own choices apply after LevelUp has added the feat.
-	changes, err := a.featSpellChanges(ctx, sheet)
+	changes, err := a.featSpellChanges(ctx, sheet, lineage)
 	if err != nil {
 		a.serverError(c, err)
 		return
