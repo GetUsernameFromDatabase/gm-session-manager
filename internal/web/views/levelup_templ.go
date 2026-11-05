@@ -1095,7 +1095,7 @@ func spellChecklist(spells []Option, cols map[string]string, need SpellNeed, for
 				templ_7745c5c3_ElementWriter := templ_7745c5c3_Buffer
 				templ_7745c5c3_Buffer := templ.GetBuffer()
 				var templ_7745c5c3_ElementScripts []templ.ComponentScript
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<div role=\"group\" aria-label=\"Learn or prepare spells\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<div role=\"group\" aria-labelledby=\"spell-checklist-title\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1113,7 +1113,7 @@ func spellChecklist(spells []Option, cols map[string]string, need SpellNeed, for
 				}
 				templ.ReleaseBuffer(templ_7745c5c3_Buffer)
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "><div class=\"font-medium\">Learn or prepare spells</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "><div id=\"spell-checklist-title\" class=\"font-medium\">Learn or prepare spells</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
