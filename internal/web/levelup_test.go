@@ -321,6 +321,40 @@ func TestLevelUpFeats(t *testing.T) {
 	}
 }
 
+// TestLevelUpEpicBoon checks the Epic Boon level (the test SRD has none): the
+// feat is offered, and its own maximum of 30 beats the usual 20.
+func TestLevelUpEpicBoon(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	loadFeatFixtures(t, e)
+	boonClass := sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "boonling", Name: "Boonling", SourceKey: "test", ContentHash: "x",
+		DataJson: `{"caster":"none","hit_die":8,"features":[{"name":"Epic Boon","desc":"","levels":[19]}]}`}
+	if err := e.q().UpsertCompendiumEntry(ctx, boonClass); err != nil {
+		t.Fatal(err)
+	}
+	ch, _ := e.q().GetCharacter(ctx, e.characterID)
+	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
+	sh.Classes = []dnd5e.ClassLevel{{Slug: "boonling", Name: "Boonling", Level: 18, HitDie: 8, Caster: "none"}}
+	sh.Scores["cha"] = 20
+	raw, _ := sh.JSON()
+	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, auth.RolePlayer)
+	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	if body := e.do(t, http.MethodGet, base+"?class=boonling", player, nil, false).Body.String(); !strings.Contains(body, `value="boon-of-fate"`) {
+		t.Fatalf("Boon of Fate not offered: %s", body)
+	}
+	form := url.Values{"class": {"boonling"}, "feat": {"boon-of-fate"}, "feat_boon-of-fate_raise": {"Charisma"}}
+	if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusSeeOther {
+		t.Fatalf("level up: %d %s", w.Code, w.Body)
+	}
+	ch, _ = e.q().GetCharacter(ctx, e.characterID)
+	if sh, err := dnd5e.ParseSheet(ch.SheetJson); err != nil || sh.Level() != 19 || !slices.Contains(sh.Feats, "Boon of Fate") || sh.Scores["cha"] != 21 {
+		t.Errorf("sheet: %v %s", err, ch.SheetJson)
+	}
+}
+
 // TestRevertLevelUpInterleaved checks level-ups and reverts may alternate:
 // each revert returns to the sheet from just before the newest level-up.
 func TestRevertLevelUpInterleaved(t *testing.T) {
