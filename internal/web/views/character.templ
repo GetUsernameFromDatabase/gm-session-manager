@@ -42,6 +42,10 @@ type SheetView struct {
 	CanRevert bool
 	// SpellData are the compendium details of the sheet's spells, by slug.
 	SpellData map[string]*compendium.SpellData
+	// CanSources lets the viewer switch sources; SourceIssues are only
+	// computed then.
+	CanSources   bool
+	SourceIssues []SourceIssue
 }
 
 func (s SheetView) cmdURL() string { return fmt.Sprintf("/characters/%d/cmd", s.ID) }
@@ -171,6 +175,9 @@ templ CharacterSheet(s SheetView) {
 		@modifiersCard(s)
 		@backstoryCard(s)
 		@characterLooks(s)
+		if s.CanSources && len(s.SourceIssues) > 0 {
+			@sourcesAlert(s)
+		}
 	</div>
 }
 

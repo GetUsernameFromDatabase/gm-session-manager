@@ -130,17 +130,19 @@ const (
 	ScopeView CharacterScope = iota
 	ScopeHP
 	ScopeConditions
+	// ScopeSources re-points what a character uses to another compendium source.
+	ScopeSources
 	ScopeSheet
 )
 
 // CanCharacter applies the permissions table: a player has full control of
 // their own character and nothing else; the GM views every character and
-// edits only HP and conditions.
+// edits only HP, conditions and sources.
 func CanCharacter(v Viewer, characterID int64, scope CharacterScope) bool {
 	if v.owns(characterID) {
 		return true
 	}
-	return v.IsGM && scope <= ScopeConditions
+	return v.IsGM && scope <= ScopeSources
 }
 
 // CanDeleteCharacter reports whether v may delete a character: its player

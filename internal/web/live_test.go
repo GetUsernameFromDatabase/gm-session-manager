@@ -13,6 +13,7 @@ import (
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
@@ -192,6 +193,37 @@ func TestLiveRefetchStrips(t *testing.T) {
 	}
 }
 
+// outrankPin gives the fixture's character a feat pinned to a copy that a
+// newer source outranks, so its sheet shows the sources alert.
+func (f liveFixture) outrankPin(t *testing.T) {
+	t.Helper()
+	f.source(t, oldSrc, "2014")
+	f.feat(t, oldSrc, "tough", "old")
+	f.setSheet(t, dnd5e.Sheet{Feats: []string{"Tough"}, FeatSources: map[string]string{"tough": oldSrc}})
+	f.source(t, newSrc, "2024")
+	f.feat(t, newSrc, "tough", "new")
+}
+
+// TestLiveSourcesAlert checks who sees the "Review sources" alert on a sheet
+// with an outranked pin: the owner and the GM, not another player.
+func TestLiveSourcesAlert(t *testing.T) {
+	f := newLiveFixture(t)
+	f.outrankPin(t)
+	view := views.LiveKey(views.LiveCharacter, f.characterID)
+	if !f.app.Affects(view, []hub.Topic{{Kind: hub.TopicCompendium}}) {
+		t.Error("a compendium change does not refetch the sheet")
+	}
+	for name, cookie := range map[string]string{"owner": f.token(t, auth.RolePlayer), "GM": f.token(t, auth.RoleAdmin)} {
+		b := f.do(t, http.MethodGet, "/live?v="+url.QueryEscape(view), cookie, nil, true).Body.String()
+		if !strings.Contains(b, "1 source to review") || !strings.Contains(b, "Review sources") {
+			t.Errorf("%s misses the alert: %s", name, b)
+		}
+	}
+	if _, ok := f.state(t, f.outsider, f.outsiderCampaign, view); ok {
+		t.Error("another player can load the sheet")
+	}
+}
+
 var (
 	liveAttr = regexp.MustCompile(`data-live="([^"]+)"`)
 	bindAttr = regexp.MustCompile(`data-bind="([^"]+)"`)
@@ -203,6 +235,7 @@ var (
 // a state key nothing binds would refetch on every change.
 func TestLiveBindsMatchState(t *testing.T) {
 	f := newLiveFixture(t)
+	f.outrankPin(t) // the sheets show the sources alert, which binds nothing
 	player := f.token(t, auth.RolePlayer)
 	gm := f.token(t, auth.RoleAdmin)
 	for _, c := range []string{"maxhp =12", "hp =0", "temp 3", "slot max 1 2", "exhaustion +1", "toggle prone", "deathsave fail", "feature add Lucky", "feature set Lucky uses=prof"} {

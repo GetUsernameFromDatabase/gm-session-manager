@@ -74,7 +74,7 @@ func NewFiveToolsView(books []compendium.Book, downloaded map[string]time.Time) 
 }
 
 // copyLabel names an entry's copy in a source for the "Also in" line.
-func copyLabel(c sqlc.ListEntryCopiesRow) string { return c.SourceKey + commaPrefixed(c.Edition) }
+func copyLabel(c sqlc.ListEntryCopiesRow) string { return SourceLabel(c.SourceKey, c.Edition) }
 
 // sourceMoveURL is where a source's priority arrows post.
 func sourceMoveURL(key string) string { return "/compendium/sources/" + url.PathEscape(key) + "/move" }

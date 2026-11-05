@@ -9,12 +9,17 @@ import (
 
 // ClassInfo is what level-up needs from a compendium class.
 type ClassInfo struct {
-	Slug     string
-	Name     string
-	HitDie   int
-	Caster   string
-	Saves    []string
-	Features []ClassFeature
+	Slug string
+	Name string
+	// Source is the compendium copy's source key; SubclassSlug and
+	// SubclassSource are the subclass copy whose SubclassFeatures these are.
+	Source         string
+	SubclassSlug   string
+	SubclassSource string
+	HitDie         int
+	Caster         string
+	Saves          []string
+	Features       []ClassFeature
 	// SubclassFeatures are the features of the character's subclass in it.
 	SubclassFeatures []ClassFeature
 	// Table holds class table columns (Cantrips, Prepared Spells, Rages...)
@@ -329,8 +334,14 @@ func (s Sheet) withClassLevel(class ClassInfo, subclass string) Sheet {
 	s.Classes = slices.Clone(s.Classes)
 	if i := s.classIndex(class.Slug); i >= 0 {
 		s.Classes[i].Level++
+		if s.Classes[i].Source == "" { // an unpinned class pins the copy it levels with
+			s.Classes[i].Source = class.Source
+		}
 		if subclass != "" {
 			s.Classes[i].Subclass = subclass
+		}
+		if s.Classes[i].Subclass != "" && s.Classes[i].SubclassSlug == "" {
+			s.Classes[i].SubclassSlug, s.Classes[i].SubclassSource = class.SubclassSlug, class.SubclassSource
 		}
 		return s
 	}
@@ -338,9 +349,13 @@ func (s Sheet) withClassLevel(class ClassInfo, subclass string) Sheet {
 	if caster == "" {
 		caster = CasterNone
 	}
-	s.Classes = append(s.Classes, ClassLevel{
+	cl := ClassLevel{
 		Slug: class.Slug, Name: class.Name, Subclass: subclass, Level: 1,
-		HitDie: class.HitDie, Caster: caster,
-	})
+		HitDie: class.HitDie, Caster: caster, Source: class.Source,
+	}
+	if subclass != "" {
+		cl.SubclassSlug, cl.SubclassSource = class.SubclassSlug, class.SubclassSource
+	}
+	s.Classes = append(s.Classes, cl)
 	return s
 }

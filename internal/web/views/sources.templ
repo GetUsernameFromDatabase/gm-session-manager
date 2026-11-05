@@ -1,0 +1,150 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/web/components/alert"
+	"gm-session-manager/internal/web/components/badge"
+	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/dialog"
+	"gm-session-manager/internal/web/components/icon"
+)
+
+func (i SourceIssue) previewID(s SheetView) string {
+	return fmt.Sprintf("source-%d-%s-%s", s.ID, i.Kind, i.Slug)
+}
+
+// sourcesAlert warns that pinned compendium copies are missing or outranked,
+// and opens the dialog that switches them.
+templ sourcesAlert(s SheetView) {
+	@alert.Alert(alert.Props{Class: "flex flex-wrap items-center gap-2"}) {
+		<div class="min-w-0 grow basis-48">
+			@alert.Title() {
+				if len(s.SourceIssues) == 1 {
+					1 source to review
+				} else {
+					{ fmt.Sprintf("%d sources to review", len(s.SourceIssues)) }
+				}
+			}
+			@alert.Description() {
+				A pinned book is missing, or a higher-priority copy exists.
+			}
+		</div>
+		@dialog.Dialog() {
+			@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Class: tapSize, Attributes: dialog.Trigger(ctx)}) {
+				Review sources
+			}
+			@dialog.Content(dialog.ContentProps{Class: "max-h-[90vh] overflow-y-auto"}) {
+				@dialog.Header() {
+					@dialog.Title() {
+						Review sources
+					}
+				}
+				<div class="space-y-3">
+					for _, i := range s.SourceIssues {
+						@sourceRow(s, i)
+					}
+				</div>
+				@dialog.Footer() {
+					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.Close(ctx)}) {
+						Close
+					}
+				}
+			}
+		}
+	}
+}
+
+// sourceRow is one pinned ref: its state, a copy to switch to and a preview.
+templ sourceRow(s SheetView, i SourceIssue) {
+	{{ id := i.previewID(s) }}
+	// The preview holds the Confirm form, so it sits outside this form: forms cannot nest.
+	<div class="space-y-2 rounded-lg border p-3">
+		<form class="space-y-2" hx-get={ fmt.Sprintf("/characters/%d/sources/preview", s.ID) } hx-target={ "#" + id } hx-swap="innerHTML">
+			<input type="hidden" name="kind" value={ i.Kind }/>
+			<input type="hidden" name="slug" value={ i.Slug }/>
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="min-w-0 grow basis-48 truncate font-medium">{ i.Name }</span>
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+					{ i.Kind }
+				}
+			</div>
+			<p class="text-sm text-muted-foreground">
+				if i.Missing {
+					{ i.Pinned + " is missing" }
+					if i.Best == "" {
+						{ " (no copy left)" }
+					}
+				} else {
+					{ i.Pinned + " → " + i.Best }
+				}
+			</p>
+			if len(i.Copies) > 0 {
+				<div class="flex flex-wrap items-center gap-2">
+					@formSelect(id+"-source", "source", selectItems(i.Copies, func(c SourceCopy) string { return c.Key }, func(c SourceCopy) string { return c.Label }), i.Best, "w-48 max-w-full", "")
+					@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Type: button.TypeSubmit, Class: tapSize}) {
+						Preview
+					}
+				</div>
+			}
+		</form>
+		<div id={ id } class="min-w-0"></div>
+	</div>
+}
+
+// SourcePreview lists what switching a ref to a source does, with Confirm.
+templ SourcePreview(v SourcePreviewView) {
+	<div class="space-y-2 rounded-md bg-muted/50 p-3 text-sm">
+		<p class="font-medium">{ "Switch " + v.Name + " to " + v.SourceLabel }</p>
+		if len(v.Plan.Replace)+len(v.Plan.Add)+len(v.Plan.Keep) == 0 {
+			<p class="text-muted-foreground">
+				if v.Kind == dnd5e.RefSpell {
+					Name and level refresh from this copy.
+				} else {
+					Only the pin changes.
+				}
+			</p>
+		}
+		@switchList("Replace", v.Plan.Replace, v.SourceLabel)
+		@switchList("Add", v.Plan.Add, v.SourceLabel)
+		@switchList("Keep", v.Plan.Keep, v.SourceLabel)
+		<form
+			hx-post={ fmt.Sprintf("/characters/%d/cmd", v.CharacterID) }
+			hx-on::after-request="if (event.detail.successful) this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click()"
+			data-busy
+			class="group/busy"
+		>
+			<input type="hidden" name="cmd" value={ v.Command }/>
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs, Class: tapSize}) {
+				@icon.Check()
+				Confirm
+			}
+			@busyIndicator("Switching…")
+		</form>
+	</div>
+}
+
+// switchList is one group of a switch plan; empty groups show nothing.
+templ switchList(title string, fs []dnd5e.SwitchFeature, label string) {
+	if len(fs) > 0 {
+		<div>
+			<p class="text-xs font-medium text-muted-foreground uppercase">{ title }</p>
+			<ul class="list-inside list-disc">
+				for _, f := range fs {
+					<li>
+						{ f.Name }
+						if title == "Add" && f.Level > 0 {
+							{ fmt.Sprintf(" (level %d)", f.Level) }
+						}
+						if f.Dropped {
+							{ " (not in " + label + ", removed)" }
+						}
+						if title == "Keep" {
+							{ " (edited, kept)" }
+						}
+					</li>
+				}
+			</ul>
+		</div>
+	}
+}

@@ -246,6 +246,23 @@ func TestDeviceAnnouncements(t *testing.T) {
 	}
 }
 
+func TestCompendiumReachesEveryCampaign(t *testing.T) {
+	h := New(fakeHandler{})
+	gm := NewClient(1, perm.GM, 0, "pc")
+	player := NewClient(2, perm.Player(7), 100, "phone")
+	for _, c := range []*Client{gm, player} {
+		h.register(c)
+		h.sync(c, h.epoch, 0)
+		drain(c)
+	}
+	h.Publish(0, Topic{Kind: TopicCompendium})
+	for name, c := range map[string]*Client{"gm": gm, "player": player} {
+		if m := drain(c); len(m) != 1 || m[0].topics[0].Kind != TopicCompendium {
+			t.Errorf("%s: %+v", name, m)
+		}
+	}
+}
+
 func TestDMGetsEveryCampaignsRequests(t *testing.T) {
 	h := New(fakeHandler{})
 	gm := NewClient(2, perm.GM, 0, "pc")

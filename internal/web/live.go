@@ -80,6 +80,9 @@ func (a *App) Affects(view string, topics []hub.Topic) bool {
 		// The roster shows every character's hit points.
 		case k.kind == views.LiveRoster && t.Kind == hub.TopicCharacter:
 			return true
+		// An import, priority move or book removal can change the sheet's source warning.
+		case k.kind == views.LiveCharacter && t.Kind == hub.TopicCompendium:
+			return true
 		// Trackers show NPC portraits, which change through their NPC.
 		case (k.kind == views.LiveEncounter || k.kind == views.LivePlayerCombat) && t.Kind == hub.TopicEntity:
 			return true

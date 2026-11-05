@@ -404,7 +404,7 @@ func addResistance(s *dnd5e.Sheet, damage string) {
 // choices and Origin feat, and collects the cantrips its other traits grant.
 func (a *App) speciesChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, campaignID int64) error {
 	species := sh.Species
-	parts, err := a.speciesParts(ctx, species)
+	parts, err := a.speciesParts(ctx, sh)
 	if err != nil {
 		return err
 	}
@@ -460,13 +460,13 @@ func (a *App) speciesChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, 
 	return nil
 }
 
-// speciesParts are the traits of the compendium species of this name; none
-// when it has no entry (homebrew typed by hand).
-func (a *App) speciesParts(ctx context.Context, species string) ([]compendium.NameDesc, error) {
-	if species == "" {
+// speciesParts are the traits of the sheet's compendium species (its pinned
+// copy); none when it has no entry (homebrew typed by hand).
+func (a *App) speciesParts(ctx context.Context, sh dnd5e.Sheet) ([]compendium.NameDesc, error) {
+	if sh.Species == "" {
 		return nil, nil
 	}
-	td, err := a.textEntry(ctx, compendium.KindSpecies, compendium.Slugify(species))
+	td, _, err := a.textEntrySource(ctx, compendium.KindSpecies, compendium.Slugify(sh.Species), sh.SpeciesSource)
 	if err != nil || td == nil {
 		return nil, err
 	}
@@ -477,7 +477,7 @@ func (a *App) speciesParts(ctx context.Context, species string) ([]compendium.Na
 // level ("Level 3" and "Level 5" columns) whose free cast it lacks; one
 // already known from the class list still owes its free cast.
 func (a *App) lineageSpells(ctx context.Context, sh dnd5e.Sheet, level int, campaignID int64) ([]dnd5e.Spell, error) {
-	parts, err := a.speciesParts(ctx, sh.Species)
+	parts, err := a.speciesParts(ctx, sh)
 	if err != nil {
 		return nil, err
 	}
@@ -570,14 +570,16 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 	key := "trait_" + compendium.Slugify(p.Name)
 	var opts []compendium.NameDesc
 	sub := map[string][]choiceGroup{}
+	sources := map[string]string{}
 	for _, n := range names {
-		td, err := a.textEntry(ctx, compendium.KindFeat, n.Slug)
+		td, source, err := a.textEntrySource(ctx, compendium.KindFeat, n.Slug, "")
 		if err != nil {
 			return choiceGroup{}, false, err
 		}
 		if td == nil || td.Category != "Origin" || !meetsPrerequisite(td.Prerequisite, sh, sh.Level(), nil) {
 			continue
 		}
+		sources[n.Name] = source
 		opts = append(opts, compendium.NameDesc{Name: n.Name, Desc: textMarkdown(td)})
 		groups, err := a.featChoices(ctx, key+"_"+n.Slug, n.Name, td, "", sh, campaignID)
 		if err != nil {
@@ -594,24 +596,45 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 	return choiceGroup{g, func(s *dnd5e.Sheet, picked []string) {
 		o := opts[slices.IndexFunc(opts, func(o compendium.NameDesc) bool { return o.Name == picked[0] })]
 		addFeat(s, dnd5e.Feature{Name: o.Name, Source: "Feat", Description: o.Desc})
+		pinFeat(s, o.Name, sources[o.Name])
 	}, sub}, true, nil
 }
 
 // textEntry is the compendium species, background or feat with this slug;
 // nil when it has none.
 func (a *App) textEntry(ctx context.Context, kind compendium.Kind, slug string) (*compendium.TextData, error) {
-	row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(kind), Slug: slug})
+	td, _, err := a.textEntrySource(ctx, kind, slug, "")
+	return td, err
+}
+
+// textEntrySource is textEntry for a ref pinned to pin (see entryFor), with
+// the entry's source key, for pinning.
+func (a *App) textEntrySource(ctx context.Context, kind compendium.Kind, slug, pin string) (*compendium.TextData, string, error) {
+	row, _, err := entryFor(ctx, a.Store.Queries, kind, slug, pin)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+		return nil, "", nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	d, err := compendium.DecodeData(kind, row.DataJson)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return d.(*compendium.TextData), nil
+	return d.(*compendium.TextData), row.SourceKey, nil
+}
+
+// pinFeat records the source of the feat's compendium copy; the key is the
+// feat's slug without a "(choice)" suffix.
+func pinFeat(s *dnd5e.Sheet, name, source string) {
+	if source == "" {
+		return
+	}
+	if s.FeatSources == nil {
+		s.FeatSources = map[string]string{}
+	}
+	base, _, _ := strings.Cut(name, " (")
+	s.FeatSources[compendium.Slugify(base)] = source
 }
 
 // backgroundFeatChoices are the choices inside the feat the background
@@ -620,7 +643,7 @@ func (a *App) backgroundFeatChoices(ctx context.Context, sh dnd5e.Sheet, campaig
 	if sh.Background == "" {
 		return nil, nil
 	}
-	bg, err := a.textEntry(ctx, compendium.KindBackground, compendium.Slugify(sh.Background))
+	bg, _, err := a.textEntrySource(ctx, compendium.KindBackground, compendium.Slugify(sh.Background), sh.BackgroundSource)
 	if err != nil || bg == nil {
 		return nil, err
 	}
@@ -630,7 +653,8 @@ func (a *App) backgroundFeatChoices(ctx context.Context, sh dnd5e.Sheet, campaig
 			continue
 		}
 		name, list := featList(full)
-		td, err := a.textEntry(ctx, compendium.KindFeat, compendium.Slugify(name))
+		slug := compendium.Slugify(name)
+		td, _, err := a.textEntrySource(ctx, compendium.KindFeat, slug, sh.FeatSources[slug])
 		if err != nil || td == nil {
 			return nil, err
 		}
@@ -849,7 +873,7 @@ func (a *App) featSpellGroups(ctx context.Context, key, name, class string, cant
 			continue
 		}
 		byLevel[r.Level] = append(byLevel[r.Level], compendium.NameDesc{Name: r.Name})
-		spells[r.Name] = dnd5e.Spell{Slug: r.Slug, Name: r.Name, Level: int(r.Level), Feat: name}
+		spells[r.Name] = dnd5e.Spell{Slug: r.Slug, Name: r.Name, Source: r.SourceKey, Level: int(r.Level), Feat: name}
 	}
 	add := func(s *dnd5e.Sheet, picked []string) {
 		for _, n := range picked {
@@ -900,7 +924,7 @@ func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet, taught []dnd
 			for _, r := range rows {
 				if int(r.Level) == old.Level && !slices.ContainsFunc(known, func(h dnd5e.Spell) bool { return h.Slug == r.Slug }) {
 					with = append(with, compendium.NameDesc{Name: r.Name})
-					spells[r.Name] = dnd5e.Spell{Slug: r.Slug, Name: r.Name, Level: int(r.Level)}
+					spells[r.Name] = dnd5e.Spell{Slug: r.Slug, Name: r.Name, Source: r.SourceKey, Level: int(r.Level)}
 				}
 			}
 			if len(with) == 0 {
@@ -1008,14 +1032,10 @@ func skillPick(p compendium.NameDesc) (choiceGroup, bool) {
 // (Eldritch Invocation Options) as many as its table column gives.
 func (a *App) classChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, campaignID int64) error {
 	cl := sh.Classes[0]
-	row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindClass), Slug: cl.Slug})
+	info, _, err := classEntry(ctx, a.Store.Queries, cl.Slug, cl.Source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	info, err := classInfo(row)
 	if err != nil {
 		return err
 	}
@@ -1423,6 +1443,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if step == "species" {
 			return once(func(s *dnd5e.Sheet, _ *dnd5e.Character) error {
 				applySpecies(s, row.Name, td)
+				s.SpeciesSource = row.SourceKey
 				return nil
 			}), nil
 		}
@@ -1430,12 +1451,19 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if err != nil {
 			return nil, err
 		}
-		feat, err := a.originFeat(ctx, td)
+		feat, featSource, err := a.originFeat(ctx, td)
 		if err != nil {
 			return nil, err
 		}
 		return once(func(s *dnd5e.Sheet, _ *dnd5e.Character) error {
-			return applyBackground(s, row.Name, td, raises, feat)
+			if err := applyBackground(s, row.Name, td, raises, feat); err != nil {
+				return err
+			}
+			s.BackgroundSource = row.SourceKey
+			if feat != nil {
+				pinFeat(s, feat.Name, featSource)
+			}
+			return nil
 		}), nil
 	case "abilities":
 		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
@@ -1620,23 +1648,24 @@ func backgroundRaises(c *gin.Context, allowed []string) (map[string]int, error) 
 }
 
 // originFeat is the background's feat from the compendium, if it is there.
-func (a *App) originFeat(ctx context.Context, d *compendium.TextData) (*dnd5e.Feature, error) {
+// The second result is the feat's source key ("" when it has no entry).
+func (a *App) originFeat(ctx context.Context, d *compendium.TextData) (*dnd5e.Feature, string, error) {
 	for _, p := range d.Parts {
 		if p.Type != "feat" {
 			continue
 		}
 		name, _, _ := strings.Cut(p.Desc, " (")
-		td, err := a.textEntry(ctx, compendium.KindFeat, compendium.Slugify(name))
+		td, source, err := a.textEntrySource(ctx, compendium.KindFeat, compendium.Slugify(name), "")
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		f := &dnd5e.Feature{Name: strings.TrimSpace(p.Desc), Source: "Feat"}
 		if td != nil {
 			f.Description = textMarkdown(td)
 		}
-		return f, nil
+		return f, source, nil
 	}
-	return nil, nil
+	return nil, "", nil
 }
 
 func applyBackground(s *dnd5e.Sheet, name string, d *compendium.TextData, raises map[string]int, feat *dnd5e.Feature) error {
@@ -1703,7 +1732,7 @@ func (a *App) gearFor(ctx context.Context, picked []compendium.EquipmentOption) 
 				g.shield = true
 			case item.Armor != nil && g.armor == nil:
 				ar := item.Armor
-				g.armor = &dnd5e.WornArmor{Slug: e.Slug, Name: e.Name, Type: ar.Type, Base: ar.Base, AddDex: ar.AddDex, DexCap: ar.DexCap, StrReq: ar.StrReq, Stealth: ar.Stealth}
+				g.armor = &dnd5e.WornArmor{Slug: e.Slug, Name: e.Name, Source: e.SourceKey, Type: ar.Type, Base: ar.Base, AddDex: ar.AddDex, DexCap: ar.DexCap, StrReq: ar.StrReq, Stealth: ar.Stealth}
 			}
 		}
 	}

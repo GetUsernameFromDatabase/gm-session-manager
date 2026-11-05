@@ -111,6 +111,7 @@ func (a *App) Router() *gin.Engine {
 	// Characters.
 	r.GET("/characters/:character", a.characterPage)
 	r.POST("/characters/:character/cmd", a.characterCommand)
+	r.GET("/characters/:character/sources/preview", a.sourcePreview)
 	r.GET("/characters/:character/builder", a.commandBuilder)
 	r.GET("/characters/:character/picks", a.builderPicks)
 	r.GET("/characters/:character/complete", a.commandCompletions)

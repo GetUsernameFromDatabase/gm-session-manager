@@ -40,6 +40,8 @@ const (
 	TopicEntity   TopicKind = "entity"
 	// TopicPending: a join request changed state.
 	TopicPending TopicKind = "pending"
+	// TopicCompendium: books or source priority changed, for every campaign.
+	TopicCompendium TopicKind = "compendium"
 )
 
 // Topic is one thing that changed.
@@ -259,10 +261,13 @@ func (h *Hub) sync(c *Client, epoch string, seq uint64) {
 	h.enqueueLocked(c, message{topics: topics, seq: h.seq, hello: true})
 }
 
-// receives reports whether c gets an event: its own campaign's, and for the
-// GM every campaign's join requests, shown on whatever page they are on.
+// receives reports whether c gets an event: its own campaign's, compendium
+// changes (shared by all campaigns), and for the GM every campaign's join
+// requests, shown on whatever page they are on.
 func (c *Client) receives(campaignID int64, topics []Topic) bool {
-	return c.CampaignID == campaignID || c.Viewer.IsGM && slices.ContainsFunc(topics, func(t Topic) bool { return t.Kind == TopicPending })
+	return c.CampaignID == campaignID ||
+		slices.ContainsFunc(topics, func(t Topic) bool { return t.Kind == TopicCompendium }) ||
+		c.Viewer.IsGM && slices.ContainsFunc(topics, func(t Topic) bool { return t.Kind == TopicPending })
 }
 
 func (h *Hub) enqueueLocked(c *Client, m message) {

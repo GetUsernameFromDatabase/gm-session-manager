@@ -32,7 +32,11 @@ type Command struct {
 	// PrepareCaps is set when the command needs the classes' prepared-spell
 	// totals; the caller resolves them into Env.PreparedCaps before Apply.
 	PrepareCaps bool
-	apply       func(c *Character, env Env, fx *Effects) error
+	// SourceRef is set when the command re-points a ref to another source;
+	// the caller resolves Env.SourceOld and Env.SourceNew (a class or
+	// subclass) or Env.SourceSpell before Apply.
+	SourceRef SourceRef
+	apply     func(c *Character, env Env, fx *Effects) error
 }
 
 // Env carries what a command needs from outside the character.
@@ -48,6 +52,12 @@ type Env struct {
 	// PreparedCaps are the prepared-spell totals by class slug, for
 	// Command.PrepareCaps; a class without an entry has no cap.
 	PreparedCaps map[string]int
+	// SourceOld and SourceNew are the class (with the subclass's features)
+	// in the pinned copy and in Command.SourceRef's; SourceOld is nil when
+	// the pinned copy is gone. SourceSpell is the spell in the new copy.
+	SourceOld   *ClassInfo
+	SourceNew   ClassInfo
+	SourceSpell Spell
 }
 
 // NewCommand wraps a change built by code instead of parsed from text, for
@@ -118,6 +128,7 @@ func (c Character) clone() Character {
 	s.Inventory = slices.Clone(s.Inventory)
 	s.Features = slices.Clone(s.Features)
 	s.Feats = slices.Clone(s.Feats)
+	s.FeatSources = maps.Clone(s.FeatSources)
 	s.Weapons = slices.Clone(s.Weapons)
 	s.Modifiers = slices.Clone(s.Modifiers)
 	s.SetupDone = slices.Clone(s.SetupDone)
@@ -290,7 +301,24 @@ func init() {
 		"restore":     func(args []string) (Command, error) { return parseUse(args, true) },
 		"armor":       parseArmor,
 		"shield":      parseShield,
+		"source":      parseSource,
 	}
+}
+
+// parseSource re-points a compendium ref to another source:
+// source <kind> <slug> <source>.
+func parseSource(args []string) (Command, error) {
+	usage := "source " + strings.Join(RefKinds, "|") + " <slug> <source>"
+	if err := want(args, 3, usage); err != nil {
+		return Command{}, err
+	}
+	ref := SourceRef{Kind: strings.ToLower(args[0]), Slug: strings.ToLower(args[1]), Source: args[2]}
+	if !slices.Contains(RefKinds, ref.Kind) {
+		return Command{}, fmt.Errorf("usage: %s", usage)
+	}
+	cmd := scoped(perm.ScopeSources, func(c *Character, env Env, _ *Effects) error { return c.SwitchSource(ref, env) })
+	cmd.SourceRef = ref
+	return cmd, nil
 }
 
 // Amount is an HP-style change: a delta, or a set when set is true. Parse

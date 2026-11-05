@@ -125,6 +125,13 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 		return views.SheetView{}, err
 	}
 	canSheet := perm.CanCharacter(v, row.ID, perm.ScopeSheet)
+	canSources := perm.CanCharacter(v, row.ID, perm.ScopeSources)
+	var issues []views.SourceIssue
+	if canSources {
+		if issues, err = a.sourceIssues(ctx, sheet, row.CampaignID); err != nil {
+			return views.SheetView{}, err
+		}
+	}
 	return views.SheetView{
 		ID: row.ID, CampaignID: row.CampaignID, Conditions: conds, Looks: perm.VisibleLooks(v, row.ID, looks), SpellData: spells,
 		C:             dnd5e.Character{Name: row.Name, HP: int(row.Hp), MaxHP: int(row.MaxHp), TempHP: int(row.TempHp), Sheet: sheet},
@@ -132,10 +139,14 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 		CanConditions: perm.CanCharacter(v, row.ID, perm.ScopeConditions),
 		CanSheet:      canSheet,
 		CanRevert:     canSheet && levelUps > 0,
+		CanSources:    canSources,
+		SourceIssues:  issues,
 	}, nil
 }
 
-// sheetSpells are the compendium details of the sheet's spells, by slug.
+// sheetSpells are the compendium details of the sheet's spells, by slug:
+// the priority copies in one query, and a pinned copy per spell pinned to
+// another source while it exists.
 func (a *App) sheetSpells(ctx context.Context, sheet dnd5e.Sheet) (map[string]*compendium.SpellData, error) {
 	if len(sheet.Spells) == 0 {
 		return nil, nil
@@ -148,16 +159,34 @@ func (a *App) sheetSpells(ctx context.Context, sheet dnd5e.Sheet) (map[string]*c
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]*compendium.SpellData{}
+	best := map[string]sqlc.ListCompendiumBySlugsRow{}
 	for _, r := range rows {
-		if _, seen := out[r.Slug]; seen {
-			continue // rows come first-choice first, as GetCompendiumEntryBySlug picks
+		best[r.Slug] = r
+	}
+	out := map[string]*compendium.SpellData{}
+	for _, sp := range sheet.Spells {
+		if _, seen := out[sp.Slug]; seen {
+			continue
 		}
-		d, err := compendium.DecodeData(compendium.KindSpell, r.DataJson)
+		r, ok := best[sp.Slug]
+		data := r.DataJson
+		if sp.Source != "" && sp.Source != r.SourceKey {
+			e, err := a.Store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(compendium.KindSpell), Slug: sp.Slug, SourceKey: sp.Source})
+			switch {
+			case err == nil:
+				data, ok = e.DataJson, true
+			case !errors.Is(err, sql.ErrNoRows):
+				return nil, err
+			}
+		}
+		if !ok {
+			continue
+		}
+		d, err := compendium.DecodeData(compendium.KindSpell, data)
 		if err != nil {
 			return nil, err
 		}
-		out[r.Slug] = d.(*compendium.SpellData)
+		out[sp.Slug] = d.(*compendium.SpellData)
 	}
 	return out, nil
 }

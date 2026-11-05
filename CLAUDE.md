@@ -35,7 +35,7 @@ See [Project layout](README.md#project-layout) in README.md.
 | Thing | GM | Player |
 |---|---|---|
 | Own character | n/a | full edit (via commands) |
-| Other characters | view; edit HP and conditions only | none |
+| Other characters | view; edit HP, conditions and sources | none |
 | Monster HP in combat | always | hidden unless the GM toggles `hp_visible` |
 | Entities | all fields | revealed entities, revealed fields only |
 

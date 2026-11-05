@@ -207,6 +207,15 @@ func (a *App) characterCommand(c *gin.Context) {
 func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Command) error {
 	var env dnd5e.Env
 	var err error
+	if cmd.SourceRef.Kind != "" {
+		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
+		if err != nil {
+			return err
+		}
+		if env, _, err = a.sourceEnv(ctx, sheet, cmd.SourceRef, ch.CampaignID); err != nil {
+			return err
+		}
+	}
 	if cmd.SpellSlug != "" {
 		if env.Spell, err = a.compendiumSpell(ctx, cmd.SpellSlug, ch.CampaignID); err != nil {
 			return userError{err}
@@ -255,14 +264,10 @@ func (a *App) preparedCaps(ctx context.Context, ch sqlc.Character) (map[string]i
 	}
 	caps := map[string]int{}
 	for _, cl := range sheet.Classes {
-		row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindClass), Slug: cl.Slug})
+		info, _, err := classEntry(ctx, a.Store.Queries, cl.Slug, cl.Source)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
-		if err != nil {
-			return nil, err
-		}
-		info, err := classInfo(row)
 		if err != nil {
 			return nil, err
 		}
@@ -384,7 +389,7 @@ func (a *App) compendiumArmor(ctx context.Context, slug string, campaignID int64
 	case ar.Type == compendium.ArmorShield:
 		return dnd5e.WornArmor{}, true, nil
 	}
-	return dnd5e.WornArmor{Slug: row.Slug, Name: row.Name, Type: ar.Type, Base: ar.Base, AddDex: ar.AddDex, DexCap: ar.DexCap, StrReq: ar.StrReq, Stealth: ar.Stealth}, false, nil
+	return dnd5e.WornArmor{Slug: row.Slug, Name: row.Name, Source: row.SourceKey, Type: ar.Type, Base: ar.Base, AddDex: ar.AddDex, DexCap: ar.DexCap, StrReq: ar.StrReq, Stealth: ar.Stealth}, false, nil
 }
 
 func (a *App) compendiumSpell(ctx context.Context, slug string, campaignID int64) (dnd5e.Spell, error) {
@@ -395,11 +400,16 @@ func (a *App) compendiumSpell(ctx context.Context, slug string, campaignID int64
 	if err != nil {
 		return dnd5e.Spell{}, err
 	}
+	return spellFromRow(row)
+}
+
+// spellFromRow is a compendium spell as the sheet stores it.
+func spellFromRow(row sqlc.CompendiumEntry) (dnd5e.Spell, error) {
 	d, err := compendium.DecodeData(compendium.KindSpell, row.DataJson)
 	if err != nil {
 		return dnd5e.Spell{}, err
 	}
-	return dnd5e.Spell{Slug: row.Slug, Name: row.Name, Level: d.(*compendium.SpellData).Level}, nil
+	return dnd5e.Spell{Slug: row.Slug, Name: row.Name, Source: row.SourceKey, Level: d.(*compendium.SpellData).Level}, nil
 }
 
 // condOwner is the character or combatant a condition belongs to.
@@ -528,7 +538,7 @@ func classInfo(row sqlc.CompendiumEntry) (dnd5e.ClassInfo, error) {
 		return dnd5e.ClassInfo{}, err
 	}
 	cd := d.(*compendium.ClassData)
-	info := dnd5e.ClassInfo{Slug: row.Slug, Name: row.Name, HitDie: cd.HitDie, Caster: cd.Caster, Saves: cd.Saves, Table: cd.Table, Features: classFeatures(cd)}
+	info := dnd5e.ClassInfo{Slug: row.Slug, Name: row.Name, Source: row.SourceKey, HitDie: cd.HitDie, Caster: cd.Caster, Saves: cd.Saves, Table: cd.Table, Features: classFeatures(cd)}
 	if info.HitDie == 0 {
 		info.HitDie = 8 // homebrew classes without a hit die
 	}
@@ -546,33 +556,54 @@ func classFeatures(cd *compendium.ClassData) []dnd5e.ClassFeature {
 // withSubclass adds the features of the class's subclass named name (the
 // sheet's, or the one being chosen) to info; an unknown name adds none.
 func (a *App) withSubclass(ctx context.Context, info *dnd5e.ClassInfo, sheet dnd5e.Sheet, name string) error {
+	var cl dnd5e.ClassLevel
+	if i := slices.IndexFunc(sheet.Classes, func(c dnd5e.ClassLevel) bool { return c.Slug == info.Slug }); i >= 0 {
+		cl = sheet.Classes[i]
+	}
 	if name == "" {
-		for _, cl := range sheet.Classes {
-			if cl.Slug == info.Slug {
-				name = cl.Subclass
-			}
-		}
+		name = cl.Subclass
 	}
 	if name == "" {
 		return nil
 	}
-	subs, err := a.Store.ListSubclassesOf(ctx, info.Slug)
-	if err != nil {
+	slug, pin, err := a.subclassRef(ctx, info.Slug, cl, name)
+	if err != nil || slug == "" {
 		return err
 	}
-	i := slices.IndexFunc(subs, func(s sqlc.ListSubclassesOfRow) bool { return strings.EqualFold(s.Name, name) })
-	if i < 0 {
+	row, _, err := entryFor(ctx, a.Store.Queries, compendium.KindSubclass, slug, pin)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
-	row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindSubclass), Slug: subs[i].Slug})
 	if err != nil {
 		return err
 	}
+	return setSubclass(info, row)
+}
+
+// subclassRef is the slug and pin of classSlug's subclass named name: the
+// sheet's pin when it is cl's subclass, else found by name ("" for none).
+func (a *App) subclassRef(ctx context.Context, classSlug string, cl dnd5e.ClassLevel, name string) (slug, pin string, err error) {
+	if cl.SubclassSlug != "" && strings.EqualFold(name, cl.Subclass) {
+		return cl.SubclassSlug, cl.SubclassSource, nil
+	}
+	subs, err := a.Store.ListSubclassesOf(ctx, classSlug)
+	if err != nil {
+		return "", "", err
+	}
+	if i := slices.IndexFunc(subs, func(s sqlc.ListSubclassesOfRow) bool { return strings.EqualFold(s.Name, name) }); i >= 0 {
+		return subs[i].Slug, "", nil
+	}
+	return "", "", nil
+}
+
+// setSubclass gives info the features and pin of the subclass row.
+func setSubclass(info *dnd5e.ClassInfo, row sqlc.CompendiumEntry) error {
 	d, err := compendium.DecodeData(compendium.KindSubclass, row.DataJson)
 	if err != nil {
 		return err
 	}
 	info.SubclassFeatures = classFeatures(d.(*compendium.ClassData))
+	info.SubclassSlug, info.SubclassSource = row.Slug, row.SourceKey
 	return nil
 }
 
@@ -597,11 +628,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if classSlug == "" {
 		return v, nil
 	}
-	row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindClass), Slug: classSlug})
-	if err != nil {
-		return v, err
-	}
-	info, err := classInfo(row)
+	info, _, err := classEntry(ctx, a.Store.Queries, classSlug, classPin(sheet, classSlug))
 	if err != nil {
 		return v, err
 	}
@@ -846,18 +873,14 @@ func (a *App) levelUp(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindClass), Slug: c.PostForm("class")})
-	if !a.found(c, err) {
-		return
-	}
-	info, err := classInfo(row)
-	if err != nil {
-		a.serverError(c, err)
-		return
-	}
 	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
 	if err != nil {
 		a.serverError(c, err)
+		return
+	}
+	slug := c.PostForm("class")
+	info, _, err := classEntry(ctx, a.Store.Queries, slug, classPin(sheet, slug))
+	if !a.found(c, err) {
 		return
 	}
 	choice := dnd5e.LevelUpChoice{Class: info, Subclass: strings.TrimSpace(c.PostForm("subclass"))}
@@ -874,6 +897,7 @@ func (a *App) levelUp(c *gin.Context) {
 		}
 	}
 	var featErr error
+	var featSource string
 	if slug := c.PostForm("feat"); slug != "" {
 		feat, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindFeat), Slug: slug})
 		switch {
@@ -883,6 +907,7 @@ func (a *App) levelUp(c *gin.Context) {
 			return
 		default:
 			choice.Feat, choice.FeatDesc = feat.Name, feat.BodyText
+			featSource = feat.SourceKey
 		}
 	}
 	// A plan error (level 20) comes back from LevelUp below.
@@ -967,6 +992,9 @@ func (a *App) levelUp(c *gin.Context) {
 					return fieldError{userError{err}, views.FieldASI}
 				}
 				return userError{err}
+			}
+			if choice.Feat != "" {
+				pinFeat(&dc.Sheet, choice.Feat, featSource)
 			}
 			applyPicks(&dc.Sheet, groups, picks)
 			if err := addClassSpells(&dc.Sheet, spells); err != nil {

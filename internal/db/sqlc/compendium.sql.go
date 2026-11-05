@@ -346,6 +346,41 @@ func (q *Queries) GetCompendiumEntryBySlug(ctx context.Context, arg GetCompendiu
 	return i, err
 }
 
+const getCompendiumEntryBySlugSource = `-- name: GetCompendiumEntryBySlugSource :one
+SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, is_homebrew, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries
+WHERE kind = ? AND slug = ? AND source_key = ?
+ORDER BY scoped, id
+LIMIT 1
+`
+
+type GetCompendiumEntryBySlugSourceParams struct {
+	Kind      string
+	Slug      string
+	SourceKey string
+}
+
+// GetCompendiumEntryBySlugSource finds the copy of a slug from one source, as a sheet pins it.
+func (q *Queries) GetCompendiumEntryBySlugSource(ctx context.Context, arg GetCompendiumEntryBySlugSourceParams) (CompendiumEntry, error) {
+	row := q.db.QueryRowContext(ctx, getCompendiumEntryBySlugSource, arg.Kind, arg.Slug, arg.SourceKey)
+	var i CompendiumEntry
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Slug,
+		&i.Name,
+		&i.SourceKey,
+		&i.DataJson,
+		&i.BodyText,
+		&i.ImageUrl,
+		&i.IsHomebrew,
+		&i.ContentHash,
+		&i.ImportedAt,
+		&i.OwnerCharacterID,
+		&i.Scoped,
+	)
+	return i, err
+}
+
 const getCompendiumSource = `-- name: GetCompendiumSource :one
 SELECT source_key, path, hash, edition, license, attribution, last_imported, priority FROM compendium_sources
 WHERE source_key = ?
@@ -475,7 +510,7 @@ func (q *Queries) ListCompendiumByKind(ctx context.Context, arg ListCompendiumBy
 }
 
 const listCompendiumBySlugs = `-- name: ListCompendiumBySlugs :many
-SELECT e.id, e.slug, e.name, e.data_json FROM compendium_entries AS e
+SELECT e.id, e.slug, e.name, e.data_json, e.source_key FROM compendium_entries AS e
 LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ?1 AND e.slug IN (/*SLICE:slugs*/?)
   AND NOT EXISTS (
@@ -492,10 +527,11 @@ type ListCompendiumBySlugsParams struct {
 }
 
 type ListCompendiumBySlugsRow struct {
-	ID       int64
-	Slug     string
-	Name     string
-	DataJson string
+	ID        int64
+	Slug      string
+	Name      string
+	DataJson  string
+	SourceKey string
 }
 
 // ListCompendiumBySlugs reads the entries a sheet links to, in one query: the
@@ -526,6 +562,7 @@ func (q *Queries) ListCompendiumBySlugs(ctx context.Context, arg ListCompendiumB
 			&i.Slug,
 			&i.Name,
 			&i.DataJson,
+			&i.SourceKey,
 		); err != nil {
 			return nil, err
 		}
@@ -750,6 +787,73 @@ func (q *Queries) ListEntryHabitats(ctx context.Context, entryID int64) ([]strin
 			return nil, err
 		}
 		items = append(items, habitat)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEntrySourcesBySlugs = `-- name: ListEntrySourcesBySlugs :many
+SELECT e.id, e.slug, e.source_key, COALESCE(s.edition, '') AS edition
+FROM compendium_entries AS e
+LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+WHERE e.kind = ?1 AND e.slug IN (/*SLICE:slugs*/?)
+  AND (e.scoped = 0 OR EXISTS (
+    SELECT 1 FROM compendium_campaigns AS cc
+    WHERE cc.entry_id = e.id AND cc.campaign_id = ?3))
+ORDER BY e.slug, e.scoped, COALESCE(s.priority, 300), e.id
+`
+
+type ListEntrySourcesBySlugsParams struct {
+	Kind       string
+	Slugs      []string
+	CampaignID int64
+}
+
+type ListEntrySourcesBySlugsRow struct {
+	ID        int64
+	Slug      string
+	SourceKey string
+	Edition   string
+}
+
+// ListEntrySourcesBySlugs lists every copy of the slugs a sheet uses, best
+// first per slug (the first row is the copy priority picks); player homebrew
+// not linked to the campaign is skipped.
+func (q *Queries) ListEntrySourcesBySlugs(ctx context.Context, arg ListEntrySourcesBySlugsParams) ([]ListEntrySourcesBySlugsRow, error) {
+	query := listEntrySourcesBySlugs
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Kind)
+	if len(arg.Slugs) > 0 {
+		for _, v := range arg.Slugs {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:slugs*/?", strings.Repeat(",?", len(arg.Slugs))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:slugs*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.CampaignID)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEntrySourcesBySlugsRow{}
+	for rows.Next() {
+		var i ListEntrySourcesBySlugsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.SourceKey,
+			&i.Edition,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -997,7 +1101,7 @@ func (q *Queries) ListMonstersByName(ctx context.Context, filter string) ([]List
 }
 
 const listSpellsForClass = `-- name: ListSpellsForClass :many
-SELECT id, slug, name, CAST(json_extract(data_json, '$.level') AS INTEGER) AS level
+SELECT id, slug, name, source_key, CAST(json_extract(data_json, '$.level') AS INTEGER) AS level
 FROM compendium_entries
 WHERE kind = 'spell' AND id IN (SELECT id FROM compendium_top)
   AND CAST(json_extract(data_json, '$.level') AS INTEGER) <= CAST(?1 AS INTEGER)
@@ -1011,10 +1115,11 @@ type ListSpellsForClassParams struct {
 }
 
 type ListSpellsForClassRow struct {
-	ID    int64
-	Slug  string
-	Name  string
-	Level int64
+	ID        int64
+	Slug      string
+	Name      string
+	SourceKey string
+	Level     int64
 }
 
 func (q *Queries) ListSpellsForClass(ctx context.Context, arg ListSpellsForClassParams) ([]ListSpellsForClassRow, error) {
@@ -1030,6 +1135,7 @@ func (q *Queries) ListSpellsForClass(ctx context.Context, arg ListSpellsForClass
 			&i.ID,
 			&i.Slug,
 			&i.Name,
+			&i.SourceKey,
 			&i.Level,
 		); err != nil {
 			return nil, err

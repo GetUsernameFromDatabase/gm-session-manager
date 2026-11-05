@@ -582,6 +582,7 @@ func (a *App) compendiumImport(c *gin.Context) {
 		return
 	}
 	msg, failed := ImportSummary(reports)
+	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium}) // global: no campaign
 	a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabFolder, Msg: msg, Failed: failed})
 }
 

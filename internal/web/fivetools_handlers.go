@@ -13,6 +13,7 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -111,6 +112,7 @@ func (a *App) fiveToolsImport(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
+	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
 	notice.Msg, notice.Failed = ImportSummary(reports)
 	a.renderCompendium(c, notice)
 }
@@ -133,6 +135,7 @@ func (a *App) fiveToolsRemove(c *gin.Context) {
 		a.renderFiveTools(c, "Could not remove "+id+": "+err.Error(), true)
 		return
 	}
+	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
 	a.renderFiveTools(c, "Removed "+id+".", false)
 }
 
@@ -158,6 +161,7 @@ func (a *App) sourceMove(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
+	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
 	sources, err := a.Store.ListCompendiumSources(ctx)
 	if err != nil {
 		a.serverError(c, err)

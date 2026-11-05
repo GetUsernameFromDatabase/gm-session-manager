@@ -49,6 +49,26 @@ WHERE e.kind = ? AND e.slug = ?
 ORDER BY e.scoped, COALESCE(s.priority, 300), e.id
 LIMIT 1;
 
+-- GetCompendiumEntryBySlugSource finds the copy of a slug from one source, as a sheet pins it.
+-- name: GetCompendiumEntryBySlugSource :one
+SELECT * FROM compendium_entries
+WHERE kind = ? AND slug = ? AND source_key = ?
+ORDER BY scoped, id
+LIMIT 1;
+
+-- ListEntrySourcesBySlugs lists every copy of the slugs a sheet uses, best
+-- first per slug (the first row is the copy priority picks); player homebrew
+-- not linked to the campaign is skipped.
+-- name: ListEntrySourcesBySlugs :many
+SELECT e.id, e.slug, e.source_key, COALESCE(s.edition, '') AS edition
+FROM compendium_entries AS e
+LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+WHERE e.kind = sqlc.arg(kind) AND e.slug IN (sqlc.slice(slugs))
+  AND (e.scoped = 0 OR EXISTS (
+    SELECT 1 FROM compendium_campaigns AS cc
+    WHERE cc.entry_id = e.id AND cc.campaign_id = sqlc.arg(campaign_id)))
+ORDER BY e.slug, e.scoped, COALESCE(s.priority, 300), e.id;
+
 -- GetCompendiumEntryByName finds an entry by name in any case, as an
 -- inventory names its items.
 -- name: GetCompendiumEntryByName :one
@@ -198,7 +218,7 @@ GROUP BY kind
 ORDER BY kind;
 
 -- name: ListSpellsForClass :many
-SELECT id, slug, name, CAST(json_extract(data_json, '$.level') AS INTEGER) AS level
+SELECT id, slug, name, source_key, CAST(json_extract(data_json, '$.level') AS INTEGER) AS level
 FROM compendium_entries
 WHERE kind = 'spell' AND id IN (SELECT id FROM compendium_top)
   AND CAST(json_extract(data_json, '$.level') AS INTEGER) <= CAST(sqlc.arg(max_level) AS INTEGER)
@@ -223,7 +243,7 @@ ORDER BY name;
 -- copy compendium_top would pick, found through the (kind, slug) index
 -- instead of ranking the whole compendium on every sheet render.
 -- name: ListCompendiumBySlugs :many
-SELECT e.id, e.slug, e.name, e.data_json FROM compendium_entries AS e
+SELECT e.id, e.slug, e.name, e.data_json, e.source_key FROM compendium_entries AS e
 LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = sqlc.arg(kind) AND e.slug IN (sqlc.slice(slugs))
   AND NOT EXISTS (

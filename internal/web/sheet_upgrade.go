@@ -31,7 +31,7 @@ func UpgradeSheets(ctx context.Context, store *db.Store) (int, error) {
 				continue // an unreadable sheet stays as it is
 			}
 			for _, cl := range sheet.Classes {
-				info, err := upgradeClass(ctx, q, classes, cl.Slug)
+				info, err := upgradeClass(ctx, q, classes, cl)
 				if err != nil {
 					return err
 				}
@@ -42,7 +42,7 @@ func UpgradeSheets(ctx context.Context, store *db.Store) (int, error) {
 			// Version 2: sheets made before creation set resistances. One with
 			// some already was made since, or set by hand.
 			if sheet.EffectsVersion < 2 && len(sheet.Resistances) == 0 {
-				parts, err := upgradeSpecies(ctx, q, sheet.Species)
+				parts, err := upgradeSpecies(ctx, q, sheet)
 				if err != nil {
 					return err
 				}
@@ -64,13 +64,13 @@ func UpgradeSheets(ctx context.Context, store *db.Store) (int, error) {
 	return changed, err
 }
 
-// upgradeSpecies is a species' traits; none when the compendium no longer
-// has it.
-func upgradeSpecies(ctx context.Context, q *sqlc.Queries, species string) ([]compendium.NameDesc, error) {
-	if species == "" {
+// upgradeSpecies is the sheet's species' traits; none when the compendium
+// no longer has it.
+func upgradeSpecies(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet) ([]compendium.NameDesc, error) {
+	if sheet.Species == "" {
 		return nil, nil
 	}
-	row, err := q.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindSpecies), Slug: compendium.Slugify(species)})
+	row, _, err := entryFor(ctx, q, compendium.KindSpecies, compendium.Slugify(sheet.Species), sheet.SpeciesSource)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -117,24 +117,21 @@ func catchUpResistances(s *dnd5e.Sheet, parts []compendium.NameDesc) bool {
 	return len(s.Resistances) > before
 }
 
-// upgradeClass looks a class up once per upgrade; nil when the compendium
-// no longer has it.
-func upgradeClass(ctx context.Context, q *sqlc.Queries, cache map[string]*dnd5e.ClassInfo, slug string) (*dnd5e.ClassInfo, error) {
-	if info, ok := cache[slug]; ok {
+// upgradeClass looks a class's pinned copy up once per upgrade; nil when
+// the compendium no longer has it.
+func upgradeClass(ctx context.Context, q *sqlc.Queries, cache map[string]*dnd5e.ClassInfo, cl dnd5e.ClassLevel) (*dnd5e.ClassInfo, error) {
+	key := cl.Slug + "|" + cl.Source
+	if info, ok := cache[key]; ok {
 		return info, nil
 	}
-	row, err := q.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindClass), Slug: slug})
+	info, _, err := classEntry(ctx, q, cl.Slug, cl.Source)
 	if errors.Is(err, sql.ErrNoRows) {
-		cache[slug] = nil
+		cache[key] = nil
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	info, err := classInfo(row)
-	if err != nil {
-		return nil, err
-	}
-	cache[slug] = &info
+	cache[key] = &info
 	return &info, nil
 }
