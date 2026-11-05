@@ -195,7 +195,7 @@ func TestLevelUpLineage(t *testing.T) {
 			}
 			form = url.Values{"class": {"testlock"}, change: {"Test Ward"}, change + "_test-ward": {"Faerie Fire"}}
 			w := e.do(t, http.MethodPost, base, player, form, false)
-			if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || !errorAt(body, change+"_test-ward") || strings.Count(body, `aria-invalid="true"`) != 1 || len(lostPicks(body, form)) > 0 {
+			if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || !errorAt(body, change+"_test-ward") || strings.Count(body, `aria-invalid="true"`) != 1 || strings.Count(body, `aria-describedby="error-`+change+`_test-ward"`) != 1 || len(lostPicks(body, form)) > 0 {
 				t.Errorf("Faerie Fire as a Spell Change: %d, lost %v", w.Code, lostPicks(body, form))
 			}
 		}

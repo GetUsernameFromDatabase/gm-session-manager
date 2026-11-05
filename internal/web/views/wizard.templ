@@ -419,14 +419,12 @@ func (fe FieldError) describedBy(key string) templ.Attributes {
 
 // radioAttrs labels a single-pick radio group, and marks it invalid when
 // it holds the error (aria-invalid is valid on a radiogroup, not a fieldset).
+// The fieldset links the error already (describedBy), so this does not.
 func (fe FieldError) radioAttrs(key, label string) templ.Attributes {
-	a := fe.describedBy(key)
-	if a == nil {
-		a = templ.Attributes{}
-	} else {
+	a := templ.Attributes{"aria-label": label}
+	if fe.Key == key {
 		a["aria-invalid"] = "true"
 	}
-	a["aria-label"] = label
 	return a
 }
 
