@@ -156,10 +156,12 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 		})
 	}
 
+	sheetMsg := func(m wsMessage) bool { _, ok := patchOf(m, sheet); return ok }
+
 	// HP is bound: only that one value travels.
 	cmd("hp =7")
 	for _, conn := range []*websocket.Conn{gm, phone} {
-		m := readUntil(t, conn, "the hp patch", func(m wsMessage) bool { _, ok := patchOf(m, sheet); return ok })
+		m := readUntil(t, conn, "the hp patch", sheetMsg)
 		if set, _ := patchOf(m, sheet); len(set) != 1 || set["hp"] != "7" {
 			t.Errorf("hp patch %s, want only hp", m.raw)
 		}
@@ -169,8 +171,12 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 	}
 
 	// A feature's uses are bound too: spending one patches just its label.
+	// The hub reads state when it writes, so wait for each change before the
+	// next: otherwise a late refetch already carries the spent use.
 	cmd("feature add Lucky")
+	readUntil(t, phone, "the new feature", sheetMsg)
 	cmd("feature set Lucky uses=1")
+	readUntil(t, phone, "the feature's uses", sheetMsg)
 	cmd("use Lucky")
 	readUntil(t, phone, "the uses patch", func(m wsMessage) bool {
 		set, _ := patchOf(m, sheet)
