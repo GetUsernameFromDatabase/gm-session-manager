@@ -1,0 +1,46 @@
+{
+	"_meta": {"sources": []},
+	"monster": [
+		{
+			"name": "Cat",
+			"source": "XPHB",
+			"page": 349,
+			"size": ["T"],
+			"type": "beast",
+			"alignment": ["U"],
+			"ac": [12],
+			"hp": {"average": 2, "formula": "1d4"},
+			"speed": {"walk": 40, "climb": 40},
+			"str": 3, "dex": 14, "con": 10, "int": 3, "wis": 12, "cha": 7,
+			"skill": {"perception": "+3", "stealth": "+4"},
+			"senses": ["{@sense darkvision|XPHB} 60 ft."],
+			"passive": 13,
+			"cr": "0",
+			"trait": [{"name": "Jumper", "entries": ["The cat's jump distance is determined using its Dexterity."]}],
+			"action": [{"name": "Scratch", "entries": ["{@atkr m} {@hit 4}, reach 5 ft. {@h}1 slashing damage. The target is {@condition grappled|XPHB} by the cat."]}],
+			"hasToken": true,
+			"hasFluffImages": true
+		},
+		{
+			"name": "Mountain Cat",
+			"source": "XPHB",
+			"page": 350,
+			"_copy": {
+				"name": "Cat",
+				"source": "XPHB",
+				"_mod": {
+					"*": {"mode": "replaceTxt", "replace": "the cat", "with": "the mountain cat", "flags": "i"},
+					"action": {"mode": "appendArr", "items": {"name": "Pounce", "entries": ["It casts {@spell Jump|XPHB|a leap}."]}},
+					"trait": {"mode": "removeArr", "names": "Jumper"}
+				}
+			},
+			"size": ["M"],
+			"hp": {"average": 11, "formula": "2d8 + 2"}
+		},
+		{
+			"name": "Owl Spirit",
+			"source": "XPHB",
+			"_copy": {"name": "Owl", "source": "XMM"}
+		}
+	]
+}

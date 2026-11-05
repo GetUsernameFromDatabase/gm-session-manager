@@ -1,0 +1,3 @@
+{"condition":[{"name":"Prone","source":"XPHB","entries":[{"type":"list","items":[{"type":"item","name":"Restricted Movement.","entry":"You can only crawl."}]}]}],
+"disease":[{"name":"Sewer Plague","source":"XPHB","entries":["A generic name for diseases incubated in sewers."]}],
+"status":[{"name":"Concentration","source":"XPHB","entries":["Some spells require you to maintain concentration."]}]}

@@ -192,7 +192,9 @@ type EntityView struct {
 	EntityLinks []sqlc.ListEntityFieldBacklinksRow
 }
 
-func (v EntityView) canOpen(l WikiLink) bool { return v.IsGM || v.Readable[l.Key()] }
+func (v EntityView) canOpen(l WikiLink) bool {
+	return l.Kind != LinkCompendium && (v.IsGM || v.Readable[l.Key()])
+}
 
 // entityGrid is the page's two columns: looks, then fields or mentions.
 const entityGrid = "grid gap-6 md:grid-cols-[2fr_3fr] md:gap-8"

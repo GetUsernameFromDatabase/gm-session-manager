@@ -8,6 +8,7 @@ import (
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/card"
 	"gm-session-manager/internal/web/components/combobox"
 	"gm-session-manager/internal/web/components/empty"
 	"gm-session-manager/internal/web/components/icon"
@@ -45,7 +46,9 @@ type CompendiumView struct {
 	// MyHomebrew is a player's own entries.
 	MyHomebrew []sqlc.ListHomebrewByOwnerRow
 	Import     ImportNotice
-	More       string // URL of the next batch when browsing; "" at the end
+	// Sources are the imported sources in priority order (GM).
+	Sources []sqlc.CompendiumSource
+	More    string // URL of the next batch when browsing; "" at the end
 	// Tab is the page tab to open (CompendiumTab*); "" is Browse.
 	Tab string
 }
@@ -139,6 +142,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 			if v.IsGM {
 				@tabs.Content(tabs.ContentProps{Value: CompendiumTabImport}) {
 					@importTabs(v.Import)
+					@SourcePriority(v.Sources)
 				}
 			}
 		}
@@ -265,10 +269,108 @@ templ homebrewName(id int64, kind, name string) {
 	</span>
 }
 
-// importTabs are the GM's two ways to fill the compendium: data folders on
+// FiveToolsPicker is the book list. Unchecking an imported book does
+// nothing; Remove deletes it with its entries.
+templ FiveToolsPicker(v FiveToolsView) {
+	<form
+		id={ FiveToolsID }
+		method="post"
+		action="/compendium/5etools"
+		class="group/busy space-y-4"
+		data-busy
+		hx-target={ "#" + FiveToolsID }
+		hx-swap="outerHTML"
+	>
+		if v.Msg != "" {
+			@Notice(v.Msg, v.Failed, "")
+		}
+		// The list is long (hundreds of books): it scrolls inside its card.
+		<div class="max-h-[28rem] space-y-4 overflow-y-auto pr-1">
+			for _, g := range v.Groups {
+				<section>
+					<h3 class="mb-1 font-medium">{ g.Title }</h3>
+					<ul class="divide-y rounded-lg border">
+						for _, b := range g.Books {
+							<li class="relative flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+								<div class="min-w-0 grow basis-48">
+									@checkField(FiveToolsField, b.ID, b.Downloaded) {
+										<span class="min-w-0">{ b.Name } <code class="text-xs text-muted-foreground">{ b.ID }</code></span>
+									}
+								</div>
+								if b.Downloaded {
+									if !b.Imported.IsZero() {
+										<span class="text-xs text-muted-foreground">{ "Imported " }@localTime(b.Imported)</span>
+									}
+									// htmx inherits hx-confirm, so the shared button stays as it is.
+									<span class="contents" hx-confirm={ "Remove " + b.Name + " and its entries from the compendium?" }>
+										@removeButton(FiveToolsPath + "/" + b.ID + "/delete")
+									</span>
+								}
+							</li>
+						}
+					</ul>
+				</section>
+			}
+		</div>
+		<div>
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				@icon.Download()
+				Import selected
+			}
+		</div>
+		@busyIndicator("Downloading…")
+	</form>
+}
+
+// SourcePriority orders the sources: the first holding an entry wins its
+// lookups and shows alone in lists.
+templ SourcePriority(sources []sqlc.CompendiumSource) {
+	<div id={ SourcesID } class="mt-6 max-w-2xl">
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					Source priority
+				}
+				@card.Description() {
+					When several sources hold the same entry, the one higher up is shown and used.
+				}
+			}
+			@card.Content() {
+				<ol class="divide-y rounded-lg border text-sm">
+					for i, s := range sources {
+						<li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+							<span class="min-w-0 grow basis-48" title={ s.Attribution }>
+								<span class="font-medium">{ s.SourceKey }</span>
+								<span class="text-xs text-muted-foreground">{ s.Edition }</span>
+							</span>
+							<span class="flex gap-1" hx-target={ "#" + SourcesID } hx-swap="outerHTML">
+								@sourceMoveButton(s.SourceKey, SourceUp, "Move "+s.SourceKey+" up", i == 0)
+								@sourceMoveButton(s.SourceKey, SourceDown, "Move "+s.SourceKey+" down", i == len(sources)-1)
+							</span>
+						</li>
+					}
+				</ol>
+			}
+		}
+	</div>
+}
+
+templ sourceMoveButton(key, dir, label string, disabled bool) {
+	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Disabled: disabled, Attributes: templ.Attributes{
+		"aria-label": label, "title": label, "hx-post": sourceMoveURL(key), "hx-vals": toJSON(map[string]string{SourceDirField: dir}),
+	}}) {
+		if dir == SourceUp {
+			@icon.ArrowUp()
+		} else {
+			@icon.ArrowDown()
+		}
+	}
+}
+
+// importTabs are the GM's three ways to fill the compendium: data folders on
 // the host, and single pages of the compendium.Sites.
 templ importTabs(n ImportNotice) {
-	@tabs.Tabs(tabs.Props{ID: "compendium-import", DefaultValue: utils.IfElse(n.Tab == ImportTabFolder, ImportTabFolder, ImportTabPage)}) {
+	@tabs.Tabs(tabs.Props{ID: "compendium-import", DefaultValue: utils.IfElse(n.Tab == ImportTabFolder || n.Tab == ImportTabFiveTools, n.Tab, ImportTabPage)}) {
 		@tabs.List(tabs.ListProps{Class: "w-fit"}) {
 			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabFolder}) {
 				@icon.FolderOpen()
@@ -278,6 +380,21 @@ templ importTabs(n ImportNotice) {
 				@icon.Globe()
 				Web page
 			}
+			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabFiveTools}) {
+				@icon.Library()
+				5etools
+			}
+		}
+		@tabs.Content(tabs.ContentProps{Value: ImportTabFiveTools, Class: "max-w-2xl space-y-3 text-sm"}) {
+			<p class="text-muted-foreground">
+				Pick the books to download from the 5etools GitHub mirror. They are cached in <code>{ n.Dir }</code> and imported like any data folder.
+				For private use at your own table; the books stay the property of their publishers.
+			</p>
+			if n.Msg != "" && n.Tab == ImportTabFiveTools {
+				@Notice(n.Msg, n.Failed, "")
+			}
+			// The list comes from the network: it loads when the tab is first shown.
+			<div id={ FiveToolsID } class="text-muted-foreground" hx-get="/compendium/5etools" hx-trigger="intersect once" hx-swap="outerHTML">Loading books…</div>
 		}
 		@tabs.Content(tabs.ContentProps{Value: ImportTabFolder, Class: "max-w-2xl space-y-3 text-sm"}) {
 			<div class="flex flex-wrap items-center gap-2">
@@ -862,6 +979,8 @@ type EntryView struct {
 	IsGM    bool
 	// Habitats are a monster's, typed in by the GM.
 	Habitats []string
+	// Copies are the entry's other sources the viewer may see.
+	Copies []sqlc.ListEntryCopiesRow
 	// Back links to the compendium list the entry was opened from, filters
 	// kept, or that a page import started from.
 	Back string
@@ -906,6 +1025,17 @@ templ EntryPage(l Layout, v EntryView) {
 				<dd>{ v.Source.SourceKey }{ commaPrefixed(v.Source.Edition) }</dd>
 				<dt class="font-medium">License</dt>
 				<dd>{ v.Source.License }</dd>
+				if len(v.Copies) > 0 {
+					<dt class="font-medium">Also in</dt>
+					<dd>
+						for i, c := range v.Copies {
+							if i > 0 {
+								{ ", " }
+							}
+							<a class="underline underline-offset-4" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", c.ID)) } title={ c.Attribution }>{ copyLabel(c) }</a>
+						}
+					</dd>
+				}
 				if v.Source.Attribution != "" {
 					<dt class="font-medium">Attribution</dt>
 					<dd>{ v.Source.Attribution }</dd>

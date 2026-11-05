@@ -196,6 +196,10 @@ func (a *App) Router() *gin.Engine {
 	r.POST("/compendium/homebrew", a.homebrewCreate)
 	r.POST("/compendium/import", gm, a.compendiumImport)
 	r.POST("/compendium/folder", gm, a.compendiumFolder)
+	r.GET("/compendium/5etools", gm, a.fiveToolsList)
+	r.POST("/compendium/5etools", gm, a.fiveToolsImport)
+	r.POST("/compendium/5etools/:book/delete", gm, a.fiveToolsRemove)
+	r.POST("/compendium/sources/:key/move", gm, a.sourceMove)
 	r.POST("/compendium/page/preview", gm, a.compendiumPagePreview)
 	r.POST("/compendium/page", gm, a.compendiumPageSave)
 

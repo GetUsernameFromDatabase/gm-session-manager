@@ -1,0 +1,10 @@
+{"race":[
+{"name":"Elf","source":"XPHB","page":187,"size":["M"],"speed":30,"darkvision":60,
+ "entries":[{"type":"entries","name":"Darkvision","entries":["You have {@sense Darkvision|XPHB} with a range of 60 feet."]},
+  {"type":"entries","name":"Trance","entries":["You don't need to sleep."]}]}
+],
+"subrace":[
+{"name":"Drow","source":"XPHB","raceName":"Elf","raceSource":"XPHB",
+ "entries":[{"type":"entries","name":"Drow Lineage","entries":["You know the {@spell Dancing Lights|XPHB} cantrip."]}]},
+{"source":"XPHB","raceName":"Elf","raceSource":"XPHB","entries":[]}
+]}

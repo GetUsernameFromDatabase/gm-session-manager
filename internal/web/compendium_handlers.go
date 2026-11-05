@@ -81,6 +81,16 @@ func (a *App) entryBySlug(ctx context.Context, kind compendium.Kind, slug string
 	return e, err
 }
 
+// decodeLinked is e's data with its cross-reference tokens resolved for a
+// viewer in campaignID.
+func (a *App) decodeLinked(ctx context.Context, e sqlc.CompendiumEntry, campaignID int64) (any, error) {
+	js, err := a.resolveCompendiumLinks(ctx, e.DataJson, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	return compendium.DecodeData(compendium.Kind(e.Kind), js)
+}
+
 // compendiumBatch is how many rows one search or scroll step loads; the
 // after_* query keys are the browse cursor.
 const (
@@ -147,6 +157,12 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 	if err := a.homebrewLists(ctx, w, &v); err != nil {
 		a.serverError(c, err)
 		return
+	}
+	if w.isGM() {
+		if v.Sources, err = a.Store.ListCompendiumSources(ctx); err != nil {
+			a.serverError(c, err)
+			return
+		}
 	}
 	a.render(c, http.StatusOK, views.CompendiumPage(a.layout(w, "Compendium", views.NavCompendium, camp, false), v))
 }
@@ -231,7 +247,7 @@ func (a *App) compendiumEntry(c *gin.Context) {
 		a.found(c, cmp.Or(err, sql.ErrNoRows))
 		return
 	}
-	data, err := compendium.DecodeData(compendium.Kind(e.Kind), e.DataJson)
+	data, err := a.decodeLinked(c.Request.Context(), e, viewerCampaign(camp))
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -250,7 +266,12 @@ func (a *App) compendiumEntry(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	v := views.EntryView{Entry: e, Source: src, Data: data, IsGM: w.isGM(), Habitats: habitats, CanEdit: e.IsHomebrew && perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64)}
+	copies, err := a.entryCopies(c.Request.Context(), e, viewerCampaign(camp))
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	v := views.EntryView{Entry: e, Source: src, Data: data, IsGM: w.isGM(), Habitats: habitats, Copies: copies, CanEdit: e.IsHomebrew && perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64)}
 	// Set after a page import: back to the list, page tab open for the next page.
 	if back, ok := c.GetQuery("back"); ok {
 		q, _ := url.ParseQuery(compendiumBack(back))
@@ -299,7 +320,7 @@ func (a *App) compendiumLookup(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	data, err := compendium.DecodeData(compendium.Kind(e.Kind), e.DataJson)
+	data, err := a.decodeLinked(ctx, e, viewerCampaign(camp))
 	if err != nil {
 		a.serverError(c, err)
 		return

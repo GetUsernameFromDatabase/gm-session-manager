@@ -160,15 +160,35 @@ func ParseFiveTools(body []byte, slug string) (book, image string, e Entry, err 
 	case m == nil:
 		return "", "", Entry{}, fmt.Errorf("5etools: no monster %q in that book", slug)
 	case m.Copy != nil:
-		// shortcut: monsters that copy another one with changes are refused; resolve _copy if GMs need them.
+		// shortcut: monsters that copy another one with changes are refused here; the book import resolves them.
 		return "", "", Entry{}, fmt.Errorf("5etools: %s is a variant of another monster; import that one instead", m.Name)
 	}
+	d := m.data()
+	book = m.Source
+	if m.Page > 0 {
+		book += fmt.Sprintf(" p. %d", m.Page)
+	}
+	return book, m.image(), Entry{Kind: KindMonster, Slug: slug, Name: m.Name, Data: d, Text: plainText(d.searchText())}, nil
+}
 
+// image is the monster's picture link, or "" when 5etools has none.
+func (m *ftMonster) image() string {
+	switch {
+	case m.HasFluffImages:
+		return fiveToolsImages + url.PathEscape(m.Source) + "/" + url.PathEscape(m.Name) + ".webp"
+	case m.HasToken:
+		return fiveToolsImages + "tokens/" + url.PathEscape(m.Source) + "/" + url.PathEscape(m.Name) + ".webp"
+	}
+	return ""
+}
+
+// data normalizes the statblock.
+func (m *ftMonster) data() MonsterData {
 	d := MonsterData{
 		Type: ftType(m.Type), HP: m.HP.Average, HitDice: m.HP.Formula,
 		Speed: map[string]int{}, Saves: map[string]int{}, Skills: map[string]int{},
 		Abilities: map[string]int{"str": m.Str, "dex": m.Dex, "con": m.Con, "int": m.Int, "wis": m.Wis, "cha": m.Cha},
-		Senses:    stripTags(strings.Join(m.Senses, ", ")), Languages: stripTags(strings.Join(m.Languages, ", ")),
+		Senses:    plainTags(strings.Join(m.Senses, ", ")), Languages: plainTags(strings.Join(m.Languages, ", ")),
 		Resistance: ftList(m.Resist, "resist"), Vulnerability: ftList(m.Vulnerable, "vulnerable"),
 		Immunity:   joinNonEmpty("; ", ftList(m.Immune, "immune"), ftList(m.ConditionImmune, "conditionImmune")),
 		Initiative: abilityMod(m.Dex),
@@ -192,7 +212,7 @@ func ParseFiveTools(body []byte, slug string) (book, image string, e Entry, err 
 			From []string `json:"from"`
 		}
 		if json.Unmarshal(m.AC[0], &d.AC) != nil && json.Unmarshal(m.AC[0], &ac) == nil {
-			d.AC, d.ACDetail = ac.AC, stripTags(strings.Join(ac.From, ", "))
+			d.AC, d.ACDetail = ac.AC, plainTags(strings.Join(ac.From, ", "))
 		}
 	}
 	if m.HP.Special != "" {
@@ -227,7 +247,7 @@ func ParseFiveTools(body []byte, slug string) (book, image string, e Entry, err 
 		d.CR = cr.CR
 	}
 	for _, t := range m.Trait {
-		d.Traits = append(d.Traits, NameDesc{Name: stripTags(t.Name), Desc: ftEntries(t.Entries)})
+		d.Traits = append(d.Traits, NameDesc{Name: plainTags(t.Name), Desc: ftEntries(t.Entries)})
 	}
 	for _, s := range m.Spellcasting {
 		desc := ftSpells(s)
@@ -239,21 +259,10 @@ func ParseFiveTools(body []byte, slug string) (book, image string, e Entry, err 
 	}
 	for i, list := range [][]ftEntry{m.Action, m.Bonus, m.Reaction, m.Legendary} {
 		for _, a := range list {
-			d.Actions = append(d.Actions, MonsterAction{Name: stripTags(a.Name), Desc: ftEntries(a.Entries), Type: actionTypes[i]})
+			d.Actions = append(d.Actions, MonsterAction{Name: plainTags(a.Name), Desc: ftEntries(a.Entries), Type: actionTypes[i]})
 		}
 	}
-
-	book = m.Source
-	if m.Page > 0 {
-		book += fmt.Sprintf(" p. %d", m.Page)
-	}
-	switch {
-	case m.HasFluffImages:
-		image = fiveToolsImages + url.PathEscape(m.Source) + "/" + url.PathEscape(m.Name) + ".webp"
-	case m.HasToken:
-		image = fiveToolsImages + "tokens/" + url.PathEscape(m.Source) + "/" + url.PathEscape(m.Name) + ".webp"
-	}
-	return book, image, Entry{Kind: KindMonster, Slug: slug, Name: m.Name, Data: d, Text: d.searchText()}, nil
+	return d
 }
 
 // ftType is "fiend (demon)" from "fiend" or {"type":"fiend","tags":["demon"]}.
@@ -305,7 +314,7 @@ func ftList(raws []json.RawMessage, key string) string {
 		_ = json.Unmarshal(g[key], &inner)
 		groups = append(groups, strings.Join(strings.Fields(strings.Join([]string{pre, special, ftList(inner, key), note}, " ")), " "))
 	}
-	return stripTags(joinNonEmpty("; ", append([]string{strings.Join(simple, ", ")}, groups...)...))
+	return plainTags(joinNonEmpty("; ", append([]string{strings.Join(simple, ", ")}, groups...)...))
 }
 
 // ftEntries is entries as Markdown paragraphs.
@@ -326,14 +335,20 @@ func ftEntry1(raw json.RawMessage) string {
 		return stripTags(s)
 	}
 	var o struct {
-		Type    string            `json:"type"`
-		Name    string            `json:"name"`
-		Entry   json.RawMessage   `json:"entry"`
-		Entries []json.RawMessage `json:"entries"`
-		Items   []json.RawMessage `json:"items"`
+		Type    string              `json:"type"`
+		Name    string              `json:"name"`
+		Entry   json.RawMessage     `json:"entry"`
+		Entries []json.RawMessage   `json:"entries"`
+		Items   []json.RawMessage   `json:"items"`
+		Caption string              `json:"caption"`
+		Labels  []string            `json:"colLabels"`
+		Rows    [][]json.RawMessage `json:"rows"`
 	}
 	if json.Unmarshal(raw, &o) != nil {
 		return ""
+	}
+	if o.Type == "table" {
+		return ftTable(o.Caption, o.Labels, o.Rows)
 	}
 	body := ftEntries(o.Entries)
 	if o.Entry != nil {
@@ -347,7 +362,7 @@ func ftEntry1(raw json.RawMessage) string {
 		body = strings.Join(items, "\n")
 	}
 	if o.Name != "" {
-		return "**" + stripTags(o.Name) + ".** " + body
+		return "**" + strings.TrimSuffix(plainTags(o.Name), ".") + ".** " + body
 	}
 	return body
 }
@@ -399,14 +414,54 @@ var ftAbilityNames = map[string]string{
 	"str": "Strength", "dex": "Dexterity", "con": "Constitution", "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma",
 }
 
-// stripTags turns 5etools tags ({@hit 6}, {@spell fireball|phb}) into
-// plain text, innermost first.
+// ftLinkKinds are the tags that name a compendium entry, by our kind.
+var ftLinkKinds = map[string]Kind{
+	"spell": KindSpell, "item": KindItem, "creature": KindMonster, "condition": KindCondition,
+	"feat": KindFeat, "background": KindBackground, "race": KindSpecies,
+}
+
+// ftDisplayTags are reference tags whose third argument is the text shown
+// ({@variantrule Sphere [Area of Effect]|XPHB|Sphere}); scaledice and
+// scaledamage show the per-level step.
+var ftDisplayTags = map[string]bool{
+	"variantrule": true, "action": true, "sense": true, "skill": true, "status": true, "class": true,
+	"deity": true, "hazard": true, "object": true, "language": true, "disease": true, "optfeature": true,
+	"trap": true, "table": true, "itemMastery": true, "itemProperty": true, "scaledice": true, "scaledamage": true,
+}
+
+// tokenSep stands in for a token's "|" while tags are still being replaced.
+const tokenSep = "\x1f"
+
+// reToken is our compendium link token; its label is group 1.
+var reToken = regexp.MustCompile(`\[\[compendium:[a-z]+/[^|\]]*\|([^\]]*)\]\]`)
+
+// plainText replaces compendium link tokens with their labels, for search
+// text and short fields shown as plain text.
+func plainText(s string) string { return reToken.ReplaceAllString(s, "$1") }
+
+// plainTags is stripTags without links.
+func plainTags(s string) string { return plainText(stripTags(s)) }
+
+// stripTags turns 5etools tags ({@hit 6}) into plain text, innermost first;
+// tags naming an entry ({@spell fireball|xphb|label}) become link tokens
+// [[compendium:spell/fireball|label]], linked or not at render time.
 func stripTags(s string) string {
 	for {
 		out := reTag.ReplaceAllStringFunc(s, func(m string) string {
 			sub := reTag.FindStringSubmatch(m)
 			tag, arg := sub[1], sub[2]
 			text, _, _ := strings.Cut(arg, "|")
+			display := text
+			if parts := strings.Split(arg, "|"); len(parts) > 2 && parts[2] != "" && (ftLinkKinds[tag] != "" || ftDisplayTags[tag]) {
+				display = parts[2]
+			}
+			if kind, ok := ftLinkKinds[tag]; ok {
+				// The separator stays out of "|" until the end, so an outer tag's arguments do not split it.
+				return "[[compendium:" + string(kind) + "/" + Slugify(text) + tokenSep + display + "]]"
+			}
+			if ftDisplayTags[tag] {
+				return display
+			}
 			switch tag {
 			case "atk", "atkr":
 				return ftAttacks[arg]
@@ -444,7 +499,7 @@ func stripTags(s string) string {
 			return text
 		})
 		if out == s {
-			return out
+			return strings.ReplaceAll(out, tokenSep, "|")
 		}
 		s = out
 	}

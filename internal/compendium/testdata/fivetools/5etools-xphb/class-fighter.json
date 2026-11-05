@@ -1,0 +1,82 @@
+{
+	"class": [
+		{
+			"name": "Fighter",
+			"source": "PHB",
+			"page": 70,
+			"hd": {"number": 1, "faces": 10},
+			"proficiency": ["str", "con"],
+			"classFeatures": ["Action Surge|Fighter||2"]
+		},
+		{
+			"name": "Fighter",
+			"source": "XPHB",
+			"page": 91,
+			"edition": "one",
+			"hd": {"number": 1, "faces": 10},
+			"proficiency": ["str", "con"],
+			"classTableGroups": [
+				{
+					"colLabels": ["Second Wind", "{@filter Weapon Mastery|items|mastery=}"],
+					"rows": [[2, 3], [2, 3], [2, 3], [3, 4], [3, 4], [3, 4], [3, 4], [3, 4]]
+				}
+			],
+			"subclassTitle": "Fighter Subclass",
+			"classFeatures": [
+				"Fighting Style|Fighter|XPHB|1",
+				"Second Wind|Fighter|XPHB|1",
+				"Weapon Mastery|Fighter|XPHB|1",
+				"Action Surge|Fighter|XPHB|2",
+				"Tactical Mind|Fighter|XPHB|2",
+				{"classFeature": "Fighter Subclass|Fighter|XPHB|3", "gainSubclassFeature": true},
+				"Ability Score Improvement|Fighter|XPHB|4",
+				"Extra Attack|Fighter|XPHB|5",
+				"Ability Score Improvement|Fighter|XPHB|6",
+				{"classFeature": "Subclass Feature|Fighter|XPHB|7", "gainSubclassFeature": true},
+				"Ability Score Improvement|Fighter|XPHB|8"
+			]
+		}
+	],
+	"subclass": [
+		{
+			"name": "Champion",
+			"shortName": "Champion",
+			"source": "XPHB",
+			"className": "Fighter",
+			"classSource": "XPHB",
+			"page": 93,
+			"subclassFeatures": [
+				"Champion|Fighter|XPHB|Champion|XPHB|3",
+				"Additional Fighting Style|Fighter|XPHB|Champion|XPHB|7"
+			]
+		}
+	],
+	"classFeature": [
+		{"name": "Action Surge", "source": "PHB", "className": "Fighter", "classSource": "PHB", "level": 2, "entries": ["Once on your turn, you can take one additional action."]},
+		{"name": "Fighting Style", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 1, "entries": ["You gain a Fighting Style feat of your choice. {@feat Defense|XPHB} is recommended.", {"type": "refOptionalfeature", "optionalfeature": "Archery|XPHB"}]},
+		{"name": "Second Wind", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 1, "entries": ["As a {@variantrule Bonus Action|XPHB}, you can regain Hit Points equal to {@dice 1d10} plus your Fighter level."]},
+		{"name": "Weapon Mastery", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 1, "entries": ["You can use the mastery properties of three kinds of weapons."]},
+		{"name": "Action Surge", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 2, "entries": ["On your turn, you can take one additional action, except the {@action Magic|XPHB} action."]},
+		{"name": "Tactical Mind", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 2, "entries": ["When you fail an ability check, you can expend a use of your Second Wind to add {@dice 1d10} to the roll.", {"type": "refClassFeature", "classFeature": "Second Wind|Fighter|XPHB|1"}]},
+		{"name": "Fighter Subclass", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 3, "entries": ["You gain a Fighter subclass of your choice."]},
+		{"name": "Ability Score Improvement", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 4, "entries": ["You gain the {@feat Ability Score Improvement|XPHB} feat or another feat of your choice."]},
+		{"name": "Ability Score Improvement", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 6, "entries": ["You gain the {@feat Ability Score Improvement|XPHB} feat or another feat of your choice."]},
+		{"name": "Ability Score Improvement", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 8, "entries": ["You gain the {@feat Ability Score Improvement|XPHB} feat or another feat of your choice."]},
+		{"name": "Extra Attack", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 5, "entries": ["You can attack twice instead of once whenever you take the {@action Attack|XPHB} action on your turn."]},
+		{"name": "Subclass Feature", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "level": 7, "entries": ["You gain a feature from your Fighter subclass."]}
+	],
+	"subclassFeature": [
+		{
+			"name": "Champion", "source": "XPHB", "className": "Fighter", "classSource": "XPHB",
+			"subclassShortName": "Champion", "subclassSource": "XPHB", "level": 3,
+			"entries": [
+				"A Champion focuses on the development of martial prowess.",
+				{"type": "refSubclassFeature", "subclassFeature": "Improved Critical|Fighter|XPHB|Champion|XPHB|3"},
+				{"type": "refSubclassFeature", "subclassFeature": "Remarkable Athlete|Fighter|XPHB|Champion|XPHB|3"}
+			]
+		},
+		{"name": "Improved Critical", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "subclassShortName": "Champion", "subclassSource": "XPHB", "level": 3, "header": 1, "entries": ["Your attack rolls with weapons and Unarmed Strikes can score a Critical Hit on a roll of 19 or 20 on the d20."]},
+		{"name": "Remarkable Athlete", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "subclassShortName": "Champion", "subclassSource": "XPHB", "level": 3, "header": 1, "entries": ["You have {@variantrule Advantage|XPHB} on Initiative rolls and Strength (Athletics) checks."]},
+		{"name": "Additional Fighting Style", "source": "XPHB", "className": "Fighter", "classSource": "XPHB", "subclassShortName": "Champion", "subclassSource": "XPHB", "level": 7, "entries": ["You gain another Fighting Style feat of your choice."]}
+	]
+}

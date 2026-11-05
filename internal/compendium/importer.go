@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -45,13 +46,15 @@ func Import(ctx context.Context, store *db.Store, dir string) ([]Report, error) 
 	}
 	var reports []Report
 	for _, d := range dirs {
-		if !d.IsDir() {
+		// Dot folders are caches and downloads in progress (.5etools).
+		if !d.IsDir() || strings.HasPrefix(d.Name(), ".") {
 			continue
 		}
 		r := importSource(ctx, store, d.Name(), filepath.Join(dir, d.Name()))
 		reports = append(reports, r)
-		// Only data folders get the guessed picture, also when unchanged.
-		if r.Err != nil {
+		// Only data folders get the guessed picture, also when unchanged;
+		// 5etools books name their own pictures.
+		if r.Err != nil || strings.HasPrefix(d.Name(), FiveToolsPrefix) {
 			continue
 		}
 		if err := store.BindMonsterImages(ctx, sqlc.BindMonsterImagesParams{Prefix: MonsterImagePrefix, SourceKey: d.Name()}); err != nil {
@@ -82,16 +85,35 @@ func importSource(ctx context.Context, store *db.Store, key, path string) Report
 		return r
 	}
 
-	src, entries, err := parseOpen5e(key, files)
+	fiveTools := strings.HasPrefix(key, FiveToolsPrefix)
+	parse := parseOpen5e
+	if fiveTools {
+		parse = parseFiveToolsBook
+	}
+	src, entries, err := parse(key, files)
 	if err != nil {
 		r.Err = fmt.Errorf("%s: %w", key, err)
 		return r
 	}
 	r.Removed, r.Err = storeSource(ctx, store, src, path, hash, entries)
+	if r.Err == nil && fiveTools {
+		r.Err = bindFiveToolsImages(ctx, store, key, files)
+	}
 	if r.Err == nil {
 		r.Entries = len(entries)
 	}
 	return r
+}
+
+func bindFiveToolsImages(ctx context.Context, store *db.Store, key string, files map[string][]byte) error {
+	return store.InTx(ctx, func(q *sqlc.Queries) error {
+		for slug, link := range FiveToolsImages(files) {
+			if err := q.BindMonsterImage(ctx, sqlc.BindMonsterImageParams{ImageUrl: sql.NullString{String: link, Valid: true}, SourceKey: key, Slug: slug}); err != nil {
+				return fmt.Errorf("%s: bind image of %s: %w", key, slug, err)
+			}
+		}
+		return nil
+	})
 }
 
 // storeSource writes a source's entries, removes those it no longer has
@@ -341,14 +363,12 @@ func HomebrewInputFor(kind, name, desc string, data any) HomebrewInput {
 // InputForEntry is the homebrew form for a parsed entry, so it can be
 // reviewed and edited before it is saved.
 func InputForEntry(e Entry) HomebrewInput {
-	data := e.Data
-	switch d := data.(type) {
-	case ClassData:
-		data = &d
-	case TextData:
-		data = &d
-	case MonsterData:
-		data = &d
+	// The round trip gives the form pointer data without link tokens; these
+	// plain structs always marshal.
+	b, _ := json.Marshal(e.Data)
+	data, err := DecodeData(e.Kind, string(b))
+	if err != nil {
+		data = e.Data
 	}
 	return HomebrewInputFor(string(e.Kind), e.Name, e.Text, data)
 }

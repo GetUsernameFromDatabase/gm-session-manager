@@ -78,8 +78,8 @@ func TestParseFiveTools(t *testing.T) {
 		CR: "8", Senses: "darkvision 60 ft., passive Perception 15", Languages: "understands Abyssal but can't speak",
 		Resistance: "cold, fire; bludgeoning, piercing from nonmagical attacks", Immunity: "frightened", Vulnerability: "radiant",
 		Traits: []NameDesc{
-			{Name: "Pack Tactics", Desc: "Has advantage unless the ally is incapacitated."},
-			{Name: "Innate Spellcasting", Desc: "Casts:\n\nAt will: darkness\n\n1/day each: fear, sleep"},
+			{Name: "Pack Tactics", Desc: "Has advantage unless the ally is [[compendium:condition/incapacitated|incapacitated]]."},
+			{Name: "Innate Spellcasting", Desc: "Casts:\n\nAt will: [[compendium:spell/darkness|darkness]]\n\n1/day each: [[compendium:spell/fear|fear]], [[compendium:spell/sleep|sleep]]"},
 		},
 		Actions: []MonsterAction{
 			{Name: "Rending Bite", Desc: "Melee Weapon Attack: +6 to hit, reach 5 ft. Hit: 13 (2d8 + 4) piercing damage.", Type: "action"},

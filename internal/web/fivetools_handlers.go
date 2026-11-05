@@ -1,0 +1,231 @@
+package web
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"gm-session-manager/internal/compendium"
+	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/web/views"
+)
+
+// fiveToolsKey is the source key of a book's folder.
+func fiveToolsKey(id string) string { return compendium.FiveToolsPrefix + strings.ToLower(id) }
+
+// fiveToolsView lists the mirror's books (the cache when offline), plus any
+// downloaded book the list no longer names, with each one's import date.
+func (a *App) fiveToolsView(ctx context.Context, msg string, failed bool) (views.FiveToolsView, error) {
+	dir := a.compendiumDir()
+	books, err := compendium.FiveToolsBooks(ctx, dir)
+	if err != nil {
+		msg, failed = "Could not load the book list: "+err.Error(), true
+	}
+	have, ierr := compendium.ImportedFiveTools(dir)
+	if ierr != nil {
+		return views.FiveToolsView{}, ierr
+	}
+	sources, serr := a.Store.ListCompendiumSources(ctx)
+	if serr != nil {
+		return views.FiveToolsView{}, serr
+	}
+	downloaded := map[string]time.Time{}
+	for _, b := range have {
+		downloaded[strings.ToLower(b.ID)] = time.Time{}
+		if !slices.ContainsFunc(books, func(o compendium.Book) bool { return strings.EqualFold(o.ID, b.ID) }) {
+			books = append(books, b)
+		}
+	}
+	for _, s := range sources {
+		if id, ok := strings.CutPrefix(s.SourceKey, compendium.FiveToolsPrefix); ok {
+			if _, ok := downloaded[id]; ok {
+				downloaded[id] = s.LastImported
+			}
+		}
+	}
+	v := views.NewFiveToolsView(books, downloaded)
+	v.Msg, v.Failed = msg, failed
+	return v, nil
+}
+
+func (a *App) renderFiveTools(c *gin.Context, msg string, failed bool) {
+	v, err := a.fiveToolsView(c.Request.Context(), msg, failed)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.render(c, http.StatusOK, views.FiveToolsPicker(v))
+}
+
+// fiveToolsList is the picker, loaded when its tab is first shown. A plain
+// visit (a reload after an import posted here) gets the whole page.
+func (a *App) fiveToolsList(c *gin.Context) {
+	if !isHTMX(c) {
+		c.Redirect(http.StatusSeeOther, "/compendium?import="+views.ImportTabFiveTools)
+		return
+	}
+	a.renderFiveTools(c, "", false)
+}
+
+// fiveToolsForm is the checked books.
+type fiveToolsForm struct {
+	Books []string `form:"book" validate:"required,max=2000,dive,max=64"`
+}
+
+// fiveToolsImport downloads the checked books and imports every folder.
+func (a *App) fiveToolsImport(c *gin.Context) {
+	ctx := c.Request.Context()
+	notice := views.ImportNotice{Tab: views.ImportTabFiveTools}
+	var f fiveToolsForm
+	if c.ShouldBind(&f) != nil {
+		notice.Msg, notice.Failed = "Pick at least one book.", true
+		a.renderCompendium(c, notice)
+		return
+	}
+	dir := a.compendiumDir()
+	all, err := compendium.FiveToolsBooks(ctx, dir)
+	if err != nil {
+		notice.Msg, notice.Failed = "Could not load the book list: "+err.Error(), true
+		a.renderCompendium(c, notice)
+		return
+	}
+	var picked []compendium.Book
+	for _, b := range all {
+		if slices.ContainsFunc(f.Books, func(id string) bool { return strings.EqualFold(id, b.ID) }) {
+			picked = append(picked, b)
+		}
+	}
+	if err := compendium.DownloadFiveTools(ctx, dir, picked); err != nil {
+		notice.Msg, notice.Failed = "Download failed: "+err.Error(), true
+		a.renderCompendium(c, notice)
+		return
+	}
+	reports, err := compendium.Import(ctx, a.Store, dir)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	notice.Msg, notice.Failed = ImportSummary(reports)
+	a.renderCompendium(c, notice)
+}
+
+// fiveToolsRemove deletes a book's entries and source, then its folder.
+func (a *App) fiveToolsRemove(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := c.Param("book")
+	key := fiveToolsKey(id)
+	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		if err := q.DeleteCompendiumEntriesBySource(ctx, key); err != nil {
+			return err
+		}
+		return q.DeleteCompendiumSource(ctx, key)
+	})
+	if err == nil {
+		err = compendium.RemoveFiveTools(a.compendiumDir(), id)
+	}
+	if err != nil {
+		a.renderFiveTools(c, "Could not remove "+id+": "+err.Error(), true)
+		return
+	}
+	a.renderFiveTools(c, "Removed "+id+".", false)
+}
+
+// sourceMoveForm moves a source one place in the priority order.
+type sourceMoveForm struct {
+	Dir string `form:"dir" validate:"required,oneof=up down"`
+}
+
+// sourceMove reorders the priority list and answers with the card.
+func (a *App) sourceMove(c *gin.Context) {
+	var f sourceMoveForm
+	if c.ShouldBind(&f) != nil {
+		a.fail(c, http.StatusBadRequest, "Move a source up or down.")
+		return
+	}
+	ctx := c.Request.Context()
+	err := compendium.MoveSource(ctx, a.Store, c.Param("key"), f.Dir == views.SourceUp)
+	if errors.Is(err, compendium.ErrNoSource) {
+		a.fail(c, http.StatusNotFound, "That source is not imported.")
+		return
+	}
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	sources, err := a.Store.ListCompendiumSources(ctx)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.render(c, http.StatusOK, views.SourcePriority(sources))
+}
+
+// entryCopies are the other sources holding e's kind and slug, without
+// player homebrew the viewer may not see.
+func (a *App) entryCopies(ctx context.Context, e sqlc.CompendiumEntry, campaignID int64) ([]sqlc.ListEntryCopiesRow, error) {
+	rows, err := a.Store.ListEntryCopies(ctx, sqlc.ListEntryCopiesParams{Kind: e.Kind, Slug: e.Slug})
+	if err != nil {
+		return nil, err
+	}
+	var out []sqlc.ListEntryCopiesRow
+	for _, r := range rows {
+		if r.ID == e.ID {
+			continue
+		}
+		if r.SourceKey == compendium.HomebrewSource && campaignID != 0 {
+			copyEntry, err := a.Store.GetCompendiumEntry(ctx, r.ID)
+			if err != nil {
+				return nil, err
+			}
+			ok, err := a.entryVisible(ctx, copyEntry, campaignID)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				continue
+			}
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// resolveCompendiumLinks turns the [[compendium:kind/slug|label]] tokens in
+// an entry's JSON into Markdown links to the top-priority copy the viewer
+// may see, or the bare label. One query per kind; import order never matters.
+func (a *App) resolveCompendiumLinks(ctx context.Context, dataJSON string, campaignID int64) (string, error) {
+	refs := views.CompendiumRefs(dataJSON)
+	if len(refs) == 0 {
+		return dataJSON, nil
+	}
+	ids := map[string]int64{}
+	for kind, slugs := range refs {
+		rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: kind, Slugs: slugs})
+		if err != nil {
+			return "", err
+		}
+		for _, r := range rows {
+			if campaignID != 0 { // only a player's own homebrew can be hidden
+				e, err := a.Store.GetCompendiumEntry(ctx, r.ID)
+				if err != nil {
+					return "", err
+				}
+				ok, err := a.entryVisible(ctx, e, campaignID)
+				if err != nil {
+					return "", err
+				}
+				if !ok {
+					continue
+				}
+			}
+			ids[fmt.Sprintf("%s:%s/%s", views.LinkCompendium, kind, r.Slug)] = r.ID
+		}
+	}
+	return views.ReplaceCompendiumLinks(dataJSON, ids), nil
+}

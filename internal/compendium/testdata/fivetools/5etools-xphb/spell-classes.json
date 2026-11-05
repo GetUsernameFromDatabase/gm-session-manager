@@ -1,0 +1,4 @@
+{"XPHB":{
+"Fireball":{"class":[{"name":"Sorcerer","source":"XPHB"},{"name":"Wizard","source":"XPHB"},{"name":"Wizard","source":"PHB"},{"name":"Mage","source":"WoW","definedInSource":"WoW"}]},
+"Shield":{"class":[{"name":"Sorcerer","source":"XPHB"},{"name":"Wizard","source":"XPHB"}],"subclass":[{"class":{"name":"Fighter","source":"XPHB"},"subclass":{"name":"Eldritch Knight","source":"XPHB"}}]}
+}}

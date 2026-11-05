@@ -1,0 +1,70 @@
+{
+	"class": [
+		{
+			"name": "Wizard",
+			"source": "XPHB",
+			"page": 165,
+			"edition": "one",
+			"hd": {"number": 1, "faces": 6},
+			"proficiency": ["int", "wis"],
+			"spellcastingAbility": "int",
+			"casterProgression": "full",
+			"classTableGroups": [
+				{
+					"colLabels": ["{@filter Cantrips|spells|level=0|class=Wizard|XPHB}", "{@filter Prepared Spells|spells|level=!0|class=Wizard|XPHB}"],
+					"rows": [[3, 4], [3, 5], [3, 6], [4, 7], [4, 9]]
+				},
+				{
+					"title": "Spell Slots per Spell Level",
+					"colLabels": ["{@filter 1st|spells|level=1|class=Wizard|XPHB}", "{@filter 2nd|spells|level=2|class=Wizard|XPHB}", "{@filter 3rd|spells|level=3|class=Wizard|XPHB}"],
+					"rowsSpellProgression": [[2, 0, 0], [3, 0, 0], [4, 2, 0], [4, 3, 0], [4, 3, 2]]
+				}
+			],
+			"subclassTitle": "Wizard Subclass",
+			"classFeatures": [
+				"Spellcasting|Wizard|XPHB|1",
+				"Arcane Recovery|Wizard|XPHB|1",
+				"Scholar|Wizard|XPHB|2",
+				{"classFeature": "Wizard Subclass|Wizard|XPHB|3", "gainSubclassFeature": true},
+				"Ability Score Improvement|Wizard|XPHB|4",
+				"Memorize Spell|Wizard|XPHB|5"
+			]
+		}
+	],
+	"subclass": [
+		{
+			"name": "Evoker",
+			"shortName": "Evoker",
+			"source": "XPHB",
+			"className": "Wizard",
+			"classSource": "XPHB",
+			"page": 179,
+			"subclassFeatures": [
+				"Evoker|Wizard|XPHB|Evoker|XPHB|3",
+				"Sculpt Spells|Wizard|XPHB|Evoker|XPHB|6"
+			]
+		}
+	],
+	"classFeature": [
+		{"name": "Spellcasting", "source": "XPHB", "className": "Wizard", "classSource": "XPHB", "level": 1, "entries": ["As a student of arcane magic, you have learned to cast spells."]},
+		{"name": "Arcane Recovery", "source": "XPHB", "className": "Wizard", "classSource": "XPHB", "level": 1, "entries": ["When you finish a {@variantrule Short Rest|XPHB}, you can recover expended spell slots."]},
+		{"name": "Scholar", "source": "XPHB", "className": "Wizard", "classSource": "XPHB", "level": 2, "entries": ["You gain Expertise in one of these skills: Arcana, History, Investigation, Medicine, Nature, or Religion."]},
+		{"name": "Wizard Subclass", "source": "XPHB", "className": "Wizard", "classSource": "XPHB", "level": 3, "entries": ["You gain a Wizard subclass of your choice."]},
+		{"name": "Ability Score Improvement", "source": "XPHB", "className": "Wizard", "classSource": "XPHB", "level": 4, "entries": ["You gain the {@feat Ability Score Improvement|XPHB} feat or another feat of your choice."]},
+		{"name": "Memorize Spell", "source": "XPHB", "className": "Wizard", "classSource": "XPHB", "level": 5, "entries": ["Whenever you finish a Short Rest, you can swap one prepared spell."]}
+	],
+	"subclassFeature": [
+		{
+			"name": "Evoker", "source": "XPHB", "className": "Wizard", "classSource": "XPHB",
+			"subclassShortName": "Evoker", "subclassSource": "XPHB", "level": 3,
+			"entries": [
+				"You focus your study on magic that creates powerful elemental effects.",
+				{"type": "refSubclassFeature", "subclassFeature": "Evocation Savant|Wizard|XPHB|Evoker|XPHB|3"},
+				{"type": "refSubclassFeature", "subclassFeature": "Potent Cantrip|Wizard|XPHB|Evoker|XPHB|3"}
+			]
+		},
+		{"name": "Evocation Savant", "source": "XPHB", "className": "Wizard", "classSource": "XPHB", "subclassShortName": "Evoker", "subclassSource": "XPHB", "level": 3, "header": 1, "entries": ["Choose two Wizard spells from the Evocation school and add them to your spellbook for free."]},
+		{"name": "Potent Cantrip", "source": "XPHB", "className": "Wizard", "classSource": "XPHB", "subclassShortName": "Evoker", "subclassSource": "XPHB", "level": 3, "header": 1, "entries": ["Your damaging cantrips affect even creatures that avoid the brunt of the effect."]},
+		{"name": "Sculpt Spells", "source": "XPHB", "className": "Wizard", "classSource": "XPHB", "subclassShortName": "Evoker", "subclassSource": "XPHB", "level": 6, "entries": ["You can create pockets of relative safety within the effects of your evocations."]}
+	]
+}

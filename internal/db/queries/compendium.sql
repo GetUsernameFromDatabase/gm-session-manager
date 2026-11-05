@@ -2,9 +2,15 @@
 SELECT * FROM compendium_sources
 WHERE source_key = ?;
 
+-- A new source gets a default priority (lower wins; migration 0004 backfills
+-- the same way); a re-import keeps the GM's order.
 -- name: UpsertCompendiumSource :exec
-INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution, priority)
+VALUES (sqlc.arg(source_key), sqlc.arg(path), sqlc.arg(hash), sqlc.arg(edition), sqlc.arg(license), sqlc.arg(attribution),
+    CASE WHEN sqlc.arg(source_key) = 'homebrew' THEN 0
+         WHEN sqlc.arg(source_key) LIKE 'srd%' THEN 200
+         WHEN sqlc.arg(edition) = '2024' THEN 100
+         ELSE 300 END)
 ON CONFLICT (source_key) DO UPDATE
 SET path = excluded.path, hash = excluded.hash, edition = excluded.edition,
     license = excluded.license, attribution = excluded.attribution,
@@ -34,20 +40,51 @@ WHERE id = ?;
 SELECT * FROM compendium_entries
 WHERE id = ?;
 
--- Player homebrew never shadows an imported or GM entry of the same slug.
+-- Player homebrew never shadows an imported or GM entry of the same slug;
+-- among the rest the source with the lowest priority wins.
 -- name: GetCompendiumEntryBySlug :one
-SELECT * FROM compendium_entries
-WHERE kind = ? AND slug = ?
-ORDER BY scoped, is_homebrew DESC
+SELECT e.* FROM compendium_entries AS e
+LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+WHERE e.kind = ? AND e.slug = ?
+ORDER BY e.scoped, COALESCE(s.priority, 300), e.id
 LIMIT 1;
 
 -- GetCompendiumEntryByName finds an entry by name in any case, as an
 -- inventory names its items.
 -- name: GetCompendiumEntryByName :one
-SELECT * FROM compendium_entries
-WHERE kind = ? AND lower(name) = lower(sqlc.arg(name))
-ORDER BY scoped, is_homebrew DESC
+SELECT e.* FROM compendium_entries AS e
+LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+WHERE e.kind = ? AND lower(e.name) = lower(sqlc.arg(name))
+ORDER BY e.scoped, COALESCE(s.priority, 300), e.id
 LIMIT 1;
+
+-- ListEntryCopies is every source holding a (kind, slug), best first, for the
+-- entry page's "Also in" list.
+-- name: ListEntryCopies :many
+SELECT e.id, e.source_key, s.edition, s.attribution, s.priority
+FROM compendium_entries AS e
+JOIN compendium_sources AS s ON s.source_key = e.source_key
+WHERE e.kind = ? AND e.slug = ?
+ORDER BY e.scoped, s.priority, e.id;
+
+-- name: ListCompendiumSources :many
+SELECT * FROM compendium_sources
+ORDER BY priority, source_key;
+
+-- name: SetCompendiumSourcePriority :exec
+UPDATE compendium_sources SET priority = ?
+WHERE source_key = ?;
+
+-- Removing a book deletes its entries first (the FTS and habitat rows go
+-- with them; combatants and entities that referenced one keep their row with
+-- the link cleared). Homebrew is not a book.
+-- name: DeleteCompendiumEntriesBySource :exec
+DELETE FROM compendium_entries
+WHERE source_key = ? AND source_key <> 'homebrew';
+
+-- name: DeleteCompendiumSource :exec
+DELETE FROM compendium_sources
+WHERE source_key = ? AND source_key <> 'homebrew';
 
 -- Browse, random and search show player homebrew (scoped) only in the
 -- campaigns it is linked to; campaign_id 0 is the GM, who sees it all
@@ -65,7 +102,8 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
         WHEN 'spell' THEN json_extract(e.data_json, '$.level')
         WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
 FROM compendium_entries AS e
-WHERE (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
+WHERE e.id IN (SELECT id FROM compendium_top)
+  AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (e.name > CAST(sqlc.arg(after_name) AS TEXT) OR (e.name = CAST(sqlc.arg(after_name) AS TEXT) AND e.id > sqlc.arg(after_id)))
   AND (CAST(sqlc.arg(habitat) AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(sqlc.arg(habitat) AS TEXT) || ',', ',' || h.habitat || ',') > 0))
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
@@ -75,7 +113,8 @@ LIMIT sqlc.arg(page_size);
 
 -- name: RandomCompendiumEntry :one
 SELECT e.id FROM compendium_entries AS e
-WHERE (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
+WHERE e.id IN (SELECT id FROM compendium_top)
+  AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (CAST(sqlc.arg(habitat) AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(sqlc.arg(habitat) AS TEXT) || ',', ',' || h.habitat || ',') > 0))
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
@@ -128,6 +167,7 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
 FROM compendium_fts
 JOIN compendium_entries AS e ON e.id = compendium_fts.rowid
 WHERE compendium_fts MATCH CAST(sqlc.arg(query) AS TEXT)
+  AND e.id IN (SELECT id FROM compendium_top)
   AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (CAST(sqlc.arg(habitat) AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(sqlc.arg(habitat) AS TEXT) || ',', ',' || h.habitat || ',') > 0))
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
@@ -160,7 +200,7 @@ ORDER BY kind;
 -- name: ListSpellsForClass :many
 SELECT id, slug, name, CAST(json_extract(data_json, '$.level') AS INTEGER) AS level
 FROM compendium_entries
-WHERE kind = 'spell'
+WHERE kind = 'spell' AND id IN (SELECT id FROM compendium_top)
   AND CAST(json_extract(data_json, '$.level') AS INTEGER) <= CAST(sqlc.arg(max_level) AS INTEGER)
   AND EXISTS (SELECT 1 FROM json_each(compendium_entries.data_json, '$.classes') AS c WHERE c.value = CAST(sqlc.arg(class_slug) AS TEXT))
 ORDER BY level, name;
@@ -168,7 +208,7 @@ ORDER BY level, name;
 -- name: ListItemsByCategory :many
 SELECT e.name, CAST(COALESCE(json_extract(e.data_json, '$.desc'), '') AS TEXT) AS description
 FROM compendium_entries AS e
-WHERE e.kind = 'item'
+WHERE e.kind = 'item' AND e.id IN (SELECT id FROM compendium_top)
   AND json_extract(e.data_json, '$.category') = CAST(sqlc.arg(category) AS TEXT)
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
@@ -176,18 +216,26 @@ ORDER BY e.name;
 
 -- name: ListSubclassesOf :many
 SELECT id, slug, name FROM compendium_entries
-WHERE kind = 'subclass' AND json_extract(data_json, '$.subclass_of') = CAST(sqlc.arg(class_slug) AS TEXT)
+WHERE kind = 'subclass' AND id IN (SELECT id FROM compendium_top) AND json_extract(data_json, '$.subclass_of') = CAST(sqlc.arg(class_slug) AS TEXT)
 ORDER BY name;
 
--- ListCompendiumBySlugs reads the entries a sheet links to, in one query.
+-- ListCompendiumBySlugs reads the entries a sheet links to, in one query: the
+-- copy compendium_top would pick, found through the (kind, slug) index
+-- instead of ranking the whole compendium on every sheet render.
 -- name: ListCompendiumBySlugs :many
-SELECT id, slug, name, data_json FROM compendium_entries
-WHERE kind = sqlc.arg(kind) AND slug IN (sqlc.slice(slugs))
-ORDER BY scoped, is_homebrew DESC;
+SELECT e.id, e.slug, e.name, e.data_json FROM compendium_entries AS e
+LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+WHERE e.kind = sqlc.arg(kind) AND e.slug IN (sqlc.slice(slugs))
+  AND NOT EXISTS (
+    SELECT 1 FROM compendium_entries AS b
+    LEFT JOIN compendium_sources AS bs ON bs.source_key = b.source_key
+    WHERE b.kind = e.kind AND b.slug = e.slug
+      AND (b.scoped, COALESCE(bs.priority, 300), b.id) < (e.scoped, COALESCE(s.priority, 300), e.id))
+ORDER BY e.slug;
 
 -- name: ListCompendiumNames :many
 SELECT id, kind, slug, name FROM compendium_entries
-WHERE kind = ?
+WHERE kind = ? AND id IN (SELECT id FROM compendium_top)
 ORDER BY name;
 
 -- BindMonsterImages guesses a link for a data folder's monsters that never
@@ -195,6 +243,12 @@ ORDER BY name;
 -- name: BindMonsterImages :exec
 UPDATE compendium_entries SET image_url = sqlc.arg(prefix) || slug || '.png'
 WHERE kind = 'monster' AND image_url IS NULL AND source_key = sqlc.arg(source_key);
+
+-- BindMonsterImage sets the picture a data source names for one of its
+-- monsters; a link the GM set or cleared ('') is kept.
+-- name: BindMonsterImage :exec
+UPDATE compendium_entries SET image_url = sqlc.arg(image_url)
+WHERE kind = 'monster' AND image_url IS NULL AND source_key = sqlc.arg(source_key) AND slug = sqlc.arg(slug);
 
 -- name: SetCompendiumImage :execrows
 UPDATE compendium_entries SET image_url = ?
@@ -204,7 +258,8 @@ WHERE id = ? AND kind = 'monster';
 -- needs no escaping of % and _.
 -- name: ListMonstersByName :many
 SELECT id, name FROM compendium_entries
-WHERE kind = 'monster' AND instr(lower(name), lower(CAST(sqlc.arg(filter) AS TEXT))) > 0
+WHERE kind = 'monster' AND id IN (SELECT id FROM compendium_top)
+  AND instr(lower(name), lower(CAST(sqlc.arg(filter) AS TEXT))) > 0
 ORDER BY name, id;
 
 -- name: ListMonsterHabitats :many

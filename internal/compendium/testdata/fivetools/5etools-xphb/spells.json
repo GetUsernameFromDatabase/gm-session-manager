@@ -1,0 +1,23 @@
+{"spell":[
+{"name":"Fireball","source":"XPHB","page":274,"level":3,"school":"V",
+ "time":[{"number":1,"unit":"action"}],
+ "range":{"type":"point","distance":{"type":"feet","amount":150}},
+ "components":{"v":true,"s":true,"m":"a ball of bat guano and sulfur"},
+ "duration":[{"type":"instant"}],
+ "entries":["A bright streak explodes in a 20-foot-radius {@variantrule Sphere [Area of Effect]|XPHB|Sphere}. Each creature makes a Dexterity saving throw, taking {@damage 8d6} Fire damage on a failed save.",
+  {"type":"table","colLabels":["d6","Effect"],"rows":[[{"type":"cell","roll":{"min":1,"max":5}},"Burns"],[{"type":"cell","roll":{"exact":6}},"Ignites"]]}],
+ "entriesHigherLevel":[{"type":"entries","name":"Using a Higher-Level Spell Slot","entries":["The damage increases by {@scaledamage 8d6|3-9|1d6} for each slot level above 3."]}]},
+{"name":"Detect Magic","source":"XPHB","level":1,"school":"D",
+ "time":[{"number":1,"unit":"action"}],
+ "range":{"type":"emanation","distance":{"type":"feet","amount":30}},
+ "components":{"v":true,"s":true},
+ "duration":[{"type":"timed","duration":{"type":"minute","amount":10},"concentration":true}],
+ "meta":{"ritual":true},
+ "entries":["You sense magic within 30 feet."]},
+{"name":"Shield","source":"XPHB","level":1,"school":"A",
+ "time":[{"number":1,"unit":"reaction","condition":"which you take when you are hit by an attack roll or targeted by the {@spell Magic Missile|XPHB} spell"}],
+ "range":{"type":"point","distance":{"type":"self"}},
+ "components":{"v":true,"s":true},
+ "duration":[{"type":"timed","duration":{"type":"round","amount":1}}],
+ "entries":["An imperceptible barrier of magical force protects you."]}
+]}

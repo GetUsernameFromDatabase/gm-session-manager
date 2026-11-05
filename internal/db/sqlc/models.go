@@ -111,6 +111,11 @@ type CompendiumSource struct {
 	License      string
 	Attribution  string
 	LastImported time.Time
+	Priority     int64
+}
+
+type CompendiumTop struct {
+	ID int64
 }
 
 type Condition struct {

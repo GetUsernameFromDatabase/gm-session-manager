@@ -1,0 +1,5 @@
+{"feat":[
+{"name":"Alert","source":"XPHB","category":"O","entries":["You gain the following benefits.",{"type":"entries","name":"Initiative Proficiency","entries":["Add your {@variantrule Proficiency|XPHB} Bonus to Initiative."]}]},
+{"name":"Grappler","source":"XPHB","category":"G","prerequisite":[{"level":4,"ability":[{"str":13},{"dex":13}]}],
+ "entries":[{"type":"entries","name":"Punch and Grab","entries":["You can impose the {@condition Grappled|XPHB} condition."]}]}
+]}

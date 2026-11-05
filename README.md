@@ -100,6 +100,16 @@ into `data/compendium/srd-2024/`. They are imported at start-up and from the
 Compendium page ("Import now"); unchanged folders are skipped. The SRD 5.2
 is licensed CC-BY-4.0 and every entry shows its attribution.
 
+The GM can also fill the compendium from the 5etools data: the Import >
+5etools tab lists the books (core, supplements, adventures, Unearthed Arcana,
+third party), downloads the checked ones from the 5etools GitHub mirror into
+`DATA_DIR/compendium/5etools-<id>/` (that folder is the cache) and imports
+them; "Remove" deletes a book and its entries. Where several sources hold the
+same entry, the Source priority list under the import tabs decides which copy
+is shown and linked; the others are listed as "Also in" on the entry page.
+This content is for private use at your own table and is not redistributed
+with the app.
+
 Homebrew is written in the Compendium page and is shared by all campaigns.
 
 ## Development

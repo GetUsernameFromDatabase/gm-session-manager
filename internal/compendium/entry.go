@@ -222,7 +222,8 @@ func dataFor(kind Kind) any {
 // DecodeData parses data_json into the type for kind.
 func DecodeData(kind Kind, raw string) (any, error) {
 	d := dataFor(kind)
-	if err := json.Unmarshal([]byte(raw), d); err != nil {
+	// Link tokens become their labels; the entry page resolves its links first.
+	if err := json.Unmarshal([]byte(plainText(raw)), d); err != nil {
 		return nil, fmt.Errorf("compendium %s data: %w", kind, err)
 	}
 	return d, nil

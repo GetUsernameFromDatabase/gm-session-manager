@@ -1,0 +1,6 @@
+{"item":[
+{"name":"Dwarven Plate","source":"XPHB","baseItem":"plate armor|XPHB","rarity":"very rare","bonusAc":"+2","entries":["While wearing this armor, you gain a +2 bonus to Armor Class."]},
+{"name":"Bag of Holding","source":"XPHB","rarity":"uncommon","wondrous":true,"weight":5,"entries":["This bag has an interior space larger than its outside, like {@spell Rope Trick|XPHB}."]},
+{"name":"Flame Tongue Longsword","source":"XPHB","baseItem":"longsword|xphb","rarity":"rare","reqAttune":true,"entries":["You can use a {@action Bonus Action|XPHB} to set the blade aflame."]}
+],
+"itemGroup":[{"name":"Absorbing Tattoo","source":"XPHB","rarity":"very rare","reqAttune":true,"items":["Acid Absorbing Tattoo|XPHB"],"entries":["Produced by a special needle."]}]}
