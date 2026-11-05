@@ -1014,10 +1014,11 @@ func damageTypeItems(d dnd5e.Defenses) []selectcomp.ItemData {
 }
 
 // formSelect is a shadcn select that submits name, preselecting value (or
-// the first item when empty); its list scrolls rather than running to the
-// screen edge. An empty id gets a random one.
+// the first item when empty or not among items, such as a refused post's
+// value); its list scrolls rather than running to the screen edge. An empty
+// id gets a random one.
 templ formSelect(id, name string, items []selectcomp.ItemData, value, class, contentClass string) {
-	if value == "" && len(items) > 0 {
+	if len(items) > 0 && !slices.ContainsFunc(items, func(it selectcomp.ItemData) bool { return it.Value == value }) {
 		{{ value = items[0].Value }}
 	}
 	@selectcomp.Select(selectcomp.Props{ID: id, Name: name, Items: items, DefaultValue: value}) {

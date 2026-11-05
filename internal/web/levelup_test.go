@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -312,7 +313,18 @@ func TestLevelUpFeats(t *testing.T) {
 			if tc.code == http.StatusUnprocessableEntity && !strings.Contains(body, "Gain level") {
 				t.Errorf("refusal did not re-render the form: %s", body)
 			}
-			if lost := lostPicks(body, tc.form); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
+			kept := tc.form
+			if strings.Contains(tc.msg, " needs ") && tc.form.Get("feat") != "" {
+				// A feat that is not offered falls back to the select's first item.
+				kept = maps.Clone(tc.form)
+				kept.Del("feat")
+				for _, tag := range reInput.FindAllString(body, -1) {
+					if strings.Contains(tag, ` name="feat"`) && strings.Contains(tag, `value="`+tc.form.Get("feat")+`"`) {
+						t.Errorf("refused page kept the unoffered feat: %s", tag)
+					}
+				}
+			}
+			if lost := lostPicks(body, kept); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
 				t.Errorf("refused page lost %v", lost)
 			}
 			if tc.msg != "" && (!strings.Contains(body, tc.msg) || atSpells && !errorAt(body, "spell")) {
