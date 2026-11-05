@@ -223,15 +223,20 @@ func TestLevelUpFeats(t *testing.T) {
 		str   int
 		form  url.Values
 		code  int
-		msg   string // a refusal's message, shown at the class spells
+		msg   string // a refusal's message
 		check func(sh dnd5e.Sheet) bool
 	}{
 		{"Grappler raises Strength", 15, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusSeeOther, "",
 			func(sh dnd5e.Sheet) bool { return sh.Scores["str"] == 16 && slices.Contains(sh.Feats, "Grappler") }},
 		{"Grappler at the maximum", 20, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusUnprocessableEntity, "", nil},
-		{"Grappler without Strength or Dexterity 13", 8, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusUnprocessableEntity, "", nil},
-		{"an Epic Boon before level 19", 15, url.Values{"feat": {"boon-of-fate"}, "feat_boon-of-fate_raise": {"Charisma"}}, http.StatusUnprocessableEntity, "", nil},
-		{"a Fighting Style feat without the feature", 15, url.Values{"feat": {"archery"}}, http.StatusUnprocessableEntity, "", nil},
+		{"Grappler without Strength or Dexterity 13", 8, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}}, http.StatusUnprocessableEntity,
+			"Grappler needs Level 4+, Strength or Dexterity 13+", nil},
+		{"an Epic Boon before level 19", 15, url.Values{"feat": {"boon-of-fate"}, "feat_boon-of-fate_raise": {"Charisma"}}, http.StatusUnprocessableEntity,
+			"Boon of Fate needs Level 19+", nil},
+		{"an Epic Boon before level 19, its choice left out", 15, url.Values{"feat": {"boon-of-fate"}}, http.StatusUnprocessableEntity,
+			"Boon of Fate needs Level 19+", nil},
+		{"a Fighting Style feat without the feature", 15, url.Values{"feat": {"archery"}}, http.StatusUnprocessableEntity,
+			"Archery needs Fighting Style Feature", nil},
 		{"a second Magic Initiate takes another list", 15, url.Values{"feat": {"magic-initiate"}, mi + "_list": {"Cleric"}, mi + "_cleric_cantrips": {"Guidance"}, mi + "_cleric_spell": {"Bless"}, mi + "_ability": {"Wisdom"}}, http.StatusSeeOther, "",
 			func(sh dnd5e.Sheet) bool {
 				return slices.Contains(sh.Feats, "Magic Initiate (Cleric)") && slices.ContainsFunc(sh.Spells, func(sp dnd5e.Spell) bool {
@@ -289,15 +294,21 @@ func TestLevelUpFeats(t *testing.T) {
 					offered("grappler"), offered("ability-score-improvement"), offered("archery"), offered("boon-of-fate"))
 			}
 			tc.form.Set("class", "wizard")
+			// A class spell clash shows at the class spells; a feat's prerequisite at the top.
+			atSpells := tc.form.Has("spell")
 			w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, tc.form), false)
 			if w.Code != tc.code {
 				t.Fatalf("level 4: %d %s", w.Code, w.Body)
 			}
-			if lost := lostPicks(w.Body.String(), tc.form); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
+			body = w.Body.String()
+			if tc.code == http.StatusUnprocessableEntity && !strings.Contains(body, "Gain level") {
+				t.Errorf("refusal did not re-render the form: %s", body)
+			}
+			if lost := lostPicks(body, tc.form); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
 				t.Errorf("refused page lost %v", lost)
 			}
-			if tc.msg != "" && (!errorAt(w.Body.String(), "spell") || !strings.Contains(w.Body.String(), tc.msg)) {
-				t.Errorf("no %q at the class spells: %s", tc.msg, w.Body)
+			if tc.msg != "" && (!strings.Contains(body, tc.msg) || atSpells && !errorAt(body, "spell")) {
+				t.Errorf("no %q: %s", tc.msg, body)
 			}
 			if tc.check == nil {
 				return

@@ -875,6 +875,7 @@ func (a *App) levelUp(c *gin.Context) {
 		return
 	}
 	groups := append(classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), changes...)
+	var featErr error
 	if choice.Feat != "" {
 		slug := c.PostForm("feat")
 		td, err := a.textEntry(ctx, compendium.KindFeat, slug)
@@ -883,8 +884,7 @@ func (a *App) levelUp(c *gin.Context) {
 			return
 		}
 		if planErr == nil && !meetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel, nil) {
-			a.fail(c, http.StatusUnprocessableEntity, choice.Feat+" needs "+td.Prerequisite+".")
-			return
+			featErr = userError{fmt.Errorf("%s needs %s", choice.Feat, td.Prerequisite)}
 		}
 		fg, err := a.featChoices(ctx, "feat_"+slug, choice.Feat, td, "", sheet, ch.CampaignID)
 		if err != nil {
@@ -894,6 +894,9 @@ func (a *App) levelUp(c *gin.Context) {
 		groups = append(groups, fg...)
 	}
 	picks, err := readPicks(c, groups)
+	if featErr != nil {
+		err = featErr // ahead of the feat's own choices: it may not be taken at all
+	}
 	if err == nil {
 		err = spellErr
 	}
