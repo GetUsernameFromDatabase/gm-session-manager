@@ -208,7 +208,7 @@ templ wizardPick(v WizardView) {
 						<div class="space-y-4 text-sm">
 							@wizardFacts(c)
 							if v.Step == "class" && c.SkillCount > 0 {
-								<fieldset>
+								<fieldset { v.fieldErr().describedBy("skill")... }>
 									<legend class="font-medium">Choose { fmt.Sprint(c.SkillCount) } skills</legend>
 									@v.fieldErr().at("skill")
 									<div class="mt-1 grid grid-cols-2 gap-1 sm:grid-cols-3">
@@ -402,10 +402,32 @@ func drawsGroup(groups []ChoiceGroup, key string) bool {
 // at shows the error when it is about key; app.js scrolls to it.
 templ (fe FieldError) at(key string) {
 	if fe.Key == key {
-		@field.Error(field.ErrorProps{Attributes: templ.Attributes{"data-error-for": key}}) {
+		@field.Error(field.ErrorProps{ID: "error-" + key, Attributes: templ.Attributes{"data-error-for": key}}) {
 			{ fe.Msg }
 		}
 	}
+}
+
+// describedBy links a control group to the error at(key) shows; no attribute
+// when the error is about another field.
+func (fe FieldError) describedBy(key string) templ.Attributes {
+	if fe.Key != key {
+		return nil
+	}
+	return templ.Attributes{"aria-describedby": "error-" + key}
+}
+
+// radioAttrs labels a single-pick radio group, and marks it invalid when
+// it holds the error (aria-invalid is valid on a radiogroup, not a fieldset).
+func (fe FieldError) radioAttrs(key, label string) templ.Attributes {
+	a := fe.describedBy(key)
+	if a == nil {
+		a = templ.Attributes{}
+	} else {
+		a["aria-invalid"] = "true"
+	}
+	a["aria-label"] = label
+	return a
 }
 
 // choiceFieldset asks for up to g.Count of its options: radios for one,
@@ -428,7 +450,7 @@ templ choiceFieldset(g ChoiceGroup, form url.Values, fe FieldError) {
 }
 
 templ choiceOptions(g ChoiceGroup, form url.Values, fe FieldError) {
-	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe.Key == g.Key) }>
+	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe.Key == g.Key) } { fe.describedBy(g.Key)... }>
 		<legend class="px-1 font-medium">
 			{ g.Title }
 			if g.Count > 1 {
@@ -437,7 +459,7 @@ templ choiceOptions(g ChoiceGroup, form url.Values, fe FieldError) {
 		</legend>
 		@fe.at(g.Key)
 		if g.Count == 1 {
-			@radiogroup.RadioGroup(radiogroup.Props{Name: g.Key, DefaultValue: form.Get(g.Key), Class: "gap-2", Attributes: templ.Attributes{"aria-label": g.Title}}) {
+			@radiogroup.RadioGroup(radiogroup.Props{Name: g.Key, DefaultValue: form.Get(g.Key), Class: "gap-2", Attributes: fe.radioAttrs(g.Key, g.Title)}) {
 				for i, o := range g.Options {
 					<div>
 						@label.Label(label.Props{For: fmt.Sprintf("%s-%d", g.Key, i), Class: "font-normal"}) {

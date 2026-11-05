@@ -536,7 +536,10 @@ var (
 // errorAt reports whether a refused page shows its error at the field key
 // instead of the top.
 func errorAt(body, key string) bool {
-	return strings.Contains(body, `data-error-for="`+html.EscapeString(key)+`"`)
+	k := html.EscapeString(key)
+	return strings.Contains(body, `data-error-for="`+k+`"`) &&
+		strings.Contains(body, `id="error-`+k+`"`) &&
+		strings.Contains(body, `aria-describedby="error-`+k+`"`)
 }
 
 // lostPicks are the posted values a refused page offers but does not show

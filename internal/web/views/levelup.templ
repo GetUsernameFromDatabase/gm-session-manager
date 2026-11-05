@@ -327,7 +327,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 // refused form's picked slugs ticked and its lineage picks applied.
 templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, form url.Values, fe FieldError) {
 	if len(spells) > 0 {
-		<div>
+		<div role="group" aria-label="Learn or prepare spells" { fe.describedBy("spell")... }>
 			<div class="font-medium">Learn or prepare spells</div>
 			@fe.at("spell")
 			if s := need.String(); s != "" {
