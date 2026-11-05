@@ -1143,6 +1143,7 @@ func parseFeature(args []string) (Command, error) {
 				name := c.Sheet.Features[i].Name
 				c.Sheet.Features = slices.Delete(c.Sheet.Features, i, i+1)
 				c.Sheet.Modifiers = slices.DeleteFunc(c.Sheet.Modifiers, func(m CustomMod) bool { return m.Source == name })
+				c.Sheet.dropFeat(name)
 			}
 			return nil
 		}), nil
@@ -1161,6 +1162,18 @@ func parseFeature(args []string) (Command, error) {
 		}), nil
 	}
 	return Command{}, fmt.Errorf("usage: %s", usage)
+}
+
+// dropFeat takes the feat named name off the sheet with its feature, and
+// its pin once no copy of it ("Magic Initiate (Wizard)") is left.
+func (s *Sheet) dropFeat(name string) {
+	before := len(s.Feats)
+	s.Feats = slices.DeleteFunc(s.Feats, func(n string) bool { return strings.EqualFold(n, name) })
+	base, _, _ := strings.Cut(name, " (")
+	if len(s.Feats) == before || slices.ContainsFunc(s.Feats, func(n string) bool { b, _, _ := strings.Cut(n, " ("); return sameSlug(b, base) }) {
+		return
+	}
+	maps.DeleteFunc(s.FeatSources, func(k, _ string) bool { return sameSlug(base, k) })
 }
 
 // parseFeatureSet reads key=value settings of a feature: action

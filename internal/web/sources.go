@@ -81,8 +81,8 @@ func pinnedRefs(s dnd5e.Sheet) map[string][]sheetRef {
 	add(dnd5e.RefSpecies, compendium.Slugify(s.Species), s.Species, s.SpeciesSource)
 	add(dnd5e.RefBackground, compendium.Slugify(s.Background), s.Background, s.BackgroundSource)
 	for _, f := range s.Feats {
-		base, _, _ := strings.Cut(f, " (") // as pinFeat keys it
-		slug := compendium.Slugify(base)
+		base, _, _ := strings.Cut(f, " (")
+		slug := featKey(f)
 		add(dnd5e.RefFeat, slug, base, s.FeatSources[slug])
 	}
 	if s.Armor != nil {
@@ -190,7 +190,7 @@ func (a *App) classSwitch(ctx context.Context, sheet dnd5e.Sheet, row sqlc.Compe
 	if cl.Subclass == "" {
 		return old, next, nil
 	}
-	subSlug, _, err := a.subclassRef(ctx, cl.Slug, cl, cl.Subclass)
+	subSlug, _, err := subclassRef(ctx, a.Store.Queries, cl.Slug, cl, cl.Subclass)
 	if err != nil || subSlug == "" {
 		return old, next, err
 	}

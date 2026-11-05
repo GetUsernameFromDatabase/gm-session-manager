@@ -271,8 +271,9 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 }
 
 // EffectsVersion goes up whenever saved sheets need catching up once at
-// startup: 1 when ParseEffects learned more uses, 2 for species resistances.
-const EffectsVersion = 2
+// startup: 1 when ParseEffects learned more uses, 2 for species resistances,
+// 3 for third casters and weapon masteries.
+const EffectsVersion = 3
 
 // CatchUpUses gives class features without uses the uses their text names,
 // for features added before the parser knew them (Focus Points). Uses already

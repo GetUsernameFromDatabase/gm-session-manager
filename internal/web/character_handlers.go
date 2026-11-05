@@ -359,7 +359,11 @@ func (a *App) masteryGroups(ctx context.Context, sh dnd5e.Sheet, info dnd5e.Clas
 		return nil, nil
 	}
 	return []choiceGroup{{views.ChoiceGroup{Key: views.FieldMastery, Title: dnd5e.MasteryColumn, Count: n, Options: opts}, func(s *dnd5e.Sheet, picked []string) {
-		s.Masteries = append(s.Masteries, picked...)
+		for _, p := range picked {
+			if !s.Masters(p) { // another device may have chosen it since the page loaded
+				s.Masteries = append(s.Masteries, p)
+			}
+		}
 	}, nil}}, nil
 }
 
@@ -651,7 +655,7 @@ func (a *App) withSubclass(ctx context.Context, info *dnd5e.ClassInfo, sheet dnd
 	if name == "" {
 		return nil
 	}
-	slug, pin, err := a.subclassRef(ctx, info.Slug, cl, name)
+	slug, pin, err := subclassRef(ctx, a.Store.Queries, info.Slug, cl, name)
 	if err != nil || slug == "" {
 		return err
 	}
@@ -667,11 +671,11 @@ func (a *App) withSubclass(ctx context.Context, info *dnd5e.ClassInfo, sheet dnd
 
 // subclassRef is the slug and pin of classSlug's subclass named name: the
 // sheet's pin when it is cl's subclass, else found by name ("" for none).
-func (a *App) subclassRef(ctx context.Context, classSlug string, cl dnd5e.ClassLevel, name string) (slug, pin string, err error) {
+func subclassRef(ctx context.Context, q *sqlc.Queries, classSlug string, cl dnd5e.ClassLevel, name string) (slug, pin string, err error) {
 	if cl.SubclassSlug != "" && strings.EqualFold(name, cl.Subclass) {
 		return cl.SubclassSlug, cl.SubclassSource, nil
 	}
-	subs, err := a.Store.ListSubclassesOf(ctx, classSlug)
+	subs, err := q.ListSubclassesOf(ctx, classSlug)
 	if err != nil {
 		return "", "", err
 	}

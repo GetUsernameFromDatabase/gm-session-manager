@@ -624,8 +624,7 @@ func (a *App) textEntrySource(ctx context.Context, kind compendium.Kind, slug, p
 	return d.(*compendium.TextData), row.SourceKey, nil
 }
 
-// pinFeat records the source of the feat's compendium copy; the key is the
-// feat's slug without a "(choice)" suffix.
+// pinFeat records the source of the feat's compendium copy under featKey.
 func pinFeat(s *dnd5e.Sheet, name, source string) {
 	if source == "" {
 		return
@@ -633,8 +632,14 @@ func pinFeat(s *dnd5e.Sheet, name, source string) {
 	if s.FeatSources == nil {
 		s.FeatSources = map[string]string{}
 	}
+	s.FeatSources[featKey(name)] = source
+}
+
+// featKey is the key a feat's pin is stored under: the feat's slug without
+// a "(choice)" suffix.
+func featKey(name string) string {
 	base, _, _ := strings.Cut(name, " (")
-	s.FeatSources[compendium.Slugify(base)] = source
+	return compendium.Slugify(base)
 }
 
 // backgroundFeatChoices are the choices inside the feat the background

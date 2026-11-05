@@ -196,6 +196,9 @@ type BuilderExtra struct {
 	Feature *dnd5e.Feature
 	// FeatureMods are Feature's stat changes, read from its text.
 	FeatureMods []dnd5e.CustomMod
+	// FeatSource is the source key of the feat Feature was picked from;
+	// saving it adds the feat to the sheet's feats, pinned.
+	FeatSource  string
 	Suggestions []string
 	// Masteries are the compendium weapons with a mastery property (as
 	// Desc), for OpMastery.
@@ -650,6 +653,9 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 				@featurePicker(s.ID, f.Name)
 			}
 			<input type="hidden" name="source" value={ f.Source }/>
+			if s.feature(subject) == nil && x.FeatSource != "" {
+				<input type="hidden" name="feat_source" value={ x.FeatSource }/>
+			}
 			@field.Field() {
 				@field.Label(field.LabelProps{For: "builder-text"}) {
 					Description

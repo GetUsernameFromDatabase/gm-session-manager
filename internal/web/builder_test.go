@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -60,6 +61,39 @@ func TestBuilderInventory(t *testing.T) {
 		if w := e.do(t, http.MethodGet, base+path, player, nil, true); !strings.Contains(w.Body.String(), want) {
 			t.Errorf("%s lacks %q: %s", path, want, w.Body)
 		}
+	}
+}
+
+// TestBuilderFeat: a feat picked in the feature look-up joins the sheet's
+// feats pinned to its source, and removing the feature takes both off.
+func TestBuilderFeat(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "feat", Slug: "test-alert", Name: "Test Alert", SourceKey: "test", ContentHash: "x", DataJson: `{"desc":"Add your Proficiency Bonus to Initiative."}`}); err != nil {
+		t.Fatal(err)
+	}
+	feat, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: "test-alert"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, auth.RolePlayer)
+	form := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/builder?verb=features&op=feature-add&entry=%d", e.characterID, feat.ID), player, nil, true).Body.String()
+	if !strings.Contains(form, `name="feat_source" value="test"`) {
+		t.Fatalf("form lacks the feat's source: %s", form)
+	}
+	cmd := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	add := url.Values{"prefix": {"feature add"}, "subject": {"Test Alert"}, "source": {"Feat"}, "text": {"Initiative."}, "feat_source": {"test"}}
+	if w := e.do(t, http.MethodPost, cmd, player, add, true); w.Code != http.StatusOK {
+		t.Fatalf("add: %d %s", w.Code, w.Body)
+	}
+	if sh := e.sheet(t); !slices.Equal(sh.Feats, []string{"Test Alert"}) || sh.FeatSources["test-alert"] != "test" {
+		t.Errorf("after add: feats %v, pins %v", sh.Feats, sh.FeatSources)
+	}
+	if w := e.do(t, http.MethodPost, cmd, player, url.Values{"cmd": {`feature remove "Test Alert"`}}, true); w.Code != http.StatusOK {
+		t.Fatalf("remove: %d %s", w.Code, w.Body)
+	}
+	if sh := e.sheet(t); len(sh.Feats) != 0 || len(sh.FeatSources) != 0 || len(sh.Features) != 0 {
+		t.Errorf("after remove: feats %v, pins %v, features %v", sh.Feats, sh.FeatSources, sh.Features)
 	}
 }
 

@@ -474,7 +474,7 @@ templ choiceOptions(g ChoiceGroup, form url.Values, fe FieldError) {
 		</legend>
 		@fe.at(g.Key)
 		if g.Count == 1 {
-			@radiogroup.RadioGroup(radiogroup.Props{Name: g.Key, DefaultValue: form.Get(g.Key), Class: "gap-2", Attributes: fe.radioAttrs(g.Key, g.Title)}) {
+			@radiogroup.RadioGroup(radiogroup.Props{Name: g.Key, DefaultValue: form.Get(g.Key), Class: utils.CN("gap-2", optionsGrid(g.Options, "")), Attributes: fe.radioAttrs(g.Key, g.Title)}) {
 				for i, o := range g.Options {
 					<div>
 						@label.Label(label.Props{For: fmt.Sprintf("%s-%d", g.Key, i), Class: "font-normal"}) {
@@ -486,7 +486,7 @@ templ choiceOptions(g ChoiceGroup, form url.Values, fe FieldError) {
 				}
 			}
 		} else {
-			<div class="grid gap-2 sm:grid-cols-2">
+			<div class={ "grid gap-2", optionsGrid(g.Options, "sm:grid-cols-2") }>
 				for _, o := range g.Options {
 					<div>
 						@checkField(g.Key, o.Name, slices.Contains(form[g.Key], o.Name)) {
@@ -498,6 +498,15 @@ templ choiceOptions(g ChoiceGroup, form url.Values, fe FieldError) {
 			</div>
 		}
 	</fieldset>
+}
+
+// optionsGrid lays a long list of terse options (weapon masteries, skills)
+// out in columns; other lists get short, as feat texts need the width.
+func optionsGrid(opts []compendium.NameDesc, short string) string {
+	if len(opts) > 8 && !slices.ContainsFunc(opts, func(o compendium.NameDesc) bool { return len(o.Desc) > 40 }) {
+		return "grid grid-cols-2 sm:grid-cols-3"
+	}
+	return short
 }
 
 // optionDesc is an option's text: short ones as they are, long ones folded.

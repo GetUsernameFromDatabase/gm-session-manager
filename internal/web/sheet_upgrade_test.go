@@ -50,6 +50,31 @@ func TestUpgradeSheets(t *testing.T) {
 	}
 }
 
+// TestUpgradeThirdCaster: a subclass chosen before third casters, unpinned,
+// brings its slots, and weapons added before mastery get theirs; a second run
+// changes nothing.
+func TestUpgradeThirdCaster(t *testing.T) {
+	e := newTestEnv(t)
+	seedMastery(t, e)
+	if err := e.q().UpsertCompendiumEntry(t.Context(), testKnight); err != nil {
+		t.Fatal(err)
+	}
+	s := dnd5e.NewSheet()
+	s.EffectsVersion = 2
+	s.Classes = []dnd5e.ClassLevel{{Slug: "testfighter", Name: "Testfighter", Subclass: "Test Knight", Level: 4, HitDie: 10, Caster: dnd5e.CasterNone}}
+	s.Weapons = []dnd5e.Weapon{{Name: "+1 Longsword", Ability: "str", Dice: "1d8"}, {Name: "Stick", Ability: "str", Dice: "1d4"}}
+	e.setSheet(t, s)
+	for run, want := range []int{1, 0} {
+		if n, err := UpgradeSheets(t.Context(), e.app.Store); err != nil || n != want {
+			t.Fatalf("run %d: changed %d, err %v", run, n, err)
+		}
+	}
+	got := e.sheet(t)
+	if got.Classes[0].Caster != dnd5e.CasterThird || got.Slots[0].Max != 3 || got.Weapons[0].Mastery != "Sap" || got.Weapons[1].Mastery != "" {
+		t.Errorf("classes %+v, slots %+v, weapons %+v", got.Classes, got.Slots[0], got.Weapons)
+	}
+}
+
 // TestCatchUpResistances: an old sheet gets its species' fixed resistances
 // and those of the lineage it picked; one with resistances keeps them.
 func TestCatchUpResistances(t *testing.T) {

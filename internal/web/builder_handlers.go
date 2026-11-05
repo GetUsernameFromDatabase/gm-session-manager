@@ -71,6 +71,9 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 		f := dnd5e.Feature{Name: e.Name, Description: textMarkdown(d), Source: kindSources[e.Kind]}
 		x.FeatureMods = dnd5e.ParseEffects(e.Name, f.Description, nil, "").Apply(&f)
 		x.Feature = &f
+		if e.Kind == string(compendium.KindFeat) {
+			x.FeatSource = e.SourceKey
+		}
 	}
 	return x, nil
 }
@@ -300,7 +303,12 @@ func featureCommand(c *gin.Context) (dnd5e.Command, error) {
 		}
 		mods = append(mods, dnd5e.CustomMod{Target: t, Value: v, When: strings.TrimSpace(whens[min(i, len(whens)-1)])})
 	}
-	return dnd5e.SaveFeature(f, mods), nil
+	// A feat picked in the look-up becomes one of the sheet's feats, pinned.
+	var key, source string
+	if source = c.PostForm("feat_source"); source != "" {
+		key = featKey(f.Name)
+	}
+	return dnd5e.SaveFeature(f, mods, key, source), nil
 }
 
 // weaponCommand saves a weapon from the builder, range and properties too.

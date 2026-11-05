@@ -175,3 +175,24 @@ func TestSwitchSource(t *testing.T) {
 		})
 	}
 }
+
+// TestDropFeat: removing a feat's feature takes the feat off, and its pin
+// only once no copy of the feat shares it.
+func TestDropFeat(t *testing.T) {
+	for _, tt := range []struct {
+		name, remove string
+		feats        []string
+		wantFeats    []string
+		wantPin      bool
+	}{
+		{"only copy", "Magic Initiate (Wizard)", []string{"Magic Initiate (Wizard)"}, []string{}, false},
+		{"one of two copies", "Magic Initiate (Wizard)", []string{"Magic Initiate (Wizard)", "Magic Initiate (Cleric)"}, []string{"Magic Initiate (Cleric)"}, true},
+		{"not a feat", "Second Wind", []string{"Magic Initiate (Wizard)"}, []string{"Magic Initiate (Wizard)"}, true},
+	} {
+		s := Sheet{Feats: tt.feats, FeatSources: map[string]string{"magic-initiate": "xphb"}}
+		s.dropFeat(tt.remove)
+		if _, pinned := s.FeatSources["magic-initiate"]; !slices.Equal(s.Feats, tt.wantFeats) || pinned != tt.wantPin {
+			t.Errorf("%s: feats %q, pins %v", tt.name, s.Feats, s.FeatSources)
+		}
+	}
+}

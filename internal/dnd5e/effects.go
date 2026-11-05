@@ -175,10 +175,21 @@ func UsesLabel(u Uses) string {
 
 // SaveFeature adds the feature, or replaces the one of the same name
 // (keeping where it came from and the uses spent), and replaces its stat
-// changes with mods.
-func SaveFeature(f Feature, mods []CustomMod) Command {
+// changes with mods. A feat from the compendium (featKey set, as pinFeat
+// keys it) joins the sheet's feats too, pinned to featSource.
+func SaveFeature(f Feature, mods []CustomMod, featKey, featSource string) Command {
 	return NewCommand("feature add "+strconv.Quote(f.Name), perm.ScopeSheet, func(c *Character) error {
 		c.Sheet.PutFeature(f, mods)
+		if featKey == "" {
+			return nil
+		}
+		if !slices.ContainsFunc(c.Sheet.Feats, func(n string) bool { return strings.EqualFold(n, f.Name) }) {
+			c.Sheet.Feats = append(c.Sheet.Feats, f.Name)
+		}
+		if c.Sheet.FeatSources == nil {
+			c.Sheet.FeatSources = map[string]string{}
+		}
+		c.Sheet.FeatSources[featKey] = featSource
 		return nil
 	})
 }

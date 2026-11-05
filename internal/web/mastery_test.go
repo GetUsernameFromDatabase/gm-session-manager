@@ -106,6 +106,53 @@ func TestWeaponMastery(t *testing.T) {
 	}
 }
 
+// testKnight is a third-caster subclass of seedMastery's Testfighter.
+var testKnight = sqlc.UpsertCompendiumEntryParams{Kind: "subclass", Slug: "test-knight", Name: "Test Knight", SourceKey: "test", ContentHash: "x", DataJson: `{"caster":"third","subclass_of":"testfighter"}`}
+
+// TestLevelUpSubclassCaster: choosing a third-caster subclass gives a class
+// without spellcasting its slots, and picking an already mastered kind adds
+// it once.
+func TestLevelUpSubclassCaster(t *testing.T) {
+	e := newTestEnv(t)
+	seedMastery(t, e)
+	if err := e.q().UpsertCompendiumEntry(t.Context(), testKnight); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, auth.RolePlayer)
+	levelUp := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	for _, form := range []url.Values{
+		{"class": {"testfighter"}, views.FieldMastery: {"Longsword", "Dagger"}},
+		{"class": {"testfighter"}},
+		{"class": {"testfighter"}, "subclass": {"Test Knight"}, views.FieldMastery: {"Club"}},
+	} {
+		if w := e.do(t, http.MethodPost, levelUp, player, form, false); w.Code != http.StatusSeeOther {
+			t.Fatalf("%v: %d %s", form, w.Code, w.Body)
+		}
+	}
+	sh := e.sheet(t)
+	if cl := sh.Classes[0]; cl.Caster != dnd5e.CasterThird || cl.SubclassSlug != "test-knight" || sh.Slots[0].Max != 2 {
+		t.Errorf("class %+v, slots %+v", cl, sh.Slots[0])
+	}
+
+	ch, err := e.q().GetCharacter(t.Context(), e.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, _, err := classEntry(t.Context(), e.q(), "testfighter", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh.Masteries = []string{"Longsword"}
+	groups, err := e.app.masteryGroups(t.Context(), sh, info, 3, ch.CampaignID)
+	if err != nil || len(groups) != 1 {
+		t.Fatalf("groups %v %v", groups, err)
+	}
+	groups[0].apply(&sh, []string{"longsword", "Club", "Club"})
+	if !slices.Equal(sh.Masteries, []string{"Longsword", "Club"}) {
+		t.Errorf("masteries %v", sh.Masteries)
+	}
+}
+
 // TestCompendiumFind checks a slug link opens the entry, and the item page
 // links its mastery that way.
 func TestCompendiumFind(t *testing.T) {

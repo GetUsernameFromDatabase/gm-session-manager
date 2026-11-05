@@ -25,6 +25,7 @@ func UpgradeSheets(ctx context.Context, store *db.Store) (int, error) {
 			return err
 		}
 		classes := map[string]*dnd5e.ClassInfo{}
+		items := map[string]string{}
 		for _, row := range rows {
 			sheet, err := dnd5e.ParseSheet(row.SheetJson)
 			if err != nil || sheet.EffectsVersion >= dnd5e.EffectsVersion {
@@ -47,6 +48,22 @@ func UpgradeSheets(ctx context.Context, store *db.Store) (int, error) {
 					return err
 				}
 				if catchUpResistances(&sheet, parts) {
+					changed++
+				}
+			}
+			// Version 3: subclasses that cast before third casters, weapons added
+			// before mastery. main runs the compendium import first, so both
+			// read re-parsed entries.
+			if sheet.EffectsVersion < 3 {
+				casters, err := catchUpCasters(ctx, q, &sheet)
+				if err != nil {
+					return err
+				}
+				masteries, err := catchUpMasteries(ctx, q, items, &sheet)
+				if err != nil {
+					return err
+				}
+				if casters || masteries {
 					changed++
 				}
 			}
@@ -115,6 +132,74 @@ func catchUpResistances(s *dnd5e.Sheet, parts []compendium.NameDesc) bool {
 		}
 	}
 	return len(s.Resistances) > before
+}
+
+// catchUpCasters gives a class without spellcasting its subclass's, as
+// setSubclass does now (Eldritch Knight), and its slots.
+func catchUpCasters(ctx context.Context, q *sqlc.Queries, s *dnd5e.Sheet) (bool, error) {
+	changed := false
+	for i, cl := range s.Classes {
+		if cl.Subclass == "" || (cl.Caster != "" && cl.Caster != dnd5e.CasterNone) {
+			continue
+		}
+		slug, pin, err := subclassRef(ctx, q, cl.Slug, cl, cl.Subclass)
+		if err != nil {
+			return false, err
+		}
+		if slug == "" {
+			continue
+		}
+		row, _, err := entryFor(ctx, q, compendium.KindSubclass, slug, pin)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		info := dnd5e.ClassInfo{Caster: cl.Caster}
+		if err := setSubclass(&info, row); err != nil {
+			return false, err
+		}
+		if info.Caster != cl.Caster {
+			s.Classes[i].Caster, changed = info.Caster, true
+		}
+	}
+	if changed {
+		s.RecomputeSlots()
+	}
+	return changed, nil
+}
+
+// catchUpMasteries gives weapons without a mastery their compendium
+// weapon's, looking each kind up once per upgrade (items).
+func catchUpMasteries(ctx context.Context, q *sqlc.Queries, items map[string]string, s *dnd5e.Sheet) (bool, error) {
+	changed := false
+	for i, w := range s.Weapons {
+		if w.Mastery != "" {
+			continue
+		}
+		slug := compendium.Slugify(dnd5e.WeaponKind(w.Name))
+		mastery, ok := items[slug]
+		if !ok {
+			row, _, err := entryFor(ctx, q, compendium.KindItem, slug, "")
+			switch {
+			case errors.Is(err, sql.ErrNoRows):
+			case err != nil:
+				return false, err
+			default:
+				d, err := compendium.DecodeData(compendium.KindItem, row.DataJson)
+				if err != nil {
+					return false, err
+				}
+				mastery = d.(*compendium.ItemData).Mastery
+			}
+			items[slug] = mastery
+		}
+		if mastery != "" {
+			s.Weapons[i].Mastery, changed = mastery, true
+		}
+	}
+	return changed, nil
 }
 
 // upgradeClass looks a class's pinned copy up once per upgrade; nil when
