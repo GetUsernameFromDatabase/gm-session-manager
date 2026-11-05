@@ -288,6 +288,14 @@ func TestLevelUpFeats(t *testing.T) {
 			// The Ability Score Improvement feat is the form's own selects; feats
 			// whose prerequisite the sheet does not meet are left out.
 			body := e.do(t, http.MethodGet, base+"?class=wizard", player, nil, false).Body.String()
+			// Every select's list is wide by default: the class select's, in its own form.
+			beforeClass, _, _ := strings.Cut(body, `name="class"`)
+			classList := beforeClass[strings.LastIndex(beforeClass, "<form"):]
+			for _, c := range []string{"min-w-(--anchor-width)", "max-w-[calc(100vw-2rem)]"} {
+				if !strings.Contains(classList, c) {
+					t.Errorf("class select list lacks %s: %s", c, classList)
+				}
+			}
 			offered := func(slug string) bool { return strings.Contains(body, `value="`+slug+`"`) }
 			if offered("grappler") != (tc.str >= 13) || offered("ability-score-improvement") || offered("archery") || offered("boon-of-fate") {
 				t.Errorf("level 4 feats: grappler %v, Ability Score Improvement %v, archery %v, boon %v",

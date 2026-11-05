@@ -3278,7 +3278,7 @@ func hpQuickForm(cmdURL string, compact bool, d dnd5e.Defenses) templ.Component 
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = formSelect(typeID, "hp_type", items, "", utils.IfElse(compact, "h-6 w-48 text-xs", "w-48"), damageTypeList).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = formSelect(typeID, "hp_type", items, "", utils.IfElse(compact, "h-6 w-48 text-xs", "w-48"), "").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -4148,7 +4148,7 @@ func hpDialog(c CombatantView) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = formSelect(id+"-type", "type", items, "", "w-56 min-w-0", damageTypeList).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = formSelect(id+"-type", "type", items, "", "w-56 min-w-0", "").Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -4590,9 +4590,8 @@ func selectItems[T any](xs []T, value, label func(T) string) []selectcomp.ItemDa
 	return items
 }
 
-// damageTypeList lets the damage types' list grow past its trigger, as
-// conditional ones ("… from nonmagical attacks") are long.
-const damageTypeList = "w-auto min-w-(--anchor-width) max-w-[calc(100vw-2rem)]"
+// wideList sizes a select's list to its longest label, never narrower than its button nor wider than the screen.
+const wideList = "w-auto min-w-(--anchor-width) max-w-[calc(100vw-2rem)]"
 
 // damageTypeItems offers untyped damage first, then each type a defense
 // names, then each conditional defense's types as "<type>@<index>"
@@ -4706,7 +4705,7 @@ func formSelect(id, name string, items []selectcomp.ItemData, value, class, cont
 						var templ_7745c5c3_Var181 string
 						templ_7745c5c3_Var181, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(it.Label))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 1033, Col: 27}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 1032, Col: 27}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var181))
 						if templ_7745c5c3_Err != nil {
@@ -4721,7 +4720,7 @@ func formSelect(id, name string, items []selectcomp.ItemData, value, class, cont
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = selectcomp.Content(selectcomp.ContentProps{Class: utils.CN("max-h-60", contentClass), AlignItemWithTrigger: utils.Ptr(false), Align: selectcomp.AlignStart}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var179), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = selectcomp.Content(selectcomp.ContentProps{Class: utils.CN("max-h-60", wideList, contentClass), AlignItemWithTrigger: utils.Ptr(false), Align: selectcomp.AlignStart}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var179), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -5045,7 +5044,7 @@ func addCombatantForm(e EncounterView, kind, tab, pick, label string, items []se
 		var templ_7745c5c3_Var194 string
 		templ_7745c5c3_Var194, templ_7745c5c3_Err = templruntime.NewAttributeExpression(e.url("combatants")).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 1120, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 1119, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var194)
 		if templ_7745c5c3_Err != nil {
@@ -5058,7 +5057,7 @@ func addCombatantForm(e EncounterView, kind, tab, pick, label string, items []se
 		var templ_7745c5c3_Var195 string
 		templ_7745c5c3_Var195, templ_7745c5c3_Err = templruntime.NewAttributeExpression(kind).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 1121, Col: 47}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 1120, Col: 47}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var195)
 		if templ_7745c5c3_Err != nil {
@@ -5083,7 +5082,7 @@ func addCombatantForm(e EncounterView, kind, tab, pick, label string, items []se
 			var templ_7745c5c3_Var197 string
 			templ_7745c5c3_Var197, templ_7745c5c3_Err = templ.JoinStringErrs(pick)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 1123, Col: 9}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 1122, Col: 9}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var197))
 			if templ_7745c5c3_Err != nil {
@@ -5118,7 +5117,7 @@ func addCombatantForm(e EncounterView, kind, tab, pick, label string, items []se
 			var templ_7745c5c3_Var199 string
 			templ_7745c5c3_Var199, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 1128, Col: 10}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 1127, Col: 10}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var199))
 			if templ_7745c5c3_Err != nil {

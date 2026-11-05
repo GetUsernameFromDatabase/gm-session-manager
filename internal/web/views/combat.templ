@@ -640,7 +640,7 @@ templ hpQuickForm(cmdURL string, compact bool, d dnd5e.Defenses) {
 		@input.Input(input.Props{Name: "hp_amount", Type: "number", Class: utils.IfElse(compact, "h-6 w-16", "w-20"), Placeholder: "0", Required: true, Attributes: templ.Attributes{"min": "1", "inputmode": "numeric", "aria-label": "Hit points"}})
 		if len(items) > 1 {
 			<label for={ typeID + "-trigger" } class="sr-only">Damage type</label>
-			@formSelect(typeID, "hp_type", items, "", utils.IfElse(compact, "h-6 w-48 text-xs", "w-48"), damageTypeList)
+			@formSelect(typeID, "hp_type", items, "", utils.IfElse(compact, "h-6 w-48 text-xs", "w-48"), "")
 		}
 		@button.Button(button.Props{Type: button.TypeSubmit, Size: size, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "hp_op", "value": "damage"}}) {
 			Damage
@@ -789,7 +789,7 @@ templ hpDialog(c CombatantView) {
 						@field.Label(field.LabelProps{For: id + "-type-trigger"}) {
 							Damage type
 						}
-						@formSelect(id+"-type", "type", items, "", "w-56 min-w-0", damageTypeList)
+						@formSelect(id+"-type", "type", items, "", "w-56 min-w-0", "")
 					}
 				}
 				@petrifiedNote(c.Defenses, "")
@@ -987,9 +987,8 @@ func selectItems[T any](xs []T, value, label func(T) string) []selectcomp.ItemDa
 	return items
 }
 
-// damageTypeList lets the damage types' list grow past its trigger, as
-// conditional ones ("… from nonmagical attacks") are long.
-const damageTypeList = "w-auto min-w-(--anchor-width) max-w-[calc(100vw-2rem)]"
+// wideList sizes a select's list to its longest label, never narrower than its button nor wider than the screen.
+const wideList = "w-auto min-w-(--anchor-width) max-w-[calc(100vw-2rem)]"
 
 // damageTypeItems offers untyped damage first, then each type a defense
 // names, then each conditional defense's types as "<type>@<index>"
@@ -1027,7 +1026,7 @@ templ formSelect(id, name string, items []selectcomp.ItemData, value, class, con
 		}
 		// Opens below the trigger: aligning the selected item with it would push
 		// the list up the screen once a later item is chosen.
-		@selectcomp.Content(selectcomp.ContentProps{Class: utils.CN("max-h-60", contentClass), AlignItemWithTrigger: utils.Ptr(false), Align: selectcomp.AlignStart}) {
+		@selectcomp.Content(selectcomp.ContentProps{Class: utils.CN("max-h-60", wideList, contentClass), AlignItemWithTrigger: utils.Ptr(false), Align: selectcomp.AlignStart}) {
 			for _, it := range items {
 				@selectcomp.Item(selectcomp.ItemProps{Value: it.Value}) {
 					{ fmt.Sprint(it.Label) }
