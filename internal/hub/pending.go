@@ -44,9 +44,9 @@ type Pending struct {
 	Kind         PendingKind
 	CharacterID  int64  // PendingClaim
 	Name         string // character name (claimed or to create)
-	// Player, OS, Phone and Host tell the GM who is asking.
+	// Player, Device (OS · browser), Phone and Host tell the GM who is asking.
 	Player  string
-	OS      string
+	Device  string
 	Phone   bool
 	Host    string // LAN hostname; empty when the network does not know it
 	Created time.Time

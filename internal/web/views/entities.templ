@@ -7,6 +7,7 @@ import (
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/card"
 	"gm-session-manager/internal/web/components/combobox"
 	"gm-session-manager/internal/web/components/dialog"
 	"gm-session-manager/internal/web/components/empty"
@@ -252,45 +253,44 @@ templ EntityDetail(v EntityView) {
 templ entityLooks(v EntityView) {
 	if len(v.E.Images) == 0 {
 		// Small: without a look there is only initials to show.
-		<div class="max-w-32">
+		<div class="mb-6 max-w-32">
 			@npcPortrait(v.E, "")
 		</div>
 	}
 	if v.IsGM || len(v.E.Images) > 0 {
-		@looksSection(v.E.Images, utils.IfElse(v.IsGM, fmt.Sprintf("/entities/%d/images/", v.E.ID), ""),
-			utils.IfElse(v.IsGM, "The current look is the NPC's portrait. Players see only revealed looks.", "")) {
-			if v.IsGM {
-				if len(v.ImageChoices) > 0 {
-					<form class="flex flex-wrap items-center gap-2" hx-post={ fmt.Sprintf("/entities/%d/images", v.E.ID) }>
-						@formSelect("", "image", selectItems(v.ImageChoices, func(i sqlc.ListImagesRow) string { return fmt.Sprint(i.ID) }, func(i sqlc.ListImagesRow) string { return i.Name }), "", "w-56", "")
-						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
-							Add look
-						}
-					</form>
-				} else if len(v.E.Images) == 0 {
-					<p class="text-sm text-muted-foreground">Add images on the Images page, then link them here.</p>
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					Looks
+				}
+				if v.IsGM {
+					@card.Description() {
+						The current look is the NPC's portrait. Players see only revealed looks.
+					}
+				}
+			}
+			@card.Content(card.ContentProps{Class: "space-y-4"}) {
+				@looksGrid(v.E.Images, utils.IfElse(v.IsGM, fmt.Sprintf("/entities/%d/images/", v.E.ID), ""))
+				if v.IsGM {
+					if len(v.ImageChoices) > 0 {
+						<form class="flex flex-wrap items-center gap-2" hx-post={ fmt.Sprintf("/entities/%d/images", v.E.ID) }>
+							@formSelect("", "image", selectItems(v.ImageChoices, func(i sqlc.ListImagesRow) string { return fmt.Sprint(i.ID) }, func(i sqlc.ListImagesRow) string { return i.Name }), "", "w-56", "")
+							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+								Add look
+							}
+						</form>
+					} else if len(v.E.Images) == 0 {
+						<p class="text-sm text-muted-foreground">Add images on the Images page, then link them here.</p>
+					}
 				}
 			}
 		}
 	}
 }
 
-// looksSection shows looks (an NPC's or a character's), the current one
-// first, larger and ringed as the portrait. It only ever gets the looks the
-// viewer may see. base is where the look actions live, empty when
-// read-only; children add more looks.
-templ looksSection(looks []perm.Look, base, hint string) {
-	<section class="mt-8 space-y-3 first:mt-0">
-		<h2 class={ sectionHeading }>Looks</h2>
-		if hint != "" {
-			<p class="text-xs text-muted-foreground">{ hint }</p>
-		}
-		@looksGrid(looks, base)
-		{ children... }
-	</section>
-}
-
-// looksGrid is the looks themselves, for a section or a card.
+// looksGrid shows looks (an NPC's or a character's), the current one first,
+// larger and ringed as the portrait. It only ever gets the looks the viewer
+// may see. base is where the look actions live, empty when read-only.
 templ looksGrid(looks []perm.Look, base string) {
 	<div class="flex flex-wrap items-start gap-4">
 		for _, img := range looks {

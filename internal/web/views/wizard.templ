@@ -209,9 +209,9 @@ templ wizardPick(v WizardView) {
 						<div class="space-y-4 text-sm">
 							@wizardFacts(c)
 							if v.Step == "class" && c.SkillCount > 0 {
-								<fieldset { v.fieldErr().describedBy("skill")... }>
+								<fieldset { v.fieldErr().describedBy(FieldSkill)... }>
 									<legend class="font-medium">Choose { fmt.Sprint(c.SkillCount) } skills</legend>
-									@v.fieldErr().at("skill")
+									@v.fieldErr().at(FieldSkill)
 									<div class="mt-1 grid grid-cols-2 gap-1 sm:grid-cols-3">
 										for _, k := range c.Skills {
 											@checkField("skill", k, slices.Contains(v.Form["skill"], k)) {
@@ -291,9 +291,9 @@ templ wizardFacts(c *WizardChoice) {
 templ backgroundAbilities(c *WizardChoice, form url.Values, fe FieldError) {
 	{{ items := selectItems(c.Abilities, func(a string) string { return a }, func(a string) string { return dnd5e.AbilityNames[a] }) }}
 	{{ three := form.Get("mode") == "three" }}
-	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe.Key == "mode") } { fe.describedBy("mode")... }>
+	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe.Key == FieldMode) } { fe.describedBy(FieldMode)... }>
 		<legend class="font-medium">Ability score increases</legend>
-		@fe.at("mode")
+		@fe.at(FieldMode)
 		<div class="flex flex-wrap items-center gap-2">
 			<label class="flex items-center gap-1"><input type="radio" name="mode" value="two" checked?={ !three }/> +2 to</label>
 			@formSelect("", "plus2", items, cmp.Or(form.Get("plus2"), c.Abilities[0]), "", "")
@@ -372,19 +372,28 @@ templ wizardChoices(v WizardView) {
 // FieldError is a refused form's error and the field it is about.
 type FieldError struct{ Key, Msg string }
 
+// Error keys shared by handlers, templates and tests.
+const (
+	FieldName  = "name"
+	FieldMode  = "mode"
+	FieldSkill = "skill"
+	FieldSpell = "spell"
+	FieldASI   = "asi"
+)
+
 func (v WizardView) fieldErr() FieldError { return FieldError{Key: v.ErrorFor, Msg: v.Error} }
 
 // DrawsField reports whether the page shows an error at key; the handler shows
 // one for a field it does not draw (a crafted post) at the top instead.
 func (v WizardView) DrawsField(key string) bool {
 	switch key {
-	case "name":
+	case FieldName:
 		return v.Step == "details"
-	case "mode":
+	case FieldMode:
 		return v.Step == "background" && v.Choice != nil && len(v.Choice.Abilities) == 3
-	case "skill":
+	case FieldSkill:
 		return v.Step == "class" && v.Choice != nil && v.Choice.SkillCount > 0
-	case "spell":
+	case FieldSpell:
 		return v.Choices != nil && len(v.Choices.Spells) > 0
 	}
 	return v.Choices != nil && drawsGroup(v.Choices.Groups, key)
@@ -555,7 +564,7 @@ templ wizardEquipment(v WizardView) {
 // nameAttrs are the name input's attributes, linked to its error.
 func nameAttrs(fe FieldError) templ.Attributes {
 	a := templ.Attributes{"maxlength": "100"}
-	maps.Copy(a, fe.describedBy("name"))
+	maps.Copy(a, fe.describedBy(FieldName))
 	return a
 }
 
@@ -568,7 +577,7 @@ templ wizardDetails(v WizardView) {
 				Name
 			}
 			@input.Input(input.Props{ID: "details-name", Name: "name", Value: typed("name", v.Sheet.C.Name), Required: true, Attributes: nameAttrs(v.fieldErr())})
-			@v.fieldErr().at("name")
+			@v.fieldErr().at(FieldName)
 		</div>
 		// Species set these when they can; a species of two sizes leaves the pick here.
 		<div class="flex flex-wrap gap-4">

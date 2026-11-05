@@ -61,9 +61,9 @@ func (v LevelUpView) DrawsField(key string) bool {
 		return false
 	}
 	switch key {
-	case "spell":
+	case FieldSpell:
 		return len(v.Spells) > 0
-	case "asi":
+	case FieldASI:
 		return v.Plan.ASI
 	}
 	if drawsGroup(v.Groups, key) {
@@ -282,9 +282,9 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 						</div>
 					}
 					if p.ASI {
-						<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", v.ErrorFor == "asi") } { v.fieldErr().describedBy("asi")... }>
+						<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", v.ErrorFor == FieldASI) } { v.fieldErr().describedBy(FieldASI)... }>
 							<legend class="font-medium">Ability Score Improvement or feat</legend>
-							@v.fieldErr().at("asi")
+							@v.fieldErr().at(FieldASI)
 							<div class="flex flex-wrap items-center gap-2">
 								@abilitySelect("asi1", "+1 or +2 to", v.Form.Get("asi1"))
 								@abilitySelect("asi2", "and +1 to", v.Form.Get("asi2"))
@@ -336,9 +336,9 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 // refused form's picked slugs ticked and its lineage picks applied.
 templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, form url.Values, fe FieldError) {
 	if len(spells) > 0 {
-		<div role="group" aria-labelledby="spell-checklist-title" { fe.describedBy("spell")... }>
+		<div role="group" aria-labelledby="spell-checklist-title" { fe.describedBy(FieldSpell)... }>
 			<div id="spell-checklist-title" class="font-medium">Learn or prepare spells</div>
-			@fe.at("spell")
+			@fe.at(FieldSpell)
 			if s := need.String(); s != "" {
 				<p class="text-sm">Choose { s }.</p>
 			}

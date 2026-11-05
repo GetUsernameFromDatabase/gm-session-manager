@@ -177,7 +177,7 @@ func TestLevelUpLineage(t *testing.T) {
 			}
 			form := url.Values{"class": {"testlock"}, "spell": {"faerie-fire"}}
 			// No checklist on the page: the refusal shows at the top.
-			if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusUnprocessableEntity || errorAt(w.Body.String(), "spell") ||
+			if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusUnprocessableEntity || errorAt(w.Body.String(), views.FieldSpell) ||
 				!strings.Contains(w.Body.String(), "choose spells from the list") || len(lostPicks(w.Body.String(), form)) > 0 {
 				t.Errorf("Faerie Fire as a class pick: %d, message not at the top or picks lost", w.Code)
 			}
@@ -332,9 +332,9 @@ func TestLevelUpFeats(t *testing.T) {
 				t.Errorf("refused page lost %v", lost)
 			}
 			// Every other refusal here is about the increase or feat pick.
-			at := "asi"
+			at := views.FieldASI
 			if atSpells {
-				at = "spell"
+				at = views.FieldSpell
 			}
 			if tc.msg != "" && (!strings.Contains(body, tc.msg) || !errorAt(body, at)) {
 				t.Errorf("no %q at %s: %s", tc.msg, at, body)

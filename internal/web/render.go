@@ -46,7 +46,7 @@ func (a *App) pendingViews() []views.PendingGroup {
 			out = append(out, views.PendingGroup{CampaignID: p.CampaignID, CampaignName: p.CampaignName})
 		}
 		out[i].Requests = append(out[i].Requests, views.PendingView{ID: p.ID, CampaignID: p.CampaignID, Name: p.Name, Claim: p.Kind == hub.PendingClaim,
-			Player: p.Player, OS: p.OS, Phone: p.Phone, Host: p.Host,
+			Player: p.Player, Device: p.Device, Phone: p.Phone, Host: p.Host,
 		})
 	}
 	return out

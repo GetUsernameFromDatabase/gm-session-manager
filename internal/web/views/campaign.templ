@@ -40,7 +40,7 @@ type PendingView struct {
 	Name       string
 	Claim      bool
 	Player     string
-	OS         string
+	Device     string
 	Phone      bool
 	Host       string
 }
@@ -115,12 +115,12 @@ templ PendingRequests(groups []PendingGroup) {
 						</p>
 					}
 					<p class="mb-3 flex items-center gap-1 text-xs text-muted-foreground">
-						{ p.OS }
 						if p.Phone {
 							@icon.Smartphone(icon.Props{Class: "size-3.5", Attributes: templ.Attributes{"role": "img", "aria-label": "phone"}})
 						} else {
 							@icon.Monitor(icon.Props{Class: "size-3.5", Attributes: templ.Attributes{"role": "img", "aria-label": "computer"}})
 						}
+						{ p.Device }
 						if p.Host != "" {
 							· { p.Host }
 						}

@@ -284,9 +284,6 @@ type fieldError struct {
 
 func (e fieldError) Unwrap() error { return e.userError }
 
-// fieldASI is the level-up form's ability score increase and feat pick.
-const fieldASI = "asi"
-
 // errorField is the form field err is about, "" for none.
 func errorField(err error) string {
 	var fe fieldError
@@ -784,7 +781,7 @@ func (a *App) classSpellPicks(c *gin.Context, class string, offered []views.Opti
 	var got [2]int
 	for _, slug := range c.PostFormArray("spell") {
 		if !slices.ContainsFunc(offered, func(o views.Option) bool { return o.Slug == slug }) || slices.ContainsFunc(spells, func(sp dnd5e.Spell) bool { return sp.Slug == slug }) {
-			return nil, fieldError{userError{errors.New("choose spells from the list")}, "spell"}
+			return nil, fieldError{userError{errors.New("choose spells from the list")}, views.FieldSpell}
 		}
 		sp, err := a.compendiumSpell(c.Request.Context(), slug, campaignID)
 		if err != nil {
@@ -796,7 +793,7 @@ func (a *App) classSpellPicks(c *gin.Context, class string, offered []views.Opti
 	}
 	off := func(n, got int, upTo bool) bool { return n >= 0 && (got > n || !upTo && got < n) }
 	if off(need.Cantrips, got[0], need.CantripsUpTo) || off(need.Spells, got[1], need.SpellsUpTo) {
-		return nil, fieldError{userError{fmt.Errorf("choose %s: you ticked %s and %s", cmp.Or(need.String(), "no spells here"), views.Plural(got[0], "cantrip"), views.Plural(got[1], "level 1+ spell"))}, "spell"}
+		return nil, fieldError{userError{fmt.Errorf("choose %s: you ticked %s and %s", cmp.Or(need.String(), "no spells here"), views.Plural(got[0], "cantrip"), views.Plural(got[1], "level 1+ spell"))}, views.FieldSpell}
 	}
 	return spells, nil
 }
@@ -807,7 +804,7 @@ func (a *App) classSpellPicks(c *gin.Context, class string, offered []views.Opti
 func addClassSpells(s *dnd5e.Sheet, spells []dnd5e.Spell) error {
 	for _, sp := range spells {
 		if slices.ContainsFunc(s.Spells, func(have dnd5e.Spell) bool { return have.Slug == sp.Slug }) {
-			return fieldError{userError{fmt.Errorf("%s comes from your species or feat already: choose another spell", sp.Name)}, "spell"}
+			return fieldError{userError{fmt.Errorf("%s comes from your species or feat already: choose another spell", sp.Name)}, views.FieldSpell}
 		}
 		s.AddSpell(sp)
 	}
@@ -881,7 +878,7 @@ func (a *App) levelUp(c *gin.Context) {
 		feat, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindFeat), Slug: slug})
 		switch {
 		case errors.Is(err, sql.ErrNoRows): // crafted, or a homebrew feat deleted since the form loaded
-			featErr = fieldError{userError{errors.New("choose a feat from the list")}, fieldASI}
+			featErr = fieldError{userError{errors.New("choose a feat from the list")}, views.FieldASI}
 		case !a.found(c, err):
 			return
 		default:
@@ -941,7 +938,7 @@ func (a *App) levelUp(c *gin.Context) {
 			return
 		}
 		if planErr == nil && !meetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel, nil) {
-			featErr = fieldError{userError{fmt.Errorf("%s needs %s", choice.Feat, td.Prerequisite)}, fieldASI}
+			featErr = fieldError{userError{fmt.Errorf("%s needs %s", choice.Feat, td.Prerequisite)}, views.FieldASI}
 		}
 		fg, err := a.featChoices(ctx, "feat_"+slug, choice.Feat, td, "", sheet, ch.CampaignID)
 		if err != nil {
@@ -967,7 +964,7 @@ func (a *App) levelUp(c *gin.Context) {
 			if err := dc.LevelUp(choice); err != nil {
 				var ae dnd5e.ASIError
 				if errors.As(err, &ae) {
-					return fieldError{userError{err}, fieldASI}
+					return fieldError{userError{err}, views.FieldASI}
 				}
 				return userError{err}
 			}

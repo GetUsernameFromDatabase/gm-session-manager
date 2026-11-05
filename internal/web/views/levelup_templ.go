@@ -70,9 +70,9 @@ func (v LevelUpView) DrawsField(key string) bool {
 		return false
 	}
 	switch key {
-	case "spell":
+	case FieldSpell:
 		return len(v.Spells) > 0
-	case "asi":
+	case FieldASI:
 		return v.Plan.ASI
 	}
 	if drawsGroup(v.Groups, key) {
@@ -896,7 +896,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var38 = []any{"space-y-2 rounded-md border p-3", templ.KV("border-destructive", v.ErrorFor == "asi")}
+						var templ_7745c5c3_Var38 = []any{"space-y-2 rounded-md border p-3", templ.KV("border-destructive", v.ErrorFor == FieldASI)}
 						templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_ElementWriter, templ_7745c5c3_Var38...)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
@@ -914,7 +914,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.RenderAttributes(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_ElementWriter, "fieldset", v.fieldErr().describedBy("asi"))
+						templ_7745c5c3_Err = templruntime.RenderAttributes(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_ElementWriter, "fieldset", v.fieldErr().describedBy(FieldASI))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -932,7 +932,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = v.fieldErr().at("asi").Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = v.fieldErr().at(FieldASI).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1155,7 +1155,7 @@ func spellChecklist(spells []Option, cols map[string]string, need SpellNeed, for
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.RenderAttributes(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_ElementWriter, "div", fe.describedBy("spell"))
+				templ_7745c5c3_Err = templruntime.RenderAttributes(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_ElementWriter, "div", fe.describedBy(FieldSpell))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1173,7 +1173,7 @@ func spellChecklist(spells []Option, cols map[string]string, need SpellNeed, for
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = fe.at("spell").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = fe.at(FieldSpell).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

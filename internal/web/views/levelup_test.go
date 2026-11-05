@@ -26,8 +26,8 @@ func TestDrawsField(t *testing.T) {
 		{"sub-group", "trait_lineage_ability", WizardView{Choices: &CreationChoices{Groups: groups}}, LevelUpView{Plan: plain, Groups: groups}, true},
 		{"sub-group of no option", "orphan", WizardView{Choices: &CreationChoices{Groups: groups}}, LevelUpView{Plan: plain, Groups: groups}, false},
 		{"no groups", "trait_lineage", WizardView{}, LevelUpView{Groups: groups}, false},
-		{"spell with a checklist", "spell", WizardView{Choices: &CreationChoices{Spells: spells}}, LevelUpView{Plan: plain, Spells: spells}, true},
-		{"spell without", "spell", WizardView{Choices: &CreationChoices{}}, LevelUpView{Plan: plain}, false},
+		{"spell with a checklist", FieldSpell, WizardView{Choices: &CreationChoices{Spells: spells}}, LevelUpView{Plan: plain, Spells: spells}, true},
+		{"spell without", FieldSpell, WizardView{Choices: &CreationChoices{}}, LevelUpView{Plan: plain}, false},
 		{"unknown key", "nope", WizardView{Choices: &CreationChoices{Groups: groups}}, LevelUpView{Plan: plain, Groups: groups}, false},
 		{"empty key", "", WizardView{Choices: &CreationChoices{Groups: groups}}, LevelUpView{Plan: plain, Groups: groups}, false},
 	} {
@@ -49,7 +49,7 @@ func TestDrawsField(t *testing.T) {
 		{"other step", WizardView{Step: "species", Choice: &WizardChoice{SkillCount: 2}}, false},
 		{"nothing picked", WizardView{Step: "class"}, false},
 	} {
-		if got := tt.v.DrawsField("skill"); got != tt.want {
+		if got := tt.v.DrawsField(FieldSkill); got != tt.want {
 			t.Errorf("skill, %s: %v, want %v", tt.name, got, tt.want)
 		}
 	}
@@ -60,12 +60,12 @@ func TestDrawsField(t *testing.T) {
 		v         WizardView
 		want      bool
 	}{
-		{"name on details", "name", WizardView{Step: "details"}, true},
-		{"name elsewhere", "name", WizardView{Step: "class"}, false},
-		{"mode with three abilities", "mode", WizardView{Step: "background", Choice: background}, true},
-		{"mode on another step", "mode", WizardView{Step: "species", Choice: background}, false},
-		{"mode without three abilities", "mode", WizardView{Step: "background", Choice: &WizardChoice{Abilities: []string{"int"}}}, false},
-		{"mode with nothing picked", "mode", WizardView{Step: "background"}, false},
+		{"name on details", FieldName, WizardView{Step: "details"}, true},
+		{"name elsewhere", FieldName, WizardView{Step: "class"}, false},
+		{"mode with three abilities", FieldMode, WizardView{Step: "background", Choice: background}, true},
+		{"mode on another step", FieldMode, WizardView{Step: "species", Choice: background}, false},
+		{"mode without three abilities", FieldMode, WizardView{Step: "background", Choice: &WizardChoice{Abilities: []string{"int"}}}, false},
+		{"mode with nothing picked", FieldMode, WizardView{Step: "background"}, false},
 	} {
 		if got := tt.v.DrawsField(tt.key); got != tt.want {
 			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
@@ -81,7 +81,7 @@ func TestDrawsField(t *testing.T) {
 		{"asi without one", LevelUpView{Plan: plain}, false},
 		{"asi without a plan", LevelUpView{}, false},
 	} {
-		if got := tt.v.DrawsField("asi"); got != tt.want {
+		if got := tt.v.DrawsField(FieldASI); got != tt.want {
 			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
 		}
 	}

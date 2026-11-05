@@ -316,7 +316,7 @@ func (a *App) startRequest(c *gin.Context, camp sqlc.Campaign, kind hub.PendingK
 	ua := c.Request.UserAgent()
 	p := a.Hub.AddPending(hub.Pending{
 		CampaignID: camp.ID, CampaignName: camp.Name, Kind: kind, CharacterID: characterID, Name: name,
-		Player: strings.TrimSpace(form.Player), OS: deviceOS(ua), Phone: isPhone(ua), Host: lanHostname(c.Request.Context(), c.Request.RemoteAddr),
+		Player: strings.TrimSpace(form.Player), Device: userAgentSummary(ua), Phone: isPhone(ua), Host: lanHostname(c.Request.Context(), c.Request.RemoteAddr),
 	})
 	epoch, seq := a.Hub.Position()
 	l := views.Layout{Title: "Waiting", WS: &views.WS{URL: "/ws?pending=" + p.Secret, Epoch: epoch, Seq: seq}}

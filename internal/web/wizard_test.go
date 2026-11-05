@@ -92,8 +92,8 @@ func TestCreationWizard(t *testing.T) {
 			} {
 				e.do(t, http.MethodPost, base+"/abilities", player, bad.scores, false)
 				w := e.do(t, http.MethodPost, base+"/background", player, bad.form, false)
-				if lost := lostPicks(w.Body.String(), bad.form); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 || !errorAt(w.Body.String(), "mode") {
-					t.Errorf("background %v: %d, lost %v, error at mode %v", bad.form, w.Code, lost, errorAt(w.Body.String(), "mode"))
+				if lost := lostPicks(w.Body.String(), bad.form); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 || !errorAt(w.Body.String(), views.FieldMode) {
+					t.Errorf("background %v: %d, lost %v, error at mode %v", bad.form, w.Code, lost, errorAt(w.Body.String(), views.FieldMode))
 				}
 			}
 			e.do(t, http.MethodPost, base+"/abilities", player, scores, false)
@@ -102,8 +102,8 @@ func TestCreationWizard(t *testing.T) {
 			// A blank name is refused at the name, and the page keeps the rest as typed.
 			blank := url.Values{"name": {"  "}, "backstory": {"Raised in a library."}, "size": {"Large"}, "vision": {"Darkvision 60 ft"}}
 			w := e.do(t, http.MethodPost, base+"/details", player, blank, false)
-			if lost := lostPicks(w.Body.String(), blank); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 || !errorAt(w.Body.String(), "name") {
-				t.Errorf("details %v: %d, lost %v, error at name %v", blank, w.Code, lost, errorAt(w.Body.String(), "name"))
+			if lost := lostPicks(w.Body.String(), blank); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 || !errorAt(w.Body.String(), views.FieldName) {
+				t.Errorf("details %v: %d, lost %v, error at name %v", blank, w.Code, lost, errorAt(w.Body.String(), views.FieldName))
 			}
 			for _, kept := range []string{"Raised in a library.", `value="Darkvision 60 ft"`} {
 				if !strings.Contains(w.Body.String(), kept) {
@@ -341,7 +341,7 @@ func TestCreationSpeciesSpells(t *testing.T) {
 				body := w.Body.String()
 				// Light is dropped on purpose: the picked Forest lineage teaches it.
 				lost := slices.DeleteFunc(lostPicks(body, tc.form), func(l string) bool { return l == "spell=light" })
-				if len(lost) > 0 || !errorAt(body, "spell") {
+				if len(lost) > 0 || !errorAt(body, views.FieldSpell) {
 					t.Errorf("refused page lost %v, or the error is not at the spells", lost)
 				}
 				// Unticked, not disabled, so it can be picked once shown again.
@@ -498,7 +498,7 @@ func TestClassSkillCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	w0 := e0.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/create/class", e0.characterID), e0.token(t, auth.RolePlayer), url.Values{"pick": {"testcommoner"}, "skill": {"athletics"}}, false)
-	if body := w0.Body.String(); w0.Code != http.StatusUnprocessableEntity || errorAt(body, "skill") || !strings.Contains(body, "choose 0 of the listed skills") {
+	if body := w0.Body.String(); w0.Code != http.StatusUnprocessableEntity || errorAt(body, views.FieldSkill) || !strings.Contains(body, "choose 0 of the listed skills") {
 		t.Errorf("skill on a class without skills: %d, message not at the top", w0.Code)
 	}
 	for _, tc := range []struct {
@@ -521,7 +521,7 @@ func TestClassSkillCount(t *testing.T) {
 		if w.Code != tc.code {
 			t.Errorf("%v: %d, want %d", tc.skills, w.Code, tc.code)
 		}
-		if lost := lostPicks(w.Body.String(), form); tc.code == http.StatusUnprocessableEntity && (len(lost) > 0 || !errorAt(w.Body.String(), "skill")) {
+		if lost := lostPicks(w.Body.String(), form); tc.code == http.StatusUnprocessableEntity && (len(lost) > 0 || !errorAt(w.Body.String(), views.FieldSkill)) {
 			t.Errorf("%v: refused page lost %v or its error is not at the skills", tc.skills, lost)
 		}
 		// Chosen already, the step changes nothing and asks for no skills.
@@ -540,7 +540,7 @@ func TestClassSkillCount(t *testing.T) {
 		}
 		form = url.Values{"language": {"Elvish", "Dwarvish"}, "trait_versatile": {"Alert"}, "spell": {"light"}}
 		w = e.do(t, http.MethodPost, base+"choices", player, form, false)
-		if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || errorAt(body, "spell") || !strings.Contains(body, "choose spells from the list") || len(lostPicks(body, form)) > 0 {
+		if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || errorAt(body, views.FieldSpell) || !strings.Contains(body, "choose spells from the list") || len(lostPicks(body, form)) > 0 {
 			t.Errorf("spell on a non-caster: %d, message not at the top or picks lost", w.Code)
 		}
 	}

@@ -1288,7 +1288,7 @@ func checkNewOptions(info dnd5e.ClassInfo, before, after dnd5e.Sheet, level int,
 		if cs, asks := k.cantripChoices(before, o); asks {
 			cantrip = strings.TrimSuffix(cantrip, ")")
 			if !slices.ContainsFunc(cs, func(c compendium.NameDesc) bool { return c.Name == cantrip }) {
-				return fieldError{userError{fmt.Errorf("%s needs %s among your cantrips: tick it under spells", o.Name, cantrip)}, "spell"}
+				return fieldError{userError{fmt.Errorf("%s needs %s among your cantrips: tick it under spells", o.Name, cantrip)}, views.FieldSpell}
 			}
 		}
 	}
@@ -1394,7 +1394,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		skills := slices.Compact(slices.Sorted(slices.Values(c.PostFormArray("skill"))))
 		need := min(choice.SkillCount, len(choice.Skills))
 		if len(skills) != need || slices.ContainsFunc(skills, func(k string) bool { return !slices.Contains(choice.Skills, k) }) {
-			return nil, fieldError{userError{fmt.Errorf("choose %d of the listed skills", need)}, "skill"}
+			return nil, fieldError{userError{fmt.Errorf("choose %d of the listed skills", need)}, views.FieldSkill}
 		}
 		return once(func(s *dnd5e.Sheet, cc *dnd5e.Character) error {
 			if s.Level() > 0 {
@@ -1526,7 +1526,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 	case "details":
 		name := strings.TrimSpace(c.PostForm("name"))
 		if name == "" {
-			return nil, fieldError{userError{errors.New("give your character a name")}, "name"}
+			return nil, fieldError{userError{errors.New("give your character a name")}, views.FieldName}
 		}
 		backstory, vision := c.PostForm("backstory"), strings.TrimSpace(c.PostForm("vision"))
 		size := dnd5e.SizeNamed(c.PostForm("size"))
@@ -1613,7 +1613,7 @@ func backgroundRaises(c *gin.Context, allowed []string) (map[string]int, error) 
 		return raises, nil
 	}
 	if !slices.Contains(allowed, plus2) || !slices.Contains(allowed, plus1) || plus1 == plus2 {
-		return nil, fieldError{userError{errors.New("choose two different abilities of this background for +2 and +1")}, "mode"}
+		return nil, fieldError{userError{errors.New("choose two different abilities of this background for +2 and +1")}, views.FieldMode}
 	}
 	raises[plus2], raises[plus1] = 2, 1
 	return raises, nil
@@ -1643,7 +1643,7 @@ func applyBackground(s *dnd5e.Sheet, name string, d *compendium.TextData, raises
 	s.Background = name
 	for ab, n := range raises {
 		if s.Scores[ab]+n > 20 {
-			return fieldError{userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])}, "mode"}
+			return fieldError{userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])}, views.FieldMode}
 		}
 		s.Scores[ab] += n
 	}
