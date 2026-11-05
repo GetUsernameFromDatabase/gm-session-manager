@@ -53,6 +53,38 @@ func TestDrawsField(t *testing.T) {
 			t.Errorf("skill, %s: %v, want %v", tt.name, got, tt.want)
 		}
 	}
+	// The name is on the details step, the increases on a background of three abilities.
+	background := &WizardChoice{Abilities: []string{"int", "wis", "cha"}}
+	for _, tt := range []struct {
+		name, key string
+		v         WizardView
+		want      bool
+	}{
+		{"name on details", "name", WizardView{Step: "details"}, true},
+		{"name elsewhere", "name", WizardView{Step: "class"}, false},
+		{"mode with three abilities", "mode", WizardView{Step: "background", Choice: background}, true},
+		{"mode on another step", "mode", WizardView{Step: "species", Choice: background}, false},
+		{"mode without three abilities", "mode", WizardView{Step: "background", Choice: &WizardChoice{Abilities: []string{"int"}}}, false},
+		{"mode with nothing picked", "mode", WizardView{Step: "background"}, false},
+	} {
+		if got := tt.v.DrawsField(tt.key); got != tt.want {
+			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
+		}
+	}
+	// The increase is drawn only at a level that grants one.
+	for _, tt := range []struct {
+		name string
+		v    LevelUpView
+		want bool
+	}{
+		{"asi at an ASI level", LevelUpView{Plan: asi}, true},
+		{"asi without one", LevelUpView{Plan: plain}, false},
+		{"asi without a plan", LevelUpView{}, false},
+	} {
+		if got := tt.v.DrawsField("asi"); got != tt.want {
+			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
+		}
+	}
 	// A feat's choices are drawn only with an ASI and the feat on offer.
 	for _, tt := range []struct {
 		name string
@@ -82,6 +114,24 @@ func TestSpellCounts(t *testing.T) {
 		{"empty", nil, ""},
 	} {
 		if got := spellCounts(tt.cols); got != tt.want {
+			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestSpellNeedString: the spellbook count is shown only for a book that was short before this level.
+func TestSpellNeedString(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		need SpellNeed
+		want string
+	}{
+		{"short book", SpellNeed{Spells: 4, Book: true, BookShort: true, BookHave: 3, BookSize: 7}, "4 level 1+ spells for your spellbook (your spellbook has 3 of 7)"},
+		{"full book", SpellNeed{Spells: 2, Book: true, BookHave: 6, BookSize: 8}, "2 level 1+ spells for your spellbook"},
+		{"creation", SpellNeed{Cantrips: 3, Spells: 6, Book: true, BookSize: 6}, "3 cantrips and 6 level 1+ spells for your spellbook"},
+		{"not a book", SpellNeed{Spells: 2, SpellsUpTo: true}, "up to 2 level 1+ spells"},
+	} {
+		if got := tt.need.String(); got != tt.want {
 			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
 		}
 	}

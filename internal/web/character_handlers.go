@@ -212,6 +212,11 @@ func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Comma
 			return userError{err}
 		}
 	}
+	if cmd.PrepareCaps {
+		if env.PreparedCaps, err = a.preparedCaps(ctx, ch); err != nil {
+			return err
+		}
+	}
 	if cmd.ArmorSlug != "" {
 		inInventory, err := a.hasArmorItem(ctx, ch.ID, cmd.ArmorSlug)
 		if err != nil {
@@ -241,6 +246,33 @@ func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Comma
 	})
 }
 
+// preparedCaps are the prepared-spell totals of the character's classes at
+// their levels, by class slug; a class the compendium lacks has no cap.
+func (a *App) preparedCaps(ctx context.Context, ch sqlc.Character) (map[string]int, error) {
+	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
+	if err != nil {
+		return nil, err
+	}
+	caps := map[string]int{}
+	for _, cl := range sheet.Classes {
+		row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindClass), Slug: cl.Slug})
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		info, err := classInfo(row)
+		if err != nil {
+			return nil, err
+		}
+		if _, n, prepared := spellTotals(info, cl.Level); prepared && n >= 0 {
+			caps[cl.Slug] = n
+		}
+	}
+	return caps, nil
+}
+
 // userError marks an error caused by the request, shown to the user as is.
 type userError struct{ error }
 
@@ -251,6 +283,9 @@ type fieldError struct {
 }
 
 func (e fieldError) Unwrap() error { return e.userError }
+
+// fieldASI is the level-up form's ability score increase and feat pick.
+const fieldASI = "asi"
 
 // errorField is the form field err is about, "" for none.
 func errorField(err error) string {
@@ -680,6 +715,25 @@ func spellbook(info dnd5e.ClassInfo, level int) int {
 	return start + count(bookPerLevel)*(level-1)
 }
 
+// spellTotals are the class table's cantrip and level 1+ spell totals at a
+// class level (-1: no such column); prepared says the spell total is a
+// prepared-spells one.
+func spellTotals(info dnd5e.ClassInfo, level int) (cantrips, spells int, prepared bool) {
+	cantrips, spells = -1, -1
+	for col, v := range info.ColumnsAt(level) {
+		n, err := strconv.Atoi(v)
+		isCantrips, isSpells := views.SpellColumn(col)
+		switch {
+		case err != nil:
+		case isCantrips:
+			cantrips = n
+		case isSpells:
+			spells, prepared = n, strings.Contains(strings.ToLower(col), "prepared")
+		}
+	}
+	return cantrips, spells, prepared
+}
+
 // spellNeed is what the class table's cantrip and spell totals (at the class
 // level being reached) leave to pick: each total less the class's spells on
 // the sheet, at most what is offered. A spellbook's size replaces the spell
@@ -706,20 +760,19 @@ func spellNeed(info dnd5e.ClassInfo, level int, sheet dnd5e.Sheet, offered []vie
 	}
 	// Without knowing which class taught them, the totals can only be upper limits.
 	need := views.SpellNeed{Cantrips: -1, Spells: -1, CantripsUpTo: unsure, SpellsUpTo: unsure}
-	for col, v := range info.ColumnsAt(level) {
-		n, err := strconv.Atoi(v)
-		cantrips, spells := views.SpellColumn(col)
-		switch {
-		case err != nil:
-		case cantrips:
-			need.Cantrips = min(max(n-have[0], 0), avail[0])
-		case spells:
-			need.Spells = min(max(n-have[1], 0), avail[1])
-			need.SpellsUpTo = unsure || strings.Contains(strings.ToLower(col), "prepared")
-		}
+	cantrips, spells, prepared := spellTotals(info, level)
+	if cantrips >= 0 {
+		need.Cantrips = min(max(cantrips-have[0], 0), avail[0])
+	}
+	if spells >= 0 {
+		need.Spells = min(max(spells-have[1], 0), avail[1])
+		need.SpellsUpTo = unsure || prepared
 	}
 	if book > 0 {
 		need.Spells, need.SpellsUpTo, need.Book = min(max(book-have[1], 0), avail[1]), unsure, true
+		// Only a book known to be short earlier gets the hint, never a new one (creation, a new class).
+		need.BookShort = level > 1 && !unsure && have[1] < spellbook(info, level-1)
+		need.BookHave, need.BookSize = have[1], book
 	}
 	return need
 }
@@ -828,7 +881,7 @@ func (a *App) levelUp(c *gin.Context) {
 		feat, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindFeat), Slug: slug})
 		switch {
 		case errors.Is(err, sql.ErrNoRows): // crafted, or a homebrew feat deleted since the form loaded
-			featErr = userError{errors.New("choose a feat from the list")}
+			featErr = fieldError{userError{errors.New("choose a feat from the list")}, fieldASI}
 		case !a.found(c, err):
 			return
 		default:
@@ -888,7 +941,7 @@ func (a *App) levelUp(c *gin.Context) {
 			return
 		}
 		if planErr == nil && !meetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel, nil) {
-			featErr = userError{fmt.Errorf("%s needs %s", choice.Feat, td.Prerequisite)}
+			featErr = fieldError{userError{fmt.Errorf("%s needs %s", choice.Feat, td.Prerequisite)}, fieldASI}
 		}
 		fg, err := a.featChoices(ctx, "feat_"+slug, choice.Feat, td, "", sheet, ch.CampaignID)
 		if err != nil {
@@ -912,6 +965,10 @@ func (a *App) levelUp(c *gin.Context) {
 			}
 			maxHP := dc.MaxHP
 			if err := dc.LevelUp(choice); err != nil {
+				var ae dnd5e.ASIError
+				if errors.As(err, &ae) {
+					return fieldError{userError{err}, fieldASI}
+				}
 				return userError{err}
 			}
 			applyPicks(&dc.Sheet, groups, picks)

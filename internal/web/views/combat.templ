@@ -1023,13 +1023,14 @@ templ formSelect(id, name string, items []selectcomp.ItemData, value, class, con
 	}
 	@selectcomp.Select(selectcomp.Props{ID: id, Name: name, Items: items, DefaultValue: value}) {
 		@selectcomp.Trigger(selectcomp.TriggerProps{Class: class}) {
-			@selectcomp.Value()
+			@selectcomp.Value(selectcomp.ValueProps{Class: "block! truncate"})
 		}
 		// Opens below the trigger: aligning the selected item with it would push
 		// the list up the screen once a later item is chosen.
 		@selectcomp.Content(selectcomp.ContentProps{Class: utils.CN("max-h-60", wideList, contentClass), AlignItemWithTrigger: utils.Ptr(false), Align: selectcomp.AlignStart}) {
 			for _, it := range items {
-				@selectcomp.Item(selectcomp.ItemProps{Value: it.Value}) {
+				// The item's text wrapper is a flex nowrap div: make it a shrinking block so a long label ends in an ellipsis before the check mark.
+				@selectcomp.Item(selectcomp.ItemProps{Value: it.Value, Class: "[&>div]:block [&>div]:min-w-0 [&>div]:shrink [&>div]:truncate"}) {
 					{ fmt.Sprint(it.Label) }
 				}
 			}

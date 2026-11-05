@@ -1526,7 +1526,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 	case "details":
 		name := strings.TrimSpace(c.PostForm("name"))
 		if name == "" {
-			return nil, userError{errors.New("give your character a name")}
+			return nil, fieldError{userError{errors.New("give your character a name")}, "name"}
 		}
 		backstory, vision := c.PostForm("backstory"), strings.TrimSpace(c.PostForm("vision"))
 		size := dnd5e.SizeNamed(c.PostForm("size"))
@@ -1613,7 +1613,7 @@ func backgroundRaises(c *gin.Context, allowed []string) (map[string]int, error) 
 		return raises, nil
 	}
 	if !slices.Contains(allowed, plus2) || !slices.Contains(allowed, plus1) || plus1 == plus2 {
-		return nil, userError{errors.New("choose two different abilities of this background for +2 and +1")}
+		return nil, fieldError{userError{errors.New("choose two different abilities of this background for +2 and +1")}, "mode"}
 	}
 	raises[plus2], raises[plus1] = 2, 1
 	return raises, nil
@@ -1643,7 +1643,7 @@ func applyBackground(s *dnd5e.Sheet, name string, d *compendium.TextData, raises
 	s.Background = name
 	for ab, n := range raises {
 		if s.Scores[ab]+n > 20 {
-			return userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])}
+			return fieldError{userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])}, "mode"}
 		}
 		s.Scores[ab] += n
 	}

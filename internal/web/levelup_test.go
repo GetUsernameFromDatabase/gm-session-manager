@@ -219,7 +219,6 @@ func TestLevelUpLineage(t *testing.T) {
 func TestLevelUpFeats(t *testing.T) {
 	mi := "feat_magic-initiate"
 	change := "change_magic-initiate-wizard"
-	noASIChecked := false
 	for _, tc := range []struct {
 		name  string
 		str   int
@@ -247,6 +246,9 @@ func TestLevelUpFeats(t *testing.T) {
 			}},
 		{"not the list taken already", 15, url.Values{"feat": {"magic-initiate"}, mi + "_list": {"Wizard"}}, http.StatusUnprocessableEntity, "", nil},
 		{"a feat the compendium lacks", 15, url.Values{"feat": {"nope"}}, http.StatusUnprocessableEntity, "choose a feat from the list", nil},
+		{"a feat and an increase", 15, url.Values{"feat": {"grappler"}, "feat_grappler_raise": {"Strength"}, "asi1": {"str"}}, http.StatusUnprocessableEntity,
+			"choose a feat or an ability score increase, not both", nil},
+		{"an increase above 20", 20, url.Values{"asi1": {"str"}}, http.StatusUnprocessableEntity, "Strength cannot go above 20", nil},
 		{"Spell Change", 15, url.Values{change: {"Magic Missile"}, change + "_magic-missile": {"Shield"}}, http.StatusSeeOther, "",
 			func(sh dnd5e.Sheet) bool {
 				return !slices.ContainsFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == "magic-missile" }) &&
@@ -283,15 +285,6 @@ func TestLevelUpFeats(t *testing.T) {
 			}
 			player := e.token(t, auth.RolePlayer)
 			base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
-			if !noASIChecked {
-				noASIChecked = true
-				// Level 2 has no feat choice drawn: the feat's refusal shows at the top.
-				form := url.Values{"class": {"wizard"}, "feat": {"magic-initiate"}}
-				w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, form), false)
-				if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || errorAt(body, mi+"_list") || !strings.Contains(body, "choose 1 of the listed magic initiate: spell list") {
-					t.Errorf("feat choice without an ASI: %d, message not at the top", w.Code)
-				}
-			}
 			for range 3 {
 				if w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}}), false); w.Code != http.StatusSeeOther {
 					t.Fatalf("level up: %d %s", w.Code, w.Body)
@@ -338,8 +331,13 @@ func TestLevelUpFeats(t *testing.T) {
 			if lost := lostPicks(body, kept); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
 				t.Errorf("refused page lost %v", lost)
 			}
-			if tc.msg != "" && (!strings.Contains(body, tc.msg) || atSpells && !errorAt(body, "spell")) {
-				t.Errorf("no %q: %s", tc.msg, body)
+			// Every other refusal here is about the increase or feat pick.
+			at := "asi"
+			if atSpells {
+				at = "spell"
+			}
+			if tc.msg != "" && (!strings.Contains(body, tc.msg) || !errorAt(body, at)) {
+				t.Errorf("no %q at %s: %s", tc.msg, at, body)
 			}
 			if tc.check == nil {
 				return
@@ -349,6 +347,30 @@ func TestLevelUpFeats(t *testing.T) {
 				t.Errorf("sheet: %v %s", err, ch.SheetJson)
 			}
 		})
+	}
+}
+
+// TestLevelUpFeatWithoutASI: a feat posted at a level with no ASI draws no feat choices, so its refusal shows at the top.
+func TestLevelUpFeatWithoutASI(t *testing.T) {
+	mi := "feat_magic-initiate"
+	e := newTestEnv(t)
+	ctx := t.Context()
+	loadFeatFixtures(t, e)
+	ch, _ := e.q().GetCharacter(ctx, e.characterID)
+	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
+	sh.Feats = []string{"Magic Initiate (Wizard)"}
+	sh.Spells = []dnd5e.Spell{{Slug: "light", Name: "Light", Ability: "int", Feat: "Magic Initiate (Wizard)"}}
+	raw, _ := sh.JSON()
+	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, auth.RolePlayer)
+	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	form := url.Values{"class": {"wizard"}, "feat": {"magic-initiate"}}
+	w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, form), false)
+	body := w.Body.String()
+	if w.Code != http.StatusUnprocessableEntity || errorAt(body, mi+"_list") || !strings.Contains(body, "choose 1 of the listed magic initiate: spell list") {
+		t.Errorf("feat choice without an ASI: %d, message not at the top", w.Code)
 	}
 }
 

@@ -218,7 +218,7 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 
 	if plan.ASI {
 		if err := applyASI(s, ch); err != nil {
-			return err
+			return ASIError{err}
 		}
 	} else if len(ch.ASI) > 0 || ch.Feat != "" {
 		return errors.New("this level grants no ability score improvement")
@@ -260,6 +260,12 @@ func (s *Sheet) CatchUpUses(class ClassInfo) bool {
 	}
 	return changed
 }
+
+// ASIError is a refusal about the ability score increase or feat pick, so the
+// page can show it at that field.
+type ASIError struct{ error }
+
+func (e ASIError) Unwrap() error { return e.error }
 
 func applyASI(s *Sheet, ch LevelUpChoice) error {
 	switch {

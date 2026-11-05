@@ -13,6 +13,7 @@ import (
 	"gm-session-manager/internal/web/components/radiogroup"
 	"gm-session-manager/internal/web/components/textarea"
 	"gm-session-manager/internal/web/utils"
+	"maps"
 	"net/url"
 	"slices"
 	"strings"
@@ -221,7 +222,7 @@ templ wizardPick(v WizardView) {
 								</fieldset>
 							}
 							if v.Step == "background" && len(c.Abilities) == 3 {
-								@backgroundAbilities(c, v.Form)
+								@backgroundAbilities(c, v.Form, v.fieldErr())
 							}
 							if len(c.Features) > 0 {
 								<div>
@@ -287,11 +288,12 @@ templ wizardFacts(c *WizardChoice) {
 
 // backgroundAbilities raises the background's abilities: +2 and +1, or +1
 // to all three.
-templ backgroundAbilities(c *WizardChoice, form url.Values) {
+templ backgroundAbilities(c *WizardChoice, form url.Values, fe FieldError) {
 	{{ items := selectItems(c.Abilities, func(a string) string { return a }, func(a string) string { return dnd5e.AbilityNames[a] }) }}
 	{{ three := form.Get("mode") == "three" }}
-	<fieldset class="space-y-2">
+	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe.Key == "mode") } { fe.describedBy("mode")... }>
 		<legend class="font-medium">Ability score increases</legend>
+		@fe.at("mode")
 		<div class="flex flex-wrap items-center gap-2">
 			<label class="flex items-center gap-1"><input type="radio" name="mode" value="two" checked?={ !three }/> +2 to</label>
 			@formSelect("", "plus2", items, cmp.Or(form.Get("plus2"), c.Abilities[0]), "", "")
@@ -376,6 +378,10 @@ func (v WizardView) fieldErr() FieldError { return FieldError{Key: v.ErrorFor, M
 // one for a field it does not draw (a crafted post) at the top instead.
 func (v WizardView) DrawsField(key string) bool {
 	switch key {
+	case "name":
+		return v.Step == "details"
+	case "mode":
+		return v.Step == "background" && v.Choice != nil && len(v.Choice.Abilities) == 3
 	case "skill":
 		return v.Step == "class" && v.Choice != nil && v.Choice.SkillCount > 0
 	case "spell":
@@ -546,13 +552,23 @@ templ wizardEquipment(v WizardView) {
 	}
 }
 
+// nameAttrs are the name input's attributes, linked to its error.
+func nameAttrs(fe FieldError) templ.Attributes {
+	a := templ.Attributes{"maxlength": "100"}
+	maps.Copy(a, fe.describedBy("name"))
+	return a
+}
+
+// wizardDetails shows what was typed after a refusal, not the saved sheet.
 templ wizardDetails(v WizardView) {
+	{{ typed := func(key, saved string) string { return utils.IfElse(v.Form != nil, v.Form.Get(key), saved) } }}
 	<form method="post" class="max-w-xl space-y-4">
 		<div class="space-y-1">
 			@label.Label(label.Props{For: "details-name"}) {
 				Name
 			}
-			@input.Input(input.Props{ID: "details-name", Name: "name", Value: v.Sheet.C.Name, Required: true, Attributes: templ.Attributes{"maxlength": "100"}})
+			@input.Input(input.Props{ID: "details-name", Name: "name", Value: typed("name", v.Sheet.C.Name), Required: true, Attributes: nameAttrs(v.fieldErr())})
+			@v.fieldErr().at("name")
 		</div>
 		// Species set these when they can; a species of two sizes leaves the pick here.
 		<div class="flex flex-wrap gap-4">
@@ -560,20 +576,20 @@ templ wizardDetails(v WizardView) {
 				@label.Label(label.Props{For: "details-size-trigger"}) {
 					Size
 				}
-				@formSelect("details-size", "size", sizeItems, cmp.Or(v.Sheet.C.Sheet.Size, "Medium"), "w-40", "")
+				@formSelect("details-size", "size", sizeItems, cmp.Or(typed("size", v.Sheet.C.Sheet.Size), "Medium"), "w-40", "")
 			</div>
 			<div class="flex-1 space-y-1">
 				@label.Label(label.Props{For: "details-vision"}) {
 					Vision
 				}
-				@input.Input(input.Props{ID: "details-vision", Name: "vision", Value: v.Sheet.C.Sheet.Vision, Placeholder: "Normal sight, or Darkvision 60 ft", Attributes: templ.Attributes{"maxlength": "200"}})
+				@input.Input(input.Props{ID: "details-vision", Name: "vision", Value: typed("vision", v.Sheet.C.Sheet.Vision), Placeholder: "Normal sight, or Darkvision 60 ft", Attributes: templ.Attributes{"maxlength": "200"}})
 			</div>
 		</div>
 		<div class="space-y-1">
 			@label.Label(label.Props{For: "details-backstory"}) {
 				Backstory
 			}
-			@textarea.Textarea(textarea.Props{ID: "details-backstory", Name: "backstory", Rows: 8, Value: v.Sheet.C.Sheet.Backstory, Placeholder: "Where they come from, what they want…"})
+			@textarea.Textarea(textarea.Props{ID: "details-backstory", Name: "backstory", Rows: 8, Value: typed("backstory", v.Sheet.C.Sheet.Backstory), Placeholder: "Where they come from, what they want…"})
 		</div>
 		@wizardNav(v, "Save")
 	</form>

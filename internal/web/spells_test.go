@@ -44,8 +44,8 @@ func TestSpellNeed(t *testing.T) {
 		{"a new class", known, 0, dnd5e.Sheet{Classes: one, Spells: spells}, "z", views.SpellNeed{Cantrips: 2, Spells: 3}},
 		{"more than the total", map[string]string{"Cantrips": "1"}, 0, dnd5e.Sheet{Classes: one, Spells: []dnd5e.Spell{{Slug: "c1", Class: "x"}, {Slug: "c3", Class: "x"}}}, "x", views.SpellNeed{Cantrips: 0, Spells: -1}},
 		// A spellbook replaces the prepared total, exactly.
-		{"spellbook", prepared, 3, dnd5e.Sheet{Classes: one, Spells: spells}, "x", views.SpellNeed{Cantrips: 2, Spells: 2, Book: true}},
-		{"spellbook of a multiclass", prepared, 3, dnd5e.Sheet{Classes: two, Spells: spells}, "x", views.SpellNeed{Cantrips: 2, Spells: 3, CantripsUpTo: true, SpellsUpTo: true, Book: true}},
+		{"spellbook", prepared, 3, dnd5e.Sheet{Classes: one, Spells: spells}, "x", views.SpellNeed{Cantrips: 2, Spells: 2, Book: true, BookHave: 1, BookSize: 3}},
+		{"spellbook of a multiclass", prepared, 3, dnd5e.Sheet{Classes: two, Spells: spells}, "x", views.SpellNeed{Cantrips: 2, Spells: 3, CantripsUpTo: true, SpellsUpTo: true, Book: true, BookSize: 3}},
 	} {
 		info := dnd5e.ClassInfo{Slug: tt.class, Table: map[string]map[int]string{}}
 		for col, v := range tt.cols {
@@ -57,6 +57,14 @@ func TestSpellNeed(t *testing.T) {
 		if got := spellNeed(info, 1, tt.sheet, offered); got != tt.want {
 			t.Errorf("%s: %+v, want %+v", tt.name, got, tt.want)
 		}
+	}
+	// A book already short at the previous level gets the hint, a new class's none.
+	info := dnd5e.ClassInfo{Slug: "x", Features: []dnd5e.ClassFeature{{Description: "It starts with 3 level 1 X spells."}}}
+	if n := spellNeed(info, 2, dnd5e.Sheet{Classes: one, Spells: spells}, offered); !n.BookShort || n.BookHave != 1 || n.BookSize != 3 {
+		t.Errorf("short book at level 2: %+v", n)
+	}
+	if n := spellNeed(info, 1, dnd5e.Sheet{Classes: one, Spells: spells}, offered); n.BookShort {
+		t.Errorf("short book at level 1: %+v", n)
 	}
 }
 
@@ -131,7 +139,7 @@ func TestSpellCounts(t *testing.T) {
 		{nil, levelUp, level2, []string{"test-blast", "test-ward"}, http.StatusUnprocessableEntity, "choose spells from the list"}, // Test Ward is known
 		{nil, levelUp, level2, []string{"test-blast"}, http.StatusSeeOther, ""},
 		// Level 3: a book of three holding Test Ward, so exactly one more (only Test Hex is left).
-		{&book, levelUp, url.Values{"class": {"testlock"}}, nil, http.StatusUnprocessableEntity, "choose 1 level 1+ spell for your spellbook: you ticked 0"},
+		{&book, levelUp, url.Values{"class": {"testlock"}}, nil, http.StatusUnprocessableEntity, "choose 1 level 1+ spell for your spellbook (your spellbook has 1 of 3): you ticked 0"},
 		{nil, levelUp, url.Values{"class": {"testlock"}}, []string{"test-hex"}, http.StatusSeeOther, ""},
 	} {
 		if step.class != nil {
@@ -153,5 +161,35 @@ func TestSpellCounts(t *testing.T) {
 	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
 	if got := slices.DeleteFunc(slices.Clone(sh.Spells), func(sp dnd5e.Spell) bool { return sp.Class != "testlock" }); len(got) != 3 {
 		t.Errorf("class spells %+v, want Test Ward, Test Blast and Test Hex", got)
+	}
+}
+
+// TestPrepareCapCommand: the class table's Prepared Spells reaches the
+// prepare command, which refuses one more.
+func TestPrepareCapCommand(t *testing.T) {
+	lock := testlock
+	lock.DataJson = strings.Replace(testlock.DataJson, `"table":{`, `"table":{"Prepared Spells":{"1":"1"},`, 1)
+	e := newTestEnv(t)
+	loadFeatFixtures(t, e)
+	if err := e.q().UpsertCompendiumEntry(t.Context(), lock); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, auth.RolePlayer)
+	if w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/create/class", e.characterID), player, url.Values{"pick": {"testlock"}}, false); w.Code != http.StatusSeeOther {
+		t.Fatalf("class: %d %s", w.Code, w.Body)
+	}
+	ch, _ := e.q().GetCharacter(t.Context(), e.characterID)
+	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
+	sh.Spells = []dnd5e.Spell{{Slug: "test-ward", Name: "Test Ward", Level: 1, Class: "testlock"}, {Slug: "test-hex", Name: "Test Hex", Level: 1, Class: "testlock"}}
+	raw, _ := sh.JSON()
+	if err := e.q().UpdateCharacterSheet(t.Context(), sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
+		t.Fatal(err)
+	}
+	cmdPath := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	if w := e.do(t, http.MethodPost, cmdPath, player, url.Values{"cmd": {"spell prepare test-ward"}}, true); w.Code != http.StatusOK {
+		t.Fatalf("first prepare: %d %s", w.Code, w.Body)
+	}
+	if w := e.do(t, http.MethodPost, cmdPath, player, url.Values{"cmd": {"spell prepare test-hex"}}, true); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "prepares 1 spell") {
+		t.Errorf("past the cap: %d %s", w.Code, w.Body)
 	}
 }

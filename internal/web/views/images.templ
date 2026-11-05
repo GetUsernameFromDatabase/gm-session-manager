@@ -10,6 +10,7 @@ import (
 	"gm-session-manager/internal/web/components/field"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
+	"gm-session-manager/internal/web/components/popover"
 	selectcomp "gm-session-manager/internal/web/components/select"
 	"gm-session-manager/internal/web/components/tabs"
 	"gm-session-manager/internal/web/components/textarea"
@@ -74,19 +75,25 @@ templ ImagesPage(l Layout, v ImagesView) {
 		// Display controls and library actions are separate groups.
 		<div class="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2">
 			<h1 class="mr-auto text-2xl font-semibold">Images</h1>
-			<div class="flex flex-wrap gap-2">
-				@openDisplayButton(v.CampaignID)
-				@button.Button(button.Props{Variant: button.VariantOutline, Class: showPressed, Attributes: showAttrs(JoinQRSrc(v.CampaignID), "Join")}) {
-					@icon.QrCode()
-					Show join QR
-				}
-				@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{"data-clear-display": ""}}) {
-					Clear display
-				}
+			<div class="hidden flex-wrap gap-2 sm:flex">
+				@displayControls(v.CampaignID, button.VariantOutline, "")
 			</div>
 			<div class="flex flex-wrap gap-2">
 				@importButton(v.CampaignID)
 				@newImageButton(v.CampaignID)
+				// Phones: the display controls fold into a menu so the header fits one row.
+				<div class="sm:hidden">
+					@popover.Popover(popover.Props{ID: "display-menu"}) {
+						@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: with(popover.Trigger(ctx), templ.Attributes{"aria-label": "Display", "title": "Display"})}) {
+							@icon.Ellipsis()
+						}
+						@popover.Content(popover.ContentProps{Align: popover.AlignEnd, Class: "w-auto"}) {
+							<div class="flex flex-col gap-1">
+								@displayControls(v.CampaignID, button.VariantGhost, "w-full justify-start")
+							</div>
+						}
+					}
+				</div>
 			</div>
 		</div>
 		if v.Imported > 0 {
@@ -234,6 +241,22 @@ templ openDisplayButton(campaignID int64) {
 	}
 }
 
+// displayControls are the display window's buttons; the header draws them
+// twice (inline from sm up, in a menu on phones), app.js binds by attribute.
+templ displayControls(campaignID int64, variant button.Variant, class string) {
+	@button.Button(button.Props{Variant: variant, Class: class, Href: DisplayURL(campaignID), Target: "_blank", Attributes: templ.Attributes{"data-open-display": ""}}) {
+		@icon.Monitor()
+		Open display
+	}
+	@button.Button(button.Props{Variant: variant, Class: showPressed + " " + class, Attributes: showAttrs(JoinQRSrc(campaignID), "Join")}) {
+		@icon.QrCode()
+		Show join QR
+	}
+	@button.Button(button.Props{Variant: variant, Class: class, Attributes: templ.Attributes{"data-clear-display": ""}}) {
+		Clear display
+	}
+}
+
 // ImageView is one image page: the GM's editor or a player's view.
 type ImageView struct {
 	CampaignID int64
@@ -270,7 +293,8 @@ templ ImagePage(l Layout, v ImageView) {
 						</div>
 					}
 				</div>
-				<div class="space-y-8">
+				// min-w-0: a long picker name truncates instead of widening the column.
+				<div class="min-w-0 space-y-8">
 					@imageForm(v)
 					if v.Image.ID != 0 {
 						@imageBindForm(v)
@@ -323,7 +347,7 @@ templ imageBindForm(v ImageView) {
 				<div class="flex flex-wrap items-center gap-2">
 					if len(v.NPCChoices) > 0 {
 						<form class="contents" hx-post={ action }>
-							@formSelect("", "entity", selectItems(v.NPCChoices, func(e sqlc.Entity) string { return fmt.Sprint(e.ID) }, func(e sqlc.Entity) string { return e.Name }), "", "w-48", "")
+							@formSelect("", "entity", selectItems(v.NPCChoices, func(e sqlc.Entity) string { return fmt.Sprint(e.ID) }, func(e sqlc.Entity) string { return e.Name }), "", "min-w-48 max-w-full", "")
 							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
 								Add as look
 							}
@@ -340,7 +364,7 @@ templ imageBindForm(v ImageView) {
 				<section>
 					<h2 class={ sectionHeading }>Give to a character</h2>
 					<form class="flex flex-wrap items-center gap-2" hx-post={ action }>
-						@formSelect("", "character", selectItems(v.CharacterChoices, func(ch sqlc.Character) string { return fmt.Sprint(ch.ID) }, func(ch sqlc.Character) string { return ch.Name }), "", "w-48", "")
+						@formSelect("", "character", selectItems(v.CharacterChoices, func(ch sqlc.Character) string { return fmt.Sprint(ch.ID) }, func(ch sqlc.Character) string { return ch.Name }), "", "min-w-48 max-w-full", "")
 						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
 							Give image
 						}

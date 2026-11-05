@@ -92,11 +92,24 @@ func TestCreationWizard(t *testing.T) {
 			} {
 				e.do(t, http.MethodPost, base+"/abilities", player, bad.scores, false)
 				w := e.do(t, http.MethodPost, base+"/background", player, bad.form, false)
-				if lost := lostPicks(w.Body.String(), bad.form); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 {
-					t.Errorf("background %v: %d, lost %v", bad.form, w.Code, lost)
+				if lost := lostPicks(w.Body.String(), bad.form); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 || !errorAt(w.Body.String(), "mode") {
+					t.Errorf("background %v: %d, lost %v, error at mode %v", bad.form, w.Code, lost, errorAt(w.Body.String(), "mode"))
 				}
 			}
 			e.do(t, http.MethodPost, base+"/abilities", player, scores, false)
+		}
+		if step.step == "details" {
+			// A blank name is refused at the name, and the page keeps the rest as typed.
+			blank := url.Values{"name": {"  "}, "backstory": {"Raised in a library."}, "size": {"Large"}, "vision": {"Darkvision 60 ft"}}
+			w := e.do(t, http.MethodPost, base+"/details", player, blank, false)
+			if lost := lostPicks(w.Body.String(), blank); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 || !errorAt(w.Body.String(), "name") {
+				t.Errorf("details %v: %d, lost %v, error at name %v", blank, w.Code, lost, errorAt(w.Body.String(), "name"))
+			}
+			for _, kept := range []string{"Raised in a library.", `value="Darkvision 60 ft"`} {
+				if !strings.Contains(w.Body.String(), kept) {
+					t.Errorf("refused details page lost %q", kept)
+				}
+			}
 		}
 		if step.step == "choices" {
 			for _, bad := range []url.Values{{"language": {"Elvish", "Dwarvish", "Orc"}}, {"trait_keen-senses": {"Arcana"}}} {

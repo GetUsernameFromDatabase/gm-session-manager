@@ -60,8 +60,11 @@ func (v LevelUpView) DrawsField(key string) bool {
 	if v.Plan == nil {
 		return false
 	}
-	if key == "spell" {
+	switch key {
+	case "spell":
 		return len(v.Spells) > 0
+	case "asi":
+		return v.Plan.ASI
 	}
 	if drawsGroup(v.Groups, key) {
 		return true
@@ -132,11 +135,13 @@ func SpellColumn(name string) (cantrips, spells bool) {
 
 // SpellNeed is how many class spells a step asks for: exactly, or at most
 // when …UpTo (prepared spells). -1 is no limit (the class table has no such
-// column). Book marks the spells as a spellbook's.
+// column). Book marks the spells as a spellbook's; BookShort, that the book
+// was already below its size at the previous level (BookHave of BookSize).
 type SpellNeed struct {
 	Cantrips, Spells         int
 	CantripsUpTo, SpellsUpTo bool
-	Book                     bool
+	Book, BookShort          bool
+	BookHave, BookSize       int
 }
 
 // String is the ask ("2 cantrips and up to 1 level 1+ spell"), or "" if none.
@@ -147,6 +152,9 @@ func (n SpellNeed) String() string {
 	}
 	if n.Spells > 0 {
 		out = append(out, utils.IfElse(n.SpellsUpTo, "up to ", "")+Plural(n.Spells, "level 1+ spell")+utils.IfElse(n.Book, " for your spellbook", ""))
+		if n.BookShort {
+			out[len(out)-1] += fmt.Sprintf(" (your spellbook has %d of %d)", n.BookHave, n.BookSize)
+		}
 	}
 	return strings.Join(out, " and ")
 }
@@ -274,8 +282,9 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 						</div>
 					}
 					if p.ASI {
-						<fieldset class="space-y-2">
+						<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", v.ErrorFor == "asi") } { v.fieldErr().describedBy("asi")... }>
 							<legend class="font-medium">Ability Score Improvement or feat</legend>
+							@v.fieldErr().at("asi")
 							<div class="flex flex-wrap items-center gap-2">
 								@abilitySelect("asi1", "+1 or +2 to", v.Form.Get("asi1"))
 								@abilitySelect("asi2", "and +1 to", v.Form.Get("asi2"))

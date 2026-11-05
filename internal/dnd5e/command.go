@@ -29,7 +29,10 @@ type Command struct {
 	// ArmorSlug is set when the command needs compendium armor; the caller
 	// resolves it into Env.Armor (and Env.IsShield) before Apply.
 	ArmorSlug string
-	apply     func(c *Character, env Env, fx *Effects) error
+	// PrepareCaps is set when the command needs the classes' prepared-spell
+	// totals; the caller resolves them into Env.PreparedCaps before Apply.
+	PrepareCaps bool
+	apply       func(c *Character, env Env, fx *Effects) error
 }
 
 // Env carries what a command needs from outside the character.
@@ -42,6 +45,9 @@ type Env struct {
 	IsShield bool
 	// Petrified is the character's condition, which resists all damage.
 	Petrified bool
+	// PreparedCaps are the prepared-spell totals by class slug, for
+	// Command.PrepareCaps; a class without an entry has no cap.
+	PreparedCaps map[string]int
 }
 
 // NewCommand wraps a change built by code instead of parsed from text, for
@@ -1010,16 +1016,55 @@ func parseSpell(args []string) (Command, error) {
 			return nil
 		}), nil
 	case "prepare", "unprepare":
-		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
+		cmd := scoped(perm.ScopeSheet, func(c *Character, env Env, _ *Effects) error {
 			i := find(c)
 			if i < 0 {
 				return fmt.Errorf("spell %q is not on the sheet", slug)
 			}
+			if op == "prepare" && !c.Sheet.Spells[i].Prepared {
+				if err := c.Sheet.checkPrepareCap(c.Sheet.Spells[i], env.PreparedCaps); err != nil {
+					return err
+				}
+			}
 			c.Sheet.Spells[i].Prepared = op == "prepare"
 			return nil
-		}), nil
+		})
+		cmd.PrepareCaps = op == "prepare"
+		return cmd, nil
 	}
 	return Command{}, fmt.Errorf("usage: %s", usage)
+}
+
+// checkPrepareCap refuses preparing sp when its class has prepared as many
+// spells as caps allows. Cantrips, lineage and feat spells are never capped.
+func (s Sheet) checkPrepareCap(sp Spell, caps map[string]int) error {
+	counted := func(sp Spell) bool { return sp.Level > 0 && sp.Feat == "" && sp.Ability == "" }
+	// shortcut: untagged spells on a multiclass sheet are not capped, tag them by class if that matters.
+	classOf := func(sp Spell) string {
+		if sp.Class == "" && len(s.Classes) == 1 {
+			return s.Classes[0].Slug
+		}
+		return sp.Class
+	}
+	class := classOf(sp)
+	limit, ok := caps[class]
+	if !counted(sp) || class == "" || !ok {
+		return nil
+	}
+	n := 0
+	for _, o := range s.Spells {
+		if o.Prepared && counted(o) && classOf(o) == class {
+			n++
+		}
+	}
+	if n < limit {
+		return nil
+	}
+	name := class
+	if i := slices.IndexFunc(s.Classes, func(cl ClassLevel) bool { return cl.Slug == class }); i >= 0 {
+		name = s.Classes[i].Name
+	}
+	return fmt.Errorf("%s prepares %d spells at this level: unprepare one first", name, limit)
 }
 
 func parseFeature(args []string) (Command, error) {

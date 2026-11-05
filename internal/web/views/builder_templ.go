@@ -2826,7 +2826,7 @@ func featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, s
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = formSelect("builder-action", "action", actionItems, cmp.Or(f.Action, " "), "w-full", "").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = formSelect("builder-action", "action", actionItems, cmp.Or(f.Action, s.freeCastAction(f.Name), " "), "w-full", "").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -4241,12 +4241,24 @@ func (s SheetView) modTargets() []string {
 	for _, w := range s.C.Sheet.Weapons {
 		out = append(out, dnd5e.ModAttack+"."+w.Name, dnd5e.ModDamage+"."+w.Name)
 	}
+	// Stowed weapons' rows link here too.
+	for _, it := range s.C.Sheet.Inventory {
+		if it.Weapon != nil && !slices.Contains(out, dnd5e.ModAttack+"."+it.Weapon.Name) {
+			out = append(out, dnd5e.ModAttack+"."+it.Weapon.Name, dnd5e.ModDamage+"."+it.Weapon.Name)
+		}
+	}
 	out = append(out, dnd5e.Abilities...)
 	for _, a := range dnd5e.Abilities {
 		out = append(out, "save."+a)
 	}
 	for _, sk := range dnd5e.Skills {
 		out = append(out, "skill."+sk.Key)
+	}
+	// A modifier on a renamed or merged weapon keeps its target selectable.
+	for _, m := range s.C.Sheet.Modifiers {
+		if m.Target != "" && !slices.Contains(out, m.Target) {
+			out = append(out, m.Target)
+		}
 	}
 	return out
 }

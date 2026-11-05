@@ -576,3 +576,44 @@ func TestCompletions(t *testing.T) {
 		}
 	}
 }
+
+func TestPrepareCap(t *testing.T) {
+	wizard := ClassLevel{Slug: "wizard", Name: "Wizard", Level: 3, HitDie: 6, Caster: CasterFull}
+	cleric := ClassLevel{Slug: "cleric", Name: "Cleric", Level: 1, HitDie: 8, Caster: CasterFull}
+	caps := map[string]int{"wizard": 2, "cleric": 2}
+	const full = "Wizard prepares 2 spells at this level: unprepare one first"
+	for _, tt := range []struct {
+		name    string
+		classes []ClassLevel
+		spells  []Spell
+		cmd     string
+		caps    map[string]int
+		want    string // the refusal, or "" for none
+	}{
+		{"under the cap", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "b", Name: "B", Level: 1, Class: "wizard"}}, "spell prepare b", caps, ""},
+		{"at the cap", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "c", Name: "C", Level: 2, Prepared: true, Class: "wizard"}, {Slug: "b", Name: "B", Level: 1, Class: "wizard"}}, "spell prepare b", caps, full},
+		{"prepared already", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "c", Name: "C", Level: 2, Prepared: true, Class: "wizard"}}, "spell prepare a", caps, ""},
+		{"feat and lineage spells are not counted", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Feat: "Magic Initiate (Wizard)"}, {Slug: "c", Name: "C", Level: 1, Prepared: true, Ability: "cha"}, {Slug: "b", Name: "B", Level: 1, Class: "wizard"}}, "spell prepare b", map[string]int{"wizard": 1}, ""},
+		{"a feat spell is never capped", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "b", Name: "B", Level: 1, Feat: "Magic Initiate (Wizard)"}}, "spell prepare b", map[string]int{"wizard": 1}, ""},
+		{"untagged spells of a single class count", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true}, {Slug: "c", Name: "C", Level: 1, Prepared: true}, {Slug: "b", Name: "B", Level: 1}}, "spell prepare b", caps, full},
+		{"another class's spells are not counted", []ClassLevel{wizard, cleric}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "cleric"}, {Slug: "c", Name: "C", Level: 1, Prepared: true, Class: "cleric"}, {Slug: "b", Name: "B", Level: 1, Class: "wizard"}}, "spell prepare b", caps, ""},
+		{"untagged spells of a multiclass are uncapped", []ClassLevel{wizard, cleric}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true}, {Slug: "c", Name: "C", Level: 1, Prepared: true}, {Slug: "b", Name: "B", Level: 1}}, "spell prepare b", caps, ""},
+		{"no cap", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "b", Name: "B", Level: 1, Class: "wizard"}}, "spell prepare b", nil, ""},
+		{"unprepare over the cap", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "c", Name: "C", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "b", Name: "B", Level: 1, Prepared: true, Class: "wizard"}}, "spell unprepare b", caps, ""},
+	} {
+		c := fighter()
+		c.Sheet.Classes, c.Sheet.Spells = tt.classes, tt.spells
+		cmd, err := Parse(tt.cmd)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		_, err = cmd.Apply(&c, Env{PreparedCaps: tt.caps})
+		got := ""
+		if err != nil {
+			got = err.Error()
+		}
+		if got != tt.want {
+			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
