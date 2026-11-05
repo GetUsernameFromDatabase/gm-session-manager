@@ -10,7 +10,6 @@ import (
 	"gm-session-manager/internal/web/components/field"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
-	"gm-session-manager/internal/web/components/popover"
 	selectcomp "gm-session-manager/internal/web/components/select"
 	"gm-session-manager/internal/web/components/tabs"
 	"gm-session-manager/internal/web/components/textarea"
@@ -83,15 +82,8 @@ templ ImagesPage(l Layout, v ImagesView) {
 				@newImageButton(v.CampaignID)
 				// Phones: the display controls fold into a menu so the header fits one row.
 				<div class="sm:hidden">
-					@popover.Popover(popover.Props{ID: "display-menu"}) {
-						@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: with(popover.Trigger(ctx), templ.Attributes{"aria-label": "Display", "title": "Display"})}) {
-							@icon.Ellipsis()
-						}
-						@popover.Content(popover.ContentProps{Align: popover.AlignEnd, Class: "w-auto"}) {
-							<div class="flex flex-col gap-1">
-								@displayControls(v.CampaignID, button.VariantGhost, "w-full justify-start")
-							</div>
-						}
+					@moreMenu("display-menu", "Display") {
+						@displayControls(v.CampaignID, button.VariantGhost, "w-full justify-start")
 					}
 				</div>
 			</div>

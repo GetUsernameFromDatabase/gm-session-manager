@@ -310,7 +310,7 @@ func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int) (int, 
 	return 0, 0, nil, userError{errors.New("everyone is out of the fight")}
 }
 
-// encounterAction runs start, next, prev, end and delete.
+// encounterAction runs start, roll, next, prev, end and delete.
 func (a *App) encounterAction(c *gin.Context) {
 	enc, ok := a.encounterParam(c)
 	if !ok {
@@ -338,18 +338,37 @@ func (a *App) encounterAction(c *gin.Context) {
 			return err
 		}
 		next := sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: enc.Status, Round: enc.Round, ActiveCombatantID: enc.ActiveCombatantID}
+		needInitiative := func() error {
+			if slices.ContainsFunc(rows, func(r sqlc.ListCombatantsRow) bool { return !r.Initiative.Valid }) {
+				return userError{errors.New("set everyone's initiative first")}
+			}
+			return nil
+		}
 		switch action := c.Param("action"); action {
 		case "start":
 			if len(rows) == 0 {
 				return userError{errors.New("add combatants first")}
 			}
+			if err := needInitiative(); err != nil {
+				return err
+			}
 			next.Status, next.Round, next.ActiveCombatantID = statusActive, 1, nullID(rows[0].ID)
+		case "roll":
+			// Monsters and NPCs only: players say their own rolls.
+			for _, r := range rows {
+				if r.CharacterID.Valid || r.Initiative.Valid {
+					continue
+				}
+				if err := q.SetCombatantInitiative(ctx, sqlc.SetCombatantInitiativeParams{ID: r.ID, Initiative: rollFor(r)}); err != nil {
+					return err
+				}
+			}
 		case "next", "prev":
 			if enc.Status != statusActive || len(rows) == 0 {
 				return userError{errors.New("the encounter is not running")}
 			}
-			if slices.ContainsFunc(rows, func(r sqlc.ListCombatantsRow) bool { return !r.Initiative.Valid }) {
-				return userError{errors.New("set everyone's initiative first")}
+			if err := needInitiative(); err != nil {
+				return err
 			}
 			i := slices.IndexFunc(rows, func(r sqlc.ListCombatantsRow) bool { return r.ID == enc.ActiveCombatantID.Int64 })
 			dir := 1
@@ -459,7 +478,12 @@ func (a *App) rollInitiative(ctx context.Context, cb sqlc.Combatant) (sql.NullIn
 	if err != nil {
 		return sql.NullInt64{}, err
 	}
-	return sql.NullInt64{Int64: int64(rand.IntN(20) + 1 + initiativeMod(r)), Valid: true}, nil //nolint:gosec // a game die, not a secret
+	return rollFor(r), nil
+}
+
+// rollFor is d20 plus the row's initiative bonus.
+func rollFor(r sqlc.ListCombatantsRow) sql.NullInt64 {
+	return sql.NullInt64{Int64: int64(rand.IntN(20) + 1 + initiativeMod(r)), Valid: true} //nolint:gosec // a game die, not a secret
 }
 
 // combatantRow is cb with its character's or statblock's data.

@@ -27,6 +27,9 @@ If that names no page, say so and stop.
 ## What to check
 
 - The changed pages only. Work the controls through `browser_snapshot`. Take at most one screenshot per page per width (390px, 1280px), after the controls are tried, not after every step. Read the console once per page (CSP errors included).
+- At 390px, check `document.documentElement.scrollWidth` is 390: anything wider is a horizontal page scroll, a failure.
+- After a restart, wait for the page to load before clicking: a click that lands too early is lost without any error.
+- The MCP takes over `confirm()` dialogs: click the control, then answer with `browser_handle_dialog` (dismiss destructive ones unless told otherwise).
 - Report back in 15 lines or fewer: what you checked, what was wrong, console errors, and the screenshot names.
 - **Sample, don't crawl.** When exploring, open one page of each kind, not every entry. No scripted crawls and no `browser_run_code_unsafe` unless the user asks.
 - Read screenshots yourself and report what you saw. Save them with a `filename` under `data-test/playwright/` (the MCP output dir), never elsewhere in the repo. Give them descriptive names (`<page>-<width>.png`) and cite them by name in a handoff.

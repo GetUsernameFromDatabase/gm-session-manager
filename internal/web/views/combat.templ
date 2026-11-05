@@ -222,7 +222,7 @@ templ Encounter(e EncounterView) {
 					<div class="flex flex-wrap gap-2">
 						switch e.Encounter.Status {
 							case "preparing":
-								@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": e.url("start")}}) {
+								@button.Button(button.Props{Size: button.SizeSm, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("start")}}) {
 									Start
 								}
 							case "active":
@@ -230,7 +230,7 @@ templ Encounter(e EncounterView) {
 									End
 								}
 							case "ended":
-								@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": e.url("start")}}) {
+								@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("start")}}) {
 									Restart
 								}
 						}
@@ -241,14 +241,17 @@ templ Encounter(e EncounterView) {
 				}
 			</div>
 			// A running fight shows this inside its turn card.
-			if e.IsGM && e.Encounter.Status == "preparing" && !e.initiativeSet() {
+			if e.IsGM && e.Encounter.Status != "active" && !e.initiativeSet() {
 				@alert.Alert(alert.Props{Class: "*:[svg]:translate-y-0 *:[svg]:self-center border-amber-500/50 bg-amber-500/10 text-amber-800 *:data-[slot=alert-description]:text-amber-800/90 dark:text-amber-300 dark:*:data-[slot=alert-description]:text-amber-300/90"}) {
 					@icon.TriangleAlert()
 					@alert.Title() {
-						Next turn needs everyone's initiative
+						Everyone needs an initiative to start
 					}
 					@alert.Description() {
-						Missing: { strings.Join(e.missingInitiative(), ", ") }
+						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+							<span>Missing: { strings.Join(e.missingInitiative(), ", ") }</span>
+							@rollMissingButton(e)
+						</div>
 					}
 				}
 			}
@@ -686,6 +689,16 @@ templ initiativeInput(c CombatantView) {
 	}
 }
 
+// rollMissingButton has the GM roll initiative for every monster and NPC without one.
+templ rollMissingButton(e EncounterView) {
+	if e.rollableMissing() {
+		@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": e.url("roll")}}) {
+			@icon.Dices()
+			Roll for monsters and NPCs
+		}
+	}
+}
+
 // turnCard shows whose turn it was, is and comes next, with the GM's
 // buttons to move it. The names are bound, so a turn change patches them.
 // Below, the GM sees whose turns were skipped and whose initiative is missing.
@@ -703,10 +716,12 @@ templ turnCard(e EncounterView) {
 				<span { bind("text=turn.skipped")... }>{ skipped }</span>
 			</p>
 			if !e.initiativeSet() {
-				<p class="flex items-center gap-1.5 border-t border-primary/20 pt-2 text-xs text-amber-700 dark:text-amber-300">
+				<div class="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-t border-primary/20 pt-2 text-xs text-amber-700 dark:text-amber-300">
 					@icon.TriangleAlert(icon.Props{Size: 14, Class: "shrink-0"})
-					Next turn needs everyone's initiative. Missing: { strings.Join(e.missingInitiative(), ", ") }
-				</p>
+					// The basis keeps the text beside its icon; the button wraps first.
+					<span class="min-w-0 grow basis-48">Next turn needs everyone's initiative. Missing: { strings.Join(e.missingInitiative(), ", ") }</span>
+					@rollMissingButton(e)
+				</div>
 			}
 		}
 	</div>
@@ -846,6 +861,11 @@ func (c CombatantView) hpCap() int64 {
 // initiativeSet reports whether every combatant has an initiative, which
 // next turn needs to follow the order.
 func (e EncounterView) initiativeSet() bool { return len(e.missingInitiative()) == 0 }
+
+// rollableMissing reports whether a monster or NPC still has no initiative: the GM rolls for those.
+func (e EncounterView) rollableMissing() bool {
+	return slices.ContainsFunc(e.Combatants, func(c CombatantView) bool { return c.Kind != KindPC && c.Initiative == "" })
+}
 
 // missingInitiative names the combatants without an initiative.
 func (e EncounterView) missingInitiative() []string {

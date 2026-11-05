@@ -66,6 +66,7 @@ A page region that updates in real time is a live view.
 - Style toggled states with `aria-pressed:` or `data-[…]:` variants, so a live update flips one attribute instead of swapping classes.
 - Slow forms show a loading indicator: mark the form `data-busy` with class `group/busy` and put `@busyIndicator("…")` inside (layout.templ). app.js sets `aria-busy` while it submits or runs htmx requests, and disables its submit buttons against double submits.
 - Previews fetch nothing while their place is not visible (a pane hidden on small screens, a collapsed section): check `checkVisibility()` before loading, as the compendium and import previews do; lists of images use `loading="lazy"`.
+- Narrow screens: a grid column needs `min-w-0` before a child's `max-w-full` or truncation works; in a `flex-wrap` row of icon + text + button, give the text `min-w-0 grow basis-48` so the button wraps first instead of leaving the icon alone on a line.
 - New Tailwind classes need `go generate ./internal/web` (rebuilds `output.css`).
 - Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
 

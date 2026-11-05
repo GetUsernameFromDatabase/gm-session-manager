@@ -104,6 +104,46 @@ func TestRollInitiative(t *testing.T) {
 	}
 }
 
+// TestRollAllInitiative checks the roll action fills only monsters and NPCs
+// without an initiative, leaving PCs and set values alone.
+func TestRollAllInitiative(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	npc, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: "{}"})
+	for _, p := range []sqlc.CreateCombatantParams{
+		{Name: "Hero", CharacterID: nullID(e.characterID)},
+		{Name: "Ogre", Hp: 59, MaxHp: 59},
+		{Name: "Guard", Hp: 11, MaxHp: 11, Initiative: sql.NullInt64{Int64: 7, Valid: true}},
+		{Name: "Mira", EntityID: nullID(npc.ID)},
+	} {
+		p.EncounterID = enc.ID
+		if _, err := e.q().CreateCombatant(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if w := e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/roll", enc.ID), e.token(t, auth.RoleAdmin), nil, true); w.Code != http.StatusOK {
+		t.Fatalf("roll: %d %s", w.Code, w.Body)
+	}
+	rows, _ := e.q().ListCombatants(ctx, enc.ID)
+	for _, r := range rows {
+		switch lo := int64(1 + initiativeMod(r)); {
+		case r.CharacterID.Valid:
+			if r.Initiative.Valid {
+				t.Errorf("%s: PC initiative %v, want unset", r.Name, r.Initiative)
+			}
+		case r.Name == "Guard":
+			if r.Initiative.Int64 != 7 {
+				t.Errorf("Guard initiative %v, want 7", r.Initiative)
+			}
+		default:
+			if !r.Initiative.Valid || r.Initiative.Int64 < lo || r.Initiative.Int64 > lo+19 {
+				t.Errorf("%s: initiative %v outside %d..%d", r.Name, r.Initiative, lo, lo+19)
+			}
+		}
+	}
+}
+
 // TestCombatDefenses: the GM's damage follows a statblock's resistances,
 // immunities, vulnerabilities and conditional defenses, and Petrified; a
 // player damages their own character by type, and never sees another

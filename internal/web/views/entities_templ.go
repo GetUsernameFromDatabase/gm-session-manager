@@ -1861,7 +1861,7 @@ func entityForm(v EntityView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = input.Input(input.Props{Name: "name", Value: v.E.Name, Required: true, Class: "-ml-2.5 h-auto border-transparent py-0.5 text-2xl font-semibold shadow-none hover:border-input md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Name"}}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = input.Input(input.Props{Name: "name", Value: v.E.Name, Required: true, Class: "-ml-2.5 h-auto min-w-0 flex-1 border-transparent py-0.5 text-2xl font-semibold shadow-none hover:border-input md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Name"}}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1877,15 +1877,13 @@ func entityForm(v EntityView) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = icon.Trash2().Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = menuDelete("Delete NPC", fmt.Sprintf("/entities/%d/delete", v.E.ID), "Delete "+v.E.Name+"?").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Class: quietDestructive, Attributes: templ.Attributes{
-			"hx-post": fmt.Sprintf("/entities/%d/delete", v.E.ID), "hx-confirm": "Delete " + v.E.Name + "?", "aria-label": "Delete " + v.E.Name, "title": "Delete",
-		}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var76), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = moreMenu("entity-menu", "More actions").Render(templ.WithChildren(ctx, templ_7745c5c3_Var76), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1930,7 +1928,7 @@ func entityForm(v EntityView) templ.Component {
 		var templ_7745c5c3_Var78 string
 		templ_7745c5c3_Var78, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(len(keys))).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 388, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 387, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var78)
 		if templ_7745c5c3_Err != nil {
@@ -2018,7 +2016,7 @@ func entityForm(v EntityView) templ.Component {
 			var templ_7745c5c3_Var81 string
 			templ_7745c5c3_Var81, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", v.Compendium.ID))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 404, Col: 121}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 403, Col: 121}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 			if templ_7745c5c3_Err != nil {
@@ -2031,7 +2029,7 @@ func entityForm(v EntityView) templ.Component {
 			var templ_7745c5c3_Var82 string
 			templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(v.Compendium.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 404, Col: 143}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 403, Col: 143}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 			if templ_7745c5c3_Err != nil {
@@ -2189,7 +2187,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var87 string
 		templ_7745c5c3_Var87, templ_7745c5c3_Err = templruntime.NewAttributeExpression(key).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 454, Col: 146}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 453, Col: 146}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var87)
 		if templ_7745c5c3_Err != nil {
@@ -2212,7 +2210,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var88 string
 		templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.JoinStringErrs(key)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 456, Col: 82}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 455, Col: 82}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var88))
 		if templ_7745c5c3_Err != nil {
@@ -2303,7 +2301,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var91 string
 		templ_7745c5c3_Var91, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("key_%d", i)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 468, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 467, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var91)
 		if templ_7745c5c3_Err != nil {
@@ -2316,7 +2314,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var92 string
 		templ_7745c5c3_Var92, templ_7745c5c3_Err = templruntime.NewAttributeExpression(key).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 468, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 467, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var92)
 		if templ_7745c5c3_Err != nil {
@@ -2381,7 +2379,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var95 string
 		templ_7745c5c3_Var95, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("value_%d", i)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 481, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 480, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var95)
 		if templ_7745c5c3_Err != nil {
@@ -2394,7 +2392,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var96 string
 		templ_7745c5c3_Var96, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.Value).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 481, Col: 74}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 480, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var96)
 		if templ_7745c5c3_Err != nil {
@@ -2440,7 +2438,7 @@ func wikiText(s string, canOpen func(WikiLink) bool) templ.Component {
 				var templ_7745c5c3_Var98 string
 				templ_7745c5c3_Var98, templ_7745c5c3_Err = templ.JoinStringErrs(p.Text)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 494, Col: 11}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 493, Col: 11}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var98))
 				if templ_7745c5c3_Err != nil {
@@ -2455,7 +2453,7 @@ func wikiText(s string, canOpen func(WikiLink) bool) templ.Component {
 				var templ_7745c5c3_Var99 string
 				templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinStringErrs(p.Link.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 498, Col: 17}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 497, Col: 17}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var99))
 				if templ_7745c5c3_Err != nil {
@@ -2492,7 +2490,7 @@ func wikiLink(l WikiLink) templ.Component {
 		var templ_7745c5c3_Var101 string
 		templ_7745c5c3_Var101, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(l.URL())).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 507, Col: 31}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 506, Col: 31}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var101)
 		if templ_7745c5c3_Err != nil {
@@ -2505,7 +2503,7 @@ func wikiLink(l WikiLink) templ.Component {
 		var templ_7745c5c3_Var102 string
 		templ_7745c5c3_Var102, templ_7745c5c3_Err = templruntime.NewAttributeExpression(l.Key()).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 508, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 507, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var102)
 		if templ_7745c5c3_Err != nil {
@@ -2523,7 +2521,7 @@ func wikiLink(l WikiLink) templ.Component {
 			var templ_7745c5c3_Var103 string
 			templ_7745c5c3_Var103, templ_7745c5c3_Err = templruntime.NewAttributeExpression(cmp.Or(l.Float, "left")).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 510, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 509, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var103)
 			if templ_7745c5c3_Err != nil {
@@ -2546,7 +2544,7 @@ func wikiLink(l WikiLink) templ.Component {
 			var templ_7745c5c3_Var104 string
 			templ_7745c5c3_Var104, templ_7745c5c3_Err = templruntime.NewAttributeExpression(ImageSrc(l.ID)).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 514, Col: 28}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 513, Col: 28}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var104)
 			if templ_7745c5c3_Err != nil {
@@ -2559,7 +2557,7 @@ func wikiLink(l WikiLink) templ.Component {
 			var templ_7745c5c3_Var105 string
 			templ_7745c5c3_Var105, templ_7745c5c3_Err = templruntime.NewAttributeExpression(l.Label).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 514, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 513, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var105)
 			if templ_7745c5c3_Err != nil {
@@ -2577,7 +2575,7 @@ func wikiLink(l WikiLink) templ.Component {
 		var templ_7745c5c3_Var106 string
 		templ_7745c5c3_Var106, templ_7745c5c3_Err = templ.JoinStringErrs(l.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 516, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 515, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var106))
 		if templ_7745c5c3_Err != nil {
@@ -2703,7 +2701,7 @@ func addFieldInput(entityID int64, keys []string) templ.Component {
 							var templ_7745c5c3_Var113 string
 							templ_7745c5c3_Var113, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 539, Col: 10}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 538, Col: 10}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var113))
 							if templ_7745c5c3_Err != nil {

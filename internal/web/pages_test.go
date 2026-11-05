@@ -45,12 +45,9 @@ func TestPagesRender(t *testing.T) {
 			t.Fatalf("add %s: %d %s", kind, w.Code, w.Body)
 		}
 	}
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/start", enc.ID), gm, nil, true); w.Code != http.StatusOK {
-		t.Fatalf("start: %d %s", w.Code, w.Body)
-	}
-	next := fmt.Sprintf("/encounters/%d/next", enc.ID)
-	if w := e.do(t, http.MethodPost, next, gm, nil, true); w.Code == http.StatusOK {
-		t.Fatal("next turn ran without initiatives")
+	start := fmt.Sprintf("/encounters/%d/start", enc.ID)
+	if w := e.do(t, http.MethodPost, start, gm, nil, true); w.Code == http.StatusOK {
+		t.Fatal("start ran without initiatives")
 	}
 	rows, _ := e.q().ListCombatants(ctx, enc.ID)
 	for i, r := range rows {
@@ -96,6 +93,10 @@ func TestPagesRender(t *testing.T) {
 			e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/hp", r.ID), gm, url.Values{"op": {"damage"}, "amount": {"19"}}, true)
 		}
 	}
+	if w := e.do(t, http.MethodPost, start, gm, nil, true); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body)
+	}
+	next := fmt.Sprintf("/encounters/%d/next", enc.ID)
 	if w := e.do(t, http.MethodPost, next, gm, nil, true); w.Code != http.StatusOK {
 		t.Fatalf("next: %d %s", w.Code, w.Body)
 	}

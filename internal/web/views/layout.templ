@@ -8,6 +8,7 @@ import (
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
 	"gm-session-manager/internal/web/components/kbd"
+	"gm-session-manager/internal/web/components/popover"
 	"gm-session-manager/internal/web/components/separator"
 	"gm-session-manager/internal/web/components/spinner"
 	"gm-session-manager/internal/web/components/toast"
@@ -309,6 +310,32 @@ templ Section(title string) {
 		<h2 class="mb-3 text-lg font-semibold">{ title }</h2>
 		{ children... }
 	</section>
+}
+
+// moreMenu is a header's "…" menu: rare or destructive actions kept away from the everyday buttons.
+templ moreMenu(id, label string) {
+	@popover.Popover(popover.Props{ID: id}) {
+		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: with(popover.Trigger(ctx), templ.Attributes{"aria-label": label, "title": label})}) {
+			@icon.Ellipsis()
+		}
+		@popover.Content(popover.ContentProps{Align: popover.AlignEnd, Class: "w-auto"}) {
+			<div class="flex flex-col gap-1">
+				{ children... }
+			</div>
+		}
+	}
+}
+
+// menuDelete is a moreMenu's destructive item: it posts after a confirm, and the menu closes (data-menu-item).
+templ menuDelete(label, url, confirm string) {
+	@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start text-destructive hover:text-destructive", Attributes: templ.Attributes{
+		"data-menu-item": "",
+		"hx-post":        url,
+		"hx-confirm":     confirm,
+	}}) {
+		@icon.Trash2()
+		{ label }
+	}
 }
 
 // busyIndicator shows while its data-busy form (with group/busy) works:

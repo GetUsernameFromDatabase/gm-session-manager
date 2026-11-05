@@ -363,11 +363,10 @@ templ entityForm(v EntityView) {
 	<form hx-post={ fmt.Sprintf("/entities/%d", v.E.ID) } class="group/fields space-y-5">
 		<div class="space-y-2">
 			<div class="flex items-center gap-2">
-				@input.Input(input.Props{Name: "name", Value: v.E.Name, Required: true, Class: "-ml-2.5 h-auto border-transparent py-0.5 text-2xl font-semibold shadow-none hover:border-input md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Name"}})
-				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Class: quietDestructive, Attributes: templ.Attributes{
-					"hx-post": fmt.Sprintf("/entities/%d/delete", v.E.ID), "hx-confirm": "Delete " + v.E.Name + "?", "aria-label": "Delete " + v.E.Name, "title": "Delete",
-				}}) {
-					@icon.Trash2()
+				@input.Input(input.Props{Name: "name", Value: v.E.Name, Required: true, Class: "-ml-2.5 h-auto min-w-0 flex-1 border-transparent py-0.5 text-2xl font-semibold shadow-none hover:border-input md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Name"}})
+				// The menu's content is portaled out of this form, so Delete never submits it.
+				@moreMenu("entity-menu", "More actions") {
+					@menuDelete("Delete NPC", fmt.Sprintf("/entities/%d/delete", v.E.ID), "Delete "+v.E.Name+"?")
 				}
 			</div>
 			@checkField("revealed", "true", v.E.IsRevealed) {

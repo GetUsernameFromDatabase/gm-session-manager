@@ -124,32 +124,18 @@ templ CharacterSheet(s SheetView) {
 						Change…
 					}
 					// Delete lives in this menu, away from the everyday buttons.
-					@popover.Popover(popover.Props{ID: "character-menu"}) {
-						@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: with(popover.Trigger(ctx), templ.Attributes{"aria-label": "More actions", "title": "More actions"})}) {
-							@icon.Ellipsis()
+					@moreMenu("character-menu", "More actions") {
+						if s.CanRevert {
+							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: templ.Attributes{
+								"data-menu-item": "",
+								"hx-post":        fmt.Sprintf("/characters/%d/levelup/revert", s.ID),
+								"hx-confirm":     "Revert the last level-up? The sheet goes back to how it was before it: other changes made since (items, spells, slots, notes on the sheet) are lost too. Current HP is kept, up to the old maximum.",
+							}}) {
+								@icon.Undo2()
+								Revert level-up
+							}
 						}
-						@popover.Content(popover.ContentProps{Align: popover.AlignEnd, Class: "w-auto"}) {
-							<div class="flex flex-col gap-1">
-								if s.CanRevert {
-									@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: templ.Attributes{
-										"data-menu-item": "",
-										"hx-post":        fmt.Sprintf("/characters/%d/levelup/revert", s.ID),
-										"hx-confirm":     "Revert the last level-up? The sheet goes back to how it was before it: other changes made since (items, spells, slots, notes on the sheet) are lost too. Current HP is kept, up to the old maximum.",
-									}}) {
-										@icon.Undo2()
-										Revert level-up
-									}
-								}
-								@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start text-destructive hover:text-destructive", Attributes: templ.Attributes{
-									"data-menu-item": "",
-									"hx-post":        fmt.Sprintf("/characters/%d/remove", s.ID),
-									"hx-confirm":     "Delete " + s.C.Name + "? This logs out every device playing it. The GM can restore it.",
-								}}) {
-									@icon.Trash2()
-									Delete character
-								}
-							</div>
-						}
+						@menuDelete("Delete character", fmt.Sprintf("/characters/%d/remove", s.ID), "Delete "+s.C.Name+"? This logs out every device playing it. The GM can restore it.")
 					}
 				</div>
 			}
