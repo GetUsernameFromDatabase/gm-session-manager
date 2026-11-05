@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mileusna/useragent"
 	qrcode "github.com/skip2/go-qrcode"
 
 	"gm-session-manager/internal/auth"
@@ -313,10 +314,10 @@ func (a *App) startRequest(c *gin.Context, camp sqlc.Campaign, kind hub.PendingK
 		a.renderJoinCharacters(c, http.StatusUnprocessableEntity, camp, "Tell the GM your name (up to 12 characters).")
 		return
 	}
-	ua := c.Request.UserAgent()
+	ua := useragent.Parse(c.Request.UserAgent())
 	p := a.Hub.AddPending(hub.Pending{
 		CampaignID: camp.ID, CampaignName: camp.Name, Kind: kind, CharacterID: characterID, Name: name,
-		Player: strings.TrimSpace(form.Player), Device: userAgentSummary(ua), Phone: isPhone(ua), Host: lanHostname(c.Request.Context(), c.Request.RemoteAddr),
+		Player: strings.TrimSpace(form.Player), Device: userAgentSummary(ua), Phone: ua.Mobile, Host: lanHostname(c.Request.Context(), c.Request.RemoteAddr),
 	})
 	epoch, seq := a.Hub.Position()
 	l := views.Layout{Title: "Waiting", WS: &views.WS{URL: "/ws?pending=" + p.Secret, Epoch: epoch, Seq: seq}}
@@ -419,7 +420,7 @@ func (a *App) websocket(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	ua := userAgentSummary(c.Request.UserAgent())
+	ua := userAgentSummary(useragent.Parse(c.Request.UserAgent()))
 	var sessionID int64
 	if w.id.Session != nil {
 		sessionID = w.id.Session.ID

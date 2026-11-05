@@ -20,6 +20,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/gin-gonic/gin"
+	"github.com/mileusna/useragent"
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
@@ -305,25 +306,9 @@ func (a *App) bindForm(c *gin.Context, dst any) bool {
 	return true
 }
 
-// uaPick returns the label of the first pair whose token is in ua.
-func uaPick(ua string, pairs [][2]string) string {
-	for _, p := range pairs {
-		if strings.Contains(ua, p[0]) {
-			return p[1]
-		}
-	}
-	return ""
-}
-
-// deviceOS names a User-Agent's operating system ("iPhone", "Windows"), or "".
-func deviceOS(ua string) string {
-	return uaPick(ua, [][2]string{{"iPhone", "iPhone"}, {"iPad", "iPad"}, {"Android", "Android"}, {"Windows", "Windows"}, {"Mac OS", "Mac"}, {"CrOS", "Chromebook"}, {"Linux", "Linux"}})
-}
-
-// userAgentSummary turns a User-Agent into "iPhone · Safari".
-func userAgentSummary(ua string) string {
-	device := deviceOS(ua)
-	browser := uaPick(ua, [][2]string{{"Firefox/", "Firefox"}, {"FxiOS", "Firefox"}, {"Edg/", "Edge"}, {"OPR/", "Opera"}, {"CriOS", "Chrome"}, {"Chrome/", "Chrome"}, {"Safari/", "Safari"}})
+// userAgentSummary turns a parsed User-Agent into "iOS · Safari".
+func userAgentSummary(ua useragent.UserAgent) string {
+	device, browser := ua.OS, ua.Name
 	switch {
 	case device == "" && browser == "":
 		return "Unknown device"
@@ -334,10 +319,6 @@ func userAgentSummary(ua string) string {
 	}
 	return device + " · " + browser
 }
-
-// isPhone reports whether a User-Agent is a phone: browsers mark phones,
-// and not tablets, with "Mobi".
-func isPhone(ua string) bool { return strings.Contains(ua, "Mobi") }
 
 // hostLookupTimeout bounds the reverse lookup of a joining device's name.
 const hostLookupTimeout = time.Second

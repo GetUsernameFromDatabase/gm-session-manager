@@ -9,6 +9,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-playground/validator/v10 v10.30.6
 	github.com/joho/godotenv v1.5.1
+	github.com/mileusna/useragent v1.3.5
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/yuin/goldmark/v2 v2.1.15
 	golang.org/x/net v0.62.0

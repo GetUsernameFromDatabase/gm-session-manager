@@ -168,6 +168,20 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 		}
 	}
 
+	// A feature's uses are bound too: spending one patches just its label.
+	cmd("feature add Lucky")
+	cmd("feature set Lucky uses=1")
+	cmd("use Lucky")
+	readUntil(t, phone, "the uses patch", func(m wsMessage) bool {
+		set, _ := patchOf(m, sheet)
+		for k, v := range set {
+			if strings.HasPrefix(k, "use.") && v == "0/1 left" {
+				return true
+			}
+		}
+		return false
+	})
+
 	// The combat tab heard none of it: its first message is its own view.
 	if w := e.do(t, http.MethodPost, fmt.Sprintf("/campaigns/%d/encounters", e.campaignID), e.token(t, auth.RoleAdmin), url.Values{"name": {"Ambush"}}, true); w.Code >= 400 {
 		t.Fatalf("create encounter: %d", w.Code)

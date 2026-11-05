@@ -155,6 +155,15 @@ func TestArmorAndFeatureUses(t *testing.T) {
 	if c.Sheet.ArmorClass() != 18 || bi.Action != "bonus" || bi.Uses.Used != 2 || bi.Uses.Reset != "long" || sw.Uses.Used != 1 {
 		t.Errorf("after short rest: AC %d %+v %+v", c.Sheet.ArmorClass(), bi, sw)
 	}
+	// Restore gives back one use and never goes below zero.
+	for range 2 {
+		if err := run(`restore "Second Wind"`, Env{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.Sheet.Features[1].Uses.Used != 0 {
+		t.Errorf("after two restores: Used %d, want 0", c.Sheet.Features[1].Uses.Used)
+	}
 	for _, line := range []string{"rest long", "armor off", "shield off", `feature remove "Bardic Inspiration"`} {
 		if err := run(line, Env{}); err != nil {
 			t.Fatalf("%s: %v", line, err)

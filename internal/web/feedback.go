@@ -20,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/mileusna/useragent"
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/web/views"
@@ -464,34 +465,19 @@ var appBuild = sync.OnceValue(func() string {
 	return rev + dirty + at
 })
 
-// Browser and OS tokens in User-Agent, most specific first.
-var (
-	uaBrowsers = []struct{ token, name string }{
-		{"Edg/", "Edge"}, {"OPR/", "Opera"}, {"SamsungBrowser/", "Samsung Internet"}, {"Firefox/", "Firefox"},
-		{"FxiOS/", "Firefox"}, {"CriOS/", "Chrome"}, {"Chrome/", "Chrome"}, {"Version/", "Safari"},
-	}
-	uaSystems = []struct{ token, name string }{
-		{"Android", "Android"}, {"iPhone", "iPhone"}, {"iPad", "iPad"}, {"Windows", "Windows"},
-		{"Mac OS X", "macOS"}, {"CrOS", "ChromeOS"}, {"Linux", "Linux"},
-	}
-)
-
 // browserName shortens a User-Agent to "Firefox 131 on Android", or keeps
-// it whole when it is not one it knows.
+// it whole when the parser knows no browser in it.
 func browserName(ua string) string {
-	for _, br := range uaBrowsers {
-		_, after, ok := strings.Cut(ua, br.token)
-		if !ok {
-			continue
-		}
-		version, _, _ := strings.Cut(after, ".")
-		name := br.name + " " + strings.TrimSpace(version)
-		for _, sys := range uaSystems {
-			if strings.Contains(ua, sys.token) {
-				return name + " on " + sys.name
-			}
-		}
-		return name
+	parsed := useragent.Parse(ua)
+	if parsed.Name == "" {
+		return ua
 	}
-	return ua
+	name := parsed.Name
+	if major, _, _ := strings.Cut(parsed.Version, "."); major != "" {
+		name += " " + major
+	}
+	if parsed.OS != "" {
+		name += " on " + parsed.OS
+	}
+	return name
 }

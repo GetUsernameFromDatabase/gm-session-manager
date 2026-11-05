@@ -111,11 +111,29 @@ func TestRollAllInitiative(t *testing.T) {
 	ctx := t.Context()
 	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
 	npc, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: "{}"})
+	npc2, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Vex", FieldsJson: "{}"})
+	// Statblock initiative bonuses by combatant name; the range check below must include them.
+	bonus := map[string]int64{"Bandit": 3, "Vex": -1}
+	refs := map[string]int64{}
+	for name, b := range bonus {
+		slug := "test-init-" + strings.ToLower(name)
+		if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: slug, Name: name, SourceKey: "test", ContentHash: "x",
+			DataJson: fmt.Sprintf(`{"initiative":%d}`, b)}); err != nil {
+			t.Fatal(err)
+		}
+		m, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: slug})
+		if err != nil {
+			t.Fatal(err)
+		}
+		refs[name] = m.ID
+	}
 	for _, p := range []sqlc.CreateCombatantParams{
 		{Name: "Hero", CharacterID: nullID(e.characterID)},
 		{Name: "Ogre", Hp: 59, MaxHp: 59},
 		{Name: "Guard", Hp: 11, MaxHp: 11, Initiative: sql.NullInt64{Int64: 7, Valid: true}},
 		{Name: "Mira", EntityID: nullID(npc.ID)},
+		{Name: "Bandit", MonsterRef: nullID(refs["Bandit"])},
+		{Name: "Vex", EntityID: nullID(npc2.ID), MonsterRef: nullID(refs["Vex"])},
 	} {
 		p.EncounterID = enc.ID
 		if _, err := e.q().CreateCombatant(ctx, p); err != nil {
@@ -137,6 +155,9 @@ func TestRollAllInitiative(t *testing.T) {
 				t.Errorf("Guard initiative %v, want 7", r.Initiative)
 			}
 		default:
+			if want, ok := bonus[r.Name]; ok && initiativeMod(r) != int(want) {
+				t.Errorf("%s: initiativeMod %d, want %d", r.Name, initiativeMod(r), want)
+			}
 			if !r.Initiative.Valid || r.Initiative.Int64 < lo || r.Initiative.Int64 > lo+19 {
 				t.Errorf("%s: initiative %v outside %d..%d", r.Name, r.Initiative, lo, lo+19)
 			}

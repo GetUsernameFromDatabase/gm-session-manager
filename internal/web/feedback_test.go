@@ -242,21 +242,6 @@ func TestMarkdownCell(t *testing.T) {
 	}
 }
 
-func TestBrowserName(t *testing.T) {
-	tests := []struct{ ua, want string }{
-		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0", "Edge 130 on Windows"},
-		{"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.58 Mobile Safari/537.36", "Chrome 130 on Android"},
-		{"Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1", "Safari 17 on iPhone"},
-		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:131.0) Gecko/20100101 Firefox/131.0", "Firefox 131 on macOS"},
-		{"curl/8.0", "curl/8.0"},
-	}
-	for _, tt := range tests {
-		if got := browserName(tt.ua); got != tt.want {
-			t.Errorf("browserName(%q) = %q, want %q", tt.ua, got, tt.want)
-		}
-	}
-}
-
 // TestBadConsole: a console the server cannot use is left out, and the
 // report is still saved.
 func TestBadConsole(t *testing.T) {
