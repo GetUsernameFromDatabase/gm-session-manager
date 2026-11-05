@@ -526,6 +526,8 @@ func classTable(d *ClassData, levels map[string][]int, rows [][]string) bool {
 		d.Caster = "full"
 	case maxSlot == 5:
 		d.Caster = "half"
+	case maxSlot == 4:
+		d.Caster = "third"
 	}
 	return true
 }

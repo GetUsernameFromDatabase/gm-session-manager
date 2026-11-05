@@ -116,6 +116,14 @@ type ftMonster struct {
 	Legendary       []ftEntry                  `json:"legendary"`
 	HasFluffImages  bool                       `json:"hasFluffImages"`
 	HasToken        bool                       `json:"hasToken"`
+	Initiative      json.RawMessage            `json:"initiative"`
+}
+
+// crProficiency is a creature's proficiency bonus by challenge rating;
+// fractions and 0 give +2.
+func crProficiency(cr string) int {
+	n, _ := strconv.Atoi(cr)
+	return max(2, (n+7)/4)
 }
 
 type ftEntry struct {
@@ -246,6 +254,13 @@ func (m *ftMonster) data() MonsterData {
 	if json.Unmarshal(m.CR, &d.CR) != nil && json.Unmarshal(m.CR, &cr) == nil {
 		d.CR = cr.CR
 	}
+	// 2024 statblocks give a bonus, or proficiency (1) or expertise (2) in initiative.
+	var ini struct {
+		Proficiency int `json:"proficiency"`
+	}
+	if json.Unmarshal(m.Initiative, &d.Initiative) != nil && json.Unmarshal(m.Initiative, &ini) == nil {
+		d.Initiative += ini.Proficiency * crProficiency(d.CR)
+	}
 	for _, t := range m.Trait {
 		d.Traits = append(d.Traits, NameDesc{Name: plainTags(t.Name), Desc: ftEntries(t.Entries)})
 	}
@@ -265,7 +280,8 @@ func (m *ftMonster) data() MonsterData {
 	return d
 }
 
-// ftType is "fiend (demon)" from "fiend" or {"type":"fiend","tags":["demon"]}.
+// ftType is "fiend (demon)" from "fiend" or {"type":"fiend","tags":["demon"]},
+// and "celestial, fey or fiend" from {"type":{"choose":[…]}}.
 func ftType(raw json.RawMessage) string {
 	var s string
 	if json.Unmarshal(raw, &s) == nil {
@@ -278,7 +294,13 @@ func ftType(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &t) != nil {
 		return ""
 	}
-	_ = json.Unmarshal(t.Type, &s)
+	var choose struct {
+		Choose []string `json:"choose"`
+	}
+	if json.Unmarshal(t.Type, &s) != nil && json.Unmarshal(t.Type, &choose) == nil && len(choose.Choose) > 0 {
+		n := len(choose.Choose)
+		s = joinNonEmpty(" or ", strings.Join(choose.Choose[:n-1], ", "), choose.Choose[n-1])
+	}
 	var tags []string
 	for _, raw := range t.Tags {
 		var tag string
@@ -417,7 +439,7 @@ var ftAbilityNames = map[string]string{
 // ftLinkKinds are the tags that name a compendium entry, by our kind.
 var ftLinkKinds = map[string]Kind{
 	"spell": KindSpell, "item": KindItem, "creature": KindMonster, "condition": KindCondition,
-	"feat": KindFeat, "background": KindBackground, "race": KindSpecies,
+	"feat": KindFeat, "background": KindBackground, "race": KindSpecies, "itemMastery": KindRule,
 }
 
 // ftDisplayTags are reference tags whose third argument is the text shown
@@ -426,7 +448,7 @@ var ftLinkKinds = map[string]Kind{
 var ftDisplayTags = map[string]bool{
 	"variantrule": true, "action": true, "sense": true, "skill": true, "status": true, "class": true,
 	"deity": true, "hazard": true, "object": true, "language": true, "disease": true, "optfeature": true,
-	"trap": true, "table": true, "itemMastery": true, "itemProperty": true, "scaledice": true, "scaledamage": true,
+	"trap": true, "table": true, "itemProperty": true, "scaledice": true, "scaledamage": true,
 }
 
 // tokenSep stands in for a token's "|" while tags are still being replaced.

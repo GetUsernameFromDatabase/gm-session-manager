@@ -47,10 +47,9 @@ type ftClassFeature struct {
 	Level             int    `json:"level"`
 }
 
-// ftCasters maps casterProgression to our caster types. A third caster
-// (Eldritch Knight, Arcane Trickster) is "none": the slot tables have no
-// third column, and only subclasses are third casters.
-var ftCasters = map[string]string{"full": "full", "1/2": "half", "artificer": "half", "pact": "pact"}
+// ftCasters maps casterProgression to our caster types. Only subclasses
+// (Eldritch Knight, Arcane Trickster) are third casters.
+var ftCasters = map[string]string{"full": "full", "1/2": "half", "1/3": "third", "artificer": "half", "pact": "pact"}
 
 // ftClassRefs resolves class and subclass feature references of one file.
 type ftClassRefs struct {

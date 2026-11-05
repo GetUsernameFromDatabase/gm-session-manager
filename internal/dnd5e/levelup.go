@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -36,6 +37,29 @@ func (c ClassInfo) ColumnsAt(level int) map[string]string {
 		}
 	}
 	return out
+}
+
+// MasteryColumn is the class table column counting the weapon kinds a class
+// masters (Fighter, Barbarian, Paladin, Ranger, Rogue).
+const MasteryColumn = "Weapon Mastery"
+
+// Masteries is how many weapon kinds the class masters at a class level.
+func (c ClassInfo) Masteries(level int) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(c.Table[MasteryColumn][level]))
+	return n
+}
+
+// MasteryLimit is how many weapon kinds the character may master: the most
+// any class allows at its level (the counts do not add up). classes holds
+// the compendium classes by slug; a missing one allows none.
+func (s Sheet) MasteryLimit(classes map[string]ClassInfo) int {
+	n := 0
+	for _, cl := range s.Classes {
+		if info, ok := classes[cl.Slug]; ok {
+			n = max(n, info.Masteries(cl.Level))
+		}
+	}
+	return n
 }
 
 // ClassFeature is a class feature and the class levels it is gained at.
@@ -339,6 +363,9 @@ func (s Sheet) withClassLevel(class ClassInfo, subclass string) Sheet {
 		}
 		if subclass != "" {
 			s.Classes[i].Subclass = subclass
+		}
+		if cl := &s.Classes[i]; (cl.Caster == "" || cl.Caster == CasterNone) && class.Caster != "" { // a subclass brought spellcasting
+			cl.Caster = class.Caster
 		}
 		if s.Classes[i].Subclass != "" && s.Classes[i].SubclassSlug == "" {
 			s.Classes[i].SubclassSlug, s.Classes[i].SubclassSource = class.SubclassSlug, class.SubclassSource

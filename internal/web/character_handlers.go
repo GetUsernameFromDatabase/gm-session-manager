@@ -226,6 +226,11 @@ func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Comma
 			return err
 		}
 	}
+	if cmd.MasteryWeapon != "" {
+		if env.MasteryWeapon, env.MasteryLimit, err = a.masteryEnv(ctx, ch, cmd.MasteryWeapon); err != nil {
+			return err
+		}
+	}
 	if cmd.ArmorSlug != "" {
 		inInventory, err := a.hasArmorItem(ctx, ch.ID, cmd.ArmorSlug)
 		if err != nil {
@@ -276,6 +281,86 @@ func (a *App) preparedCaps(ctx context.Context, ch sqlc.Character) (map[string]i
 		}
 	}
 	return caps, nil
+}
+
+// masteryEnv is the compendium weapon with a mastery named name, as the
+// compendium spells it ("" when none), and the character's mastery limit.
+func (a *App) masteryEnv(ctx context.Context, ch sqlc.Character, name string) (string, int, error) {
+	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
+	if err != nil {
+		return "", 0, err
+	}
+	weapons, err := a.masteryWeapons(ctx, ch.CampaignID)
+	if err != nil {
+		return "", 0, err
+	}
+	limit, err := masteryLimit(ctx, a.Store.Queries, sheet, "")
+	if i := slices.IndexFunc(weapons, func(w compendium.NameDesc) bool { return strings.EqualFold(w.Name, name) }); i >= 0 {
+		return weapons[i].Name, limit, err
+	}
+	return "", limit, err
+}
+
+// masteryWeapons are the compendium weapons with a mastery property a
+// player in campaignID may see: Name, and the mastery as Desc.
+func (a *App) masteryWeapons(ctx context.Context, campaignID int64) ([]compendium.NameDesc, error) {
+	rows, err := a.Store.ListMasteryWeapons(ctx, campaignID)
+	out := make([]compendium.NameDesc, len(rows))
+	for i, r := range rows {
+		out[i] = compendium.NameDesc{Name: r.Name, Desc: r.Mastery}
+	}
+	return out, err
+}
+
+// masteryLimit is how many weapon kinds the sheet's classes let it master,
+// leaving out the class skip (a level-up counts that one itself).
+func masteryLimit(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, skip string) (int, error) {
+	classes := map[string]dnd5e.ClassInfo{}
+	for _, cl := range sheet.Classes {
+		if cl.Slug == skip {
+			continue
+		}
+		info, _, err := classEntry(ctx, q, cl.Slug, cl.Source)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return 0, err
+		}
+		classes[cl.Slug] = info
+	}
+	return sheet.MasteryLimit(classes), nil
+}
+
+// masteryGroups ask for the weapon kinds a level in info (class level
+// level) adds to what the other classes let the sheet master, up to what is
+// still unchosen.
+func (a *App) masteryGroups(ctx context.Context, sh dnd5e.Sheet, info dnd5e.ClassInfo, level int, campaignID int64) ([]choiceGroup, error) {
+	others, err := masteryLimit(ctx, a.Store.Queries, sh, info.Slug)
+	if err != nil {
+		return nil, err
+	}
+	before, after := max(others, info.Masteries(level-1)), max(others, info.Masteries(level))
+	n := min(after-before, after-len(sh.Masteries))
+	if n <= 0 {
+		return nil, nil
+	}
+	weapons, err := a.masteryWeapons(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	var opts []compendium.NameDesc
+	for _, w := range weapons {
+		if !sh.Masters(w.Name) {
+			opts = append(opts, compendium.NameDesc{Name: w.Name, Desc: "Mastery: " + w.Desc})
+		}
+	}
+	if len(opts) == 0 {
+		return nil, nil
+	}
+	return []choiceGroup{{views.ChoiceGroup{Key: views.FieldMastery, Title: dnd5e.MasteryColumn, Count: n, Options: opts}, func(s *dnd5e.Sheet, picked []string) {
+		s.Masteries = append(s.Masteries, picked...)
+	}, nil}}, nil
 }
 
 // userError marks an error caused by the request, shown to the user as is.
@@ -596,13 +681,18 @@ func (a *App) subclassRef(ctx context.Context, classSlug string, cl dnd5e.ClassL
 	return "", "", nil
 }
 
-// setSubclass gives info the features and pin of the subclass row.
+// setSubclass gives info the features and pin of the subclass row, and its
+// spellcasting when the class has none (Eldritch Knight, Arcane Trickster).
 func setSubclass(info *dnd5e.ClassInfo, row sqlc.CompendiumEntry) error {
 	d, err := compendium.DecodeData(compendium.KindSubclass, row.DataJson)
 	if err != nil {
 		return err
 	}
-	info.SubclassFeatures = classFeatures(d.(*compendium.ClassData))
+	sub := d.(*compendium.ClassData)
+	if sub.Caster != "" && sub.Caster != dnd5e.CasterNone && (info.Caster == "" || info.Caster == dnd5e.CasterNone) {
+		info.Caster = sub.Caster
+	}
+	info.SubclassFeatures = classFeatures(sub)
 	info.SubclassSlug, info.SubclassSource = row.Slug, row.SourceKey
 	return nil
 }
@@ -684,7 +774,11 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if err != nil {
 		return v, err
 	}
-	v.Groups = groupViews(append(classOptionGroups(info, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), changes...))
+	mastery, err := a.masteryGroups(ctx, sheet, info, plan.ClassLevel, ch.CampaignID)
+	if err != nil {
+		return v, err
+	}
+	v.Groups = groupViews(slices.Concat(classOptionGroups(info, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), mastery, changes))
 	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet, v.LineageSpells)
 	v.SpellNeed = spellNeed(info, plan.ClassLevel, sheet, v.Spells)
 	return v, err
@@ -954,7 +1048,12 @@ func (a *App) levelUp(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	groups := append(classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), changes...)
+	mastery, err := a.masteryGroups(ctx, sheet, choice.Class, plan.ClassLevel, ch.CampaignID)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	groups := slices.Concat(classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), mastery, changes)
 	if choice.Feat != "" {
 		slug := c.PostForm("feat")
 		td, err := a.textEntry(ctx, compendium.KindFeat, slug)

@@ -1,6 +1,7 @@
 package compendium
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -96,6 +97,29 @@ func TestParseFiveTools(t *testing.T) {
 	for _, slug := range []string{"copycat", "nobody"} {
 		if _, _, _, err := ParseFiveTools(file, slug); err == nil {
 			t.Errorf("%s: no error", slug)
+		}
+	}
+}
+
+func TestFiveToolsTypeAndInitiative(t *testing.T) {
+	for _, tc := range []struct {
+		name, json, typ string
+		initiative      int
+	}{
+		{"no initiative", `"type":"beast","dex":14,"cr":"5"`, "beast", 2},
+		{"bonus", `"type":"beast","dex":14,"initiative":7`, "beast", 7},
+		{"proficient, fraction", `"type":"beast","dex":14,"cr":"1/4","initiative":{"proficiency":1}`, "beast", 4},
+		{"proficient, CR 5", `"type":"beast","dex":14,"cr":"5","initiative":{"proficiency":1}`, "beast", 5},
+		{"expertise, CR 17", `"type":"beast","dex":14,"cr":{"cr":"17"},"initiative":{"proficiency":2}`, "beast", 14},
+		{"choose", `"type":{"type":{"choose":["celestial","fey","fiend"]}},"dex":10`, "celestial, fey or fiend", 0},
+		{"choose with tags", `"type":{"type":{"choose":["fey","fiend"]},"tags":["shapechanger"]},"dex":10`, "fey or fiend (shapechanger)", 0},
+	} {
+		var m ftMonster
+		if err := json.Unmarshal([]byte("{"+tc.json+"}"), &m); err != nil {
+			t.Fatal(err)
+		}
+		if d := m.data(); d.Type != tc.typ || d.Initiative != tc.initiative {
+			t.Errorf("%s: type %q initiative %d, want %q %d", tc.name, d.Type, d.Initiative, tc.typ, tc.initiative)
 		}
 	}
 }

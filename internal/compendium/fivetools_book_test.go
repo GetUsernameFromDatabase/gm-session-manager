@@ -11,6 +11,24 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 )
 
+// A mastery is a "Name|Source" code or an object with a uid (Psychic Blade).
+func TestFiveToolsItemMastery(t *testing.T) {
+	for _, tt := range []struct{ json, want string }{
+		{`{"name":"Longsword","mastery":["Sap|XPHB"]}`, "Sap"},
+		{`{"name":"Psychic Blade","mastery":[{"uid":"Vex|XPHB","note":"free"}]}`, "Vex"},
+		{`{"name":"Odd","mastery":["Nick|XPHB",{"note":"no uid"}]}`, "Nick"},
+		{`{"name":"Club"}`, ""},
+	} {
+		var it ftItem
+		if err := json.Unmarshal([]byte(tt.json), &it); err != nil {
+			t.Fatalf("%s: %v", tt.json, err)
+		}
+		if got := ftItemData(it).Mastery; got != tt.want {
+			t.Errorf("%s: mastery %q, want %q", tt.json, got, tt.want)
+		}
+	}
+}
+
 // fiveToolsFixture sits below its own folder so the web tests' import of
 // testdata does not pick it up.
 const fiveToolsFixture = "testdata/fivetools/5etools-xphb"
@@ -67,6 +85,7 @@ func TestStripTagsTokens(t *testing.T) {
 		{"{@background Acolyte|XPHB}", "[[compendium:background/acolyte|Acolyte]]", "Acolyte"},
 		{"{@race Elf|XPHB}", "[[compendium:species/elf|Elf]]", "Elf"},
 		{"{@spell Fireball||Big}", "[[compendium:spell/fireball|Big]]", "Big"},
+		{"{@itemMastery Sap|XPHB}", "[[compendium:rule/sap|Sap]]", "Sap"},
 		// Other tags stay plain text.
 		{"{@skill Insight|XPHB} {@damage 8d6} {@dc 15}", "Insight 8d6 DC 15", "Insight 8d6 DC 15"},
 		{"{@b {@spell Shield|XPHB}}", "[[compendium:spell/shield|Shield]]", "Shield"},
@@ -120,8 +139,9 @@ func TestParseFiveToolsBook(t *testing.T) {
 		"monster/cat", "monster/mountain-cat", "spell/fireball", "spell/detect-magic", "spell/shield",
 		"item/longsword", "item/dagger", "item/plate-armor", "item/dwarven-plate", "item/bag-of-holding",
 		"item/flame-tongue-longsword", "item/absorbing-tattoo", "species/elf", "species/elf-drow",
+		"species/elf-wood-elf-lineage", "species/dragonborn", "species/dragonborn-black", "species/dragonborn-red",
 		"background/acolyte", "feat/alert", "feat/grappler", "condition/prone", "condition/concentration",
-		"rule/sewer-plague", "rule/advantage", "class/fighter", "class/wizard", "subclass/champion", "subclass/evoker",
+		"rule/sewer-plague", "rule/advantage", "rule/sap", "class/fighter", "class/wizard", "subclass/champion", "subclass/evoker",
 	}
 	if len(entries) != len(keys) {
 		t.Errorf("%d entries, want %d", len(entries), len(keys))
@@ -166,8 +186,23 @@ func TestParseFiveToolsBook(t *testing.T) {
 		}},
 		{"item/flame-tongue-longsword", ItemData{
 			Category: "weapon", Rarity: "Rare", Attunement: true, Weight: "3", Damage: "1d8 slashing", Properties: "Versatile (1d10)", Martial: true,
-			Desc: "You can use a Bonus Action to set the blade aflame.",
+			Mastery: "Sap", Desc: "You can use a Bonus Action to set the blade aflame.",
 		}},
+		{"item/longsword", ItemData{
+			Category: "weapon", Cost: "15", Weight: "3", Damage: "1d8 slashing", Properties: "Versatile (1d10)", Martial: true, Mastery: "Sap",
+		}},
+		{"rule/sap", TextData{Desc: "If you hit a creature with this weapon, that creature has Disadvantage on its next attack roll.", Category: "Weapon Mastery"}},
+		// _versions: the base's traits with the version's _mod, its fluff, and
+		// a template filled per implementation.
+		{"species/elf-wood-elf-lineage", TextData{Desc: "Elves live long lives.", Parts: []NameDesc{
+			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "35 feet", Type: partSpeed},
+			{Name: "Darkvision", Desc: "You have Darkvision with a range of 60 feet."},
+			{Name: "Elven Lineage (Wood Elf)", Desc: "You know the [[compendium:spell/druidcraft|Druidcraft]] cantrip."},
+		}}},
+		{"species/dragonborn-red", TextData{Parts: []NameDesc{
+			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Damage Resistance", Desc: "You have Resistance to Fire damage."},
+		}}},
 		{"item/dwarven-plate", ItemData{
 			Category: "armor", Rarity: "Very rare", Weight: "65", ArmorClass: "18, Stealth disadvantage",
 			Armor: &ArmorData{Type: ArmorHeavy, Base: 18, StrReq: 15, Stealth: true},
@@ -287,5 +322,43 @@ func TestFiveToolsCopy(t *testing.T) {
 			b, _ := json.Marshal(recs[1])
 			t.Errorf("%s: _copy kept: %s", tt.name, b)
 		}
+	}
+
+	for _, tt := range []struct {
+		name, versions string
+		want           string // the versions' names, or "" when none
+		skipped        int
+	}{
+		{"none", `null`, "", 0},
+		{"explicit", `[{"name":"Base; Tall","source":"B","speed":40}]`, "Base (Tall)", 0},
+		{"template", `[{"_abstract":{"name":"Base ({{c}})","source":"B"},"_implementations":[{"_variables":{"c":"Red \"R\""}},{"_variables":{"c":"Blue"}}]}]`, `Base (Red "R"),Base (Blue)`, 0},
+		{"unknown mode", `[{"name":"Base; Odd","_mod":{"trait":{"mode":"addSpells"}}},{"name":"Base; Ok"}]`, "Base (Ok)", 1},
+		{"not a list", `{}`, "", 1},
+	} {
+		rec := ftRec{"name": json.RawMessage(`"Base"`), "source": json.RawMessage(`"B"`), "trait": json.RawMessage(`[]`)}
+		if tt.versions != "null" {
+			rec["_versions"] = json.RawMessage(tt.versions)
+		}
+		vs, skipped := ftVersions(rec)
+		var names []string
+		for _, v := range vs {
+			n, _ := ftDecode[ftNamed](v)
+			names = append(names, n.Name)
+			if _, ok := v["_versions"]; ok || n.Source != "B" {
+				t.Errorf("%s: %s kept _versions or lost its source %q", tt.name, n.Name, n.Source)
+			}
+		}
+		if got := strings.Join(names, ","); got != tt.want || skipped != tt.skipped {
+			t.Errorf("%s: %q skipped %d, want %q skipped %d", tt.name, got, skipped, tt.want, tt.skipped)
+		}
+	}
+
+	// A subclass kept once per class edition shares its name and source; the
+	// class fields pick the target.
+	body := `{"subclass":[{"name":"Moon","source":"P","className":"Druid","classSource":"P","page":1},
+		{"name":"Moon","source":"P","className":"Druid","classSource":"X","_copy":{"name":"Moon","source":"P","className":"Druid","classSource":"P"}}]}`
+	recs, skipped, err := ftRecords(map[string][]byte{"f": []byte(body)}, "f", "subclass")
+	if err != nil || skipped != 0 || len(recs) != 2 || string(recs[1]["classSource"]) != `"X"` {
+		t.Errorf("class edition copy: %d records, %d skipped, %v", len(recs), skipped, err)
 	}
 }

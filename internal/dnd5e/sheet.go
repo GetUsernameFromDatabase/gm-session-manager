@@ -115,7 +115,7 @@ type ClassLevel struct {
 	Level          int    `json:"level"              validate:"min=1,max=20"`
 	HitDie         int    `json:"hit_die"            validate:"oneof=6 8 10 12"`
 	// Caster is the class's caster type: full, half, pact or none.
-	Caster string `json:"caster" validate:"oneof=full half pact none"`
+	Caster string `json:"caster" validate:"oneof=full half third pact none"`
 }
 
 // Slot is a spell slot pool.
@@ -305,6 +305,31 @@ type Weapon struct {
 	// Range is normal/long range in feet for ranged and thrown weapons.
 	Range      string `json:"range,omitempty"       validate:"max=20"`
 	Properties string `json:"properties,omitempty"  validate:"max=300"`
+	// Mastery is the weapon's mastery property ("Sap"), usable while
+	// Sheet.Masters its kind.
+	Mastery string `json:"mastery,omitempty" validate:"max=50"`
+}
+
+// WeaponKind is the base weapon a weapon's name stands for: "+1 Longsword"
+// and "Longsword (+1)" (the SRD's form) are a Longsword.
+func WeaponKind(name string) string {
+	name = strings.TrimSpace(name)
+	// shortcut: only a "+n" bonus is stripped, so "Berserker Battleaxe" is its own kind; give sheet weapons a base weapon if other names matter.
+	isBonus := func(s string) bool { return len(s) == 2 && s[0] == '+' && s[1] >= '1' && s[1] <= '9' }
+	if bonus, rest, ok := strings.Cut(name, " "); ok && isBonus(bonus) {
+		return rest
+	}
+	if rest, bonus, ok := strings.Cut(name, " ("); ok && isBonus(strings.TrimSuffix(bonus, ")")) && strings.HasSuffix(bonus, ")") {
+		return rest
+	}
+	return name
+}
+
+// Masters reports whether the character chose the weapon's kind for Weapon
+// Mastery.
+func (s Sheet) Masters(weapon string) bool {
+	kind := WeaponKind(weapon)
+	return slices.ContainsFunc(s.Masteries, func(m string) bool { return strings.EqualFold(m, kind) })
 }
 
 // CustomMod is a custom bonus for what the app does not compute itself
@@ -402,13 +427,16 @@ type Sheet struct {
 	Immunities      []string `json:"immunities,omitempty"      validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`
 	Vulnerabilities []string `json:"vulnerabilities,omitempty" validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`
 	// HitDiceUsed counts spent hit dice across all classes.
-	HitDiceUsed int         `json:"hit_dice_used" validate:"min=0"`
-	Slots       [9]Slot     `json:"spell_slots"   validate:"dive"`
-	Pact        Slot        `json:"pact_slots"`
-	PactLevel   int         `json:"pact_level"    validate:"min=0,max=5"`
-	Spells      []Spell     `json:"spells"        validate:"dive"`
-	Inventory   []Item      `json:"inventory"     validate:"dive"`
-	Weapons     []Weapon    `json:"weapons"       validate:"dive"`
+	HitDiceUsed int      `json:"hit_dice_used" validate:"min=0"`
+	Slots       [9]Slot  `json:"spell_slots"   validate:"dive"`
+	Pact        Slot     `json:"pact_slots"`
+	PactLevel   int      `json:"pact_level"    validate:"min=0,max=5"`
+	Spells      []Spell  `json:"spells"        validate:"dive"`
+	Inventory   []Item   `json:"inventory"     validate:"dive"`
+	Weapons     []Weapon `json:"weapons"       validate:"dive"`
+	// Masteries are the weapon kinds (compendium weapon names) chosen for
+	// Weapon Mastery, at most Sheet.MasteryLimit of them.
+	Masteries   []string    `json:"masteries,omitempty" validate:"max=20,dive,required,max=200"`
 	Modifiers   []CustomMod `json:"modifiers"     validate:"dive"`
 	Features    []Feature   `json:"features"      validate:"dive"`
 	Feats       []string    `json:"feats"         validate:"dive,required"`

@@ -1,7 +1,16 @@
 {"race":[
 {"name":"Elf","source":"XPHB","page":187,"size":["M"],"speed":30,"darkvision":60,
  "entries":[{"type":"entries","name":"Darkvision","entries":["You have {@sense Darkvision|XPHB} with a range of 60 feet."]},
-  {"type":"entries","name":"Trance","entries":["You don't need to sleep."]}]}
+  {"type":"entries","name":"Trance","entries":["You don't need to sleep."]}],
+ "_versions":[{"name":"Elf; Wood Elf Lineage","source":"XPHB","speed":35,
+  "_mod":{"entries":{"mode":"replaceArr","replace":"Trance","items":{"name":"Elven Lineage (Wood Elf)","type":"entries","entries":["You know the {@spell Druidcraft|XPHB} cantrip."]}}}}]},
+{"name":"Dragonborn","source":"XPHB","size":["M"],"speed":30,
+ "entries":[{"type":"entries","name":"Draconic Ancestry","entries":["Choose a dragon."]},
+  {"type":"entries","name":"Damage Resistance","entries":["You resist the ancestry's damage."]}],
+ "_versions":[{"_abstract":{"name":"Dragonborn ({{color}})","source":"XPHB",
+   "_mod":{"entries":[{"mode":"removeArr","names":"Draconic Ancestry"},
+    {"mode":"replaceArr","replace":"Damage Resistance","items":{"type":"entries","name":"Damage Resistance","entries":["You have {@variantrule Resistance|XPHB} to {{damageType}} damage."]}}]}},
+  "_implementations":[{"_variables":{"color":"Black","damageType":"Acid"},"resist":["acid"]},{"_variables":{"color":"Red","damageType":"Fire"},"resist":["fire"]}]}]}
 ],
 "subrace":[
 {"name":"Drow","source":"XPHB","raceName":"Elf","raceSource":"XPHB",

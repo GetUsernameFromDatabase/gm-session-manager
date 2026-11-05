@@ -46,6 +46,9 @@ type SheetView struct {
 	// computed then.
 	CanSources   bool
 	SourceIssues []SourceIssue
+	// MasteryLimit is how many weapon kinds the classes let the character
+	// master (dnd5e.Sheet.MasteryLimit).
+	MasteryLimit int
 }
 
 func (s SheetView) cmdURL() string { return fmt.Sprintf("/characters/%d/cmd", s.ID) }
@@ -1014,7 +1017,7 @@ templ spellPicker(s SheetView, id, placeholder string, autofocus bool) {
 			@inputgroup.Addon(inputgroup.AddonProps{Align: inputgroup.AlignInlineEnd}) {
 				@inputgroup.Button(inputgroup.ButtonProps{Size: inputgroup.ButtonSizeIconXs, Variant: button.VariantGhost, Attributes: templ.Attributes{
 					"aria-label": "Clear search",
-					"onclick":    "const p = this.closest('[hx-preserve]'), q = p.querySelector('input'); q.value = ''; p.querySelector('ul').replaceChildren(); q.focus()",
+					"onclick":    templ.JSUnsafeFuncCall("const p = this.closest('[hx-preserve]'), q = p.querySelector('input'); q.value = ''; p.querySelector('ul').replaceChildren(); q.focus()"),
 				}}) {
 					@icon.X()
 				}
@@ -1422,8 +1425,30 @@ templ attacksCard(s SheetView) {
 					}
 				</ul>
 			}
+			if s.MasteryLimit > 0 || len(s.C.Sheet.Masteries) > 0 {
+				@masteryLine(s)
+			}
 		}
 	}
+}
+
+// masteryLine counts the weapon kinds chosen for Weapon Mastery and opens
+// the form that chooses them.
+templ masteryLine(s SheetView) {
+	<div class="mt-2 flex flex-wrap items-center gap-2 border-t pt-2 text-sm">
+		<span class="min-w-0 grow basis-48">
+			<span class="font-medium">{ dnd5e.MasteryColumn }</span>
+			<span class="text-muted-foreground tabular-nums">{ masteryCount(s) }</span>
+			if len(s.C.Sheet.Masteries) > 0 {
+				<span class="block text-xs text-muted-foreground">{ strings.Join(s.C.Sheet.Masteries, ", ") }</span>
+			}
+		</span>
+		if s.CanSheet {
+			@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Class: tapSize, Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "weapons", OpMastery, ""))}) {
+				Choose
+			}
+		}
+	</div>
 }
 
 // weaponRow is a weapon's bonus to hit and damage; stowed ones are muted,
@@ -1436,6 +1461,19 @@ templ weaponRow(s SheetView, id string, w dnd5e.Weapon, ready bool) {
 				<span class={ templ.KV("font-medium", ready) }>{ w.Name }</span>
 			}
 			<span class="ml-1 text-xs text-muted-foreground">{ s.weaponAbility(w) }</span>
+			if w.Mastery != "" {
+				<span class="block text-xs text-muted-foreground">
+					{ "Mastery: " }
+					@MasteryLinks(w.Mastery)
+					if s.C.Sheet.Masters(w.Name) {
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "ml-1 px-1.5 py-0 text-[10px]"}) {
+							mastered
+						}
+					} else if s.MasteryLimit > 0 {
+						{ " · not mastered" }
+					}
+				</span>
+			}
 		</span>
 		<span class="flex items-center gap-3 tabular-nums">
 			<span class="flex items-center gap-0.5">

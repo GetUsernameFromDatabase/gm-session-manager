@@ -36,7 +36,10 @@ type Command struct {
 	// the caller resolves Env.SourceOld and Env.SourceNew (a class or
 	// subclass) or Env.SourceSpell before Apply.
 	SourceRef SourceRef
-	apply     func(c *Character, env Env, fx *Effects) error
+	// MasteryWeapon is set when the command masters a weapon kind; the
+	// caller resolves Env.MasteryWeapon and Env.MasteryLimit before Apply.
+	MasteryWeapon string
+	apply         func(c *Character, env Env, fx *Effects) error
 }
 
 // Env carries what a command needs from outside the character.
@@ -58,6 +61,11 @@ type Env struct {
 	SourceOld   *ClassInfo
 	SourceNew   ClassInfo
 	SourceSpell Spell
+	// MasteryWeapon is the compendium weapon Command.MasteryWeapon names, as
+	// the compendium spells it; empty when none of that name has a mastery.
+	// MasteryLimit is how many kinds the classes let the character master.
+	MasteryWeapon string
+	MasteryLimit  int
 }
 
 // NewCommand wraps a change built by code instead of parsed from text, for
@@ -130,6 +138,7 @@ func (c Character) clone() Character {
 	s.Feats = slices.Clone(s.Feats)
 	s.FeatSources = maps.Clone(s.FeatSources)
 	s.Weapons = slices.Clone(s.Weapons)
+	s.Masteries = slices.Clone(s.Masteries)
 	s.Modifiers = slices.Clone(s.Modifiers)
 	s.SetupDone = slices.Clone(s.SetupDone)
 	if s.Armor != nil {
@@ -182,6 +191,7 @@ var Help = []HelpEntry{
 	{"weapon add <name> <ability> <dice> [type] [prof]", "weapon add Longsword str 1d8 slashing prof", "Add or replace a weapon"},
 	{"weapon ready|stow <name>", "weapon stow Longsword", "Ready a weapon from the inventory as an attack, or put it away"},
 	{"weapon remove <name>", "weapon remove Longsword", "Remove a weapon"},
+	{"mastery add|remove <weapon>", "mastery add Longsword", "Choose or drop a weapon kind whose mastery property you use"},
 	{`mod add <target> ±n "<source>"`, `mod add ac +1 "Ring of Protection"`, "Add a custom bonus or penalty"},
 	{`mod remove <target> "<source>"`, `mod remove ac "Ring of Protection"`, "Remove a custom modifier"},
 }
@@ -221,6 +231,13 @@ func Completions(s Sheet, words []string, slot string) []string {
 	case `"<feature>"`:
 		for _, f := range s.Features {
 			out = append(out, f.Name)
+		}
+	case "<weapon>":
+		if word(1) == "remove" {
+			return s.Masteries
+		}
+		for _, w := range s.Weapons {
+			out = append(out, WeaponKind(w.Name))
 		}
 	case `"<name>"`, "<name>", `<slug|"item">`:
 		switch {
@@ -296,6 +313,7 @@ func init() {
 		"spell":       parseSpell,
 		"feature":     parseFeature,
 		"weapon":      parseWeapon,
+		"mastery":     parseMastery,
 		"mod":         parseMod,
 		"use":         func(args []string) (Command, error) { return parseUse(args, false) },
 		"restore":     func(args []string) (Command, error) { return parseUse(args, true) },
@@ -1338,6 +1356,42 @@ func parseWeapon(args []string) (Command, error) {
 			c.Sheet.Modifiers = slices.DeleteFunc(c.Sheet.Modifiers, func(m CustomMod) bool {
 				return m.Target == ModAttack+"."+w.Name || m.Target == ModDamage+"."+w.Name
 			})
+			return nil
+		}), nil
+	}
+	return Command{}, fmt.Errorf("usage: %s", usage)
+}
+
+// parseMastery chooses or drops a mastered weapon kind: mastery add|remove
+// <weapon>. Adding one already chosen, or removing one not chosen, does
+// nothing, as another device may have done it first.
+func parseMastery(args []string) (Command, error) {
+	const usage = "mastery add|remove <weapon>"
+	if len(args) < 2 {
+		return Command{}, fmt.Errorf("usage: %s", usage)
+	}
+	op, name := strings.ToLower(args[0]), WeaponKind(strings.Join(args[1:], " "))
+	switch op {
+	case "add":
+		cmd := scoped(perm.ScopeSheet, func(c *Character, env Env, _ *Effects) error {
+			if env.MasteryWeapon == "" {
+				return fmt.Errorf("no weapon %q with a mastery property in the compendium", name)
+			}
+			s := &c.Sheet
+			if s.Masters(env.MasteryWeapon) {
+				return nil
+			}
+			if len(s.Masteries) >= env.MasteryLimit {
+				return fmt.Errorf("%d of %d weapon masteries chosen: remove one first", len(s.Masteries), env.MasteryLimit)
+			}
+			s.Masteries = append(s.Masteries, env.MasteryWeapon)
+			return nil
+		})
+		cmd.MasteryWeapon = name
+		return cmd, nil
+	case "remove":
+		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
+			c.Sheet.Masteries = slices.DeleteFunc(c.Sheet.Masteries, func(m string) bool { return strings.EqualFold(m, name) })
 			return nil
 		}), nil
 	}

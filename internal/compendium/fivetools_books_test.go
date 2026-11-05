@@ -20,14 +20,15 @@ var fakeMirror = map[string]string{
 		{"name":"Homebrew Tome","id":"HBT","source":"HBT","group":"homebrew","published":"2021-01-01","author":"Someone"},
 		{"name":"UA Subclasses","id":"UASub","source":"UASub","group":"other","published":"2022-02-02"}]}`,
 	"adventures.json":             `{"adventure":[{"name":"Lost Mine","id":"LMOP","source":"LMOP","group":"mixed","published":"2014-09-30"}]}`,
-	"bestiary/index.json":         `{"XPHB":"bestiary-xphb.json"}`,
+	"bestiary/index.json":         `{"XPHB":"bestiary-xphb.json","MM":"bestiary-mm.json"}`,
 	"bestiary/fluff-index.json":   `{}`,
-	"bestiary/bestiary-xphb.json": `{"monster":[{"name":"Goblin","source":"XPHB"},{"name":"Other","source":"MM"}]}`,
+	"bestiary/bestiary-xphb.json": `{"monster":[{"name":"Goblin","source":"XPHB"},{"name":"Other","source":"MM"},{"name":"Dire Wolf","source":"XPHB","_copy":{"name":"Wolf","source":"MM"}}]}`,
+	"bestiary/bestiary-mm.json":   `{"monster":[{"name":"Wolf","source":"MM","_copy":{"name":"Pup","source":"MM"}},{"name":"Pup","source":"MM","size":["S"]},{"name":"Bear","source":"MM"}]}`,
 	"spells/index.json":           `{"XPHB":"spells-xphb.json"}`,
 	"spells/fluff-index.json":     `{}`,
 	"spells/spells-xphb.json":     `{"spell":[{"name":"Fireball","source":"XPHB"}]}`,
 	"spells/sources.json":         `{"XPHB":{"Fireball":{"class":[{"name":"Wizard","source":"XPHB"}]}},"MM":{}}`,
-	"items.json":                  `{"item":[{"name":"Wand","source":"XPHB"},{"name":"Cloak","source":"TCE"}],"itemGroup":[]}`,
+	"items.json":                  `{"item":[{"name":"Wand","source":"XPHB"},{"name":"Cloak","source":"TCE","rarity":"rare"},{"name":"Wand Cloak","source":"XPHB","_copy":{"name":"Cloak","source":"TCE"}}],"itemGroup":[]}`,
 	"items-base.json":             `{"baseitem":[{"name":"Dagger","source":"PHB"}]}`,
 	"races.json":                  `{"race":[{"name":"Elf","source":"XPHB"},{"name":"Tiefling","source":"TCE"}],"subrace":[]}`,
 	"class/index.json":            `{"wizard":"class-wizard.json","fighter":"class-fighter.json"}`,
@@ -142,6 +143,53 @@ func TestDownloadFiveTools(t *testing.T) {
 	wiz := readDoc(t, filepath.Join(dir, "5etools-tce", "class-wizard.json"))
 	if len(wiz["class"]) != 1 || len(wiz["subclass"]) != 1 || len(wiz["subclassFeature"]) != 1 {
 		t.Errorf("class file: %v", wiz)
+	}
+	// Copies of other books' records carry their targets, copies of copies too.
+	for _, tc := range []struct {
+		file, list string
+		want       []string
+	}{
+		{"bestiary.json", "monster", []string{"Wolf", "Pup"}},
+		{"items.json", "item", []string{"Cloak"}},
+	} {
+		data, err := os.ReadFile(filepath.Join(dir, "5etools-xphb", tc.file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]map[string][]ftNamed
+		_ = json.Unmarshal(data, &doc)
+		var got []string
+		for _, r := range doc[copyTargetsKey][tc.list] {
+			got = append(got, r.Name)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s targets %v, want %v", tc.file, got, tc.want)
+		}
+	}
+	_, entries, skipped, err := parseFiveToolsBookReport("k", readBook(t, filepath.Join(dir, "5etools-xphb")))
+	if err != nil || skipped != 0 {
+		t.Fatalf("parse: skipped %d, %v", skipped, err)
+	}
+	got := map[string]Entry{}
+	for _, e := range entries {
+		got[string(e.Kind)+"/"+e.Slug] = e
+	}
+	for _, tc := range []struct {
+		key  string
+		want bool
+	}{
+		{"monster/dire-wolf", true}, {"item/wand-cloak", true},
+		{"monster/wolf", false}, {"monster/pup", false}, {"monster/bear", false}, {"item/cloak", false},
+	} {
+		if _, ok := got[tc.key]; ok != tc.want {
+			t.Errorf("%s imported %v, want %v", tc.key, ok, tc.want)
+		}
+	}
+	if d := got["monster/dire-wolf"].Data.(MonsterData); d.Size == "" {
+		t.Errorf("dire wolf did not inherit the pup's size: %+v", d)
+	}
+	if d := got["item/wand-cloak"].Data.(ItemData); d.Rarity == "" {
+		t.Errorf("wand cloak did not inherit the cloak's rarity: %+v", d)
 	}
 	// No temp folders left, and the book can be listed and removed.
 	if matches, _ := filepath.Glob(filepath.Join(dir, ".tmp-*")); len(matches) != 0 {

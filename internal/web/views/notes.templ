@@ -137,7 +137,8 @@ templ noteSection(title string, notes []NoteItem) {
 
 // closeDialogJS closes the dialog around an htmx request's element once the
 // server accepts it.
-const closeDialogJS = "if (event.detail.successful) this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click()"
+// A ComponentScript, since templ blanks a spread event handler given a string.
+var closeDialogJS = templ.JSUnsafeFuncCall("if (event.detail.successful) this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click()")
 
 // noteFields are a note's title and type, for creating or editing it.
 templ noteFields(id, title, kind string) {

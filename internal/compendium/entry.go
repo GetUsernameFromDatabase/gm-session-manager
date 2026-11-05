@@ -148,11 +148,21 @@ type ItemData struct {
 	// Range is a ranged or thrown weapon's normal/long range in feet.
 	Range   string `json:"range,omitempty"`
 	Martial bool   `json:"martial,omitempty"`
+	// Mastery is a weapon's mastery property ("Sap"), the rule entry of
+	// that slug in masteryCategory.
+	Mastery string `json:"mastery,omitempty"`
 	// ArmorClass is the AC as people read it; Armor is the same as numbers.
 	ArmorClass string     `json:"armor_class,omitempty"`
 	Armor      *ArmorData `json:"armor,omitempty"`
 	Desc       string     `json:"desc"`
 }
+
+// masteryCategory is the rule category of weapon mastery properties.
+const masteryCategory = "Weapon Mastery"
+
+// WeaponMasteries are the 2024 mastery properties, as ItemData.Mastery names
+// them; each is the rule entry of its slug.
+var WeaponMasteries = []string{"Cleave", "Graze", "Nick", "Push", "Sap", "Slow", "Topple", "Vex"}
 
 // Armor types.
 const (

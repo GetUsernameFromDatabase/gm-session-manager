@@ -425,6 +425,15 @@ type o5eNamed struct {
 	Name string `json:"name"`
 }
 
+// o5eProperty is a weapon property; Type "Mastery" is a mastery property.
+type o5eProperty struct {
+	Name string  `json:"name"`
+	Desc string  `json:"desc"`
+	Type *string `json:"type"`
+}
+
+func (p o5eProperty) mastery() bool { return p.Type != nil && *p.Type == "Mastery" }
+
 type o5eAssignment struct {
 	Weapon   string  `json:"weapon"`
 	Property string  `json:"property"`
@@ -452,7 +461,7 @@ func (n normalizer) items() ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	props, err := byPK[o5eNamed](n.fx, "weaponproperty")
+	props, err := byPK[o5eProperty](n.fx, "weaponproperty")
 	if err != nil {
 		return nil, err
 	}
@@ -483,6 +492,10 @@ func (n normalizer) items() ([]Entry, error) {
 				var names []string
 				for _, a := range assigned[*it.Weapon] {
 					name := props[a.Property].Name
+					if props[a.Property].mastery() {
+						d.Mastery = name
+						continue
+					}
 					if a.Detail != nil && *a.Detail != "" {
 						name += " (" + *a.Detail + ")"
 					}
@@ -755,6 +768,16 @@ func (n normalizer) rules() ([]Entry, error) {
 		}
 		cat := sets[s.RuleSet].Name
 		out = append(out, Entry{Kind: KindRule, Slug: n.slug(r.pk()), Name: s.Name, Data: TextData{Desc: s.Desc, Category: cat}, Text: s.Desc})
+	}
+	// Mastery properties are slugged by name ("sap", not "sap-mastery"), as 5etools books slug theirs.
+	for _, r := range n.fx["weaponproperty"] {
+		p, err := decode[o5eProperty](r)
+		if err != nil {
+			return nil, err
+		}
+		if p.mastery() {
+			out = append(out, Entry{Kind: KindRule, Slug: Slugify(p.Name), Name: p.Name, Data: TextData{Desc: p.Desc, Category: masteryCategory}, Text: p.Desc})
+		}
 	}
 	return out, nil
 }

@@ -2,10 +2,11 @@ package dnd5e
 
 // Caster types, as stored on ClassLevel.Caster.
 const (
-	CasterFull = "full"
-	CasterHalf = "half"
-	CasterPact = "pact"
-	CasterNone = "none"
+	CasterFull  = "full"
+	CasterHalf  = "half"
+	CasterThird = "third"
+	CasterPact  = "pact"
+	CasterNone  = "none"
 )
 
 // spellcasterSlots is the SRD 5.2 Multiclass Spellcaster table: spell slots
@@ -43,18 +44,29 @@ var pactSlots = [21][2]int{
 }
 
 // CasterLevel combines class levels for the spellcaster table: full casters
-// count fully and half casters (Paladin, Ranger) count half, rounded up.
+// count fully, half casters (Paladin, Ranger) count half rounded up and
+// third casters (Eldritch Knight, Arcane Trickster) a third rounded down.
+// A lone third caster follows its own table, the spellcaster table at a third
+// of its level rounded up (from level 3, where the subclass is taken).
 func CasterLevel(classes []ClassLevel) int {
-	full, half := 0, 0
+	full, half, third, casters := 0, 0, 0, 0
 	for _, c := range classes {
 		switch c.Caster {
 		case CasterFull:
 			full += c.Level
 		case CasterHalf:
 			half += c.Level
+		case CasterThird:
+			third += c.Level
+		default:
+			continue
 		}
+		casters++
 	}
-	return min(full+(half+1)/2, 20)
+	if casters == 1 && third >= 3 {
+		return min((third+2)/3, 20)
+	}
+	return min(full+(half+1)/2+third/3, 20)
 }
 
 // SlotMaxima returns the spell slot maxima and Pact Magic slots for the

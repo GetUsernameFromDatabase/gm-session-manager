@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/a-h/templ"
+
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
@@ -169,6 +171,10 @@ func TestPagesRender(t *testing.T) {
 				}
 				if !strings.Contains(w.Body.String(), p.contains) {
 					t.Errorf("page lacks %q", p.contains)
+				}
+				// A spread event handler given a string renders blank: use templ.JSUnsafeFuncCall.
+				if strings.Contains(w.Body.String(), templ.FailedSanitizationJS) {
+					t.Errorf("page has an event handler templ blanked")
 				}
 			})
 		}

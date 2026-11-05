@@ -254,6 +254,14 @@ func TestSlotMaxima(t *testing.T) {
 		{"paladin 5", []ClassLevel{{Level: 5, Caster: CasterHalf}}, 4, 2, 0, 0},
 		{"wizard 3 paladin 2", []ClassLevel{{Level: 3, Caster: CasterFull}, {Level: 2, Caster: CasterHalf}}, 4, 2, 0, 0},
 		{"wizard 20", []ClassLevel{{Level: 20, Caster: CasterFull}}, 4, 9, 0, 0},
+		{"knight 2 has none yet", []ClassLevel{{Level: 2, Caster: CasterThird}}, 0, 0, 0, 0},
+		{"knight 3", []ClassLevel{{Level: 3, Caster: CasterThird}}, 2, 1, 0, 0},
+		{"knight 4", []ClassLevel{{Level: 4, Caster: CasterThird}}, 3, 1, 0, 0},
+		{"knight 7", []ClassLevel{{Level: 7, Caster: CasterThird}}, 4, 2, 0, 0},
+		{"knight 19", []ClassLevel{{Level: 19, Caster: CasterThird}}, 4, 4, 0, 0},
+		{"wizard 4 knight 3 rounds down", []ClassLevel{{Level: 4, Caster: CasterFull}, {Level: 3, Caster: CasterThird}}, 4, 3, 0, 0},
+		{"wizard 5 knight 6", []ClassLevel{{Level: 5, Caster: CasterFull}, {Level: 6, Caster: CasterThird}}, 4, 4, 0, 0},
+		{"knight 5 warlock 3, pact is no spellcaster slot", []ClassLevel{{Level: 5, Caster: CasterThird}, {Level: 3, Caster: CasterPact}}, 3, 1, 2, 2},
 		{"warlock 5", []ClassLevel{{Level: 5, Caster: CasterPact}}, 0, 0, 2, 3},
 		{"warlock 11", []ClassLevel{{Level: 11, Caster: CasterPact}}, 0, 0, 3, 5},
 	}
@@ -270,6 +278,26 @@ func TestSlotMaxima(t *testing.T) {
 				t.Errorf("slots %v pact %d@%d", slots, pact, pactLevel)
 			}
 		})
+	}
+}
+
+// An Eldritch Knight's subclass makes the fighter a third caster; the sheet
+// must still validate.
+func TestLevelUpThirdCaster(t *testing.T) {
+	fighter := ClassInfo{Slug: "fighter", Name: "Fighter", HitDie: 10, Caster: CasterNone}
+	c := Character{Name: "Knight", Sheet: NewSheet()}
+	for range 3 {
+		if err := c.LevelUp(LevelUpChoice{Class: fighter}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	knight := fighter
+	knight.Caster = CasterThird // setSubclass's promotion
+	if err := c.LevelUp(LevelUpChoice{Class: knight}); err != nil {
+		t.Fatal(err)
+	}
+	if cl := c.Sheet.Classes[0]; cl.Caster != CasterThird || c.Sheet.Slots[0].Max != 3 {
+		t.Errorf("caster %q, first-level slots %d", cl.Caster, c.Sheet.Slots[0].Max)
 	}
 }
 
@@ -573,6 +601,81 @@ func TestCompletions(t *testing.T) {
 	for _, tt := range []struct{ words, slot string }{{"prof add other", "<name>"}, {"set name", "<text>"}, {"hp", "<n>"}} {
 		if got := Completions(s, strings.Fields(tt.words), tt.slot); got != nil {
 			t.Errorf("%s %s: want none, got %q", tt.words, tt.slot, got)
+		}
+	}
+}
+
+func TestMasteryCommand(t *testing.T) {
+	const full = "2 of 2 weapon masteries chosen: remove one first"
+	for _, tt := range []struct {
+		name   string
+		have   []string
+		cmd    string
+		env    Env
+		want   []string
+		refuse string // the refusal, or "" for none
+	}{
+		{"add", nil, "mastery add longsword", Env{MasteryWeapon: "Longsword", MasteryLimit: 2}, []string{"Longsword"}, ""},
+		{"a magic weapon names its kind", nil, `mastery add "+1 Longsword"`, Env{MasteryWeapon: "Longsword", MasteryLimit: 2}, []string{"Longsword"}, ""},
+		{"duplicate does nothing", []string{"Longsword"}, "mastery add Longsword", Env{MasteryWeapon: "Longsword", MasteryLimit: 1}, []string{"Longsword"}, ""},
+		{"over the limit", []string{"Dagger", "Club"}, "mastery add Longsword", Env{MasteryWeapon: "Longsword", MasteryLimit: 2}, []string{"Dagger", "Club"}, full},
+		{"no Weapon Mastery", nil, "mastery add Longsword", Env{MasteryWeapon: "Longsword"}, nil, "0 of 0 weapon masteries chosen: remove one first"},
+		{"unknown weapon", nil, "mastery add Spork", Env{MasteryLimit: 2}, nil, `no weapon "Spork" with a mastery property in the compendium`},
+		{"remove", []string{"Dagger", "Longsword"}, "mastery remove longsword", Env{}, []string{"Dagger"}, ""},
+		{"remove one not chosen", []string{"Dagger"}, "mastery remove Club", Env{}, []string{"Dagger"}, ""},
+	} {
+		c := fighter()
+		c.Sheet.Masteries = tt.have
+		cmd, err := Parse(tt.cmd)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		_, err = cmd.Apply(&c, tt.env)
+		got := ""
+		if err != nil {
+			got = err.Error()
+		}
+		if got != tt.refuse || !slices.Equal(c.Sheet.Masteries, tt.want) {
+			t.Errorf("%s: %q %v, want %q %v", tt.name, got, c.Sheet.Masteries, tt.refuse, tt.want)
+		}
+		if cmd.Scope != perm.ScopeSheet {
+			t.Errorf("%s: scope %v, want the owner's", tt.name, cmd.Scope)
+		}
+	}
+	for _, bad := range []string{"mastery", "mastery add", "mastery swap Longsword"} {
+		if _, err := Parse(bad); err == nil {
+			t.Errorf("%q parsed", bad)
+		}
+	}
+}
+
+func TestMasteryLimit(t *testing.T) {
+	fighterInfo := ClassInfo{Slug: "fighter", Table: map[string]map[int]string{MasteryColumn: {1: "3", 4: "4", 10: "5"}}}
+	rogueInfo := ClassInfo{Slug: "rogue", Table: map[string]map[int]string{MasteryColumn: {1: "2"}}}
+	wizardInfo := ClassInfo{Slug: "wizard", Table: map[string]map[int]string{"Cantrips": {1: "3"}}}
+	infos := map[string]ClassInfo{"fighter": fighterInfo, "rogue": rogueInfo, "wizard": wizardInfo}
+	for _, tt := range []struct {
+		name    string
+		classes []ClassLevel
+		want    int
+	}{
+		{"no classes", nil, 0},
+		{"a class without the column", []ClassLevel{{Slug: "wizard", Level: 1}}, 0},
+		{"fighter 1", []ClassLevel{{Slug: "fighter", Level: 1}}, 3},
+		{"fighter 4", []ClassLevel{{Slug: "fighter", Level: 4}}, 4},
+		{"multiclass takes the most, not the sum", []ClassLevel{{Slug: "rogue", Level: 1}, {Slug: "fighter", Level: 1}}, 3},
+		{"a class the compendium lacks", []ClassLevel{{Slug: "homebrew", Level: 5}, {Slug: "rogue", Level: 1}}, 2},
+	} {
+		if got := (Sheet{Classes: tt.classes}).MasteryLimit(infos); got != tt.want {
+			t.Errorf("%s: %d, want %d", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestWeaponKind(t *testing.T) {
+	for in, want := range map[string]string{"Longsword": "Longsword", "+1 Longsword": "Longsword", " +3 Light Hammer ": "Light Hammer", "+10 Club": "+10 Club", "Longsword +1": "Longsword +1", "Battleaxe (+2)": "Battleaxe", "Battleaxe (+2": "Battleaxe (+2", "Berserker Battleaxe": "Berserker Battleaxe"} {
+		if got := WeaponKind(in); got != want {
+			t.Errorf("WeaponKind(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

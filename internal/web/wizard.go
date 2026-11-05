@@ -1052,7 +1052,11 @@ func (a *App) classChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, ca
 	if err != nil {
 		return err
 	}
-	cr.groups = append(cr.groups, classOptionGroups(info, cl.Level, 0, sh, cantrips)...)
+	mastery, err := a.masteryGroups(ctx, sh, info, cl.Level, campaignID)
+	if err != nil {
+		return err
+	}
+	cr.groups = slices.Concat(cr.groups, classOptionGroups(info, cl.Level, 0, sh, cantrips), mastery)
 	cr.check = func(before, after dnd5e.Sheet, learned []knownCantrip) error {
 		return checkNewOptions(info, before, after, cl.Level, learned)
 	}

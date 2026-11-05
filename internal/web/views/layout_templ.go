@@ -340,7 +340,7 @@ func navbar(l Layout) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "hidden text-muted-foreground sm:inline-flex", Attributes: templ.Attributes{"onclick": "gsm.openSwitcher()"}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var9), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "hidden text-muted-foreground sm:inline-flex", Attributes: templ.Attributes{"onclick": templ.JSUnsafeFuncCall("gsm.openSwitcher()")}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var9), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -376,7 +376,7 @@ func navbar(l Layout) templ.Component {
 		templ_7745c5c3_Err = button.Button(button.Props{
 			Variant:    button.VariantGhost,
 			Size:       button.SizeIconSm,
-			Attributes: templ.Attributes{"onclick": "gsm.toggleTheme()", "aria-label": "Toggle dark mode", "title": "Toggle dark mode"},
+			Attributes: templ.Attributes{"onclick": templ.JSUnsafeFuncCall("gsm.toggleTheme()"), "aria-label": "Toggle dark mode", "title": "Toggle dark mode"},
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var11), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -415,7 +415,7 @@ func navbar(l Layout) templ.Component {
 				Size:    button.SizeIconSm,
 				Class:   "sm:hidden",
 				Attributes: templ.Attributes{
-					"onclick":       "this.setAttribute('aria-expanded', this.closest('nav').toggleAttribute('data-open'))",
+					"onclick":       templ.JSUnsafeFuncCall("this.setAttribute('aria-expanded', this.closest('nav').toggleAttribute('data-open'))"),
 					"aria-expanded": "false",
 					"aria-controls": "nav-links",
 					"aria-label":    "Menu",

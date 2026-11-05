@@ -234,6 +234,20 @@ func (a *App) entryParam(c *gin.Context) (sqlc.CompendiumEntry, bool) {
 	return e, a.found(c, err)
 }
 
+// compendiumFind redirects to the entry of a kind and slug the viewer would
+// see, for links that know a slug but not an id (a weapon's mastery).
+func (a *App) compendiumFind(c *gin.Context) {
+	_, camp, ok := a.compendiumReader(c)
+	if !ok {
+		return
+	}
+	e, err := a.entryBySlug(c.Request.Context(), compendium.Kind(c.Param("kind")), c.Param("slug"), viewerCampaign(camp))
+	if !a.found(c, err) {
+		return
+	}
+	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/compendium/entries/%d", e.ID))
+}
+
 func (a *App) compendiumEntry(c *gin.Context) {
 	w, camp, ok := a.compendiumReader(c)
 	if !ok {
@@ -483,6 +497,7 @@ func (a *App) saveHomebrew(c *gin.Context, w who, id int64) {
 		a.renderHomebrew(c, http.StatusUnprocessableEntity, w, views.HomebrewView{ID: id, Input: in, Error: err.Error(), AddToSheet: add})
 		return
 	}
+	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium}) // a homebrew copy may outrank a pin
 	if add && w.character != nil {
 		if err := a.addHomebrewToSheet(ctx, *w.character, id); a.commandFailed(c, err) {
 			return
@@ -525,6 +540,7 @@ func (a *App) homebrewDelete(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
+	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
 	c.Redirect(http.StatusSeeOther, homebrewTabURL)
 }
 

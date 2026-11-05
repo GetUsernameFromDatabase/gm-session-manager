@@ -335,7 +335,7 @@ templ abilityForm(v WizardView) {
 		</div>
 		<div class="flex flex-wrap items-center gap-3 text-sm">
 			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{
-				"onclick": "const f = this.form; [15, 14, 13, 12, 10, 8].forEach((n, i) => f.elements[['str','dex','con','int','wis','cha'][i]].value = n); f.dispatchEvent(new Event('input'))",
+				"onclick": templ.JSUnsafeFuncCall("const f = this.form; [15, 14, 13, 12, 10, 8].forEach((n, i) => f.elements[['str','dex','con','int','wis','cha'][i]].value = n); f.dispatchEvent(new Event('input'))"),
 			}}) {
 				Fill in the standard array
 			}
@@ -379,6 +379,8 @@ const (
 	FieldSkill = "skill"
 	FieldSpell = "spell"
 	FieldASI   = "asi"
+	// FieldMastery is the Weapon Mastery choice group's key.
+	FieldMastery = "weapon_mastery"
 )
 
 func (v WizardView) fieldErr() FieldError { return FieldError{Key: v.ErrorFor, Msg: v.Error} }

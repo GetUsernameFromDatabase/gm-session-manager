@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/combobox"
@@ -112,6 +113,7 @@ func (s SheetView) builderVerbs() []builderVerb {
 		{"weapons", "Weapons", []builderOp{
 			{"weapon-add", "Add or replace", "weapon add", ""},
 			{"weapon-remove", "Remove", "weapon remove", ""},
+			{OpMastery, "Weapon Mastery", "", ""},
 		}},
 		{"mods", "Custom modifiers", []builderOp{
 			{"mod-add", "Add or replace", "mod add", ""},
@@ -195,7 +197,13 @@ type BuilderExtra struct {
 	// FeatureMods are Feature's stat changes, read from its text.
 	FeatureMods []dnd5e.CustomMod
 	Suggestions []string
+	// Masteries are the compendium weapons with a mastery property (as
+	// Desc), for OpMastery.
+	Masteries []compendium.NameDesc
 }
+
+// OpMastery is the builder form that chooses the weapon kinds mastered.
+const OpMastery = "mastery"
 
 // BuilderPick is one result of the builder's compendium look-up. Feature
 // names a class feature inside the class entry EntryID.
@@ -232,6 +240,8 @@ templ CommandBuilder(s SheetView, verb, op, subject string, x BuilderExtra) {
 				@coinForm(s, subject)
 			case "armor":
 				@armorForm(s)
+			case OpMastery:
+				@masteryForm(s, x.Masteries)
 			case modEdit:
 				@modEditForm(s, subject)
 			case focusSkill, focusSave:
@@ -518,7 +528,7 @@ templ removableList(s SheetView, prefix string, names []string) {
 					"aria-label": "Remove " + n, "hx-post": s.cmdURL(),
 					"hx-params":            "prefix,subject",
 					"hx-vals":              toJSON(map[string]string{"prefix": prefix, "subject": n}),
-					"hx-on::after-request": "if (event.detail.successful) this.closest('li').remove()",
+					"hx-on::after-request": templ.JSUnsafeFuncCall("if (event.detail.successful) this.closest('li').remove()"),
 				}}) {
 					@icon.X(icon.Props{Size: 12})
 				}
@@ -784,11 +794,11 @@ templ numberField(label string, lo, hi, value int, focus bool) {
 			{ label }
 		}
 		<div class="flex items-center gap-2">
-			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": "Less", "onclick": "this.nextElementSibling.stepDown()"}}) {
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": "Less", "onclick": templ.JSUnsafeFuncCall("this.nextElementSibling.stepDown()")}}) {
 				@icon.Minus()
 			}
 			@input.Input(input.Props{ID: "builder-n", Name: "n", Type: "number", Value: fmt.Sprint(value), Required: true, Class: "w-24 text-center", Attributes: numberAttrs(lo, hi, focus)})
-			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": "More", "onclick": "this.previousElementSibling.stepUp()"}}) {
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIcon, Attributes: templ.Attributes{"aria-label": "More", "onclick": templ.JSUnsafeFuncCall("this.previousElementSibling.stepUp()")}}) {
 				@icon.Plus()
 			}
 		</div>
@@ -843,12 +853,20 @@ templ weaponFields(s SheetView, w dnd5e.Weapon, editing bool) {
 			@input.Input(input.Props{ID: "builder-properties", Name: "properties", Value: w.Properties, Placeholder: "Finesse, Light", Attributes: templ.Attributes{"maxlength": "300"}})
 		}
 	</div>
-	@field.Field() {
-		@field.Label(field.LabelProps{For: "builder-dtype"}) {
-			Damage type
+	<div class="grid grid-cols-2 gap-4">
+		@field.Field() {
+			@field.Label(field.LabelProps{For: "builder-dtype"}) {
+				Damage type
+			}
+			@createCombobox("builder-dtype", "dtype", w.DamageType, "slashing", 50, dnd5e.DamageTypes)
 		}
-		@createCombobox("builder-dtype", "dtype", w.DamageType, "slashing", 50, dnd5e.DamageTypes)
-	}
+		@field.Field() {
+			@field.Label(field.LabelProps{For: "builder-mastery-trigger"}) {
+				Mastery
+			}
+			@formSelect("builder-mastery", "mastery", masteryItems(w.Mastery), w.Mastery, "w-full", "")
+		}
+	</div>
 	@checkField("prof", "prof", w.Proficient) {
 		Proficient (adds the proficiency bonus to hit)
 	}
@@ -1112,7 +1130,53 @@ templ BuilderPickItems(characterID int64, picks []BuilderPick) {
 // closeAfter makes a builder button close the dialog once its request
 // succeeds, since the sheet behind it shows the result.
 func closeAfter(a templ.Attributes) templ.Attributes {
-	a["hx-on::after-request"] = "if (event.detail.successful) document.querySelector('#" + builderID + " [data-slot=dialog-close]')?.click()"
+	// templ blanks a spread event handler unless it is a ComponentScript.
+	a["hx-on::after-request"] = templ.JSUnsafeFuncCall("if (event.detail.successful) document.querySelector('#" + builderID + " [data-slot=dialog-close]')?.click()")
+	return a
+}
+
+// masteryForm toggles each compendium weapon's kind as mastered, and reloads
+// itself after each tap so several can be chosen in a row. Unchosen kinds
+// are disabled once the limit is reached.
+templ masteryForm(s SheetView, weapons []compendium.NameDesc) {
+	{{ sh := s.C.Sheet }}
+	<div class="space-y-3 border-t pt-4 text-sm">
+		<p>{ dnd5e.MasteryColumn + ": " + masteryCount(s) }</p>
+		if len(weapons) == 0 {
+			<p class="text-muted-foreground">No weapon in the compendium has a mastery property.</p>
+		} else {
+			<div class="flex flex-wrap gap-1.5">
+				for _, w := range weapons {
+					{{ on := sh.Masters(w.Name) }}
+					@button.Button(button.Props{
+						Variant:  button.VariantOutline,
+						Size:     button.SizeSm,
+						Class:    pressedClass,
+						Disabled: !on && len(sh.Masteries) >= s.MasteryLimit,
+						Attributes: reloadAfter(templ.Attributes{
+							"hx-post": s.cmdURL(), "hx-vals": cmdVals(fmt.Sprintf("mastery %s %q", utils.IfElse(on, "remove", "add"), w.Name)),
+							"aria-pressed": fmt.Sprint(on), "title": "Mastery: " + w.Desc,
+						}, builderURL(s, "weapons", OpMastery, "")),
+					}) {
+						{ w.Name }
+						<span class="text-xs opacity-70">{ w.Desc }</span>
+					}
+				}
+			</div>
+		}
+		<p class="text-xs text-muted-foreground">You can use the mastery property of the weapon kinds you choose. Change them after a Long Rest.</p>
+	</div>
+}
+
+// masteryCount is "2/3 chosen": weapon kinds mastered of those allowed.
+func masteryCount(s SheetView) string {
+	return fmt.Sprintf("%d/%d chosen", len(s.C.Sheet.Masteries), s.MasteryLimit)
+}
+
+// reloadAfter makes a builder button load the form at url again after a
+// successful request, instead of closing the dialog.
+func reloadAfter(a templ.Attributes, url string) templ.Attributes {
+	a["hx-on::after-request"] = templ.JSUnsafeFuncCall("if (event.detail.successful) htmx.ajax('GET', '" + url + "', {target: '#builder', swap: 'innerHTML'})")
 	return a
 }
 

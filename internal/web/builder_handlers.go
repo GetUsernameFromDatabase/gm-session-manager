@@ -36,6 +36,10 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 			x.Suggestions = append(x.Suggestions, r.Name)
 		}
 		return x, err
+	case views.OpMastery:
+		var err error
+		x.Masteries, err = a.masteryWeapons(ctx, campaignID)
+		return x, err
 	}
 	id, err := strconv.ParseInt(c.Query("entry"), 10, 64)
 	if err != nil {
@@ -78,7 +82,7 @@ var kindSources = map[string]string{string(compendium.KindFeat): "Feat", string(
 // "1d8 slashing", finesse weapons use the better of STR and DEX, and
 // ammunition (ranged) weapons DEX.
 func compendiumWeapon(name string, d *compendium.ItemData) dnd5e.Weapon {
-	w := dnd5e.Weapon{Name: name, Ability: "str", Proficient: true, Range: d.Range, Properties: d.Properties}
+	w := dnd5e.Weapon{Name: name, Ability: "str", Proficient: true, Range: d.Range, Properties: d.Properties, Mastery: d.Mastery}
 	w.Dice, w.DamageType, _ = strings.Cut(strings.TrimSpace(d.Damage), " ")
 	props := strings.ToLower(d.Properties)
 	switch {
@@ -309,5 +313,6 @@ func weaponCommand(c *gin.Context) (dnd5e.Command, error) {
 		Name: name, Ability: strings.ToLower(c.PostForm("ability")), Dice: strings.ToLower(strings.TrimSpace(c.PostForm("dice"))),
 		DamageType: strings.TrimSpace(c.PostForm("dtype")), Proficient: c.PostForm("prof") != "",
 		Range: strings.TrimSpace(c.PostForm("range")), Properties: strings.TrimSpace(c.PostForm("properties")),
+		Mastery: strings.TrimSpace(c.PostForm("mastery")),
 	}), nil
 }

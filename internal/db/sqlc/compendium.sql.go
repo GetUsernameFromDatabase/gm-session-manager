@@ -1036,6 +1036,48 @@ func (q *Queries) ListItemsByCategory(ctx context.Context, arg ListItemsByCatego
 	return items, nil
 }
 
+const listMasteryWeapons = `-- name: ListMasteryWeapons :many
+SELECT e.name, CAST(json_extract(e.data_json, '$.mastery') AS TEXT) AS mastery
+FROM compendium_entries AS e
+WHERE e.kind = 'item' AND e.id IN (SELECT id FROM compendium_top)
+  AND COALESCE(json_extract(e.data_json, '$.mastery'), '') != ''
+  AND COALESCE(json_extract(e.data_json, '$.rarity'), '') = ''
+  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
+ORDER BY e.name
+`
+
+type ListMasteryWeaponsRow struct {
+	Name    string
+	Mastery string
+}
+
+// ListMasteryWeapons are the weapons with a mastery property a player in
+// campaign_id may see (0: all), for choosing Weapon Mastery. Only mundane
+// weapons: a kind is chosen, and magic variants (rarity set) are not kinds.
+func (q *Queries) ListMasteryWeapons(ctx context.Context, campaignID int64) ([]ListMasteryWeaponsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMasteryWeapons, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMasteryWeaponsRow{}
+	for rows.Next() {
+		var i ListMasteryWeaponsRow
+		if err := rows.Scan(&i.Name, &i.Mastery); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMonsterHabitats = `-- name: ListMonsterHabitats :many
 SELECT entry_id, habitat FROM monster_habitats
 `

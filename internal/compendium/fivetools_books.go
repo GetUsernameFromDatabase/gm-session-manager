@@ -254,8 +254,9 @@ func (w bookWriter) write(name string, v any) error {
 }
 
 // writeDoc writes the filtered rel file as name, unless nothing is left.
+// idx, for a per-book file, names the other books' files copies can reach.
 // It reports whether it wrote.
-func (w bookWriter) writeDoc(m *mirror, id, rel, name string, keys ...string) (bool, error) {
+func (w bookWriter) writeDoc(m *mirror, id, rel, name string, idx map[string]string, keys ...string) (bool, error) {
 	raw, err := m.get(rel)
 	if err != nil {
 		return false, err
@@ -267,7 +268,113 @@ func (w bookWriter) writeDoc(m *mirror, id, rel, name string, keys ...string) (b
 	if doc == nil {
 		return false, nil
 	}
-	return true, w.write(name, doc)
+	other := func(src string) (json.RawMessage, error) {
+		if file, ok := idx[src]; ok {
+			return m.get(filepath.ToSlash(filepath.Join(filepath.Dir(rel), file)))
+		}
+		return nil, nil
+	}
+	return true, w.writeWithCopies(name, doc, raw, other)
+}
+
+// copyTargetsKey holds, per list, the records kept entries _copy from other
+// books: ftRecords resolves against them but never imports them.
+const copyTargetsKey = "_copyTargets"
+
+// writeWithCopies writes doc plus the copy targets the filter dropped.
+func (w bookWriter) writeWithCopies(name string, doc map[string][]json.RawMessage, raw json.RawMessage, other func(string) (json.RawMessage, error)) error {
+	targets, err := copyTargets(doc, raw, other)
+	if err != nil {
+		return fmt.Errorf("5etools %s: %w", name, err)
+	}
+	if len(targets) == 0 {
+		return w.write(name, doc)
+	}
+	out := map[string]any{copyTargetsKey: targets}
+	for k, v := range doc {
+		out[k] = v
+	}
+	return w.write(name, out)
+}
+
+// copyIndex maps a list's records by both keys ftResolve looks up.
+func copyIndex(recs []json.RawMessage) map[string]json.RawMessage {
+	idx := map[string]json.RawMessage{}
+	for _, r := range recs {
+		var c ftCopyRef
+		if json.Unmarshal(r, &c) == nil {
+			idx[c.ftNamed.key()] = r
+			idx[c.key()] = r
+		}
+	}
+	return idx
+}
+
+// copyTargets finds, per list of doc, the records its entries _copy that are
+// not in doc: in raw, else in other(source), another book's file (nil if
+// none). It follows copies of copies as deep as ftResolve does.
+func copyTargets(doc map[string][]json.RawMessage, raw json.RawMessage, other func(string) (json.RawMessage, error)) (map[string][]json.RawMessage, error) {
+	pools := map[string]map[string]json.RawMessage{} // by source file ("" is raw) and list
+	pool := func(src, list string) (map[string]json.RawMessage, error) {
+		if p, ok := pools[src+"|"+list]; ok {
+			return p, nil
+		}
+		body := raw
+		if src != "" {
+			if other == nil {
+				return nil, nil
+			}
+			var err error
+			if body, err = other(src); err != nil {
+				return nil, err
+			}
+		}
+		var all map[string]json.RawMessage
+		var recs []json.RawMessage
+		if body != nil {
+			if err := json.Unmarshal(body, &all); err != nil {
+				return nil, err
+			}
+			_ = json.Unmarshal(all[list], &recs) // _meta and other non-array keys
+		}
+		pools[src+"|"+list] = copyIndex(recs)
+		return pools[src+"|"+list], nil
+	}
+	out := map[string][]json.RawMessage{}
+	for list, recs := range doc {
+		have := copyIndex(recs)
+		queue := recs
+		for depth := 0; depth <= 4 && len(queue) > 0; depth++ {
+			var next []json.RawMessage
+			for _, r := range queue {
+				var rec struct {
+					Copy *ftCopyRef `json:"_copy"`
+				}
+				if json.Unmarshal(r, &rec) != nil || rec.Copy == nil || have[rec.Copy.key()] != nil || have[rec.Copy.ftNamed.key()] != nil {
+					continue
+				}
+				for _, src := range []string{"", rec.Copy.Source} {
+					p, err := pool(src, list)
+					if err != nil {
+						return nil, err
+					}
+					t, ok := p[rec.Copy.key()]
+					if !ok {
+						t, ok = p[rec.Copy.ftNamed.key()]
+					}
+					if !ok {
+						continue
+					}
+					maps.Copy(have, copyIndex([]json.RawMessage{t}))
+					out[list] = append(out[list], t)
+					next = append(next, t)
+					break
+				}
+			}
+			queue = next
+		}
+	}
+	return out, nil
 }
 
 // indexed is a per-book file named by an index.
@@ -303,14 +410,14 @@ func (m *mirror) writeBook(w bookWriter, b Book) error {
 		if !ok {
 			continue
 		}
-		if _, err := w.writeDoc(m, b.ID, filepath.ToSlash(filepath.Join(filepath.Dir(f.index), file)), f.name); err != nil {
+		if _, err := w.writeDoc(m, b.ID, filepath.ToSlash(filepath.Join(filepath.Dir(f.index), file)), f.name, idx); err != nil {
 			return err
 		}
 	}
 	if err := m.writeSpellClasses(w, b); err != nil {
 		return err
 	}
-	hasItems, err := w.writeDoc(m, b.ID, "items.json", "items.json")
+	hasItems, err := w.writeDoc(m, b.ID, "items.json", "items.json", nil)
 	if err != nil {
 		return err
 	}
@@ -329,7 +436,7 @@ func (m *mirror) writeBook(w bookWriter, b Book) error {
 		}
 	}
 	for _, f := range sharedFiles {
-		if _, err := w.writeDoc(m, b.ID, f.index, f.name); err != nil {
+		if _, err := w.writeDoc(m, b.ID, f.index, f.name, nil); err != nil {
 			return err
 		}
 	}
@@ -371,7 +478,7 @@ func (m *mirror) writeClasses(w bookWriter, b Book) error {
 		if err := m.keepClassParents(raw, doc); err != nil {
 			return err
 		}
-		if err := w.write("class-"+name+".json", doc); err != nil {
+		if err := w.writeWithCopies("class-"+name+".json", doc, raw, nil); err != nil {
 			return err
 		}
 	}

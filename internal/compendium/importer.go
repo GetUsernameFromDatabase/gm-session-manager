@@ -166,7 +166,7 @@ func upsert(ctx context.Context, q *sqlc.Queries, src Source, e Entry) error {
 // normalizeVersion salts the source hash. Bump it only when the parser
 // changes (the normalized shape gains data), so unchanged source files are
 // imported again once. Edits to the files are caught by the hash itself.
-const normalizeVersion = "5"
+const normalizeVersion = "6"
 
 // readSource reads the .json files of a source directory and hashes their
 // names and contents, so re-importing unchanged files is a no-op.
@@ -280,6 +280,7 @@ type HomebrewInput struct {
 	Properties   string `form:"properties"   validate:"max=300"`
 	WeaponRange  string `form:"weapon_range" validate:"max=20"`
 	Martial      bool   `form:"martial"`
+	Mastery      string `form:"mastery"      validate:"omitempty,oneof=Cleave Graze Nick Push Sap Slow Topple Vex"`
 	ArmorType    string `form:"armor_type"   validate:"omitempty,oneof=light medium heavy shield"`
 	ArmorBase    int    `form:"armor_base"   validate:"min=0,max=30"`
 	ArmorAddDex  bool   `form:"armor_add_dex"`
@@ -290,7 +291,7 @@ type HomebrewInput struct {
 	// Classes and subclasses; Features and Table use the text of
 	// ParseFeatures and ParseTable.
 	HitDie     int      `form:"hit_die"     validate:"omitempty,oneof=6 8 10 12"`
-	Caster     string   `form:"caster"      validate:"omitempty,oneof=full half pact none"`
+	Caster     string   `form:"caster"      validate:"omitempty,oneof=full half third pact none"`
 	Saves      []string `form:"saves"       validate:"dive,oneof=str dex con int wis cha"`
 	SubclassOf string   `form:"subclass_of" validate:"max=200"`
 	Features   string   `form:"features"    validate:"max=200000"`
@@ -327,7 +328,7 @@ func HomebrewInputFor(kind, name, desc string, data any) HomebrewInput {
 		in.Level, in.School, in.CastingTime, in.Range, in.Components, in.Duration = d.Level, d.School, d.CastingTime, d.Range, d.Components, d.Duration
 		in.Concentration, in.Ritual, in.HigherLevel, in.Classes, in.Desc = d.Concentration, d.Ritual, d.HigherLevel, strings.Join(d.Classes, ", "), d.Desc
 	case *ItemData:
-		in.Category, in.Damage, in.Properties, in.WeaponRange, in.Martial, in.Desc = d.Category, d.Damage, d.Properties, d.Range, d.Martial, d.Desc
+		in.Category, in.Damage, in.Properties, in.WeaponRange, in.Martial, in.Mastery, in.Desc = d.Category, d.Damage, d.Properties, d.Range, d.Martial, d.Mastery, d.Desc
 		if a := d.Armor; a != nil {
 			in.ArmorType, in.ArmorBase, in.ArmorAddDex, in.ArmorDexCap, in.ArmorStrReq, in.ArmorStealth = a.Type, a.Base, a.AddDex, a.DexCap, a.StrReq, a.Stealth
 		}
@@ -453,7 +454,7 @@ func (in HomebrewInput) Entry() (Entry, error) {
 			Classes: classes, Desc: in.Desc, HigherLevel: in.HigherLevel,
 		}
 	case KindItem:
-		d := ItemData{Category: in.Category, Damage: in.Damage, Properties: in.Properties, Range: in.WeaponRange, Martial: in.Martial, Desc: in.Desc}
+		d := ItemData{Category: in.Category, Damage: in.Damage, Properties: in.Properties, Range: in.WeaponRange, Martial: in.Martial, Mastery: in.Mastery, Desc: in.Desc}
 		if in.ArmorType != "" {
 			d.Armor = &ArmorData{Type: in.ArmorType, Base: in.ArmorBase, AddDex: in.ArmorAddDex, DexCap: in.ArmorDexCap, StrReq: in.ArmorStrReq, Stealth: in.ArmorStealth}
 			d.ArmorClass = armorText(*d.Armor)

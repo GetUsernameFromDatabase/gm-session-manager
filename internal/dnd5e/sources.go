@@ -183,6 +183,10 @@ func (c *Character) SwitchSource(ref SourceRef, env Env) error {
 		cl := &s.Classes[sw.class]
 		if ref.Kind == RefSubclass {
 			cl.SubclassSlug, cl.SubclassSource = ref.Slug, ref.Source
+			if cl.Caster == "" || cl.Caster == CasterNone {
+				cl.Caster = cmp.Or(next.Caster, CasterNone)
+				s.RecomputeSlots()
+			}
 			return nil
 		}
 		cl.HitDie, cl.Caster, cl.Source = next.HitDie, cmp.Or(next.Caster, CasterNone), ref.Source

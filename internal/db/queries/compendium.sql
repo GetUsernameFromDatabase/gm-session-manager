@@ -234,6 +234,19 @@ WHERE e.kind = 'item' AND e.id IN (SELECT id FROM compendium_top)
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
 ORDER BY e.name;
 
+-- ListMasteryWeapons are the weapons with a mastery property a player in
+-- campaign_id may see (0: all), for choosing Weapon Mastery. Only mundane
+-- weapons: a kind is chosen, and magic variants (rarity set) are not kinds.
+-- name: ListMasteryWeapons :many
+SELECT e.name, CAST(json_extract(e.data_json, '$.mastery') AS TEXT) AS mastery
+FROM compendium_entries AS e
+WHERE e.kind = 'item' AND e.id IN (SELECT id FROM compendium_top)
+  AND COALESCE(json_extract(e.data_json, '$.mastery'), '') != ''
+  AND COALESCE(json_extract(e.data_json, '$.rarity'), '') = ''
+  AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
+ORDER BY e.name;
+
 -- name: ListSubclassesOf :many
 SELECT id, slug, name FROM compendium_entries
 WHERE kind = 'subclass' AND id IN (SELECT id FROM compendium_top) AND json_extract(data_json, '$.subclass_of') = CAST(sqlc.arg(class_slug) AS TEXT)

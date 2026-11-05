@@ -4,4 +4,6 @@
 {"name":"Plate Armor","source":"XPHB","type":"HA|XPHB","rarity":"none","weight":65,"value":150000,"ac":18,"strength":"15","stealth":true,"armor":true},
 {"name":"Longsword","source":"PHB","type":"M","rarity":"none","weight":3,"value":1500,"weaponCategory":"martial","property":["V"],"dmg1":"1d8","dmgType":"S","dmg2":"1d10","weapon":true}
 ],
-"itemProperty":[{"abbreviation":"V","source":"XPHB","name":"Versatile"}]}
+"itemProperty":[{"abbreviation":"V","source":"XPHB","name":"Versatile"}],
+"itemMastery":[{"name":"Sap","source":"XPHB","page":214,"entries":["If you hit a creature with this weapon, that creature has {@variantrule Disadvantage|XPHB} on its next attack roll."]},
+{"name":"Sap","source":"HB","entries":["Another book's."]}]}

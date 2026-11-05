@@ -181,6 +181,7 @@ func (a *App) Router() *gin.Engine {
 	r.GET("/compendium/search", a.compendiumSearch)
 	r.GET("/compendium/random", a.compendiumRandom)
 	r.GET("/compendium/lookup", a.compendiumLookup)
+	r.GET("/compendium/find/:kind/:slug", a.compendiumFind)
 	r.GET("/compendium/entries/:entry", a.compendiumEntry)
 	// Homebrew: the handlers check who may write (perm.CanEditHomebrew).
 	r.GET("/compendium/entries/:entry/edit", a.homebrewEdit)

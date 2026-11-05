@@ -124,6 +124,10 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 	if err != nil {
 		return views.SheetView{}, err
 	}
+	masteries, err := masteryLimit(ctx, a.Store.Queries, sheet, "")
+	if err != nil {
+		return views.SheetView{}, err
+	}
 	canSheet := perm.CanCharacter(v, row.ID, perm.ScopeSheet)
 	canSources := perm.CanCharacter(v, row.ID, perm.ScopeSources)
 	var issues []views.SourceIssue
@@ -141,6 +145,7 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 		CanRevert:     canSheet && levelUps > 0,
 		CanSources:    canSources,
 		SourceIssues:  issues,
+		MasteryLimit:  masteries,
 	}, nil
 }
 

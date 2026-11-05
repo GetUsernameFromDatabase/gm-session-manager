@@ -170,7 +170,7 @@ templ compendiumSearchForm(v CompendiumView) {
 		<input type="hidden" name="kind" value={ v.Kind }/>
 		<input type="hidden" name="habitat" value={ v.Habitat }/>
 		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{
-			"onclick": "const f = new FormData(this.form); window.open('/compendium/random?kind=' + encodeURIComponent(f.get('kind') ?? '') + '&habitat=' + encodeURIComponent(f.get('habitat') ?? ''), '_blank')", "title": "Random entry of the chosen kind and habitat (new tab)",
+			"onclick": templ.JSUnsafeFuncCall("const f = new FormData(this.form); window.open('/compendium/random?kind=' + encodeURIComponent(f.get('kind') ?? '') + '&habitat=' + encodeURIComponent(f.get('habitat') ?? ''), '_blank')"), "title": "Random entry of the chosen kind and habitat (new tab)",
 		}}) {
 			@icon.Dices()
 			<span class="max-sm:sr-only">Random</span>
@@ -301,10 +301,13 @@ templ FiveToolsPicker(v FiveToolsView) {
 									if !b.Imported.IsZero() {
 										<span class="text-xs text-muted-foreground">{ "Imported " }@localTime(b.Imported)</span>
 									}
-									// htmx inherits hx-confirm, so the shared button stays as it is.
-									<span class="contents" hx-confirm={ "Remove " + b.Name + " and its entries from the compendium?" }>
-										@removeButton(FiveToolsPath + "/" + b.ID + "/delete")
-									</span>
+									// Not removeButton: that one is 16px, too small to tap.
+									@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: quietDestructive, Attributes: templ.Attributes{
+										"aria-label": "Remove " + b.Name, "hx-post": FiveToolsPath + "/" + b.ID + "/delete",
+										"hx-confirm": "Remove " + b.Name + " and its entries from the compendium?",
+									}}) {
+										@icon.X(icon.Props{Size: 16})
+									}
 								}
 							</li>
 						}
@@ -916,7 +919,7 @@ templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
 			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start truncate", Attributes: templ.Attributes{
 				"hx-post":              fmt.Sprintf("/encounters/%d/combatants", t.EncounterID),
 				"hx-vals":              fmt.Sprintf(`{"kind":"monster","id":"%d"}`, r.ID),
-				"hx-on::after-request": "const u = this.closest('ul'); u.previousElementSibling.value = ''; u.replaceChildren()",
+				"hx-on::after-request": templ.JSUnsafeFuncCall("const u = this.closest('ul'); u.previousElementSibling.value = ''; u.replaceChildren()"),
 			}}) {
 				{ r.Name }
 			}
@@ -924,7 +927,7 @@ templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
 	} else if t.CharacterID != 0 {
 		@pickRow(r.ID, templ.Attributes{
 			"hx-post": fmt.Sprintf("/characters/%d/cmd", t.CharacterID), "hx-vals": cmdVals("spell add " + r.Slug),
-			"hx-on::after-request": "if (event.detail.successful) this.disabled = true",
+			"hx-on::after-request": templ.JSUnsafeFuncCall("if (event.detail.successful) this.disabled = true"),
 		}) {
 			{ r.Name }
 		}
@@ -1115,7 +1118,7 @@ templ monsterPicture(e sqlc.CompendiumEntry, editable bool, class string) {
 			<div data-pic class="group/pic space-y-2">
 				if e.ImageUrl.String != "" {
 					@button.Button(button.Props{Variant: button.VariantGhost, Class: "h-auto w-full p-0 group-data-[broken]/pic:hidden", Attributes: templ.Attributes{
-						"type": "button", "title": "Change picture", "onclick": "this.closest('[data-pic]').toggleAttribute('data-editing')",
+						"type": "button", "title": "Change picture", "onclick": templ.JSUnsafeFuncCall("this.closest('[data-pic]').toggleAttribute('data-editing')"),
 					}}) {
 						<img src={ e.ImageUrl.String } alt={ e.Name } loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('[data-pic]').toggleAttribute('data-broken', true)" class={ imgClass }/>
 					}
@@ -1332,11 +1335,19 @@ templ itemBody(d *compendium.ItemData) {
 			(requires attunement)
 		}
 	}
-	if d.Damage != "" || d.ArmorClass != "" || d.Cost != "" || d.Weight != "" {
+	if d.Damage != "" || d.Mastery != "" || d.ArmorClass != "" || d.Cost != "" || d.Weight != "" {
 		@rule()
 		<dl class={ factsGrid }>
 			@fact("Damage", d.Damage)
 			@fact("Properties", d.Properties)
+			if d.Mastery != "" {
+				<div>
+					<dt class="font-semibold">Mastery</dt>
+					<dd>
+						@MasteryLinks(d.Mastery)
+					</dd>
+				</div>
+			}
 			@fact("AC", d.ArmorClass)
 			@fact("Cost", utils.IfElse(d.Cost != "", d.Cost+" gp", ""))
 			@fact("Weight", utils.IfElse(d.Weight != "", d.Weight+" lb", ""))
@@ -1344,6 +1355,22 @@ templ itemBody(d *compendium.ItemData) {
 	}
 	@rule()
 	@prose(d.Desc)
+}
+
+// MasteryLinks links each of a weapon's mastery properties ("Sap", or
+// "Nick, Vex") to its rule entry.
+templ MasteryLinks(mastery string) {
+	for i, m := range strings.Split(mastery, ", ") {
+		if i > 0 {
+			{ ", " }
+		}
+		<a class="underline" href={ templ.SafeURL(CompendiumFindURL(compendium.KindRule, compendium.Slugify(m))) }>{ m }</a>
+	}
+}
+
+// CompendiumFindURL opens the entry of kind and slug the viewer would see.
+func CompendiumFindURL(kind compendium.Kind, slug string) string {
+	return fmt.Sprintf("/compendium/find/%s/%s", kind, url.PathEscape(slug))
 }
 
 templ classBody(d *compendium.ClassData) {
@@ -1440,7 +1467,7 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 			if v.ID != 0 {
 				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Class: quietDestructive, Attributes: templ.Attributes{
 					"form": homebrewFormID, "formaction": fmt.Sprintf("/compendium/entries/%d/delete", v.ID), "formnovalidate": true, "type": "submit",
-					"onclick": "return confirm('Delete this homebrew entry?')", "aria-label": "Delete", "title": "Delete",
+					"onclick": templ.JSUnsafeFuncCall("return confirm('Delete this homebrew entry?')"), "aria-label": "Delete", "title": "Delete",
 				}}) {
 					@icon.Trash2()
 				}
@@ -1566,6 +1593,10 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 					@inlineField("Damage", "damage", v.Input.Damage, "w-32", templ.Attributes{"placeholder": "1d8 slashing"})
 					@inlineField("Range", "weapon_range", v.Input.WeaponRange, "w-24", templ.Attributes{"placeholder": "80/320"})
 					@inlineField("Properties", "properties", v.Input.Properties, "w-48", templ.Attributes{"placeholder": "Finesse, Light"})
+					@label.Label(label.Props{Class: "font-normal"}) {
+						Mastery
+						@formSelect("", "mastery", masteryItems(""), v.Input.Mastery, "", "")
+					}
 					@checkField("martial", "true", v.Input.Martial) {
 						Martial weapon
 					}
@@ -1586,9 +1617,11 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 			</div>
 			<div class="space-y-3 text-sm" data-kinds="class subclass">
 				<h2 class={ sectionHeading }>Class</h2>
+				<div class="flex flex-wrap items-center gap-3">
+					@formSelect("", "caster", []selectcomp.ItemData{{Value: "none", Label: "No spellcasting"}, {Value: "full", Label: "Full caster"}, {Value: "half", Label: "Half caster"}, {Value: "third", Label: "Third caster (subclass)"}, {Value: "pact", Label: "Pact magic"}}, v.Input.Caster, "", "")
+				</div>
 				<div class="flex flex-wrap items-center gap-3" data-kinds="class">
 					@formSelect("", "hit_die", []selectcomp.ItemData{{Value: "8", Label: "d8"}, {Value: "6", Label: "d6"}, {Value: "10", Label: "d10"}, {Value: "12", Label: "d12"}}, fmt.Sprint(v.Input.HitDie), "", "")
-					@formSelect("", "caster", []selectcomp.ItemData{{Value: "none", Label: "No spellcasting"}, {Value: "full", Label: "Full caster"}, {Value: "half", Label: "Half caster"}, {Value: "pact", Label: "Pact magic"}}, v.Input.Caster, "", "")
 					<span class="text-muted-foreground">Saves</span>
 					for _, a := range dnd5e.Abilities {
 						@checkField("saves", a, slices.Contains(v.Input.Saves, a)) {
@@ -1650,6 +1683,16 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 }
 
 // inlineField is a small input with its label in front.
+// masteryItems offer no mastery, then each weapon mastery property, and
+// current when it is none of them ("Nick, Vex"), so saving keeps it.
+func masteryItems(current string) []selectcomp.ItemData {
+	names := compendium.WeaponMasteries
+	if current != "" && !slices.Contains(names, current) {
+		names = append(slices.Clone(names), current)
+	}
+	return append([]selectcomp.ItemData{{Value: "", Label: "None"}}, selectItems(names, func(m string) string { return m }, func(m string) string { return m })...)
+}
+
 templ inlineField(text, name, value, class string, attrs templ.Attributes) {
 	@label.Label(label.Props{Class: "font-normal"}) {
 		{ text }

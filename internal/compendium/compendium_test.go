@@ -137,6 +137,33 @@ func TestNormalizedShapes(t *testing.T) {
 	}
 }
 
+// The SRD lists weapon mastery among the properties; it becomes Mastery and
+// a rule slugged like a 5etools book's.
+func TestOpen5eMastery(t *testing.T) {
+	fx, err := parseFixtures(map[string][]byte{"f.json": []byte(`[
+		{"model":"api_v2.item","pk":"srd-2024_longsword","fields":{"name":"Longsword","category":"weapon","weapon":"srd-2024_longsword"}},
+		{"model":"api_v2.weapon","pk":"srd-2024_longsword","fields":{"damage_dice":"1d8","damage_type":"slashing"}},
+		{"model":"api_v2.weaponproperty","pk":"srd-2024_sap-mastery","fields":{"name":"Sap","desc":"Disadvantage.","type":"Mastery"}},
+		{"model":"api_v2.weaponproperty","pk":"srd-2024_versatile-wp","fields":{"name":"Versatile","desc":"Two hands.","type":null}},
+		{"model":"api_v2.weaponpropertyassignment","pk":"a","fields":{"weapon":"srd-2024_longsword","property":"srd-2024_sap-mastery"}},
+		{"model":"api_v2.weaponpropertyassignment","pk":"b","fields":{"weapon":"srd-2024_longsword","property":"srd-2024_versatile-wp","detail":"1d10"}}]`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := normalizer{fx: fx, prefix: "srd-2024_"}
+	items, err := n.items()
+	if err != nil || len(items) != 1 {
+		t.Fatal(items, err)
+	}
+	if d := items[0].Data.(ItemData); d.Mastery != "Sap" || d.Properties != "Versatile (1d10)" {
+		t.Errorf("longsword %+v", d)
+	}
+	rules, err := n.rules()
+	if err != nil || len(rules) != 1 || rules[0].Slug != "sap" || rules[0].Data.(TextData).Category != masteryCategory {
+		t.Errorf("rules %+v %v", rules, err)
+	}
+}
+
 func TestSearch(t *testing.T) {
 	store := newStore(t)
 	dir := t.TempDir()

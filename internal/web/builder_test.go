@@ -125,8 +125,9 @@ func TestCompendiumWeapon(t *testing.T) {
 		{"1d8 slashing", "Topple, Versatile", dnd5e.Weapon{Name: "w", Ability: "str", Dice: "1d8", DamageType: "slashing", Proficient: true, Properties: "Topple, Versatile"}},
 		{"1d8 piercing", "Finesse, Vex", dnd5e.Weapon{Name: "w", Ability: "finesse", Dice: "1d8", DamageType: "piercing", Proficient: true, Properties: "Finesse, Vex"}},
 		{"1 piercing", "Ammunition, Loading, Vex", dnd5e.Weapon{Name: "w", Ability: "dex", Dice: "1", DamageType: "piercing", Proficient: true, Properties: "Ammunition, Loading, Vex"}},
+		{"1d8 slashing", "Versatile", dnd5e.Weapon{Name: "w", Ability: "str", Dice: "1d8", DamageType: "slashing", Proficient: true, Properties: "Versatile", Mastery: "Sap"}},
 	} {
-		if got := compendiumWeapon("w", &compendium.ItemData{Damage: tt.damage, Properties: tt.props}); got != tt.want {
+		if got := compendiumWeapon("w", &compendium.ItemData{Damage: tt.damage, Properties: tt.props, Mastery: tt.want.Mastery}); got != tt.want {
 			t.Errorf("%s %s: %+v", tt.damage, tt.props, got)
 		}
 	}

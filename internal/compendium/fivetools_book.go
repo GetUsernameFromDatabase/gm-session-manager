@@ -351,6 +351,7 @@ type ftItem struct {
 	Wondrous       bool              `json:"wondrous"`
 	Staff          bool              `json:"staff"`
 	BaseItem       string            `json:"baseItem"`
+	Mastery        []json.RawMessage `json:"mastery"` // "Vex|XPHB" or {"uid": "Vex|XPHB", "note": …}
 }
 
 // ftItemTypes maps 5etools item type codes to our categories (Open5e's).
@@ -376,7 +377,7 @@ var ftProperties = map[string]string{
 // ftBaseKeys are the fields a magic item takes from its base item.
 var ftBaseKeys = []string{
 	"type", "weaponCategory", "dmg1", "dmg2", "dmgType", "property", "range",
-	"ac", "strength", "stealth", "weight", "weapon", "armor",
+	"ac", "strength", "stealth", "weight", "weapon", "armor", "mastery",
 }
 
 func (p *ftBook) items() error {
@@ -485,6 +486,16 @@ func ftItemData(it ftItem) ItemData {
 		}
 	}
 	d.Properties = strings.Join(props, ", ")
+	var mastery []string
+	for _, raw := range it.Mastery {
+		var m struct {
+			UID string `json:"uid"`
+		}
+		if json.Unmarshal(raw, &m.UID) == nil || json.Unmarshal(raw, &m) == nil && m.UID != "" {
+			mastery = append(mastery, ftCode(m.UID))
+		}
+	}
+	d.Mastery = strings.Join(mastery, ", ")
 	if a := ftArmor(typ, it); a != nil {
 		d.Armor, d.ArmorClass = a, armorText(*a)
 	}
@@ -551,12 +562,29 @@ func (p *ftBook) species() error {
 		d := TextData{Desc: joinNonEmpty("\n\n", desc, cmp.Or(fluff[strings.ToLower(name+"|"+r.Source)], fluff[fluffKey])), Parts: append(typed, parts...)}
 		p.add(KindSpecies, name, d, joinText(d.Desc, partsText(d.Parts)))
 	}
-	if err := each(p, "races.json", "race", func(r ftRace) {
-		races[r.key()] = r
-		desc, parts := ftParts(r.Entries)
-		norm(r, r.Name, parts, desc, r.key())
-	}); err != nil {
+	recs, err := p.records("races.json", "race")
+	if err != nil {
 		return err
+	}
+	// A race's versions (2024 lineages) follow it and show its fluff.
+	for _, rec := range recs {
+		base, err := ftDecode[ftRace](rec)
+		if err != nil {
+			p.skipped++
+			continue
+		}
+		races[base.key()] = base
+		versions, skipped := ftVersions(rec)
+		p.skipped += skipped
+		for _, v := range append([]ftRec{rec}, versions...) {
+			r, err := ftDecode[ftRace](v)
+			if err != nil {
+				p.skipped++
+				continue
+			}
+			desc, parts := ftParts(r.Entries)
+			norm(r, r.Name, parts, desc, base.key())
+		}
 	}
 	// 5etools shows a subrace as "Race (Subrace)", with the race's traits
 	// before its own; a subrace without a name is the race itself.
@@ -695,12 +723,21 @@ func (p *ftBook) conditions() error {
 var ftRuleTypes = map[string]string{"C": "Core", "O": "Optional", "V": "Variant", "VO": "Variant optional", "VV": "Variant variant"}
 
 func (p *ftBook) rules() error {
-	return each(p, "variantrules.json", "variantrule", func(r struct {
+	if err := each(p, "variantrules.json", "variantrule", func(r struct {
 		ftNamed
 		RuleType string `json:"ruleType"`
 	}) {
 		d := TextData{Desc: ftEntries(r.Entries), Category: ftRuleTypes[r.RuleType]}
 		p.add(KindRule, r.Name, d, d.Desc)
+	}); err != nil {
+		return err
+	}
+	// items-base.json holds every book's mastery properties: only the book's own count.
+	return each(p, "items-base.json", "itemMastery", func(m ftNamed) {
+		if strings.EqualFold(m.Source, p.id) {
+			d := TextData{Desc: ftEntries(m.Entries), Category: masteryCategory}
+			p.add(KindRule, m.Name, d, d.Desc)
+		}
 	})
 }
 
@@ -800,8 +837,9 @@ func ftCell(raw json.RawMessage) string {
 	return strings.ReplaceAll(strings.ReplaceAll(ftEntry1(raw), "\n", " "), "|", "/")
 }
 
-// ftRecords reads one list of a file with same-file copies resolved,
-// returning how many could not be. A missing file or list is empty.
+// ftRecords reads one list of a file with copies resolved (against the list
+// and the file's copy targets), returning how many could not be. A missing
+// file or list is empty.
 func ftRecords(files map[string][]byte, file, key string) ([]ftRec, int, error) {
 	body, ok := files[file]
 	if !ok {
@@ -817,9 +855,17 @@ func ftRecords(files map[string][]byte, file, key string) ([]ftRec, int, error) 
 			return nil, 0, fmt.Errorf("5etools %s %s: %w", file, key, err)
 		}
 	}
+	// Other books' copy targets resolve copies but are not the book's own.
+	var targets map[string][]ftRec
+	if raw, ok := top[copyTargetsKey]; ok {
+		if err := json.Unmarshal(raw, &targets); err != nil {
+			return nil, 0, fmt.Errorf("5etools %s %s: %w", file, copyTargetsKey, err)
+		}
+	}
 	index := map[string]ftRec{}
-	for _, r := range recs {
-		if n, err := ftDecode[ftNamed](r); err == nil {
+	for _, r := range append(targets[key], recs...) {
+		if n, err := ftDecode[ftCopyRef](r); err == nil {
+			index[n.ftNamed.key()] = r
 			index[n.key()] = r
 		}
 	}
@@ -850,6 +896,22 @@ var ftNotCopied = []string{"page", "hasFluff", "hasFluffImages", "hasToken", "sr
 
 var errCopy = errors.New("unresolved _copy")
 
+// ftCopyRef is what a _copy names. Class fields count too: a book keeps its
+// subclasses once per class edition under the same name and source.
+type ftCopyRef struct {
+	ftNamed
+	ClassName         string `json:"className"`
+	ClassSource       string `json:"classSource"`
+	ShortName         string `json:"shortName"`
+	SubclassShortName string `json:"subclassShortName"`
+	SubclassSource    string `json:"subclassSource"`
+	Level             any    `json:"level"`
+}
+
+func (c ftCopyRef) key() string {
+	return strings.ToLower(fmt.Sprint(c.Name, "|", c.Source, "|", c.ClassName, "|", c.ClassSource, "|", c.ShortName, "|", c.SubclassShortName, "|", c.SubclassSource, "|", c.Level))
+}
+
 // ftResolve applies a record's _copy: the target's fields, then its own,
 // then _mod.
 func ftResolve(index map[string]ftRec, r ftRec, depth int) (ftRec, error) {
@@ -858,14 +920,18 @@ func ftResolve(index map[string]ftRec, r ftRec, depth int) (ftRec, error) {
 		return r, nil
 	}
 	var c struct {
-		ftNamed
+		ftCopyRef
 		Mod      map[string]json.RawMessage `json:"_mod"`
 		Preserve map[string]bool            `json:"_preserve"`
 	}
 	if depth > 4 || json.Unmarshal(raw, &c) != nil {
 		return nil, errCopy
 	}
+	// A _copy that names fewer fields than its target falls back to name|source.
 	target, ok := index[c.key()]
+	if !ok {
+		target, ok = index[c.ftNamed.key()]
+	}
 	if !ok {
 		return nil, errCopy
 	}
@@ -890,6 +956,74 @@ func ftResolve(index map[string]ftRec, r ftRec, depth int) (ftRec, error) {
 		}
 	}
 	return out, nil
+}
+
+// ftVersions are a record's _versions as records of their own: each copies r
+// with its own fields and _mod. An _abstract version is a template, filled
+// once per implementation with its _variables ("{{color}}") and fields.
+// "Elf; Drow Lineage" is named "Elf (Drow Lineage)", as subraces are.
+func ftVersions(r ftRec) ([]ftRec, int) {
+	raw, ok := r["_versions"]
+	if !ok {
+		return nil, 0
+	}
+	parent, err := ftDecode[ftNamed](r)
+	var vs []ftRec
+	if err != nil || json.Unmarshal(raw, &vs) != nil {
+		return nil, 1
+	}
+	var all []ftRec
+	skipped := 0
+	for _, v := range vs {
+		abstract, ok := v["_abstract"]
+		if !ok {
+			all = append(all, v)
+			continue
+		}
+		var impls []ftRec
+		_ = json.Unmarshal(v["_implementations"], &impls)
+		for _, impl := range impls {
+			var vars map[string]string
+			_ = json.Unmarshal(impl["_variables"], &vars)
+			body := string(abstract)
+			for k, val := range vars {
+				quoted, _ := json.Marshal(val) // the value lands inside JSON strings
+				body = strings.ReplaceAll(body, "{{"+k+"}}", string(quoted[1:len(quoted)-1]))
+			}
+			var ver ftRec
+			if json.Unmarshal([]byte(body), &ver) != nil {
+				skipped++
+				continue
+			}
+			for k, x := range impl {
+				if k != "_variables" {
+					ver[k] = x
+				}
+			}
+			all = append(all, ver)
+		}
+	}
+	index := map[string]ftRec{parent.key(): r}
+	var out []ftRec
+	for _, v := range all {
+		ref, _ := json.Marshal(map[string]json.RawMessage{"_mod": v["_mod"], "name": r["name"], "source": r["source"]})
+		ver := maps.Clone(v)
+		delete(ver, "_mod")
+		ver["_copy"] = ref
+		res, err := ftResolve(index, ver, 0)
+		if err != nil {
+			skipped++
+			continue
+		}
+		var name string
+		if json.Unmarshal(res["name"], &name) == nil {
+			if base, version, ok := strings.Cut(name, "; "); ok {
+				res["name"], _ = json.Marshal(base + " (" + version + ")")
+			}
+		}
+		out = append(out, res)
+	}
+	return out, skipped
 }
 
 type ftModOp struct {
