@@ -119,25 +119,37 @@ templ CharacterSheet(s SheetView) {
 			if s.CanSheet {
 				<div class="flex items-center gap-3">
 					<a class="text-sm underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d/levelup", s.ID)) }>Level up</a>
-					if s.CanRevert {
-						@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Attributes: templ.Attributes{
-							"hx-post":    fmt.Sprintf("/characters/%d/levelup/revert", s.ID),
-							"hx-confirm": "Revert the last level-up? The sheet goes back to how it was before it: other changes made since (items, spells, slots, notes on the sheet) are lost too. Current HP is kept, up to the old maximum.",
-						}}) {
-							Revert level-up
-						}
-					}
 					@button.Button(button.Props{Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "", "", ""))}) {
 						@icon.Pencil()
 						Change…
 					}
-					// Last, away from the everyday buttons.
-					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: templ.Attributes{
-						"hx-post":    fmt.Sprintf("/characters/%d/remove", s.ID),
-						"hx-confirm": "Delete " + s.C.Name + "? This logs out every device playing it. The GM can restore it.",
-						"aria-label": "Delete character", "title": "Delete character",
-					}}) {
-						@icon.Trash2()
+					// Delete lives in this menu, away from the everyday buttons.
+					@popover.Popover(popover.Props{ID: "character-menu"}) {
+						@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Attributes: with(popover.Trigger(ctx), templ.Attributes{"aria-label": "More actions", "title": "More actions"})}) {
+							@icon.Ellipsis()
+						}
+						@popover.Content(popover.ContentProps{Align: popover.AlignEnd, Class: "w-auto"}) {
+							<div class="flex flex-col gap-1">
+								if s.CanRevert {
+									@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: templ.Attributes{
+										"data-menu-item": "",
+										"hx-post":        fmt.Sprintf("/characters/%d/levelup/revert", s.ID),
+										"hx-confirm":     "Revert the last level-up? The sheet goes back to how it was before it: other changes made since (items, spells, slots, notes on the sheet) are lost too. Current HP is kept, up to the old maximum.",
+									}}) {
+										@icon.Undo2()
+										Revert level-up
+									}
+								}
+								@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start text-destructive hover:text-destructive", Attributes: templ.Attributes{
+									"data-menu-item": "",
+									"hx-post":        fmt.Sprintf("/characters/%d/remove", s.ID),
+									"hx-confirm":     "Delete " + s.C.Name + "? This logs out every device playing it. The GM can restore it.",
+								}}) {
+									@icon.Trash2()
+									Delete character
+								}
+							</div>
+						}
 					}
 				</div>
 			}
@@ -627,8 +639,10 @@ templ cardTitle(s SheetView, title, verb, op string) {
 	}
 }
 
+// Phones show only active chips; data-conds-toggle (app.js) sets data-open to
+// show all in place, so live aria-pressed patches still reach them.
 templ conditionsCard(s SheetView) {
-	<div class="flex flex-wrap items-center gap-1.5">
+	<div id="conditions" class="group/conds flex flex-wrap items-center gap-1.5" data-conds data-keep-open>
 		for _, slug := range dnd5e.Conditions {
 			if slug == exhaustion {
 				@exhaustionChip(s)
@@ -656,6 +670,10 @@ templ conditionsCard(s SheetView) {
 				}
 			}
 		}
+		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeXs, Class: "rounded-full sm:hidden max-sm:h-8", Attributes: templ.Attributes{"data-conds-toggle": "", "aria-expanded": "false"}}) {
+			<span class="group-data-open/conds:hidden">+ Condition</span>
+			<span class="hidden group-data-open/conds:inline">Fewer</span>
+		}
 		if s.CanConditions {
 			<form class="inline-flex" hx-post={ s.cmdURL() } hx-on::after-request="this.reset()">
 				@input.Input(input.Props{Name: "cmd", Placeholder: "+ concentrate Bless", Class: "h-6 w-44 rounded-full border-dashed px-2 text-xs md:text-xs", Attributes: templ.Attributes{"aria-label": "Add a custom condition"}})
@@ -672,7 +690,7 @@ templ conditionChip(s SheetView, slug string) {
 		@button.Button(button.Props{
 			Variant:    button.VariantOutline,
 			Size:       button.SizeXs,
-			Class:      "rounded-full capitalize text-muted-foreground max-sm:h-8 aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80",
+			Class:      "rounded-full capitalize text-muted-foreground max-sm:h-8 max-sm:not-aria-pressed:not-group-data-open/conds:hidden aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80",
 			Disabled:   !s.CanConditions,
 			Attributes: with(templ.Attributes{"hx-post": s.cmdURL(), "hx-vals": cmdVals("toggle " + slug), "aria-pressed": fmt.Sprint(on)}, bind("aria-pressed=cond."+slug), tooltip.Trigger(ctx)),
 		}) {
@@ -685,7 +703,7 @@ templ conditionChip(s SheetView, slug string) {
 templ exhaustionChip(s SheetView) {
 	{{ c, on := s.condition(exhaustion) }}
 	@tooltip.Tooltip() {
-		<span class={ "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs", templ.KV("border-primary bg-primary text-primary-foreground", on), templ.KV("text-muted-foreground", !on) } { tooltip.Trigger(ctx)... }>
+		<span class={ "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs", templ.KV("border-primary bg-primary text-primary-foreground", on), templ.KV("text-muted-foreground", !on), templ.KV("max-sm:not-group-data-open/conds:hidden", !on) } { tooltip.Trigger(ctx)... }>
 			if s.CanConditions {
 				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-4", Attributes: templ.Attributes{"aria-label": "Less exhaustion", "hx-post": s.cmdURL(), "hx-vals": cmdVals("exhaustion -1")}}) {
 					@icon.Minus(icon.Props{Size: 12})

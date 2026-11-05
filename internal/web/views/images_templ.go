@@ -1075,7 +1075,7 @@ func displayControls(campaignID int64, variant button.Variant, class string) tem
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = button.Button(button.Props{Variant: variant, Class: class, Href: DisplayURL(campaignID), Target: "_blank", Attributes: templ.Attributes{"data-open-display": ""}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var42), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = button.Button(button.Props{Variant: variant, Class: class, Href: DisplayURL(campaignID), Target: "_blank", Attributes: templ.Attributes{"data-open-display": "", "data-menu-item": ""}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var42), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1101,7 +1101,7 @@ func displayControls(campaignID int64, variant button.Variant, class string) tem
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = button.Button(button.Props{Variant: variant, Class: showPressed + " " + class, Attributes: showAttrs(JoinQRSrc(campaignID), "Join")}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var43), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = button.Button(button.Props{Variant: variant, Class: showPressed + " " + class, Attributes: with(showAttrs(JoinQRSrc(campaignID), "Join"), templ.Attributes{"data-menu-item": ""})}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var43), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1123,7 +1123,7 @@ func displayControls(campaignID int64, variant button.Variant, class string) tem
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = button.Button(button.Props{Variant: variant, Class: class, Attributes: templ.Attributes{"data-clear-display": ""}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var44), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = button.Button(button.Props{Variant: variant, Class: class, Attributes: templ.Attributes{"data-clear-display": "", "data-menu-item": ""}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var44), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

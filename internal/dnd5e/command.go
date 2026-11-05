@@ -1064,7 +1064,11 @@ func (s Sheet) checkPrepareCap(sp Spell, caps map[string]int) error {
 	if i := slices.IndexFunc(s.Classes, func(cl ClassLevel) bool { return cl.Slug == class }); i >= 0 {
 		name = s.Classes[i].Name
 	}
-	return fmt.Errorf("%s prepares %d spells at this level: unprepare one first", name, limit)
+	noun := "spells"
+	if limit == 1 {
+		noun = "spell"
+	}
+	return fmt.Errorf("%s prepares %d %s at this level: unprepare one first", name, limit, noun)
 }
 
 func parseFeature(args []string) (Command, error) {

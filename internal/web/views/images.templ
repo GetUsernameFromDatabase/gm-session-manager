@@ -244,15 +244,15 @@ templ openDisplayButton(campaignID int64) {
 // displayControls are the display window's buttons; the header draws them
 // twice (inline from sm up, in a menu on phones), app.js binds by attribute.
 templ displayControls(campaignID int64, variant button.Variant, class string) {
-	@button.Button(button.Props{Variant: variant, Class: class, Href: DisplayURL(campaignID), Target: "_blank", Attributes: templ.Attributes{"data-open-display": ""}}) {
+	@button.Button(button.Props{Variant: variant, Class: class, Href: DisplayURL(campaignID), Target: "_blank", Attributes: templ.Attributes{"data-open-display": "", "data-menu-item": ""}}) {
 		@icon.Monitor()
 		Open display
 	}
-	@button.Button(button.Props{Variant: variant, Class: showPressed + " " + class, Attributes: showAttrs(JoinQRSrc(campaignID), "Join")}) {
+	@button.Button(button.Props{Variant: variant, Class: showPressed + " " + class, Attributes: with(showAttrs(JoinQRSrc(campaignID), "Join"), templ.Attributes{"data-menu-item": ""})}) {
 		@icon.QrCode()
 		Show join QR
 	}
-	@button.Button(button.Props{Variant: variant, Class: class, Attributes: templ.Attributes{"data-clear-display": ""}}) {
+	@button.Button(button.Props{Variant: variant, Class: class, Attributes: templ.Attributes{"data-clear-display": "", "data-menu-item": ""}}) {
 		Clear display
 	}
 }

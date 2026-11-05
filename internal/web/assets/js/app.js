@@ -380,6 +380,15 @@
         if (linkResults.get(tr.dataset.previewSrc) === "broken" && box.getAttribute("aria-checked") === "true") box.click();
       });
     }
+    // A menu item's action has run: close the popover it sits in (no-op outside one).
+    const item = e.target.closest("[data-menu-item]");
+    if (item) window.templ?.popover?.closeNearest(item);
+    // Phones show only active conditions; this shows all of them in place.
+    const conds = e.target.closest("[data-conds-toggle]");
+    if (conds) {
+      const open = conds.closest("[data-conds]").toggleAttribute("data-open");
+      conds.setAttribute("aria-expanded", String(open));
+    }
   });
 
   // Hovering an import row previews its image in the one preview pane. A
