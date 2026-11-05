@@ -506,6 +506,21 @@ func TestClassSkillCount(t *testing.T) {
 		if w := e.do(t, http.MethodPost, path, player, url.Values{"pick": {"testfighter"}}, false); tc.code == http.StatusSeeOther && w.Code != http.StatusSeeOther {
 			t.Errorf("class again: %d", w.Code)
 		}
+		if tc.code != http.StatusSeeOther {
+			continue
+		}
+		// A crafted spell on a non-caster's choices, which draw no checklist,
+		// is refused at the top.
+		loadFeatFixtures(t, e)
+		base := fmt.Sprintf("/characters/%d/create/", e.characterID)
+		if w := e.do(t, http.MethodPost, base+"species", player, url.Values{"pick": {"human"}}, false); w.Code != http.StatusSeeOther {
+			t.Fatalf("species: %d %s", w.Code, w.Body)
+		}
+		form = url.Values{"language": {"Elvish", "Dwarvish"}, "trait_versatile": {"Alert"}, "spell": {"light"}}
+		w = e.do(t, http.MethodPost, base+"choices", player, form, false)
+		if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || errorAt(body, "spell") || !strings.Contains(body, "choose spells from the list") || len(lostPicks(body, form)) > 0 {
+			t.Errorf("spell on a non-caster: %d, message not at the top or picks lost", w.Code)
+		}
 	}
 }
 

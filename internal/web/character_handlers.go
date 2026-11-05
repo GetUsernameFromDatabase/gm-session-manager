@@ -927,6 +927,9 @@ func (a *App) levelUp(c *gin.Context) {
 			return
 		}
 		v.Error, v.ErrorFor, v.Form = ue.Error(), errorField(err), c.Request.PostForm
+		if !v.DrawsField(v.ErrorFor) {
+			v.ErrorFor = "" // a crafted post's field is not on the page: show it at the top
+		}
 		camp, _ := a.Store.GetCampaign(ctx, ch.CampaignID)
 		a.render(c, http.StatusUnprocessableEntity, views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v))
 		return

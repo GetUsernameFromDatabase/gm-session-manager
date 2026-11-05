@@ -372,6 +372,33 @@ type FieldError struct{ Key, Msg string }
 
 func (v WizardView) fieldErr() FieldError { return FieldError{Key: v.ErrorFor, Msg: v.Error} }
 
+// DrawsField reports whether the page shows an error at key; the handler shows
+// one for a field it does not draw (a crafted post) at the top instead.
+func (v WizardView) DrawsField(key string) bool {
+	switch key {
+	case "skill":
+		return v.Step == "class" && v.Choice != nil && v.Choice.SkillCount > 0
+	case "spell":
+		return v.Choices != nil && len(v.Choices.Spells) > 0
+	}
+	return v.Choices != nil && drawsGroup(v.Choices.Groups, key)
+}
+
+// drawsGroup mirrors choiceFieldset: a group's key, then its options' own groups.
+func drawsGroup(groups []ChoiceGroup, key string) bool {
+	for _, g := range groups {
+		if g.Key == key {
+			return true
+		}
+		for _, o := range g.Options {
+			if drawsGroup(g.Sub[o.Name], key) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // at shows the error when it is about key; app.js scrolls to it.
 templ (fe FieldError) at(key string) {
 	if fe.Key == key {

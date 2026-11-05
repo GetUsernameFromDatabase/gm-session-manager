@@ -1335,6 +1335,9 @@ func (a *App) wizardSave(c *gin.Context) {
 			return
 		}
 		v.Error, v.ErrorFor, v.Form = ue.Error(), errorField(err), c.Request.PostForm
+		if !v.DrawsField(v.ErrorFor) {
+			v.ErrorFor = "" // a crafted post's field is not on the page: show it at the top
+		}
 		a.renderWizard(c, http.StatusUnprocessableEntity, w, ch, v)
 		return
 	}

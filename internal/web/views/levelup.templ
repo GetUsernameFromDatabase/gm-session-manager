@@ -55,6 +55,27 @@ type LevelUpView struct {
 
 func (v LevelUpView) fieldErr() FieldError { return FieldError{Key: v.ErrorFor, Msg: v.Error} }
 
+// DrawsField reports whether the page shows an error at key (see WizardView's).
+func (v LevelUpView) DrawsField(key string) bool {
+	if v.Plan == nil {
+		return false
+	}
+	if key == "spell" {
+		return len(v.Spells) > 0
+	}
+	if drawsGroup(v.Groups, key) {
+		return true
+	}
+	if v.Plan.ASI {
+		for _, f := range v.Feats {
+			if drawsGroup(v.FeatChoices[f.Slug], key) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func slotSummary(slots [9]int) string {
 	out := ""
 	for i, n := range slots {

@@ -175,8 +175,10 @@ func TestLevelUpLineage(t *testing.T) {
 				t.Errorf("class list offers the lineage's Faerie Fire: %v %+v", err, v.Spells)
 			}
 			form := url.Values{"class": {"testlock"}, "spell": {"faerie-fire"}}
-			if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusUnprocessableEntity {
-				t.Errorf("Faerie Fire as a class pick: %d", w.Code)
+			// No checklist on the page: the refusal shows at the top.
+			if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusUnprocessableEntity || errorAt(w.Body.String(), "spell") ||
+				!strings.Contains(w.Body.String(), "choose spells from the list") || len(lostPicks(w.Body.String(), form)) > 0 {
+				t.Errorf("Faerie Fire as a class pick: %d, message not at the top or picks lost", w.Code)
 			}
 			// Nor does the feat's Spell Change, which would drop the pick.
 			j := slices.IndexFunc(v.Groups, func(g views.ChoiceGroup) bool { return g.Key == change })
