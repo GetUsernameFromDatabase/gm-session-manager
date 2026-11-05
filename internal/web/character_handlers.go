@@ -823,12 +823,17 @@ func (a *App) levelUp(c *gin.Context) {
 			choice.ASI = append(choice.ASI, v)
 		}
 	}
+	var featErr error
 	if slug := c.PostForm("feat"); slug != "" {
 		feat, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindFeat), Slug: slug})
-		if !a.found(c, err) {
+		switch {
+		case errors.Is(err, sql.ErrNoRows): // crafted, or a homebrew feat deleted since the form loaded
+			featErr = userError{errors.New("choose a feat from the list")}
+		case !a.found(c, err):
 			return
+		default:
+			choice.Feat, choice.FeatDesc = feat.Name, feat.BodyText
 		}
-		choice.Feat, choice.FeatDesc = feat.Name, feat.BodyText
 	}
 	// A plan error (level 20) comes back from LevelUp below.
 	plan, planErr := sheet.Plan(choice.Class)
@@ -875,7 +880,6 @@ func (a *App) levelUp(c *gin.Context) {
 		return
 	}
 	groups := append(classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), changes...)
-	var featErr error
 	if choice.Feat != "" {
 		slug := c.PostForm("feat")
 		td, err := a.textEntry(ctx, compendium.KindFeat, slug)

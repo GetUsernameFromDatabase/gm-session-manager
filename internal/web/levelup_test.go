@@ -245,6 +245,7 @@ func TestLevelUpFeats(t *testing.T) {
 				})
 			}},
 		{"not the list taken already", 15, url.Values{"feat": {"magic-initiate"}, mi + "_list": {"Wizard"}}, http.StatusUnprocessableEntity, "", nil},
+		{"a feat the compendium lacks", 15, url.Values{"feat": {"nope"}}, http.StatusUnprocessableEntity, "choose a feat from the list", nil},
 		{"Spell Change", 15, url.Values{change: {"Magic Missile"}, change + "_magic-missile": {"Shield"}}, http.StatusSeeOther, "",
 			func(sh dnd5e.Sheet) bool {
 				return !slices.ContainsFunc(sh.Spells, func(sp dnd5e.Spell) bool { return sp.Slug == "magic-missile" }) &&
@@ -314,7 +315,7 @@ func TestLevelUpFeats(t *testing.T) {
 				t.Errorf("refusal did not re-render the form: %s", body)
 			}
 			kept := tc.form
-			if strings.Contains(tc.msg, " needs ") && tc.form.Get("feat") != "" {
+			if (strings.Contains(tc.msg, " needs ") || tc.msg == "choose a feat from the list") && tc.form.Get("feat") != "" {
 				// A feat that is not offered falls back to the select's first item.
 				kept = maps.Clone(tc.form)
 				kept.Del("feat")
