@@ -219,6 +219,7 @@ func TestLevelUpLineage(t *testing.T) {
 func TestLevelUpFeats(t *testing.T) {
 	mi := "feat_magic-initiate"
 	change := "change_magic-initiate-wizard"
+	noASIChecked := false
 	for _, tc := range []struct {
 		name  string
 		str   int
@@ -282,6 +283,15 @@ func TestLevelUpFeats(t *testing.T) {
 			}
 			player := e.token(t, auth.RolePlayer)
 			base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+			if !noASIChecked {
+				noASIChecked = true
+				// Level 2 has no feat choice drawn: the feat's refusal shows at the top.
+				form := url.Values{"class": {"wizard"}, "feat": {"magic-initiate"}}
+				w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, form), false)
+				if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || errorAt(body, mi+"_list") || !strings.Contains(body, "choose 1 of the listed magic initiate: spell list") {
+					t.Errorf("feat choice without an ASI: %d, message not at the top", w.Code)
+				}
+			}
 			for range 3 {
 				if w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}}), false); w.Code != http.StatusSeeOther {
 					t.Fatalf("level up: %d %s", w.Code, w.Body)

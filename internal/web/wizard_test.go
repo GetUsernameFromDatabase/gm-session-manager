@@ -479,6 +479,15 @@ func TestCheckNewOptions(t *testing.T) {
 func TestClassSkillCount(t *testing.T) {
 	class := sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testfighter", Name: "Testfighter", SourceKey: "test", ContentHash: "x",
 		DataJson: `{"hit_die":10,"desc":"|Skill Proficiencies|Choose 2: Athletics, Insight, or Stealth|"}`}
+	// A class with no skills table draws no skills field.
+	e0 := newTestEnv(t)
+	if err := e0.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testcommoner", Name: "Testcommoner", SourceKey: "test", ContentHash: "x", DataJson: `{"hit_die":8}`}); err != nil {
+		t.Fatal(err)
+	}
+	w0 := e0.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/create/class", e0.characterID), e0.token(t, auth.RolePlayer), url.Values{"pick": {"testcommoner"}, "skill": {"athletics"}}, false)
+	if body := w0.Body.String(); w0.Code != http.StatusUnprocessableEntity || errorAt(body, "skill") || !strings.Contains(body, "choose 0 of the listed skills") {
+		t.Errorf("skill on a class without skills: %d, message not at the top", w0.Code)
+	}
 	for _, tc := range []struct {
 		skills []string
 		code   int
