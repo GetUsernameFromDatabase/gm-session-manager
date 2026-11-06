@@ -32,7 +32,7 @@ func MoveSource(ctx context.Context, store *db.Store, key string, up bool) error
 		if j < 0 || j >= len(sources) {
 			return nil
 		}
-		// The list is already in (priority, key) order, so ties keep it.
+		// The list is already in (priority, newest, key) order, so ties keep it.
 		prio := make([]int64, len(sources))
 		for n, s := range sources {
 			prio[n] = s.Priority

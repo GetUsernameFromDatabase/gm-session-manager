@@ -112,6 +112,7 @@ type CompendiumSource struct {
 	Attribution  string
 	LastImported time.Time
 	Priority     int64
+	Published    string
 }
 
 type CompendiumTop struct {

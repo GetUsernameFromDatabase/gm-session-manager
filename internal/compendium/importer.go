@@ -143,6 +143,7 @@ func storeSource(ctx context.Context, store *db.Store, src Source, path, hash st
 		return q.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{
 			SourceKey: src.Key, Path: path, Hash: hash,
 			Edition: src.Edition, License: src.License, Attribution: src.Attribution,
+			Published: src.Published,
 		})
 	})
 	return removed, err
@@ -166,7 +167,7 @@ func upsert(ctx context.Context, q *sqlc.Queries, src Source, e Entry) error {
 // normalizeVersion salts the source hash. Bump it only when the parser
 // changes (the normalized shape gains data), so unchanged source files are
 // imported again once. Edits to the files are caught by the hash itself.
-const normalizeVersion = "6"
+const normalizeVersion = "7"
 
 // readSource reads the .json files of a source directory and hashes their
 // names and contents, so re-importing unchanged files is a no-op.

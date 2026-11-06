@@ -120,11 +120,30 @@ func TestMoveSourceBreaksTies(t *testing.T) {
 	ctx := t.Context()
 	addCopy(t, store, "aaa", "2014", "x")
 	addCopy(t, store, "bbb", "2014", "x") // both 300
-	if err := MoveSource(ctx, store, "bbb", true); err != nil {
+	if got := winningSource(t, store, "x"); got != "aaa" {
+		t.Errorf("undated tie: %s, want the first key", got)
+	}
+	// The newer book wins a tie; a re-import fills its date.
+	if err := store.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: "bbb", Path: "bbb", Hash: "h", Edition: "2014", Published: "2020-11-17"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := winningSource(t, store, "x"); got != "bbb" {
+		t.Errorf("dated tie: %s, want the newer bbb", got)
+	}
+	// The GM's order beats the date.
+	if err := MoveSource(ctx, store, "aaa", true); err != nil {
+		t.Fatal(err)
+	}
+	if got := winningSource(t, store, "x"); got != "aaa" {
 		t.Errorf("winner after move: %s", got)
+	}
+	// Lists (compendium_top) show the same copy.
+	names, err := store.ListCompendiumNames(ctx, "spell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row, err := store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: "spell", Slug: "x", SourceKey: "aaa"}); err != nil || len(names) != 1 || names[0].ID != row.ID {
+		t.Errorf("compendium_top: %+v %v", names, err)
 	}
 }
 

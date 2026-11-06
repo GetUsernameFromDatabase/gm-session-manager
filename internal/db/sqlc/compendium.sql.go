@@ -278,7 +278,7 @@ const getCompendiumEntryByName = `-- name: GetCompendiumEntryByName :one
 SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.data_json, e.body_text, e.image_url, e.is_homebrew, e.content_hash, e.imported_at, e.owner_character_id, e.scoped FROM compendium_entries AS e
 LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND lower(e.name) = lower(?2)
-ORDER BY e.scoped, COALESCE(s.priority, 300), e.id
+ORDER BY e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id
 LIMIT 1
 `
 
@@ -314,7 +314,7 @@ const getCompendiumEntryBySlug = `-- name: GetCompendiumEntryBySlug :one
 SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.data_json, e.body_text, e.image_url, e.is_homebrew, e.content_hash, e.imported_at, e.owner_character_id, e.scoped FROM compendium_entries AS e
 LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND e.slug = ?
-ORDER BY e.scoped, COALESCE(s.priority, 300), e.id
+ORDER BY e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id
 LIMIT 1
 `
 
@@ -324,7 +324,7 @@ type GetCompendiumEntryBySlugParams struct {
 }
 
 // Player homebrew never shadows an imported or GM entry of the same slug;
-// among the rest the source with the lowest priority wins.
+// among the rest the source with the lowest priority wins, then the newest.
 func (q *Queries) GetCompendiumEntryBySlug(ctx context.Context, arg GetCompendiumEntryBySlugParams) (CompendiumEntry, error) {
 	row := q.db.QueryRowContext(ctx, getCompendiumEntryBySlug, arg.Kind, arg.Slug)
 	var i CompendiumEntry
@@ -382,7 +382,7 @@ func (q *Queries) GetCompendiumEntryBySlugSource(ctx context.Context, arg GetCom
 }
 
 const getCompendiumSource = `-- name: GetCompendiumSource :one
-SELECT source_key, path, hash, edition, license, attribution, last_imported, priority FROM compendium_sources
+SELECT source_key, path, hash, edition, license, attribution, last_imported, priority, published FROM compendium_sources
 WHERE source_key = ?
 `
 
@@ -398,6 +398,7 @@ func (q *Queries) GetCompendiumSource(ctx context.Context, sourceKey string) (Co
 		&i.Attribution,
 		&i.LastImported,
 		&i.Priority,
+		&i.Published,
 	)
 	return i, err
 }
@@ -517,7 +518,9 @@ WHERE e.kind = ?1 AND e.slug IN (/*SLICE:slugs*/?)
     SELECT 1 FROM compendium_entries AS b
     LEFT JOIN compendium_sources AS bs ON bs.source_key = b.source_key
     WHERE b.kind = e.kind AND b.slug = e.slug
-      AND (b.scoped, COALESCE(bs.priority, 300), b.id) < (e.scoped, COALESCE(s.priority, 300), e.id))
+      -- The dates swap sides: a newer b ranks before e (published DESC).
+      AND (b.scoped, COALESCE(bs.priority, 300), COALESCE(s.published, ''), b.id)
+        < (e.scoped, COALESCE(s.priority, 300), COALESCE(bs.published, ''), e.id))
 ORDER BY e.slug
 `
 
@@ -614,6 +617,7 @@ func (q *Queries) ListCompendiumKeysBySource(ctx context.Context, sourceKey stri
 const listCompendiumNames = `-- name: ListCompendiumNames :many
 SELECT id, kind, slug, name FROM compendium_entries
 WHERE kind = ? AND id IN (SELECT id FROM compendium_top)
+  AND json_extract(data_json, '$.version_of') IS NULL
 ORDER BY name
 `
 
@@ -624,6 +628,8 @@ type ListCompendiumNamesRow struct {
 	Name string
 }
 
+// ListCompendiumNames is what pickers offer: species versions are left out,
+// since picking the base and then its lineage grants more.
 func (q *Queries) ListCompendiumNames(ctx context.Context, kind string) ([]ListCompendiumNamesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listCompendiumNames, kind)
 	if err != nil {
@@ -653,8 +659,8 @@ func (q *Queries) ListCompendiumNames(ctx context.Context, kind string) ([]ListC
 }
 
 const listCompendiumSources = `-- name: ListCompendiumSources :many
-SELECT source_key, path, hash, edition, license, attribution, last_imported, priority FROM compendium_sources
-ORDER BY priority, source_key
+SELECT source_key, path, hash, edition, license, attribution, last_imported, priority, published FROM compendium_sources
+ORDER BY priority, published DESC, source_key
 `
 
 func (q *Queries) ListCompendiumSources(ctx context.Context) ([]CompendiumSource, error) {
@@ -675,6 +681,7 @@ func (q *Queries) ListCompendiumSources(ctx context.Context) ([]CompendiumSource
 			&i.Attribution,
 			&i.LastImported,
 			&i.Priority,
+			&i.Published,
 		); err != nil {
 			return nil, err
 		}
@@ -722,7 +729,7 @@ SELECT e.id, e.source_key, s.edition, s.attribution, s.priority
 FROM compendium_entries AS e
 JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND e.slug = ?
-ORDER BY e.scoped, s.priority, e.id
+ORDER BY e.scoped, s.priority, s.published DESC, e.id
 `
 
 type ListEntryCopiesParams struct {
@@ -805,7 +812,7 @@ WHERE e.kind = ?1 AND e.slug IN (/*SLICE:slugs*/?)
   AND (e.scoped = 0 OR EXISTS (
     SELECT 1 FROM compendium_campaigns AS cc
     WHERE cc.entry_id = e.id AND cc.campaign_id = ?3))
-ORDER BY e.slug, e.scoped, COALESCE(s.priority, 300), e.id
+ORDER BY e.slug, e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id
 `
 
 type ListEntrySourcesBySlugsParams struct {
@@ -1483,8 +1490,8 @@ func (q *Queries) UpsertCompendiumEntry(ctx context.Context, arg UpsertCompendiu
 }
 
 const upsertCompendiumSource = `-- name: UpsertCompendiumSource :exec
-INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution, priority)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6,
+INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution, published, priority)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
     CASE WHEN ?1 = 'homebrew' THEN 0
          WHEN ?1 LIKE 'srd%' THEN 200
          WHEN ?4 = '2024' THEN 100
@@ -1492,7 +1499,7 @@ VALUES (?1, ?2, ?3, ?4, ?5, ?6,
 ON CONFLICT (source_key) DO UPDATE
 SET path = excluded.path, hash = excluded.hash, edition = excluded.edition,
     license = excluded.license, attribution = excluded.attribution,
-    last_imported = CURRENT_TIMESTAMP
+    published = excluded.published, last_imported = CURRENT_TIMESTAMP
 `
 
 type UpsertCompendiumSourceParams struct {
@@ -1502,10 +1509,11 @@ type UpsertCompendiumSourceParams struct {
 	Edition     string
 	License     string
 	Attribution string
+	Published   string
 }
 
 // A new source gets a default priority (lower wins; migration 0004 backfills
-// the same way); a re-import keeps the GM's order.
+// the same way); a re-import keeps the GM's order but refreshes the date.
 func (q *Queries) UpsertCompendiumSource(ctx context.Context, arg UpsertCompendiumSourceParams) error {
 	_, err := q.db.ExecContext(ctx, upsertCompendiumSource,
 		arg.SourceKey,
@@ -1514,6 +1522,7 @@ func (q *Queries) UpsertCompendiumSource(ctx context.Context, arg UpsertCompendi
 		arg.Edition,
 		arg.License,
 		arg.Attribution,
+		arg.Published,
 	)
 	return err
 }

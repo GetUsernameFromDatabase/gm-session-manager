@@ -49,14 +49,15 @@ func (c ClassInfo) Masteries(level int) int {
 	return n
 }
 
-// MasteryLimit is how many weapon kinds the character may master: the most
-// any class allows at its level (the counts do not add up). classes holds
-// the compendium classes by slug; a missing one allows none.
+// MasteryLimit is how many weapon kinds the character may master: what each
+// class allows at its level, added up (a table house rule; the rules leave
+// multiclassing open). classes holds the compendium classes by slug; a
+// missing one allows none.
 func (s Sheet) MasteryLimit(classes map[string]ClassInfo) int {
 	n := 0
 	for _, cl := range s.Classes {
 		if info, ok := classes[cl.Slug]; ok {
-			n = max(n, info.Masteries(cl.Level))
+			n += info.Masteries(cl.Level)
 		}
 	}
 	return n

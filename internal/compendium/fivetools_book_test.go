@@ -47,8 +47,20 @@ func TestImportFiveToolsBook(t *testing.T) {
 		t.Errorf("cat image %q, want %q", cat.ImageUrl.String, want)
 	}
 	src, err := store.GetCompendiumSource(t.Context(), cat.SourceKey)
-	if err != nil || src.Edition != "2024" || !strings.Contains(src.Attribution, "Wizards of the Coast") {
+	if err != nil || src.Edition != "2024" || src.Published != "2024-09-17" || !strings.Contains(src.Attribution, "Wizards of the Coast") {
 		t.Errorf("source %+v %v", src, err)
+	}
+	// Pickers offer base species and subraces, never versions.
+	names, err := store.ListCompendiumNames(t.Context(), string(KindSpecies))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var slugs []string
+	for _, n := range names {
+		slugs = append(slugs, n.Slug)
+	}
+	if want := []string{"dragonborn", "elf", "elf-drow"}; !reflect.DeepEqual(slugs, want) {
+		t.Errorf("species picks %v, want %v", slugs, want)
 	}
 }
 
@@ -120,11 +132,12 @@ func TestParseFiveToolsBook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Source{Key: "5etools-xphb", Edition: "2024", License: "Not SRD — private use", Attribution: "Player's Handbook (2024), © Wizards of the Coast"}
+	want := Source{Key: "5etools-xphb", Edition: "2024", License: "Not SRD — private use", Attribution: "Player's Handbook (2024), © Wizards of the Coast", Published: "2024-09-17"}
 	if src != want {
 		t.Errorf("source %+v", src)
 	}
-	// Owl Spirit copies a monster of another book.
+	// Owl Spirit copies a monster of another book, as in a folder downloaded
+	// before _copyTargets (TestFiveToolsCopyTargets covers the bundled case).
 	if skipped != 1 {
 		t.Errorf("skipped %d, want 1", skipped)
 	}
@@ -198,11 +211,11 @@ func TestParseFiveToolsBook(t *testing.T) {
 			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "35 feet", Type: partSpeed},
 			{Name: "Darkvision", Desc: "You have Darkvision with a range of 60 feet."},
 			{Name: "Elven Lineage (Wood Elf)", Desc: "You know the [[compendium:spell/druidcraft|Druidcraft]] cantrip."},
-		}}},
+		}, VersionOf: "Elf"}},
 		{"species/dragonborn-red", TextData{Parts: []NameDesc{
 			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
 			{Name: "Damage Resistance", Desc: "You have Resistance to Fire damage."},
-		}}},
+		}, VersionOf: "Dragonborn"}},
 		{"item/dwarven-plate", ItemData{
 			Category: "armor", Rarity: "Very rare", Weight: "65", ArmorClass: "18, Stealth disadvantage",
 			Armor: &ArmorData{Type: ArmorHeavy, Base: 18, StrReq: 15, Stealth: true},
@@ -270,6 +283,45 @@ func TestFiveToolsEdition(t *testing.T) {
 		if err != nil || src.Edition != tt.edition || src.Attribution != tt.attribution {
 			t.Errorf("%s: %+v %v", tt.book, src, err)
 		}
+	}
+}
+
+func TestFiveToolsCell(t *testing.T) {
+	for _, tt := range []struct{ raw, want string }{
+		{`{"roll":{"min":1,"max":5}}`, "1–5"},
+		{`"a | b"`, "a / b"},
+		{`"You know the {@spell Dancing Lights|XPHB} cantrip | or not."`, "You know the [[compendium:spell/dancing-lights|Dancing Lights]] cantrip / or not."},
+	} {
+		if got := ftCell(json.RawMessage(tt.raw)); got != tt.want {
+			t.Errorf("%s: %q, want %q", tt.raw, got, tt.want)
+		}
+	}
+}
+
+func TestFiveToolsCopyTargets(t *testing.T) {
+	files := readBook(t, fiveToolsFixture)
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(files["bestiary.json"], &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc[copyTargetsKey] = json.RawMessage(`{"monster":[{"name":"Owl","source":"XMM","size":["T"],"type":"beast","ac":[11],"hp":{"average":1,"formula":"1d4 - 1"},"cr":"0"}]}`)
+	files["bestiary.json"], _ = json.Marshal(doc)
+	_, entries, skipped, err := parseFiveToolsBookReport("5etools-xphb", files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped != 0 {
+		t.Errorf("skipped %d, want 0", skipped)
+	}
+	got := map[string]Entry{}
+	for _, e := range entries {
+		got[string(e.Kind)+"/"+e.Slug] = e
+	}
+	if m, ok := got["monster/owl-spirit"].Data.(MonsterData); !ok || m.HP != 1 {
+		t.Errorf("owl spirit %+v", got["monster/owl-spirit"])
+	}
+	if _, ok := got["monster/owl"]; ok {
+		t.Error("the copy target was imported")
 	}
 }
 

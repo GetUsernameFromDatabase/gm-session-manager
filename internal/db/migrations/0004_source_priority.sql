@@ -1,9 +1,8 @@
 -- Several sources can hold the same (kind, slug); the source with the lowest
 -- priority number wins every lookup and shows once in lists. The GM may
 -- reorder sources, so an upsert never rewrites it.
--- shortcut: the default is by group (homebrew, SRD, 2024 books, others), not
--- publication date; add ordering within a group when books are imported.
--- Keep in step with UpsertCompendiumSource in queries/compendium.sql.
+-- The default is by group (homebrew, SRD, 2024 books, others); 0005 orders
+-- each group by publication date. Keep in step with UpsertCompendiumSource in queries/compendium.sql.
 ALTER TABLE compendium_sources ADD COLUMN priority INTEGER NOT NULL DEFAULT 300;
 
 UPDATE compendium_sources

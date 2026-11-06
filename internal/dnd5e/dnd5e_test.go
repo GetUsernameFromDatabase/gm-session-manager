@@ -663,7 +663,7 @@ func TestMasteryLimit(t *testing.T) {
 		{"a class without the column", []ClassLevel{{Slug: "wizard", Level: 1}}, 0},
 		{"fighter 1", []ClassLevel{{Slug: "fighter", Level: 1}}, 3},
 		{"fighter 4", []ClassLevel{{Slug: "fighter", Level: 4}}, 4},
-		{"multiclass takes the most, not the sum", []ClassLevel{{Slug: "rogue", Level: 1}, {Slug: "fighter", Level: 1}}, 3},
+		{"multiclass adds up", []ClassLevel{{Slug: "rogue", Level: 1}, {Slug: "fighter", Level: 1}}, 5},
 		{"a class the compendium lacks", []ClassLevel{{Slug: "homebrew", Level: 5}, {Slug: "rogue", Level: 1}}, 2},
 	} {
 		if got := (Sheet{Classes: tt.classes}).MasteryLimit(infos); got != tt.want {

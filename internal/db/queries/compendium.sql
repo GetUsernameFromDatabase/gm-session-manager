@@ -3,10 +3,10 @@ SELECT * FROM compendium_sources
 WHERE source_key = ?;
 
 -- A new source gets a default priority (lower wins; migration 0004 backfills
--- the same way); a re-import keeps the GM's order.
+-- the same way); a re-import keeps the GM's order but refreshes the date.
 -- name: UpsertCompendiumSource :exec
-INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution, priority)
-VALUES (sqlc.arg(source_key), sqlc.arg(path), sqlc.arg(hash), sqlc.arg(edition), sqlc.arg(license), sqlc.arg(attribution),
+INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution, published, priority)
+VALUES (sqlc.arg(source_key), sqlc.arg(path), sqlc.arg(hash), sqlc.arg(edition), sqlc.arg(license), sqlc.arg(attribution), sqlc.arg(published),
     CASE WHEN sqlc.arg(source_key) = 'homebrew' THEN 0
          WHEN sqlc.arg(source_key) LIKE 'srd%' THEN 200
          WHEN sqlc.arg(edition) = '2024' THEN 100
@@ -14,7 +14,7 @@ VALUES (sqlc.arg(source_key), sqlc.arg(path), sqlc.arg(hash), sqlc.arg(edition),
 ON CONFLICT (source_key) DO UPDATE
 SET path = excluded.path, hash = excluded.hash, edition = excluded.edition,
     license = excluded.license, attribution = excluded.attribution,
-    last_imported = CURRENT_TIMESTAMP;
+    published = excluded.published, last_imported = CURRENT_TIMESTAMP;
 
 -- UpsertCompendiumEntry keeps the row id across re-imports so combatants and
 -- entities that reference it stay linked. Unchanged content is not rewritten.
@@ -41,12 +41,12 @@ SELECT * FROM compendium_entries
 WHERE id = ?;
 
 -- Player homebrew never shadows an imported or GM entry of the same slug;
--- among the rest the source with the lowest priority wins.
+-- among the rest the source with the lowest priority wins, then the newest.
 -- name: GetCompendiumEntryBySlug :one
 SELECT e.* FROM compendium_entries AS e
 LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND e.slug = ?
-ORDER BY e.scoped, COALESCE(s.priority, 300), e.id
+ORDER BY e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id
 LIMIT 1;
 
 -- GetCompendiumEntryBySlugSource finds the copy of a slug from one source, as a sheet pins it.
@@ -67,7 +67,7 @@ WHERE e.kind = sqlc.arg(kind) AND e.slug IN (sqlc.slice(slugs))
   AND (e.scoped = 0 OR EXISTS (
     SELECT 1 FROM compendium_campaigns AS cc
     WHERE cc.entry_id = e.id AND cc.campaign_id = sqlc.arg(campaign_id)))
-ORDER BY e.slug, e.scoped, COALESCE(s.priority, 300), e.id;
+ORDER BY e.slug, e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id;
 
 -- GetCompendiumEntryByName finds an entry by name in any case, as an
 -- inventory names its items.
@@ -75,7 +75,7 @@ ORDER BY e.slug, e.scoped, COALESCE(s.priority, 300), e.id;
 SELECT e.* FROM compendium_entries AS e
 LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND lower(e.name) = lower(sqlc.arg(name))
-ORDER BY e.scoped, COALESCE(s.priority, 300), e.id
+ORDER BY e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id
 LIMIT 1;
 
 -- ListEntryCopies is every source holding a (kind, slug), best first, for the
@@ -85,11 +85,11 @@ SELECT e.id, e.source_key, s.edition, s.attribution, s.priority
 FROM compendium_entries AS e
 JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND e.slug = ?
-ORDER BY e.scoped, s.priority, e.id;
+ORDER BY e.scoped, s.priority, s.published DESC, e.id;
 
 -- name: ListCompendiumSources :many
 SELECT * FROM compendium_sources
-ORDER BY priority, source_key;
+ORDER BY priority, published DESC, source_key;
 
 -- name: SetCompendiumSourcePriority :exec
 UPDATE compendium_sources SET priority = ?
@@ -263,12 +263,17 @@ WHERE e.kind = sqlc.arg(kind) AND e.slug IN (sqlc.slice(slugs))
     SELECT 1 FROM compendium_entries AS b
     LEFT JOIN compendium_sources AS bs ON bs.source_key = b.source_key
     WHERE b.kind = e.kind AND b.slug = e.slug
-      AND (b.scoped, COALESCE(bs.priority, 300), b.id) < (e.scoped, COALESCE(s.priority, 300), e.id))
+      -- The dates swap sides: a newer b ranks before e (published DESC).
+      AND (b.scoped, COALESCE(bs.priority, 300), COALESCE(s.published, ''), b.id)
+        < (e.scoped, COALESCE(s.priority, 300), COALESCE(bs.published, ''), e.id))
 ORDER BY e.slug;
 
+-- ListCompendiumNames is what pickers offer: species versions are left out,
+-- since picking the base and then its lineage grants more.
 -- name: ListCompendiumNames :many
 SELECT id, kind, slug, name FROM compendium_entries
 WHERE kind = ? AND id IN (SELECT id FROM compendium_top)
+  AND json_extract(data_json, '$.version_of') IS NULL
 ORDER BY name;
 
 -- BindMonsterImages guesses a link for a data folder's monsters that never

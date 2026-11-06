@@ -48,6 +48,7 @@ func parseFiveToolsBookReport(key string, files map[string][]byte) (Source, []En
 	src := Source{
 		Key: key, Edition: "2014", License: "Not SRD — private use",
 		Attribution: book.Name + ", © " + cmp.Or(book.Publisher, "Wizards of the Coast"),
+		Published:   book.Published,
 	}
 	if book.Published >= "2024-09-01" {
 		src.Edition = "2024"
@@ -541,7 +542,7 @@ func (p *ftBook) species() error {
 	}
 	races := map[string]ftRace{}
 	// A subrace without fluff of its own ("Elf (Drow)") shows its race's.
-	norm := func(r ftRace, name string, parts []NameDesc, desc, fluffKey string) {
+	norm := func(r ftRace, name string, parts []NameDesc, desc, fluffKey, versionOf string) {
 		var sizes []string
 		for _, s := range r.Size {
 			sizes = append(sizes, ftSizes[s])
@@ -559,7 +560,7 @@ func (p *ftBook) species() error {
 				typed = append(typed, NameDesc{Name: "Speed", Desc: fmt.Sprintf("%d feet", walk), Type: partSpeed})
 			}
 		}
-		d := TextData{Desc: joinNonEmpty("\n\n", desc, cmp.Or(fluff[strings.ToLower(name+"|"+r.Source)], fluff[fluffKey])), Parts: append(typed, parts...)}
+		d := TextData{Desc: joinNonEmpty("\n\n", desc, cmp.Or(fluff[strings.ToLower(name+"|"+r.Source)], fluff[fluffKey])), Parts: append(typed, parts...), VersionOf: versionOf}
 		p.add(KindSpecies, name, d, joinText(d.Desc, partsText(d.Parts)))
 	}
 	recs, err := p.records("races.json", "race")
@@ -576,14 +577,18 @@ func (p *ftBook) species() error {
 		races[base.key()] = base
 		versions, skipped := ftVersions(rec)
 		p.skipped += skipped
-		for _, v := range append([]ftRec{rec}, versions...) {
+		for i, v := range append([]ftRec{rec}, versions...) {
 			r, err := ftDecode[ftRace](v)
 			if err != nil {
 				p.skipped++
 				continue
 			}
 			desc, parts := ftParts(r.Entries)
-			norm(r, r.Name, parts, desc, base.key())
+			versionOf := ""
+			if i > 0 {
+				versionOf = base.Name
+			}
+			norm(r, r.Name, parts, desc, base.key(), versionOf)
 		}
 	}
 	// 5etools shows a subrace as "Race (Subrace)", with the race's traits
@@ -601,7 +606,7 @@ func (p *ftBook) species() error {
 		if s.Speed == nil {
 			s.Speed = parent.Speed
 		}
-		norm(s, s.RaceName+" ("+s.Name+")", append(pparts, parts...), joinNonEmpty("\n\n", pdesc, desc), parent.key())
+		norm(s, s.RaceName+" ("+s.Name+")", append(pparts, parts...), joinNonEmpty("\n\n", pdesc, desc), parent.key(), "")
 	})
 }
 
@@ -834,7 +839,11 @@ func ftCell(raw json.RawMessage) string {
 		}
 		return fmt.Sprintf("%d–%d", c.Roll.Min, c.Roll.Max)
 	}
-	return strings.ReplaceAll(strings.ReplaceAll(ftEntry1(raw), "\n", " "), "|", "/")
+	// A "|" would end the cell; our tokens keep theirs.
+	s := reToken.ReplaceAllStringFunc(strings.ReplaceAll(ftEntry1(raw), "\n", " "), func(t string) string {
+		return strings.Replace(t, "|", tokenSep, 1)
+	})
+	return strings.ReplaceAll(strings.ReplaceAll(s, "|", "/"), tokenSep, "|")
 }
 
 // ftRecords reads one list of a file with copies resolved (against the list

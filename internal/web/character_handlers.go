@@ -340,7 +340,7 @@ func (a *App) masteryGroups(ctx context.Context, sh dnd5e.Sheet, info dnd5e.Clas
 	if err != nil {
 		return nil, err
 	}
-	before, after := max(others, info.Masteries(level-1)), max(others, info.Masteries(level))
+	before, after := others+info.Masteries(level-1), others+info.Masteries(level)
 	n := min(after-before, after-len(sh.Masteries))
 	if n <= 0 {
 		return nil, nil

@@ -153,6 +153,33 @@ func TestLevelUpSubclassCaster(t *testing.T) {
 	}
 }
 
+// TestMasteryMulticlass: a level in a second class adds its table value to
+// the first class's (limits add up across classes).
+func TestMasteryMulticlass(t *testing.T) {
+	e := newTestEnv(t)
+	seedMastery(t, e)
+	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
+		Kind: "class", Slug: "testrogue", Name: "Testrogue", SourceKey: "test", ContentHash: "x",
+		DataJson: `{"hit_die":8,"caster":"none","table":{"Weapon Mastery":{"1":"1"}}}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ch, err := e.q().GetCharacter(t.Context(), e.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, _, err := classEntry(t.Context(), e.q(), "testfighter", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh := dnd5e.Sheet{Classes: []dnd5e.ClassLevel{{Slug: "testrogue", Level: 1}}, Masteries: []string{"Club"}}
+	groups, err := e.app.masteryGroups(t.Context(), sh, info, 1, ch.CampaignID)
+	// Rogue 1 (1) + Fighter 1 (2) = 3, one already chosen: the highest alone would offer 1.
+	if err != nil || len(groups) != 1 || groups[0].Count != 2 {
+		t.Fatalf("groups %+v %v, want one group of 2", groups, err)
+	}
+}
+
 // TestCompendiumFind checks a slug link opens the entry, and the item page
 // links its mastery that way.
 func TestCompendiumFind(t *testing.T) {

@@ -84,6 +84,8 @@ type open5eDoc struct {
 	GameSystem  string   `json:"gamesystem"`
 	Licenses    []string `json:"licenses"`
 	Permalink   string   `json:"permalink"`
+	// PublicationDate is an ISO timestamp, e.g. "2024-01-01T00:00:00".
+	PublicationDate string `json:"publication_date"`
 }
 
 var licenseNames = map[string]string{
@@ -106,6 +108,7 @@ func parseOpen5e(sourceKey string, files map[string][]byte) (Source, []Entry, er
 		return Source{}, nil, err
 	}
 	src := Source{Key: sourceKey, Edition: strings.TrimPrefix(doc.GameSystem, "5e-")}
+	src.Published, _, _ = strings.Cut(doc.PublicationDate, "T")
 	var licenses []string
 	for _, l := range doc.Licenses {
 		licenses = append(licenses, cmp.Or(licenseNames[l], l))
