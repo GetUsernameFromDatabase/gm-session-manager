@@ -256,7 +256,7 @@ ORDER BY name;
 -- copy compendium_top would pick, found through the (kind, slug) index
 -- instead of ranking the whole compendium on every sheet render.
 -- name: ListCompendiumBySlugs :many
-SELECT e.id, e.slug, e.name, e.data_json, e.source_key FROM compendium_entries AS e
+SELECT e.id, e.slug, e.name, e.data_json, e.source_key, e.scoped FROM compendium_entries AS e
 LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = sqlc.arg(kind) AND e.slug IN (sqlc.slice(slugs))
   AND NOT EXISTS (

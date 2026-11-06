@@ -626,6 +626,7 @@ type ftFeat struct {
 	ftNamed
 	Category     string                       `json:"category"`
 	Prerequisite []map[string]json.RawMessage `json:"prerequisite"`
+	Ability      []map[string]json.RawMessage `json:"ability"`
 }
 
 var ftFeatCategories = map[string]string{
@@ -636,9 +637,64 @@ var ftFeatCategories = map[string]string{
 func (p *ftBook) feats() error {
 	return each(p, "feats.json", "feat", func(f ftFeat) {
 		desc, parts := ftParts(f.Entries)
+		const asi = "Ability Score Increase"
+		if inc := ftFeatIncrease(f.Ability, f.Category); inc != "" && !strings.Contains(joinText(desc, partsText(parts)), asi) {
+			parts = append(parts, NameDesc{Name: asi, Desc: inc})
+		}
 		d := TextData{Desc: desc, Parts: parts, Prerequisite: ftPrerequisite(f.Prerequisite), Category: cmp.Or(ftFeatCategories[f.Category], f.Category)}
 		p.add(KindFeat, f.Name, d, joinText(d.Desc, partsText(d.Parts)))
 	})
+}
+
+// ftFeatIncrease is a feat's ability score increase as the sentence the
+// sheet wizard reads, or "" if it has none.
+func ftFeatIncrease(abilities []map[string]json.RawMessage, category string) string {
+	for _, a := range abilities {
+		var hidden bool
+		_ = json.Unmarshal(a["hidden"], &hidden)
+		// Hidden choices (Ability Score Improvement) are already in the feat's text.
+		if hidden {
+			continue
+		}
+		limit := 20
+		if category == "EB" {
+			limit = 30
+		}
+		_ = json.Unmarshal(a["max"], &limit)
+		var choose struct {
+			From   []string        `json:"from"`
+			Amount int             `json:"amount"`
+			Entry  json.RawMessage `json:"entry"`
+		}
+		if json.Unmarshal(a["choose"], &choose) == nil && len(choose.From) > 0 {
+			who := "one ability score of your choice"
+			if n := len(choose.From); n < len(ftAbilityNames) {
+				names := make([]string, n)
+				for i, k := range choose.From {
+					names[i] = ftAbilityNames[k]
+				}
+				who = "your " + names[n-1] + " score"
+				if n > 1 {
+					who = "your " + strings.Join(names[:n-1], ", ") + " or " + names[n-1] + " score"
+				}
+			}
+			s := fmt.Sprintf("Increase %s by %d, to a maximum of %d.", who, cmp.Or(choose.Amount, 1), limit)
+			// The book's own limit (Resilient: an ability without save proficiency) follows the sentence the wizard reads.
+			if choose.Entry != nil {
+				if before, _, _ := strings.Cut(ftEntry1(choose.Entry), "Increase"); strings.TrimSpace(before) != "" {
+					s += " " + strings.TrimSpace(before)
+				}
+			}
+			return s
+		}
+		for _, k := range slices.Sorted(maps.Keys(a)) {
+			var by int
+			if name, ok := ftAbilityNames[k]; ok && json.Unmarshal(a[k], &by) == nil {
+				return fmt.Sprintf("Increase your %s score by %d, to a maximum of %d.", name, by, limit)
+			}
+		}
+	}
+	return ""
 }
 
 // ftPrerequisite is a feat's prerequisites as text: the parts of one

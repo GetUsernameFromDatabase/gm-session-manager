@@ -153,10 +153,25 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 	player := e.token(t, auth.RolePlayer)
 	e.source(t, "book-new", "2024") // 100 wins
 	e.source(t, "book-old", "2014") // 300
-	text := "See [[compendium:feat/alert|Alert]] and [[compendium:feat/ghost|Ghost]]."
+	text := "See [[compendium:feat/alert|Alert]], [[compendium:feat/ghost|Ghost]], [[compendium:feat/secret|Secret]] and [[compendium:feat/shared|Shared]]."
 	newer := e.feat(t, "book-new", "alert", "newer")
 	older := e.feat(t, "book-old", "alert", "older")
 	pointer := e.feat(t, "book-new", "pointer", text)
+	// Player homebrew: secret is linked to no campaign, shared to the player's.
+	scoped := map[string]int64{}
+	for _, slug := range []string{"secret", "shared"} {
+		row, err := e.q().CreateHomebrew(t.Context(), sqlc.CreateHomebrewParams{Kind: "feat", Slug: slug, Name: slug, DataJson: `{"desc":""}`, ContentHash: slug, OwnerCharacterID: nullID(e.characterID), Scoped: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		scoped[slug] = row.ID
+	}
+	if err := e.q().LinkEntryCampaign(t.Context(), sqlc.LinkEntryCampaignParams{EntryID: scoped["shared"], CampaignID: e.campaignID}); err != nil {
+		t.Fatal(err)
+	}
+	link := func(slug, label string) string {
+		return fmt.Sprintf(`<a href="/compendium/entries/%d">%s</a>`, scoped[slug], label)
+	}
 
 	tests := []struct {
 		name, cookie, path string
@@ -165,7 +180,8 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 		{"older names the newer", gm, fmt.Sprintf("/compendium/entries/%d", older), []string{"Also in", fmt.Sprintf(`href="/compendium/entries/%d"`, newer), "book-new, 2024"}, nil},
 		{"newer names the older", player, fmt.Sprintf("/compendium/entries/%d", newer), []string{"Also in", fmt.Sprintf(`href="/compendium/entries/%d"`, older)}, nil},
 		{"token links the winner, missing is plain", player, fmt.Sprintf("/compendium/entries/%d", pointer),
-			[]string{fmt.Sprintf(`<a href="/compendium/entries/%d">Alert</a>`, newer), "Ghost"}, []string{"Also in", "[[compendium", "/compendium/entries/" + fmt.Sprint(older)}},
+			[]string{fmt.Sprintf(`<a href="/compendium/entries/%d">Alert</a>`, newer), "Ghost", "Secret", link("shared", "Shared")}, []string{"Also in", "[[compendium", "/compendium/entries/" + fmt.Sprint(older), link("secret", "Secret")}},
+		{"the GM sees every homebrew link", gm, fmt.Sprintf("/compendium/entries/%d", pointer), []string{link("secret", "Secret"), link("shared", "Shared")}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

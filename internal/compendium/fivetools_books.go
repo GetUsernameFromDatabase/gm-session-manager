@@ -464,6 +464,9 @@ func (m *mirror) writeClasses(w bookWriter, b Book) error {
 		return err
 	}
 	for _, name := range slices.Sorted(maps.Keys(idx)) {
+		if !bookIDPattern.MatchString(strings.ToLower(name)) {
+			continue // the remote key becomes a file name
+		}
 		raw, err := m.get("class/" + idx[name])
 		if err != nil {
 			return err

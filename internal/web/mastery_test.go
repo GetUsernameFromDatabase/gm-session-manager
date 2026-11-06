@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"gm-session-manager/internal/auth"
+	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/hub"
@@ -222,5 +223,40 @@ func TestLiveMastery(t *testing.T) {
 	}
 	if hash() == before {
 		t.Error("a new mastery does not change the sheet's hash")
+	}
+}
+
+// TestFeatMastery: a feat whose text grants a kind's mastery raises the
+// limit while the sheet has it, and offers the pick when taken.
+func TestFeatMastery(t *testing.T) {
+	e := newTestEnv(t)
+	seedMastery(t, e)
+	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
+		Kind: "feat", Slug: "weapon-master", Name: "Weapon Master", SourceKey: "test", ContentHash: "x",
+		DataJson: `{"desc":"You gain the following benefits.","parts":[{"name":"Mastery Property","desc":"You can use the mastery property of one kind of Simple or Martial weapon of your choice."}]}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ch, err := e.q().GetCharacter(t.Context(), e.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh := dnd5e.Sheet{Classes: []dnd5e.ClassLevel{{Slug: "testfighter", Level: 1}}, Masteries: []string{"Club"}}
+	for _, tt := range []struct {
+		feats []string
+		want  int
+	}{{nil, 2}, {[]string{"Weapon Master"}, 3}, {[]string{"Weapon Master", "Unknown Feat"}, 3}} {
+		sh.Feats = tt.feats
+		if got, err := masteryLimit(t.Context(), e.q(), sh, ""); err != nil || got != tt.want {
+			t.Errorf("feats %v: limit %d %v, want %d", tt.feats, got, err, tt.want)
+		}
+	}
+	td, err := e.app.textEntry(t.Context(), "feat", "weapon-master")
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups, err := e.app.featChoices(t.Context(), "feat_weapon-master", "Weapon Master", td, "", sh, ch.CampaignID)
+	if err != nil || len(groups) != 1 || groups[0].Count != 1 || slices.ContainsFunc(groups[0].Options, func(o compendium.NameDesc) bool { return o.Name == "Club" }) {
+		t.Fatalf("groups %+v %v, want one pick without Club", groups, err)
 	}
 }

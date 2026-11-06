@@ -31,7 +31,8 @@ var fakeMirror = map[string]string{
 	"items.json":                  `{"item":[{"name":"Wand","source":"XPHB"},{"name":"Cloak","source":"TCE","rarity":"rare"},{"name":"Wand Cloak","source":"XPHB","_copy":{"name":"Cloak","source":"TCE"}}],"itemGroup":[]}`,
 	"items-base.json":             `{"baseitem":[{"name":"Dagger","source":"PHB"}]}`,
 	"races.json":                  `{"race":[{"name":"Elf","source":"XPHB"},{"name":"Tiefling","source":"TCE"}],"subrace":[]}`,
-	"class/index.json":            `{"wizard":"class-wizard.json","fighter":"class-fighter.json"}`,
+	"class/index.json":            `{"wizard":"class-wizard.json","fighter":"class-fighter.json","x/../../evil":"class-evil.json"}`,
+	"class/class-evil.json":       `{"class":[{"name":"Evil","source":"TCE"}]}`,
 	"class/class-wizard.json": `{"class":[{"name":"Wizard","source":"PHB"}],
 		"subclass":[{"name":"Bladesinger","className":"Wizard","classSource":"PHB","source":"TCE"}],
 		"classFeature":[],"subclassFeature":[{"name":"Song","className":"Wizard","subclassShortName":"Bladesinging","source":"TCE"}]}`,
@@ -190,6 +191,10 @@ func TestDownloadFiveTools(t *testing.T) {
 	}
 	if d := got["item/wand-cloak"].Data.(ItemData); d.Rarity == "" {
 		t.Errorf("wand cloak did not inherit the cloak's rarity: %+v", d)
+	}
+	// A class key that escapes the book folder is skipped.
+	if _, err := os.Stat(filepath.Join(dir, "evil.json")); !os.IsNotExist(err) {
+		t.Errorf("bad class key wrote outside the book: %v", err)
 	}
 	// No temp folders left, and the book can be listed and removed.
 	if matches, _ := filepath.Glob(filepath.Join(dir, ".tmp-*")); len(matches) != 0 {

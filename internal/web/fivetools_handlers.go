@@ -215,7 +215,7 @@ func (a *App) resolveCompendiumLinks(ctx context.Context, dataJSON string, campa
 			return "", err
 		}
 		for _, r := range rows {
-			if campaignID != 0 { // only a player's own homebrew can be hidden
+			if r.Scoped && campaignID != 0 { // only player homebrew can be hidden
 				e, err := a.Store.GetCompendiumEntry(ctx, r.ID)
 				if err != nil {
 					return "", err

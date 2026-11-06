@@ -680,6 +680,24 @@ func TestReadPicks(t *testing.T) {
 			t.Errorf("%s: %v", tc.name, err)
 		}
 	}
+	// A class level's and a feat's mastery groups may not pick one kind twice.
+	feat := "feat_wm_" + views.FieldMastery
+	for _, tc := range []struct {
+		feat string
+		ok   bool
+	}{{"Mace", false}, {"Club", true}} {
+		form := url.Values{views.FieldMastery: {"Mace"}, feat: {tc.feat}}
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(form.Encode()))
+		c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		groups := []choiceGroup{
+			{views.ChoiceGroup{Key: views.FieldMastery, Count: 1, Options: opts("Mace", "Club")}, nil, nil},
+			{views.ChoiceGroup{Key: feat, Count: 1, Options: opts("Mace", "Club")}, nil, nil},
+		}
+		if _, err := readPicks(c, groups); (err == nil) != tc.ok {
+			t.Errorf("feat picks %s: %v", tc.feat, err)
+		}
+	}
 }
 
 // TestCreationOptionCheck: creation refuses an invocation whose prerequisite
@@ -1000,5 +1018,38 @@ func TestApplyEquipmentMergesGear(t *testing.T) {
 	}
 	if want := []string{"Dagger 4 true", "Pouch 2 false", "Rope 1 false"}; !slices.Equal(got, want) {
 		t.Errorf("inventory %v, want %v", got, want)
+	}
+}
+
+// TestFeatRaiseText: every form the 5etools import writes a feat's ability
+// increase in offers those abilities, below the maximum.
+func TestFeatRaiseText(t *testing.T) {
+	e := newTestEnv(t)
+	sh := dnd5e.Sheet{Scores: map[string]int{"str": 20, "dex": 14, "con": 12, "int": 10, "wis": 10, "cha": 10}}
+	for _, tt := range []struct {
+		text string
+		want []string
+	}{
+		{"Increase your Strength or Dexterity score by 1, to a maximum of 20.", []string{"Dexterity"}},
+		{"Increase your Strength, Dexterity or Constitution score by 1, to a maximum of 20.", []string{"Dexterity", "Constitution"}},
+		{"Increase your Constitution score by 1, to a maximum of 20.", []string{"Constitution"}},
+		{"Increase your Strength score by 1, to a maximum of 20.", nil}, // at the maximum: no pick, the feat is still taken
+		{"Increase one ability score of your choice by 1, to a maximum of 30.", []string{"Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"}},
+	} {
+		td := &compendium.TextData{Parts: []compendium.NameDesc{{Name: "Ability Score Increase", Desc: tt.text}}}
+		groups, err := e.app.featChoices(t.Context(), "feat_x", "X", td, "", sh, 0)
+		if err != nil || len(groups) != min(len(tt.want), 1) {
+			t.Fatalf("%q: groups %+v %v", tt.text, groups, err)
+		}
+		if tt.want == nil {
+			continue
+		}
+		var got []string
+		for _, o := range groups[0].Options {
+			got = append(got, o.Name)
+		}
+		if !slices.Equal(got, tt.want) {
+			t.Errorf("%q: options %v, want %v", tt.text, got, tt.want)
+		}
 	}
 }

@@ -102,7 +102,7 @@ func TestParseWikidotSpecies(t *testing.T) {
 		t.Errorf("%+v %+v", e, d)
 	}
 	roundTrip(t, e)
-	if src := pageSource(Page{Site: wikidotSite, ID: "lineage:giff", Book: book}); src.Key != "wikidot:lineage:giff" || src.Attribution != "Some Book via https://dnd5e.wikidot.com/lineage:giff" {
+	if src := pageSource(Page{Site: wikidotSite, ID: "lineage:giff", Book: book}); src.Key != "wikidot:lineage:giff" || src.Attribution != "Some Book via https://dnd5e.wikidot.com/lineage:giff" || src.Published != "2014-08-19" {
 		t.Errorf("%+v", src)
 	}
 }

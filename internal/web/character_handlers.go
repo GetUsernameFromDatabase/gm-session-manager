@@ -312,8 +312,8 @@ func (a *App) masteryWeapons(ctx context.Context, campaignID int64) ([]compendiu
 	return out, err
 }
 
-// masteryLimit is how many weapon kinds the sheet's classes let it master,
-// leaving out the class skip (a level-up counts that one itself).
+// masteryLimit is how many weapon kinds the sheet's classes and feats let it
+// master, leaving out the class skip (a level-up counts that one itself).
 func masteryLimit(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, skip string) (int, error) {
 	classes := map[string]dnd5e.ClassInfo{}
 	for _, cl := range sheet.Classes {
@@ -329,7 +329,23 @@ func masteryLimit(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, skip 
 		}
 		classes[cl.Slug] = info
 	}
-	return sheet.MasteryLimit(classes), nil
+	n := sheet.MasteryLimit(classes)
+	for _, name := range sheet.Feats {
+		key := featKey(name)
+		row, _, err := entryFor(ctx, q, compendium.KindFeat, key, sheet.FeatSources[key])
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return 0, err
+		}
+		d, err := compendium.DecodeData(compendium.KindFeat, row.DataJson)
+		if err != nil {
+			return 0, err
+		}
+		n += featMasteries(d.(*compendium.TextData))
+	}
+	return n, nil
 }
 
 // masteryGroups ask for the weapon kinds a level in info (class level
@@ -341,7 +357,12 @@ func (a *App) masteryGroups(ctx context.Context, sh dnd5e.Sheet, info dnd5e.Clas
 		return nil, err
 	}
 	before, after := others+info.Masteries(level-1), others+info.Masteries(level)
-	n := min(after-before, after-len(sh.Masteries))
+	return a.masteryChoice(ctx, sh, views.FieldMastery, dnd5e.MasteryColumn, min(after-before, after-len(sh.Masteries)), campaignID)
+}
+
+// masteryChoice asks for n weapon kinds the sheet does not master yet; none
+// when n is 0 or no kind is left.
+func (a *App) masteryChoice(ctx context.Context, sh dnd5e.Sheet, key, title string, n int, campaignID int64) ([]choiceGroup, error) {
 	if n <= 0 {
 		return nil, nil
 	}
@@ -358,7 +379,7 @@ func (a *App) masteryGroups(ctx context.Context, sh dnd5e.Sheet, info dnd5e.Clas
 	if len(opts) == 0 {
 		return nil, nil
 	}
-	return []choiceGroup{{views.ChoiceGroup{Key: views.FieldMastery, Title: dnd5e.MasteryColumn, Count: n, Options: opts}, func(s *dnd5e.Sheet, picked []string) {
+	return []choiceGroup{{views.ChoiceGroup{Key: key, Title: title, Count: n, Options: opts}, func(s *dnd5e.Sheet, picked []string) {
 		for _, p := range picked {
 			if !s.Masters(p) { // another device may have chosen it since the page loaded
 				s.Masteries = append(s.Masteries, p)

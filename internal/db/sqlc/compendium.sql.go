@@ -511,7 +511,7 @@ func (q *Queries) ListCompendiumByKind(ctx context.Context, arg ListCompendiumBy
 }
 
 const listCompendiumBySlugs = `-- name: ListCompendiumBySlugs :many
-SELECT e.id, e.slug, e.name, e.data_json, e.source_key FROM compendium_entries AS e
+SELECT e.id, e.slug, e.name, e.data_json, e.source_key, e.scoped FROM compendium_entries AS e
 LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ?1 AND e.slug IN (/*SLICE:slugs*/?)
   AND NOT EXISTS (
@@ -535,6 +535,7 @@ type ListCompendiumBySlugsRow struct {
 	Name      string
 	DataJson  string
 	SourceKey string
+	Scoped    bool
 }
 
 // ListCompendiumBySlugs reads the entries a sheet links to, in one query: the
@@ -566,6 +567,7 @@ func (q *Queries) ListCompendiumBySlugs(ctx context.Context, arg ListCompendiumB
 			&i.Name,
 			&i.DataJson,
 			&i.SourceKey,
+			&i.Scoped,
 		); err != nil {
 			return nil, err
 		}

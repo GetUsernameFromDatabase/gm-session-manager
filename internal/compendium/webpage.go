@@ -158,10 +158,16 @@ func SavePage(ctx context.Context, store *db.Store, p Page) (string, error) {
 	return src.Key, err
 }
 
+// editionPublished stands in for the publication date pages lack: the
+// edition's Player's Handbook, so a page ties with its edition's books.
+var editionPublished = map[string]string{"2014": "2014-08-19", "2024": "2024-09-17"}
+
 func pageSource(p Page) Source {
+	edition := p.Site.edition(p.ID)
 	return Source{
-		Key: PageSourceKey(p.Site.Key, p.ID), Edition: p.Site.edition(p.ID), License: "Unverified (third-party site copy)",
+		Key: PageSourceKey(p.Site.Key, p.ID), Edition: edition, License: "Unverified (third-party site copy)",
 		Attribution: strings.TrimSpace(strings.TrimSpace(p.Book) + " via " + p.URL()),
+		Published:   editionPublished[edition],
 	}
 }
 

@@ -341,6 +341,19 @@ func readPicks(c *gin.Context, groups []choiceGroup) (map[string][]string, error
 			maps.Copy(picks, sub)
 		}
 	}
+	// A class level and a feat (Weapon Master) may not master one kind twice.
+	seen := map[string]bool{}
+	for _, k := range slices.Sorted(maps.Keys(picks)) {
+		if k != views.FieldMastery && !strings.HasSuffix(k, "_"+views.FieldMastery) {
+			continue
+		}
+		for _, p := range picks[k] {
+			if seen[p] {
+				return nil, fieldError{userError{fmt.Errorf("%s is picked twice: choose another weapon", p)}, k}
+			}
+			seen[p] = true
+		}
+	}
 	return picks, nil
 }
 
@@ -755,9 +768,34 @@ var (
 	reFeatCantrips = regexp.MustCompile(`learn (\w+) cantrips of your choice from the (.+?) spell list`)
 	reFeatSpell    = regexp.MustCompile(`Choose a level 1 spell from the same list`)
 	reFeatProfs    = regexp.MustCompile(`proficiency in any combination of (\w+) skills or tools`)
-	reFeatRaise    = regexp.MustCompile(`Increase (?:your (\w+) or (\w+) score|one ability score of your choice) by 1, to a maximum of (\d+)`)
+	reFeatRaise    = regexp.MustCompile(`Increase (?:your (?:((?:\w+, )*\w+) or )?(\w+) score|one ability score of your choice) by 1, to a maximum of (\d+)`)
+	reFeatMastery  = regexp.MustCompile(`mastery property of (\w+) kinds? of`)
 	reToolCost     = regexp.MustCompile(`\s*\(\d+ GP\)$`)
 )
+
+// featText is a feat's description and parts, for the reFeat patterns.
+func featText(td *compendium.TextData) string {
+	text := td.Desc
+	for _, p := range td.Parts {
+		text += "\n" + p.Desc
+	}
+	return text
+}
+
+// countWord reads a count written as a word ("two") or digits.
+func countWord(w string) int {
+	n, _ := strconv.Atoi(cmp.Or(compendium.CountWords[strings.ToLower(w)], w))
+	return n
+}
+
+// featMasteries is how many weapon kinds a feat lets the sheet master
+// (Weapon Master), read from its text so homebrew feats count too.
+func featMasteries(td *compendium.TextData) int {
+	if m := reFeatMastery.FindStringSubmatch(featText(td)); m != nil {
+		return countWord(m[1])
+	}
+	return 0
+}
 
 // featChoices are the choices a feat's text asks for: Magic Initiate's spell
 // list, cantrips, level 1 spell and spellcasting ability, Skilled's skills
@@ -765,14 +803,7 @@ var (
 // feature on the sheet; list is the spell list a background names. Lists the
 // sheet took with this feat already are left out (Repeatable).
 func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.TextData, list string, sh dnd5e.Sheet, campaignID int64) ([]choiceGroup, error) {
-	text := td.Desc
-	for _, p := range td.Parts {
-		text += "\n" + p.Desc
-	}
-	count := func(w string) int {
-		n, _ := strconv.Atoi(cmp.Or(compendium.CountWords[strings.ToLower(w)], w))
-		return n
-	}
+	text, count := featText(td), countWord
 	var out []choiceGroup
 	if m := reFeatCantrips.FindStringSubmatch(text); m != nil {
 		lists := compendium.SplitList(m[2])
@@ -819,8 +850,8 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 	}
 	if m := reFeatRaise.FindStringSubmatch(text); m != nil {
 		allowed := dnd5e.Abilities
-		if m[1] != "" {
-			allowed = abilityKeys(m[1] + ", " + m[2])
+		if m[2] != "" { // "your X, Y or Z", or a fixed "your X"
+			allowed = abilityKeys(strings.TrimPrefix(m[1]+", "+m[2], ", "))
 		}
 		limit, _ := strconv.Atoi(m[3])
 		var opts []compendium.NameDesc
@@ -829,12 +860,15 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 				opts = append(opts, compendium.NameDesc{Name: dnd5e.AbilityNames[ab]})
 			}
 		}
-		g := views.ChoiceGroup{Key: key + "_raise", Title: name + ": +1 to an ability score", Count: 1, Options: opts}
-		out = append(out, choiceGroup{g, func(s *dnd5e.Sheet, picked []string) {
-			if ab := abilityKeys(picked[0]); len(ab) == 1 {
-				s.Scores[ab[0]]++
-			}
-		}, nil})
+		// A fixed "your X" already at its maximum asks nothing: the feat is still taken.
+		if fixedAtMax := len(opts) == 0 && m[1] == "" && m[2] != ""; !fixedAtMax {
+			g := views.ChoiceGroup{Key: key + "_raise", Title: name + ": +1 to an ability score", Count: 1, Options: opts}
+			out = append(out, choiceGroup{g, func(s *dnd5e.Sheet, picked []string) {
+				if ab := abilityKeys(picked[0]); len(ab) == 1 {
+					s.Scores[ab[0]]++
+				}
+			}, nil})
+		}
 	}
 	if m := reFeatProfs.FindStringSubmatch(text); m != nil {
 		var opts []compendium.NameDesc
@@ -859,6 +893,13 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 			})
 			addProfs(s, skillKeys(picked), tools...)
 		}, nil})
+	}
+	if n := featMasteries(td); n > 0 {
+		groups, err := a.masteryChoice(ctx, sh, key+"_"+views.FieldMastery, name+": weapon mastery", n, campaignID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, groups...)
 	}
 	return out, nil
 }

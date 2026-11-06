@@ -239,7 +239,10 @@ func TestParseFiveToolsBook(t *testing.T) {
 		}}},
 		{"feat/grappler", TextData{
 			Prerequisite: "Level 4+, Strength 13+ or Dexterity 13+", Category: "General",
-			Parts: []NameDesc{{Name: "Punch and Grab", Desc: "You can impose the [[compendium:condition/grappled|Grappled]] condition."}},
+			Parts: []NameDesc{
+				{Name: "Punch and Grab", Desc: "You can impose the [[compendium:condition/grappled|Grappled]] condition."},
+				{Name: "Ability Score Increase", Desc: "Increase your Strength or Dexterity score by 1, to a maximum of 20."},
+			},
 		}},
 		{"feat/alert", TextData{
 			Desc: "You gain the following benefits.", Category: "Origin",
@@ -269,6 +272,28 @@ func TestParseFiveToolsBook(t *testing.T) {
 	delete(files, "book.json")
 	if _, _, err := parseFiveToolsBook("5etools-xphb", files); err == nil {
 		t.Error("no book.json: no error")
+	}
+}
+
+func TestFtFeatIncrease(t *testing.T) {
+	all := `{"choose":{"from":["str","dex","con","int","wis","cha"]}`
+	for _, tt := range []struct{ ability, category, want string }{
+		{`[{"choose":{"from":["str","dex"]}}]`, "G", "Increase your Strength or Dexterity score by 1, to a maximum of 20."},
+		{`[{"choose":{"from":["int","wis","cha"]}}]`, "G", "Increase your Intelligence, Wisdom or Charisma score by 1, to a maximum of 20."},
+		{`[` + all + `}]`, "G", "Increase one ability score of your choice by 1, to a maximum of 20."},
+		{`[{"con":1}]`, "O", "Increase your Constitution score by 1, to a maximum of 20."},
+		{`[` + all + `}]`, "EB", "Increase one ability score of your choice by 1, to a maximum of 30."},
+		{`[` + all + `,"max":30}]`, "", "Increase one ability score of your choice by 1, to a maximum of 30."},
+		{`[{"choose":{"from":["str","dex","con","int","wis","cha"],"entry":"Choose one ability in which you lack saving throw proficiency. Increase the chosen ability score by 1, to a maximum of 20."}}]`, "G",
+			"Increase one ability score of your choice by 1, to a maximum of 20. Choose one ability in which you lack saving throw proficiency."},
+		{`[{"choose":{"from":["str","dex","con","int","wis","cha"],"amount":2},"hidden":true}]`, "G", ""},
+		{``, "G", ""},
+	} {
+		var ab []map[string]json.RawMessage
+		_ = json.Unmarshal([]byte(tt.ability), &ab)
+		if got := ftFeatIncrease(ab, tt.category); got != tt.want {
+			t.Errorf("%s %s: %q, want %q", tt.ability, tt.category, got, tt.want)
+		}
 	}
 }
 
