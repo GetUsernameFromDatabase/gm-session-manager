@@ -428,6 +428,8 @@ templ entityForm(v EntityView) {
 			if v.ActiveEncounterID != 0 {
 				@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{
 					"hx-post": fmt.Sprintf("/encounters/%d/combatants", v.ActiveEncounterID), "hx-vals": fmt.Sprintf(`{"kind":"entity","id":"%d"}`, v.E.ID),
+					// Not the surrounding form's fields (its count would fail the combatant's checks).
+					"hx-params": "kind,id",
 				}}) {
 					@icon.Swords()
 					Add to current fight
@@ -458,7 +460,7 @@ templ fieldRow(i int, key string, f perm.Field) {
 			// Shown while the value is empty (fields.js keeps data-empty).
 			<span class="hidden group-data-[empty]/field:inline-flex">
 				@tooltip.Tooltip() {
-					<span class="inline-flex text-amber-600 dark:text-amber-500" tabindex="0" aria-label="Empty fields are not saved" { tooltip.Trigger(ctx)... }>
+					<span class="inline-flex text-amber-600 dark:text-amber-500" tabindex="0" role="img" aria-label="Empty fields are not saved" { tooltip.Trigger(ctx)... }>
 						@icon.TriangleAlert(icon.Props{Size: 14})
 					</span>
 					@tooltip.Content() {

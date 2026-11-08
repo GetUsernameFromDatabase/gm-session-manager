@@ -39,6 +39,7 @@
         el.textContent = value;
         break;
       case "value":
+        el.defaultValue = value; // what a form reset and its change check compare against
         if (document.activeElement !== el) el.value = value; // never under the cursor
         break;
       case "show":
@@ -52,10 +53,22 @@
     }
   }
 
+  // typing reports whether a view shows a form with unsaved text, which a
+  // refetch would wipe (a form in a closed dialog does not count).
+  const edited = (el) => el.matches("textarea, input:not([type=hidden],[type=checkbox],[type=radio],[type=file])") && el.value !== el.defaultValue;
+  const typing = (view) => [...roots(view)].some((root) => [...root.querySelectorAll("form")].some((f) => f.checkVisibility() && [...f.elements].some(edited)));
+
   // refetch reloads a view's fragments (out-of-band swaps). A change that
-  // lands while a refetch is in flight fetches again afterwards.
+  // lands while a refetch is in flight fetches again afterwards; one that
+  // lands while the user types waits until the form is saved or reset.
   const inflight = new Map(); // view -> fetch again
+  const waiting = new Set();
   gsm.refetch = (view) => {
+    if (typing(view)) {
+      waiting.add(view);
+      return;
+    }
+    waiting.delete(view);
     if (inflight.has(view)) {
       inflight.set(view, true);
       return;
@@ -124,11 +137,20 @@
 
   // Without a websocket the actor's own changes would not show: refetch
   // the page's views after each successful change instead. Not after a 422:
-  // htmx counts it as successful (it carries a message to show), it changed
-  // nothing, and a refetch would wipe its message from the form.
+  // it changed nothing, and a refetch would wipe its message from the form.
   document.addEventListener("htmx:afterRequest", (e) => {
     const verb = e.detail.requestConfig && e.detail.requestConfig.verb;
     const changed = e.detail.xhr && e.detail.xhr.status < 300;
     if (!gsm.socket && changed && verb && verb !== "get") gsm.watching().forEach(gsm.refetch);
   });
+
+  // A saved form's text is no longer unsaved; then the waiting views load.
+  const retry = () => [...waiting].forEach(gsm.refetch);
+  document.addEventListener("htmx:afterRequest", (e) => {
+    const form = e.detail.elt.closest?.("form");
+    if (form && e.detail.successful) [...form.elements].forEach((el) => "defaultValue" in el && (el.defaultValue = el.value));
+    retry();
+  });
+  document.addEventListener("reset", () => setTimeout(retry));
+  document.addEventListener("focusout", () => setTimeout(retry));
 })();

@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -39,10 +40,14 @@ func TestDiff(t *testing.T) {
 type stateHandler struct {
 	states  map[string]State
 	affects func(view string, topics []Topic) bool
+	fail    string // a view whose State errors
 }
 
 func (h *stateHandler) Affects(view string, topics []Topic) bool { return h.affects(view, topics) }
 func (h *stateHandler) State(_ context.Context, _ *Client, view string) (State, bool, error) {
+	if view == h.fail {
+		return nil, false, errors.New("render failed")
+	}
 	s, ok := h.states[view]
 	return s, ok, nil
 }
@@ -161,5 +166,36 @@ func TestPatch(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFailedPatchDeliversNothing(t *testing.T) {
+	sh := &stateHandler{affects: func(string, []Topic) bool { return true }}
+	h := New(sh)
+	c := NewClient(1, perm.GM, 0, "test")
+	c.setWatch([]string{"character:1", "character:2"})
+	sh.states = map[string]State{"character:1": {"hp": "5"}, "character:2": {"hp": "7"}}
+	if _, err := h.patch(t.Context(), c, message{hello: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	// character:1 renders before character:2 fails, so the message is dropped.
+	sh.states = map[string]State{"character:1": {"hp": "3"}, "character:2": {"hp": "7"}}
+	sh.fail = "character:2"
+	if _, err := h.patch(t.Context(), c, message{topics: []Topic{{Kind: TopicCharacter, ID: 1}}}); err == nil {
+		t.Fatal("want an error")
+	}
+
+	sh.fail = ""
+	raw, err := h.patch(t.Context(), c, message{topics: []Topic{{Kind: TopicCharacter, ID: 1}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got patchMessage
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Views) != 1 || got.Views[0].View != "character:1" || got.Views[0].Set["hp"] != "3" {
+		t.Errorf("views %+v, want character:1 hp 3", got.Views)
 	}
 }

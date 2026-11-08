@@ -51,7 +51,7 @@ func TestImportFiveToolsBook(t *testing.T) {
 		t.Errorf("source %+v %v", src, err)
 	}
 	// Pickers offer base species and subraces, never versions.
-	names, err := store.ListCompendiumNames(t.Context(), string(KindSpecies))
+	names, err := store.ListCompendiumNames(t.Context(), sqlc.ListCompendiumNamesParams{Kind: string(KindSpecies)})
 	if err != nil {
 		t.Fatal(err)
 	}

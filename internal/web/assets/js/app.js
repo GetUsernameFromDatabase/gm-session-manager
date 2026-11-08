@@ -515,11 +515,29 @@
     // Disabled after this tick, so the clicked button still submits its value.
     setTimeout(() => form.querySelectorAll("button[type=submit]").forEach((b) => (b.disabled = true)));
   });
-  document.addEventListener("htmx:beforeRequest", (e) => busyForm(e.detail.elt)?.setAttribute("aria-busy", "true"));
-  document.addEventListener("htmx:afterRequest", () => {
-    // The form itself may have been swapped out; clear whichever is on the page.
-    document.querySelectorAll("form[data-busy][aria-busy]").forEach((f) => f.removeAttribute("aria-busy"));
+  // htmx cancels the submit event itself, so its forms are guarded here.
+  const submits = (form) => form.querySelectorAll("button[type=submit]");
+  document.addEventListener("htmx:beforeRequest", (e) => {
+    const form = busyForm(e.detail.elt);
+    if (!form) return;
+    form.setAttribute("aria-busy", "true");
+    submits(form).forEach((b) => (b.disabled = true));
   });
+  document.addEventListener("htmx:afterRequest", (e) => {
+    const form = busyForm(e.detail.elt);
+    if (!form) return;
+    form.removeAttribute("aria-busy");
+    submits(form).forEach((b) => (b.disabled = false));
+  });
+  // A 422 is swapped for its message but changed nothing: handlers that close
+  // or reset on success must not run. Capture runs before hx-on handlers.
+  document.addEventListener(
+    "htmx:afterRequest",
+    (e) => {
+      if (e.detail.xhr?.status === 422) e.detail.successful = false;
+    },
+    true,
+  );
   // A form's 422 flash shows inside that form, where the user is looking
   // (the page flash sits behind an open dialog).
   document.addEventListener("htmx:beforeRequest", (e) => {

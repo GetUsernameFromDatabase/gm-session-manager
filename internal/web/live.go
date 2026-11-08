@@ -235,12 +235,19 @@ func (a *App) loadLive(ctx context.Context, vc viewerCtx, key string) (liveView,
 		return liveView{html: views.NoteList(k.num(), notes), ok: true}, nil
 	case views.LiveNote:
 		note, err := a.Store.GetNote(ctx, k.num())
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return liveView{}, err
+		}
+		gone := liveView{html: views.NoteGone(k.num())} // clears a page that showed the note
 		if err != nil || !inCampaign(note.CampaignID) {
-			return liveView{}, notFoundIsNil(err)
+			return gone, nil
 		}
 		nv, visible, err := a.noteView(ctx, v, note)
-		if err != nil || !visible {
+		if err != nil {
 			return liveView{}, err
+		}
+		if !visible {
+			return gone, nil
 		}
 		return liveView{html: templ.Join(views.NoteMeta(nv), views.NoteBlocks(nv)), ok: true}, nil
 	case views.LiveEntities:

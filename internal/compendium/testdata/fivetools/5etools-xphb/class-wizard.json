@@ -25,6 +25,7 @@
 				"Spellcasting|Wizard|XPHB|1",
 				"Arcane Recovery|Wizard|XPHB|1",
 				"Scholar|Wizard|XPHB|2",
+				42,
 				{"classFeature": "Wizard Subclass|Wizard|XPHB|3", "gainSubclassFeature": true},
 				"Ability Score Improvement|Wizard|XPHB|4",
 				"Memorize Spell|Wizard|XPHB|5"

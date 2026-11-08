@@ -179,6 +179,7 @@ func TestSearch(t *testing.T) {
 		{"fire", "spell", []string{"Fire Bolt"}, nil},
 		{"mote fire", "", nil, []string{"Fire Bolt"}},
 		{"crawl", "condition", nil, []string{"Prone"}},
+		{"describes nothing", "", nil, nil}, // a condition row with an empty name is skipped
 		{`" OR * NEAR(`, "", nil, nil},
 		{"", "", nil, nil},
 	}

@@ -395,6 +395,24 @@ templ NoteBlocks(v NoteView) {
 	</div>
 }
 
+// NoteGone replaces a note's page content when it is hidden or deleted
+// while a player is reading it.
+templ NoteGone(id int64) {
+	<div id={ fmt.Sprintf("note-%d-meta", id) } hx-swap-oob="true" { live(LiveNote, id)... }>
+		@empty.Empty(empty.Props{Class: "border border-dashed"}) {
+			@empty.Header() {
+				@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+					@icon.EyeOff()
+				}
+				@empty.Title() {
+					This note is not available
+				}
+			}
+		}
+	</div>
+	<div id={ fmt.Sprintf("note-%d-blocks", id) } hx-swap-oob="true" { live(LiveNote, id)... }></div>
+}
+
 // blockMenu holds a block's controls, so its header stays one line on a
 // phone. Each change closes it once the server accepts it.
 templ blockMenu(v NoteView, b BlockView, i int) {

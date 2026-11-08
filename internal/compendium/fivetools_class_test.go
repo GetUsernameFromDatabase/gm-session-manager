@@ -73,6 +73,9 @@ func TestFiveToolsClasses(t *testing.T) {
 			}
 		}
 		for _, f := range d.Features {
+			if f.Name == "" {
+				t.Errorf("%s: nameless feature %+v", tt.key, f)
+			}
 			if f.Subclass != slices.Contains(tt.subclass, f.Name) {
 				t.Errorf("%s %s: subclass %v", tt.key, f.Name, f.Subclass)
 			}

@@ -1164,7 +1164,7 @@ func abilityForm(v WizardView) templ.Component {
 			return nil
 		})
 		templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{
-			"onclick": templ.JSUnsafeFuncCall("const f = this.form; [15, 14, 13, 12, 10, 8].forEach((n, i) => f.elements[['str','dex','con','int','wis','cha'][i]].value = n); f.dispatchEvent(new Event('input'))"),
+			"onclick": templ.JSUnsafeFuncCall("const f = this.form; [15, 14, 13, 12, 10, 8].forEach((n, i) => f.elements[['str','dex','con','int','wis','cha'][i]].value = n); f.dispatchEvent(new Event('input', { bubbles: true }))"),
 		}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var42), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

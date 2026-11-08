@@ -1,13 +1,17 @@
 package web
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
 	"gm-session-manager/internal/auth"
+	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 )
 
@@ -105,6 +109,67 @@ func TestPlayerHomebrew(t *testing.T) {
 	}
 	if w := e.do(t, http.MethodPost, entryPath+"/delete", player, nil, false); w.Code != http.StatusSeeOther {
 		t.Errorf("author delete: %d %s", w.Code, w.Body)
+	}
+}
+
+// TestScopedHomebrewPickers: homebrew scoped to campaign B is listed and
+// applicable in the creation and level-up pickers for B's characters only.
+func TestScopedHomebrewPickers(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	campB, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "B", System: "dnd5e", Edition: "2024"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: campB.ID, Name: "Bram", System: "dnd5e"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, hb := range []struct{ kind, slug, data string }{
+		{"class", "riftblade", `{"hit_die":8}`},
+		{"feat", "rift-step", `{}`},
+		{"spell", "rift-bolt", `{"level":1,"classes":["wizard"]}`},
+	} {
+		row, err := e.q().CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: hb.kind, Slug: hb.slug, Name: hb.slug, DataJson: hb.data,
+			OwnerCharacterID: sql.NullInt64{Int64: owner.ID, Valid: true}, Scoped: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := e.q().LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: row.ID, CampaignID: campB.ID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tt := range []struct {
+		name     string
+		campaign int64
+		want     bool
+	}{
+		{"other campaign", e.campaignID, false},
+		{"linked campaign", campB.ID, true},
+		{"everything (GM)", 0, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			listed := func(kind, slug string) bool {
+				rows, err := e.q().ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: tt.campaign})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return slices.ContainsFunc(rows, func(r sqlc.ListCompendiumNamesRow) bool { return r.Slug == slug })
+			}
+			spells, err := e.q().ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: "wizard", MaxLevel: 1, CampaignID: tt.campaign})
+			if err != nil {
+				t.Fatal(err)
+			}
+			spellListed := slices.ContainsFunc(spells, func(r sqlc.ListSpellsForClassRow) bool { return r.Slug == "rift-bolt" })
+			if listed("class", "riftblade") != tt.want || listed("feat", "rift-step") != tt.want || spellListed != tt.want {
+				t.Errorf("listed: class %v feat %v spell %v, want %v", listed("class", "riftblade"), listed("feat", "rift-step"), spellListed, tt.want)
+			}
+			_, err = e.app.wizardPick(ctx, compendium.KindClass, "riftblade", tt.campaign)
+			var ue userError
+			if (err == nil) != tt.want || (err != nil && !errors.As(err, &ue)) {
+				t.Errorf("pick: %v, want applicable %v (as a user error otherwise)", err, tt.want)
+			}
+		})
 	}
 }
 

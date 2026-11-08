@@ -733,7 +733,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		classSlug = sheet.DefaultClass()
 	}
 	v := views.LevelUpView{CharacterID: ch.ID, Name: ch.Name, Level: sheet.Level(), Selected: classSlug, Sheet: sheet}
-	classes, err := a.Store.ListCompendiumNames(ctx, string(compendium.KindClass))
+	classes, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(compendium.KindClass), CampaignID: ch.CampaignID})
 	if err != nil {
 		return v, err
 	}
@@ -742,6 +742,12 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	}
 	if classSlug == "" {
 		return v, nil
+	}
+	if classPin(sheet, classSlug) == "" {
+		// A new class comes from the query: only one this campaign may see.
+		if _, err := a.entryBySlug(ctx, compendium.KindClass, classSlug, ch.CampaignID); err != nil {
+			return v, err
+		}
 	}
 	info, _, err := classEntry(ctx, a.Store.Queries, classSlug, classPin(sheet, classSlug))
 	if err != nil {
@@ -763,7 +769,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	for _, s := range subs {
 		v.Subclasses = append(v.Subclasses, views.Option{Slug: s.Slug, Name: s.Name})
 	}
-	feats, err := a.Store.ListCompendiumNames(ctx, string(compendium.KindFeat))
+	feats, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(compendium.KindFeat), CampaignID: ch.CampaignID})
 	if err != nil {
 		return v, err
 	}
@@ -791,7 +797,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if v.LineageSpells, err = a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID); err != nil {
 		return v, err
 	}
-	changes, err := a.featSpellChanges(ctx, sheet, v.LineageSpells)
+	changes, err := a.featSpellChanges(ctx, sheet, v.LineageSpells, ch.CampaignID)
 	if err != nil {
 		return v, err
 	}
@@ -804,7 +810,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		return v, err
 	}
 	v.Groups = groupViews(slices.Concat(classOptionGroups(info, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), mastery, changes))
-	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet, v.LineageSpells)
+	v.Spells, err = a.classSpellOptions(ctx, classSlug, plan.Slots, plan.PactLevel, sheet, v.LineageSpells, ch.CampaignID)
 	v.SpellNeed = spellNeed(info, plan.ClassLevel, sheet, v.Spells)
 	return v, err
 }
@@ -812,14 +818,14 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 // classSpellOptions are the class's spells the slots (and pact slots) can
 // cast that the sheet does not have yet, nor learns in this step (taught:
 // lineage spells, which AddSpell would keep over the class pick).
-func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]int, pactLevel int, sheet dnd5e.Sheet, taught []dnd5e.Spell) ([]views.Option, error) {
+func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]int, pactLevel int, sheet dnd5e.Sheet, taught []dnd5e.Spell, campaignID int64) ([]views.Option, error) {
 	maxLevel := pactLevel
 	for i, n := range slots {
 		if n > 0 {
 			maxLevel = max(maxLevel, i+1)
 		}
 	}
-	spells, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: classSlug, MaxLevel: int64(maxLevel)})
+	spells, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: classSlug, MaxLevel: int64(maxLevel), CampaignID: campaignID})
 	if err != nil {
 		return nil, err
 	}
@@ -998,11 +1004,19 @@ func (a *App) levelUp(c *gin.Context) {
 		return
 	}
 	slug := c.PostForm("class")
+	if classPin(sheet, slug) == "" {
+		// A new class: only one this campaign may see.
+		if _, err := a.entryBySlug(ctx, compendium.KindClass, slug, ch.CampaignID); !a.found(c, err) {
+			return
+		}
+	}
 	info, _, err := classEntry(ctx, a.Store.Queries, slug, classPin(sheet, slug))
 	if !a.found(c, err) {
 		return
 	}
 	choice := dnd5e.LevelUpChoice{Class: info, Subclass: strings.TrimSpace(c.PostForm("subclass"))}
+	// The form's level; a second submit (a double click, another device) finds it taken.
+	level, checkLevel := formInt(c, "level")
 	if err := a.withSubclass(ctx, &choice.Class, sheet, choice.Subclass); err != nil {
 		a.serverError(c, err)
 		return
@@ -1018,9 +1032,9 @@ func (a *App) levelUp(c *gin.Context) {
 	var featErr error
 	var featSource string
 	if slug := c.PostForm("feat"); slug != "" {
-		feat, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindFeat), Slug: slug})
+		feat, err := a.entryBySlug(ctx, compendium.KindFeat, slug, ch.CampaignID)
 		switch {
-		case errors.Is(err, sql.ErrNoRows): // crafted, or a homebrew feat deleted since the form loaded
+		case errors.Is(err, sql.ErrNoRows): // crafted, another campaign's, or a homebrew feat deleted since the form loaded
 			featErr = fieldError{userError{errors.New("choose a feat from the list")}, views.FieldASI}
 		case !a.found(c, err):
 			return
@@ -1041,7 +1055,7 @@ func (a *App) levelUp(c *gin.Context) {
 	var spellErr error
 	var ue userError
 	if planErr == nil { // else LevelUp refuses (level 20) and plan is empty
-		offered, err := a.classSpellOptions(ctx, info.Slug, plan.Slots, plan.PactLevel, sheet, lineage)
+		offered, err := a.classSpellOptions(ctx, info.Slug, plan.Slots, plan.PactLevel, sheet, lineage, ch.CampaignID)
 		if err != nil {
 			a.serverError(c, err)
 			return
@@ -1057,7 +1071,7 @@ func (a *App) levelUp(c *gin.Context) {
 	choice.Spells = lineage
 
 	// Spell Change and the feat's own choices apply after LevelUp has added the feat.
-	changes, err := a.featSpellChanges(ctx, sheet, lineage)
+	changes, err := a.featSpellChanges(ctx, sheet, lineage, ch.CampaignID)
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -1108,6 +1122,9 @@ func (a *App) levelUp(c *gin.Context) {
 			before, err := dc.Sheet.JSON()
 			if err != nil {
 				return err
+			}
+			if checkLevel && int64(dc.Sheet.Level()+1) != level {
+				return userError{fmt.Errorf("level %d was already taken", level)}
 			}
 			maxHP := dc.MaxHP
 			if err := dc.LevelUp(choice); err != nil {

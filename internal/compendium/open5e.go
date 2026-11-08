@@ -148,19 +148,6 @@ func label(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-func joinText(parts ...string) string {
-	var b strings.Builder
-	for _, p := range parts {
-		if p = strings.TrimSpace(p); p != "" {
-			if b.Len() > 0 {
-				b.WriteString("\n")
-			}
-			b.WriteString(p)
-		}
-	}
-	return b.String()
-}
-
 func partsText(parts []NameDesc) string {
 	var b strings.Builder
 	for _, p := range parts {
@@ -302,8 +289,20 @@ func intField(raw map[string]json.RawMessage, key string) *int {
 	return v
 }
 
+// joinNonEmpty joins the trimmed parts that are not blank.
 func joinNonEmpty(sep string, parts ...string) string {
-	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return strings.TrimSpace(s) == "" }), sep)
+	var out []string
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, sep)
+}
+
+// joinText joins the non-blank parts as lines.
+func joinText(parts ...string) string {
+	return joinNonEmpty("\n", parts...)
 }
 
 // formatCR turns "0.125" into "1/8" and "10.000" into "10".
@@ -738,7 +737,10 @@ func (n normalizer) conditions() ([]Entry, error) {
 		if err != nil {
 			return nil, err
 		}
-		name := strings.ToUpper(c.Describes[:1]) + c.Describes[1:]
+		name := label(c.Describes)
+		if name == "" {
+			continue
+		}
 		out = append(out, Entry{Kind: KindCondition, Slug: n.slug(r.pk()), Name: name, Data: TextData{Desc: c.Desc}, Text: c.Desc})
 	}
 	return out, nil

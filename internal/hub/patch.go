@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"slices"
 )
 
@@ -64,6 +65,9 @@ const maxPatchKeys = 8
 // the device was away are refetched.
 func (h *Hub) patch(ctx context.Context, c *Client, m message) ([]byte, error) {
 	var views []viewPatch
+	// Committed only once every view rendered: a dropped message must not
+	// count as delivered for some of its views.
+	seen := map[string]State{}
 	for _, v := range c.watching() {
 		if !m.hello && !h.handler.Affects(v, m.topics) {
 			continue
@@ -76,7 +80,7 @@ func (h *Hub) patch(ctx context.Context, c *Client, m message) ([]byte, error) {
 		if !ok {
 			next = nil
 		}
-		c.last[v] = next
+		seen[v] = next
 		switch {
 		case m.hello:
 			if h.handler.Affects(v, m.topics) {
@@ -98,6 +102,7 @@ func (h *Hub) patch(ctx context.Context, c *Client, m message) ([]byte, error) {
 			}
 		}
 	}
+	maps.Copy(c.last, seen)
 	if len(views) == 0 && !m.hello {
 		return nil, nil
 	}

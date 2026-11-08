@@ -138,7 +138,7 @@ func TestMoveSourceBreaksTies(t *testing.T) {
 		t.Errorf("winner after move: %s", got)
 	}
 	// Lists (compendium_top) show the same copy.
-	names, err := store.ListCompendiumNames(ctx, "spell")
+	names, err := store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: "spell"})
 	if err != nil {
 		t.Fatal(err)
 	}

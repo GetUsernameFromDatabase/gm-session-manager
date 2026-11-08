@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
@@ -114,7 +115,7 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 		}
 		return v, err
 	}
-	names, err := a.Store.ListCompendiumNames(ctx, string(kind))
+	names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(kind), CampaignID: ch.CampaignID})
 	if err != nil {
 		return v, err
 	}
@@ -124,7 +125,7 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 	if pick == "" {
 		return v, nil
 	}
-	e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(kind), Slug: pick})
+	e, err := a.entryBySlug(ctx, kind, pick, ch.CampaignID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, nil
 	}
@@ -177,9 +178,6 @@ func wizardChoice(e sqlc.CompendiumEntry, data any) *views.WizardChoice {
 // "any" skills offers them all.
 func skillChoice(s string) (int, []string) {
 	n, names := compendium.SkillChoice(s)
-	if n > 0 && names == nil {
-		return n, skillKeys(nil)
-	}
 	return n, skillKeys(names)
 }
 
@@ -576,7 +574,7 @@ func spellAbilityChoice(key, from string, slugs map[string]bool, species bool) c
 // originFeatChoice offers the compendium's Origin feats (Human Versatile),
 // each with its own choices.
 func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dnd5e.Sheet, campaignID int64) (choiceGroup, bool, error) {
-	names, err := a.Store.ListCompendiumNames(ctx, string(compendium.KindFeat))
+	names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(compendium.KindFeat), CampaignID: campaignID})
 	if err != nil {
 		return choiceGroup{}, false, err
 	}
@@ -821,7 +819,7 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 			if list == "" {
 				full = fmt.Sprintf("%s (%s)", name, l)
 			}
-			groups, err := a.featSpellGroups(ctx, key+"_"+compendium.Slugify(l), full, l, count(m[1]), reFeatSpell.MatchString(text), sh, added)
+			groups, err := a.featSpellGroups(ctx, key+"_"+compendium.Slugify(l), full, l, count(m[1]), reFeatSpell.MatchString(text), sh, campaignID, added)
 			if err != nil {
 				return nil, err
 			}
@@ -907,8 +905,8 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 // featSpellGroups ask for a feat's cantrips and level 1 spell (always
 // prepared, one free cast per Long Rest) from a class's list, leaving out
 // spells the sheet has; added collects the picks.
-func (a *App) featSpellGroups(ctx context.Context, key, name, class string, cantrips int, spell bool, sh dnd5e.Sheet, added map[string]bool) ([]choiceGroup, error) {
-	rows, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: compendium.Slugify(class), MaxLevel: 1})
+func (a *App) featSpellGroups(ctx context.Context, key, name, class string, cantrips int, spell bool, sh dnd5e.Sheet, campaignID int64, added map[string]bool) ([]choiceGroup, error) {
+	rows, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: compendium.Slugify(class), MaxLevel: 1, CampaignID: campaignID})
 	if err != nil {
 		return nil, err
 	}
@@ -948,7 +946,7 @@ const keepSpells = "No change"
 // featSpellChanges offer each feat's Spell Change on level-up: one spell the
 // feat chose ("Magic Initiate (Wizard)") may become another of the same
 // level from its list, but not one the sheet has or this step teaches (taught).
-func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet, taught []dnd5e.Spell) ([]choiceGroup, error) {
+func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet, taught []dnd5e.Spell, campaignID int64) ([]choiceGroup, error) {
 	known := slices.Concat(sh.Spells, taught)
 	var out []choiceGroup
 	for _, feat := range sh.Feats {
@@ -957,7 +955,7 @@ func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet, taught []dnd
 		if list == "" || len(mine) == 0 {
 			continue
 		}
-		rows, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: compendium.Slugify(list), MaxLevel: 1})
+		rows, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: compendium.Slugify(list), MaxLevel: 1, CampaignID: campaignID})
 		if err != nil {
 			return nil, err
 		}
@@ -1087,7 +1085,7 @@ func (a *App) classChoices(ctx context.Context, cr *creation, sh dnd5e.Sheet, ca
 	}
 	cr.view.Columns = info.ColumnsAt(cl.Level)
 	slots, _, pactLevel := dnd5e.SlotMaxima(sh.Classes)
-	if cr.view.Spells, err = a.classSpellOptions(ctx, cl.Slug, slots, pactLevel, sh, cr.cantrips); err != nil {
+	if cr.view.Spells, err = a.classSpellOptions(ctx, cl.Slug, slots, pactLevel, sh, cr.cantrips, campaignID); err != nil {
 		return err
 	}
 	for i, sp := range cr.view.Spells {
@@ -1148,7 +1146,7 @@ func (a *App) optionCantrips(ctx context.Context, sh dnd5e.Sheet, info dnd5e.Cla
 	now, _ := strconv.Atoi(info.ColumnsAt(classLevel)["Cantrips"])
 	was, _ := strconv.Atoi(info.ColumnsAt(classLevel - 1)["Cantrips"])
 	if now > was {
-		rows, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: info.Slug, MaxLevel: 0})
+		rows, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: info.Slug, MaxLevel: 0, CampaignID: campaignID})
 		if err != nil {
 			return nil, err
 		}
@@ -1451,7 +1449,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if err != nil || sheet.SetUp(step) {
 			return nil, err // chosen already: the skills would be ignored
 		}
-		row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindClass), Slug: pick})
+		row, err := a.wizardPick(ctx, compendium.KindClass, pick, ch.CampaignID)
 		if err != nil {
 			return nil, err
 		}
@@ -1481,7 +1479,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			return nil, nil
 		}
 		kind := compendium.Kind(step)
-		row, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(kind), Slug: pick})
+		row, err := a.wizardPick(ctx, kind, pick, ch.CampaignID)
 		if err != nil {
 			return nil, err
 		}
@@ -1520,15 +1518,20 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if err != nil || sheet.SetUp("background") {
 			return nil, err // base scores would undo the background's increases
 		}
-		scores := map[string]int{}
-		for _, ab := range dnd5e.Abilities {
-			n, err := strconv.Atoi(c.PostForm(ab))
-			if err != nil || n < 3 || n > 20 {
-				return nil, userError{fmt.Errorf("%s must be 3 to 20", dnd5e.AbilityNames[ab])}
+		var f abilitiesForm
+		if err := c.ShouldBind(&f); err != nil {
+			var ve validator.ValidationErrors
+			if errors.As(err, &ve) {
+				return nil, userError{fmt.Errorf("%s must be 3 to 20", dnd5e.AbilityNames[strings.ToLower(ve[0].StructField())])}
 			}
-			scores[ab] = n
+			return nil, userError{errors.New("ability scores must be 3 to 20")}
 		}
+		scores := map[string]int{"str": f.Str, "dex": f.Dex, "con": f.Con, "int": f.Int, "wis": f.Wis, "cha": f.Cha}
 		cmd := dnd5e.NewCommand("create abilities", perm.ScopeSheet, func(cc *dnd5e.Character) error {
+			if cc.Sheet.SetUp("background") {
+				// Checked again here: another device may have applied it since.
+				return userError{errors.New("set the ability scores before the background")}
+			}
 			before := cc.Sheet.Mod("con")
 			for ab, n := range scores {
 				cc.Sheet.Scores[ab] = n
@@ -1602,12 +1605,16 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			return nil
 		}), nil
 	case "details":
-		name := strings.TrimSpace(c.PostForm("name"))
+		var f detailsForm
+		if err := c.ShouldBind(&f); err != nil {
+			return nil, userError{errors.New("keep the name to 100 characters, the vision to 200 and the backstory to 20000")}
+		}
+		name := strings.TrimSpace(f.Name)
 		if name == "" {
 			return nil, fieldError{userError{errors.New("give your character a name")}, views.FieldName}
 		}
-		backstory, vision := c.PostForm("backstory"), strings.TrimSpace(c.PostForm("vision"))
-		size := dnd5e.SizeNamed(c.PostForm("size"))
+		backstory, vision := f.Backstory, strings.TrimSpace(f.Vision)
+		size := dnd5e.SizeNamed(f.Size)
 		if size == "" {
 			return nil, userError{errors.New("pick a size")}
 		}
@@ -1620,6 +1627,16 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		return once(func(*dnd5e.Sheet, *dnd5e.Character) error { return nil }), nil
 	}
 	return nil, nil
+}
+
+// wizardPick is the posted pick's entry, refused as a user error when the
+// character's campaign cannot see it.
+func (a *App) wizardPick(ctx context.Context, kind compendium.Kind, pick string, campaignID int64) (sqlc.CompendiumEntry, error) {
+	row, err := a.entryBySlug(ctx, kind, pick, campaignID)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = userError{fmt.Errorf("that %s is not in the compendium", kind)}
+	}
+	return row, err
 }
 
 // trainedIn are a class's armor, weapon and tool proficiencies, as other
@@ -1679,22 +1696,51 @@ func applySpecies(s *dnd5e.Sheet, name string, d *compendium.TextData) {
 // backgroundRaises reads the background's ability increases: +2 and +1 to
 // two of its abilities, or +1 to all three.
 func backgroundRaises(c *gin.Context, allowed []string) (map[string]int, error) {
+	errRaises := fieldError{userError{errors.New("choose two different abilities of this background for +2 and +1")}, views.FieldMode}
+	var f backgroundForm
+	if err := c.ShouldBind(&f); err != nil {
+		return nil, errRaises
+	}
 	raises := map[string]int{}
-	if c.PostForm("mode") == "three" {
+	if f.Mode == "three" {
 		for _, a := range allowed {
 			raises[a] = 1
 		}
 		return raises, nil
 	}
-	plus2, plus1 := c.PostForm("plus2"), c.PostForm("plus1")
-	if plus2 == "" && plus1 == "" {
+	if f.Plus2 == "" && f.Plus1 == "" {
 		return raises, nil
 	}
-	if !slices.Contains(allowed, plus2) || !slices.Contains(allowed, plus1) || plus1 == plus2 {
-		return nil, fieldError{userError{errors.New("choose two different abilities of this background for +2 and +1")}, views.FieldMode}
+	if !slices.Contains(allowed, f.Plus2) || !slices.Contains(allowed, f.Plus1) || f.Plus1 == f.Plus2 {
+		return nil, errRaises
 	}
-	raises[plus2], raises[plus1] = 2, 1
+	raises[f.Plus2], raises[f.Plus1] = 2, 1
 	return raises, nil
+}
+
+// backgroundForm is the background step's ability increases.
+type backgroundForm struct {
+	Mode  string `form:"mode"  validate:"omitempty,oneof=two three"`
+	Plus2 string `form:"plus2" validate:"omitempty,oneof=str dex con int wis cha"`
+	Plus1 string `form:"plus1" validate:"omitempty,oneof=str dex con int wis cha"`
+}
+
+// abilitiesForm is the abilities step's base scores.
+type abilitiesForm struct {
+	Str int `form:"str" validate:"min=3,max=20"`
+	Dex int `form:"dex" validate:"min=3,max=20"`
+	Con int `form:"con" validate:"min=3,max=20"`
+	Int int `form:"int" validate:"min=3,max=20"`
+	Wis int `form:"wis" validate:"min=3,max=20"`
+	Cha int `form:"cha" validate:"min=3,max=20"`
+}
+
+// detailsForm is the details step; the limits are the sheet's.
+type detailsForm struct {
+	Name      string `form:"name"      validate:"max=100"`
+	Backstory string `form:"backstory" validate:"max=20000"`
+	Vision    string `form:"vision"    validate:"max=200"`
+	Size      string `form:"size"      validate:"max=20"`
 }
 
 // originFeat is the background's feat from the compendium, if it is there.

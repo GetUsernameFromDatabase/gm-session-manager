@@ -231,14 +231,17 @@ func (h *Hub) publishLocked(campaignID int64, topics ...Topic) {
 }
 
 // sync handles a client's hello: catch up from (epoch, seq) if the ring
-// still covers it, otherwise tell the client to reload.
-func (h *Hub) sync(c *Client, epoch string, seq uint64) {
+// still covers it, otherwise tell the client to reload. hello is false when
+// helloTimeout synced a silent client; a real hello arriving later still
+// catches up from the page's own position.
+func (h *Hub) sync(c *Client, epoch string, seq uint64, hello bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if c.synced {
+	if c.helloed || c.synced && !hello {
 		return
 	}
 	c.synced = true
+	c.helloed = hello
 
 	oldest := h.seq + 1
 	if len(h.ring) > 0 {
@@ -300,6 +303,7 @@ type Client struct {
 	done      chan struct{}
 	stopOnce  sync.Once
 	synced    bool // guarded by Hub.mu
+	helloed   bool // synced by the page's own hello; guarded by Hub.mu
 
 	subMu  sync.Mutex
 	blocks map[int64]bool

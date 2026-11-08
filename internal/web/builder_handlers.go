@@ -31,7 +31,7 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 	switch c.Query("op") {
 	case "set-species", "set-background":
 		kind := strings.TrimPrefix(c.Query("op"), "set-")
-		rows, err := a.Store.ListCompendiumNames(ctx, kind)
+		rows, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: campaignID})
 		for _, r := range rows {
 			x.Suggestions = append(x.Suggestions, r.Name)
 		}

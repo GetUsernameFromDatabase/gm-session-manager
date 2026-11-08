@@ -191,8 +191,11 @@ templ LevelUpPage(l Layout, v LevelUpView) {
 }
 
 templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
-	<form method="post" class="space-y-4">
+	<form method="post" class="group/busy space-y-4" data-busy>
+		@busyIndicator("Levelling up…")
 		<input type="hidden" name="class" value={ p.Class.Slug }/>
+		// The level this form takes: a second submit, from here or another device, is refused.
+		<input type="hidden" name="level" value={ fmt.Sprint(p.NewLevel) }/>
 		@card.Card() {
 			@card.Header() {
 				@card.Title() {

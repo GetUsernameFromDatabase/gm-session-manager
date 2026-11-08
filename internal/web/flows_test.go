@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -431,14 +432,44 @@ func TestCollabConflict(t *testing.T) {
 		t.Errorf("conflict payload %+v %v", p, err)
 	}
 
-	// After a snapshot at version 1 the old steps are trimmed: asking for
-	// them reports Gone so the client reloads.
-	snap := map[string]any{"version": 1, "doc": json.RawMessage(`{"type":"doc","content":[]}`), "text": "a", "links": []any{}}
-	if w := e.doJSON(t, fmt.Sprintf("/blocks/%d/snapshot", b.ID), gm, snap); w.Code != http.StatusNoContent {
-		t.Fatalf("snapshot: %d %s", w.Code, w.Body)
+	snapshot := func(version int) {
+		t.Helper()
+		snap := map[string]any{"version": version, "doc": json.RawMessage(`{"type":"doc","content":[]}`), "text": "a", "links": []any{}}
+		if w := e.doJSON(t, fmt.Sprintf("/blocks/%d/snapshot", b.ID), gm, snap); w.Code != http.StatusNoContent {
+			t.Fatalf("snapshot: %d %s", w.Code, w.Body)
+		}
 	}
-	if w := e.do(t, http.MethodGet, path+"?since=0", gm, nil, false); w.Code != http.StatusGone {
-		t.Errorf("trimmed steps: %d", w.Code)
+	// A device behind a snapshot but within keepSteps still catches up,
+	// and its unsent edit lands after a rebase.
+	snapshot(1)
+	if w := e.do(t, http.MethodGet, path+"?since=0", gm, nil, false); w.Code != http.StatusOK {
+		t.Errorf("steps behind a snapshot: %d", w.Code)
+	}
+	if w := e.doJSON(t, path, gm, map[string]any{"version": 0, "clientID": "c3", "steps": []json.RawMessage{step}}); w.Code != http.StatusConflict {
+		t.Fatalf("offline submit: %d", w.Code)
+	}
+	if w := e.doJSON(t, path, gm, map[string]any{"version": 1, "clientID": "c3", "steps": []json.RawMessage{step}}); w.Code != http.StatusOK {
+		t.Fatalf("rebased submit: %d %s", w.Code, w.Body)
+	}
+
+	// Push the block well past keepSteps; a snapshot then trims the oldest.
+	version := 2
+	for _, n := range []int{500, 500, 100} {
+		w := e.doJSON(t, path, gm, map[string]any{"version": version, "clientID": "c1", "steps": slices.Repeat([]json.RawMessage{step}, n)})
+		if w.Code != http.StatusOK {
+			t.Fatalf("bulk submit: %d %s", w.Code, w.Body)
+		}
+		version += n
+	}
+	snapshot(version)
+	kept := version - keepSteps
+	for since, want := range map[int]int{kept - 1: http.StatusGone, kept: http.StatusOK, version: http.StatusOK} {
+		if w := e.do(t, http.MethodGet, fmt.Sprintf("%s?since=%d", path, since), gm, nil, false); w.Code != want {
+			t.Errorf("since=%d: %d, want %d", since, w.Code, want)
+		}
+	}
+	if w := e.doJSON(t, path, gm, map[string]any{"version": kept - 1, "clientID": "c3", "steps": []json.RawMessage{step}}); w.Code != http.StatusGone {
+		t.Errorf("submit behind the kept window: %d", w.Code)
 	}
 }
 

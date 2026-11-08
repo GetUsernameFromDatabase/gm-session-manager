@@ -617,11 +617,18 @@ func (q *Queries) ListCompendiumKeysBySource(ctx context.Context, sourceKey stri
 }
 
 const listCompendiumNames = `-- name: ListCompendiumNames :many
-SELECT id, kind, slug, name FROM compendium_entries
-WHERE kind = ? AND id IN (SELECT id FROM compendium_top)
-  AND json_extract(data_json, '$.version_of') IS NULL
-ORDER BY name
+SELECT e.id, e.kind, e.slug, e.name FROM compendium_entries AS e
+WHERE e.kind = ?1 AND e.id IN (SELECT id FROM compendium_top)
+  AND json_extract(e.data_json, '$.version_of') IS NULL
+  AND (e.scoped = 0 OR CAST(?2 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?2 AS INTEGER)))
+ORDER BY e.name
 `
+
+type ListCompendiumNamesParams struct {
+	Kind       string
+	CampaignID int64
+}
 
 type ListCompendiumNamesRow struct {
 	ID   int64
@@ -631,9 +638,10 @@ type ListCompendiumNamesRow struct {
 }
 
 // ListCompendiumNames is what pickers offer: species versions are left out,
-// since picking the base and then its lineage grants more.
-func (q *Queries) ListCompendiumNames(ctx context.Context, kind string) ([]ListCompendiumNamesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listCompendiumNames, kind)
+// since picking the base and then its lineage grants more. Only entries a
+// player in campaign_id may see (0: all).
+func (q *Queries) ListCompendiumNames(ctx context.Context, arg ListCompendiumNamesParams) ([]ListCompendiumNamesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCompendiumNames, arg.Kind, arg.CampaignID)
 	if err != nil {
 		return nil, err
 	}
@@ -1152,17 +1160,20 @@ func (q *Queries) ListMonstersByName(ctx context.Context, filter string) ([]List
 }
 
 const listSpellsForClass = `-- name: ListSpellsForClass :many
-SELECT id, slug, name, source_key, CAST(json_extract(data_json, '$.level') AS INTEGER) AS level
-FROM compendium_entries
-WHERE kind = 'spell' AND id IN (SELECT id FROM compendium_top)
-  AND CAST(json_extract(data_json, '$.level') AS INTEGER) <= CAST(?1 AS INTEGER)
-  AND EXISTS (SELECT 1 FROM json_each(compendium_entries.data_json, '$.classes') AS c WHERE c.value = CAST(?2 AS TEXT))
-ORDER BY level, name
+SELECT e.id, e.slug, e.name, e.source_key, CAST(json_extract(e.data_json, '$.level') AS INTEGER) AS level
+FROM compendium_entries AS e
+WHERE e.kind = 'spell' AND e.id IN (SELECT id FROM compendium_top)
+  AND CAST(json_extract(e.data_json, '$.level') AS INTEGER) <= CAST(?1 AS INTEGER)
+  AND EXISTS (SELECT 1 FROM json_each(e.data_json, '$.classes') AS c WHERE c.value = CAST(?2 AS TEXT))
+  AND (e.scoped = 0 OR CAST(?3 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?3 AS INTEGER)))
+ORDER BY level, e.name
 `
 
 type ListSpellsForClassParams struct {
-	MaxLevel  int64
-	ClassSlug string
+	MaxLevel   int64
+	ClassSlug  string
+	CampaignID int64
 }
 
 type ListSpellsForClassRow struct {
@@ -1173,8 +1184,9 @@ type ListSpellsForClassRow struct {
 	Level     int64
 }
 
+// ListSpellsForClass lists the spells a player in campaign_id may see (0: all).
 func (q *Queries) ListSpellsForClass(ctx context.Context, arg ListSpellsForClassParams) ([]ListSpellsForClassRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSpellsForClass, arg.MaxLevel, arg.ClassSlug)
+	rows, err := q.db.QueryContext(ctx, listSpellsForClass, arg.MaxLevel, arg.ClassSlug, arg.CampaignID)
 	if err != nil {
 		return nil, err
 	}

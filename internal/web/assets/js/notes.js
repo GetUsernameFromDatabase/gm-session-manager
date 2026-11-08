@@ -10,7 +10,6 @@ import { Step } from "/assets/vendor/pm-transform.js";
 import { KEEP_IMAGES, KeepImages, LINK_PATHS, WikiLink, keepCaretBeside, linkClick, mentionActions, mentionMenu, pickFile, showMenu, touchDrag } from "/assets/js/wikilink.js";
 
 const SNAPSHOT_EVERY_MS = 10000;
-const campaign = document.body.dataset.campaign;
 const editors = new Map(); // block id -> BlockEditor
 
 function randomID() {
@@ -56,7 +55,6 @@ class BlockEditor {
     this.id = id;
     this.clientID = randomID();
     this.inflight = false;
-    this.dirtySince = 0; // version of the last snapshot sent
     this.destroyed = false;
   }
 
@@ -82,6 +80,9 @@ class BlockEditor {
     this.lastSnapshot = data.docVersion;
     this.receive({ version: data.docVersion, steps: data.steps, clientIDs: data.clientIDs });
     gsm.send({ type: "sub", blocks: [this.id] });
+    // Steps committed between /doc and the subscription are never pushed.
+    this.catchUp();
+    clearInterval(this.timer); // start() runs again after a 410
     this.timer = setInterval(() => this.snapshot(), SNAPSHOT_EVERY_MS);
   }
 
@@ -132,7 +133,7 @@ class BlockEditor {
   }
 
   async send() {
-    if (this.inflight || !this.editor || !this.editor.isEditable) return;
+    if (this.destroyed || this.inflight || !this.editor || !this.editor.isEditable) return;
     const s = sendableSteps(this.editor.state);
     if (!s) return;
     this.inflight = true;
@@ -151,7 +152,8 @@ class BlockEditor {
         // Confirmation normally arrives over the websocket; fetch it too in
         // case the socket is down.
         await this.catchUp();
-      } else {
+      } else if (res.status !== 403 && res.status !== 404) {
+        // Not after 403/404 (gone or no longer editable): the refetch that follows redraws the block.
         setTimeout(() => this.send(), 2000);
       }
     } catch {

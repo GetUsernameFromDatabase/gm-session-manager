@@ -109,7 +109,7 @@ func TestCatchUp(t *testing.T) {
 				t.Fatalf("unsynced client received %d messages", len(got))
 			}
 
-			h.sync(c, tt.helloEpoch(h), tt.helloSeq)
+			h.sync(c, tt.helloEpoch(h), tt.helloSeq, true)
 			msgs := drain(c)
 			if len(msgs) != 1 {
 				t.Fatalf("got %d messages, want 1", len(msgs))
@@ -146,7 +146,7 @@ func TestCloseSessionAndCharacter(t *testing.T) {
 		h.register(c)
 	}
 	for _, c := range all {
-		h.sync(c, h.epoch, 0)
+		h.sync(c, h.epoch, 0, true)
 		drain(c) // catch-up, including the device announcements
 	}
 
@@ -227,7 +227,7 @@ func TestDeviceAnnouncements(t *testing.T) {
 	h := New(fakeHandler{})
 	gm := NewClient(1, perm.GM, 0, "pc")
 	h.register(gm)
-	h.sync(gm, h.epoch, 0)
+	h.sync(gm, h.epoch, 0, true)
 	drain(gm)
 
 	phone := NewClient(1, perm.Player(7), 100, "phone")
@@ -252,7 +252,7 @@ func TestCompendiumReachesEveryCampaign(t *testing.T) {
 	player := NewClient(2, perm.Player(7), 100, "phone")
 	for _, c := range []*Client{gm, player} {
 		h.register(c)
-		h.sync(c, h.epoch, 0)
+		h.sync(c, h.epoch, 0, true)
 		drain(c)
 	}
 	h.Publish(0, Topic{Kind: TopicCompendium})
@@ -269,7 +269,7 @@ func TestDMGetsEveryCampaignsRequests(t *testing.T) {
 	player := NewClient(2, perm.Player(7), 100, "phone")
 	for _, c := range []*Client{gm, player} {
 		h.register(c)
-		h.sync(c, h.epoch, 0)
+		h.sync(c, h.epoch, 0, true)
 	}
 	drain(gm)
 	drain(player)
@@ -284,8 +284,35 @@ func TestDMGetsEveryCampaignsRequests(t *testing.T) {
 	// A GM page loaded before the request catches up on it.
 	late := NewClient(0, perm.GM, 0, "pc")
 	h.register(late)
-	h.sync(late, h.epoch, 0)
+	h.sync(late, h.epoch, 0, true)
 	if m := drain(late); len(m) != 1 || len(m[0].topics) != 1 {
 		t.Errorf("catch-up: %+v", m)
+	}
+}
+
+func TestLateHelloCatchesUp(t *testing.T) {
+	ch := func(id int64) Topic { return Topic{Kind: TopicCharacter, ID: id} }
+	h := New(fakeHandler{})
+	c := NewClient(1, perm.GM, 0, "test")
+	h.register(c)
+	_, rendered := h.Position()
+	h.Publish(1, ch(10)) // after the page rendered, before any hello
+
+	// The hello timeout syncs from now on, without views.
+	epoch, seq := h.Position()
+	h.sync(c, epoch, seq, false)
+	h.sync(c, epoch, seq, false) // a second timeout sync is a no-op
+	if m := drain(c); len(m) != 1 || len(m[0].topics) != 0 {
+		t.Fatalf("timeout sync: %+v", m)
+	}
+
+	// The late real hello still catches up from the page's position.
+	h.sync(c, epoch, rendered, true)
+	if m := drain(c); len(m) != 1 || !m[0].hello || !slices.Equal(topicIDs(m[0]), []int64{10}) {
+		t.Errorf("late hello: %+v", m)
+	}
+	h.sync(c, epoch, rendered, true)
+	if m := drain(c); len(m) != 0 {
+		t.Errorf("second hello: %+v", m)
 	}
 }

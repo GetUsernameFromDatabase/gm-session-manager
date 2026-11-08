@@ -193,6 +193,9 @@ func (p *ftBook) classFile(file string) error {
 			if json.Unmarshal(raw, &ref) != nil && json.Unmarshal(raw, &o) == nil {
 				ref, gains[o.ClassFeature] = o.ClassFeature, o.GainSubclassFeature
 			}
+			if ref == "" {
+				continue
+			}
 			refs = append(refs, ref)
 		}
 		d := ClassData{

@@ -1,1 +1,2 @@
-[{"model":"api_v2.conditiondescription","pk":"srd-2024_prone","fields":{"desc":"While you have the Prone condition, your only movement option is to crawl.","document":"srd-2024","describes":"prone"}}]
+[{"model":"api_v2.conditiondescription","pk":"srd-2024_prone","fields":{"desc":"While you have the Prone condition, your only movement option is to crawl.","document":"srd-2024","describes":"prone"}},
+{"model":"api_v2.conditiondescription","pk":"srd-2024_blank","fields":{"desc":"A row that describes nothing is skipped.","document":"srd-2024","describes":""}}]

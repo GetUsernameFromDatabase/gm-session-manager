@@ -186,7 +186,11 @@ func TestLiveRefetchStrips(t *testing.T) {
 	if b := body(views.LiveKey(views.LiveNotes, f.campaignID)); !strings.Contains(b, "Rumours") || strings.Contains(b, fmt.Sprintf("/notes/%d/rename", shared.ID)) {
 		t.Errorf("notes refetch misses the shared note or lets the player manage it")
 	}
-	for _, view := range []string{views.LiveKey(views.LiveNote, f.gmNote), views.LiveKey(views.LiveRoster, f.campaignID), views.LiveKey(views.LiveEncounter, f.encounter)} {
+	// A hidden note clears the page that showed it, naming nothing.
+	if b := body(views.LiveKey(views.LiveNote, f.gmNote)); !strings.Contains(b, "not available") || strings.Contains(b, "Plans") {
+		t.Errorf("hidden note refetch leaks or does not clear: %s", b)
+	}
+	for _, view := range []string{views.LiveKey(views.LiveRoster, f.campaignID), views.LiveKey(views.LiveEncounter, f.encounter)} {
 		if w := get(view); w.Code != http.StatusNoContent {
 			t.Errorf("%s: %d, want nothing", view, w.Code)
 		}

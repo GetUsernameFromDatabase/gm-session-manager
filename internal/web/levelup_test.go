@@ -57,6 +57,34 @@ func TestRevertLevelUp(t *testing.T) {
 	}
 }
 
+// TestLevelUpTwice: the same form posted twice (a double click, another
+// device) takes one level, and the second post is refused.
+func TestLevelUpTwice(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, auth.RolePlayer)
+	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	level := func() int {
+		ch, _ := e.q().GetCharacter(ctx, e.characterID)
+		s, _ := dnd5e.ParseSheet(ch.SheetJson)
+		return s.Level()
+	}
+	start := level()
+	form := wizardLevelUp(t, e, url.Values{"class": {"wizard"}, "level": {fmt.Sprint(start + 1)}})
+	if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusSeeOther {
+		t.Fatalf("level up: %d %s", w.Code, w.Body)
+	}
+	if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("second post: %d, want 422", w.Code)
+	}
+	if got := level(); got != start+1 {
+		t.Errorf("level %d, want %d", got, start+1)
+	}
+}
+
 // TestLevelUpInvocations: each level asks for the invocations its column
 // adds, only from the options whose prerequisite (level, another invocation,
 // a damaging cantrip) holds on the result, Eldritch Spear asks for its

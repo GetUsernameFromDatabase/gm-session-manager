@@ -671,7 +671,7 @@ templ conditionsCard(s SheetView) {
 			<span class="hidden group-data-open/conds:inline">Fewer</span>
 		}
 		if s.CanConditions {
-			<form class="inline-flex" hx-post={ s.cmdURL() } hx-on::after-request="this.reset()">
+			<form class="inline-flex" hx-post={ s.cmdURL() } hx-on::after-request="if (event.detail.successful) this.reset()">
 				@input.Input(input.Props{Name: "cmd", Placeholder: "+ concentrate Bless", Class: "h-6 w-44 rounded-full border-dashed px-2 text-xs md:text-xs", Attributes: templ.Attributes{"aria-label": "Add a custom condition"}})
 			</form>
 		}
@@ -773,8 +773,10 @@ templ abilitiesCard(s SheetView) {
 							@button.Button(button.Props{
 								Variant:    button.VariantGhost,
 								Class:      "h-auto w-full p-0 active:not-aria-[haspopup]:translate-y-0",
-								Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "abilities", "ability", a), templ.Attributes{"aria-label": "Change " + dnd5e.AbilityNames[a]}),
+								Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "abilities", "ability", a)),
 							}) {
+								// Not aria-label: it would hide the score and modifier from screen readers.
+								<span class="sr-only">{ "Change " + dnd5e.AbilityNames[a] + ", " }</span>
 								@abilityFace(s, a)
 							}
 						} else {
@@ -1087,7 +1089,7 @@ templ gearMark(s SheetView, it dnd5e.Item) {
 	if worn || ready {
 		{{ tip := utils.IfElse(worn, "Worn", "Ready to attack with") }}
 		@tooltip.Tooltip() {
-			<span class="text-primary" aria-label={ tip } { tooltip.Trigger(ctx)... }>
+			<span class="text-primary" role="img" aria-label={ tip } { tooltip.Trigger(ctx)... }>
 				if worn {
 					@icon.Shield(icon.Props{Size: 14})
 				} else {
@@ -1492,7 +1494,7 @@ templ weaponRow(s SheetView, id string, w dnd5e.Weapon, ready bool) {
 				if ready && s.C.Sheet.CanDualWield() && slices.ContainsFunc(s.C.Sheet.LightWeapons(), func(l dnd5e.Weapon) bool { return l.Name == w.Name }) {
 					<span class="inline-flex items-center gap-1 text-xs">
 						@tooltip.Tooltip() {
-							<span class="inline-flex" aria-label="Off-hand damage" { tooltip.Trigger(ctx)... }>
+							<span class="inline-flex" role="img" aria-label="Off-hand damage" { tooltip.Trigger(ctx)... }>
 								@icon.Swords(icon.Props{Size: 12})
 							</span>
 							@tooltip.Content() {

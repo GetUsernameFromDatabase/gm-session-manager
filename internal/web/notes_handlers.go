@@ -384,7 +384,6 @@ func (a *App) moveBlock(c *gin.Context) {
 			return nil
 		}
 		// Renumber so equal positions from older rows cannot tie.
-		slices.SortStableFunc(blocks, func(x, y sqlc.NoteBlock) int { return int(x.Position - y.Position) })
 		blocks[i], blocks[j] = blocks[j], blocks[i]
 		for pos, blk := range blocks {
 			if err := q.SetBlockPosition(ctx, sqlc.SetBlockPositionParams{ID: blk.ID, Position: int64(pos + 1)}); err != nil {
@@ -421,15 +420,22 @@ type stepsPayload struct {
 	ClientIDs []string          `json:"clientIDs"`
 }
 
+// keepSteps is how many steps a snapshot leaves behind it, so a device that
+// was offline for a while can still rebase its unsent edits.
+const keepSteps = 1000
+
 // stepsSince returns the steps after version, or false if they were
-// trimmed behind a snapshot (the client must reload the document).
+// trimmed (the client must reload the document).
 func (a *App) stepsSince(ctx context.Context, q *sqlc.Queries, b sqlc.GetBlockRow, version int64) (stepsPayload, bool, error) {
-	if version < b.DocVersion || version > b.Version {
+	if version > b.Version {
 		return stepsPayload{}, false, nil
 	}
 	rows, err := q.ListBlockStepsSince(ctx, sqlc.ListBlockStepsSinceParams{BlockID: b.ID, Version: version})
 	if err != nil {
 		return stepsPayload{}, false, err
+	}
+	if (len(rows) == 0 && version != b.Version) || (len(rows) > 0 && rows[0].Version != version+1) {
+		return stepsPayload{}, false, nil
 	}
 	p := stepsPayload{Version: version, Steps: []json.RawMessage{}, ClientIDs: []string{}}
 	for _, r := range rows {
@@ -446,7 +452,18 @@ func (a *App) blockDoc(c *gin.Context) {
 	if !ok {
 		return
 	}
-	steps, _, err := a.stepsSince(c.Request.Context(), a.Store.Queries, b, b.DocVersion)
+	ctx := c.Request.Context()
+	var steps stepsPayload
+	// One transaction, so a snapshot landing in between cannot pair the
+	// document with steps numbered after another version.
+	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		var err error
+		if b, err = q.GetBlock(ctx, b.ID); err != nil {
+			return err
+		}
+		steps, _, err = a.stepsSince(ctx, q, b, b.DocVersion)
+		return err
+	})
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -593,7 +610,7 @@ func (a *App) blockSnapshot(c *gin.Context) {
 		if err != nil || n == 0 {
 			return err
 		}
-		if err := q.TrimBlockSteps(ctx, sqlc.TrimBlockStepsParams{BlockID: b.ID, Version: body.Version}); err != nil {
+		if err := q.TrimBlockSteps(ctx, sqlc.TrimBlockStepsParams{BlockID: b.ID, Version: body.Version - keepSteps}); err != nil {
 			return err
 		}
 		// An image link lets the block's readers see the image, so only the

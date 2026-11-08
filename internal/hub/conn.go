@@ -61,13 +61,8 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, c *Client) {
 	go func() {
 		select {
 		case <-time.After(helloTimeout):
-			h.mu.Lock()
-			synced := c.synced
-			h.mu.Unlock()
-			if !synced {
-				_, seq := h.Position()
-				h.sync(c, h.epoch, seq)
-			}
+			epoch, seq := h.Position()
+			h.sync(c, epoch, seq, false)
 		case <-ctx.Done():
 		}
 	}()
@@ -92,7 +87,7 @@ func (h *Hub) readLoop(ctx context.Context, conn *websocket.Conn, c *Client) {
 		switch m.Type {
 		case "hello":
 			c.setWatch(m.Watch)
-			h.sync(c, m.Epoch, m.Seq)
+			h.sync(c, m.Epoch, m.Seq, true)
 		case "sub":
 			for _, id := range m.Blocks {
 				if h.handler.CanSubscribe(ctx, c, id) {
