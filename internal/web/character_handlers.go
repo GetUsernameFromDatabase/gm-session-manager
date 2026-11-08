@@ -205,44 +205,12 @@ func (a *App) characterCommand(c *gin.Context) {
 // runCommand looks up what cmd needs from the compendium and applies it to
 // the character in one transaction. Errors the user caused are userErrors.
 func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Command) error {
-	var env dnd5e.Env
-	var err error
-	if cmd.SourceRef.Kind != "" {
-		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
-		if err != nil {
-			return err
-		}
-		if env, _, err = a.sourceEnv(ctx, sheet, cmd.SourceRef, ch.CampaignID); err != nil {
-			return err
-		}
-	}
-	if cmd.SpellSlug != "" {
-		if env.Spell, err = a.compendiumSpell(ctx, cmd.SpellSlug, ch.CampaignID); err != nil {
-			return userError{err}
-		}
-	}
-	if cmd.PrepareCaps {
-		if env.PreparedCaps, err = a.preparedCaps(ctx, ch); err != nil {
-			return err
-		}
-	}
-	if cmd.MasteryWeapon != "" {
-		if env.MasteryWeapon, env.MasteryLimit, err = a.masteryEnv(ctx, ch, cmd.MasteryWeapon); err != nil {
-			return err
-		}
-	}
-	if cmd.ArmorSlug != "" {
-		inInventory, err := a.hasArmorItem(ctx, ch.ID, cmd.ArmorSlug)
-		if err != nil {
-			return err
-		}
-		if !inInventory {
-			if env.Armor, env.IsShield, err = a.compendiumArmor(ctx, cmd.ArmorSlug, ch.CampaignID); err != nil {
-				return userError{err}
-			}
-		}
-	}
 	return a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
+		// Built from the sheet this transaction writes, not ch's earlier copy.
+		env, err := a.commandEnv(ctx, q, dc.Sheet, ch.CampaignID, cmd)
+		if err != nil {
+			return err
+		}
 		conds, err := q.ListConditionsByCharacter(ctx, sql.NullInt64{Int64: ch.ID, Valid: true})
 		if err != nil {
 			return err
@@ -260,16 +228,45 @@ func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Comma
 	})
 }
 
-// preparedCaps are the prepared-spell totals of the character's classes at
-// their levels, by class slug; a class the compendium lacks has no cap.
-func (a *App) preparedCaps(ctx context.Context, ch sqlc.Character) (map[string]int, error) {
-	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
-	if err != nil {
-		return nil, err
+// commandEnv looks up what cmd needs from the compendium for sheet.
+func (a *App) commandEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, campaignID int64, cmd dnd5e.Command) (dnd5e.Env, error) {
+	var env dnd5e.Env
+	var err error
+	if cmd.SourceRef.Kind != "" {
+		if env, _, err = a.sourceEnv(ctx, q, sheet, cmd.SourceRef, campaignID); err != nil {
+			return env, err
+		}
 	}
+	if cmd.SpellSlug != "" {
+		if env.Spell, err = a.compendiumSpell(ctx, cmd.SpellSlug, campaignID); err != nil {
+			return env, userError{err}
+		}
+	}
+	if cmd.PrepareCaps {
+		if env.PreparedCaps, err = preparedCaps(ctx, q, sheet); err != nil {
+			return env, err
+		}
+	}
+	if cmd.MasteryWeapon != "" {
+		if env.MasteryWeapon, env.MasteryLimit, err = a.masteryEnv(ctx, q, sheet, campaignID, cmd.MasteryWeapon); err != nil {
+			return env, err
+		}
+	}
+	// Armor the character carries is worn without a compendium lookup.
+	if cmd.ArmorSlug != "" && sheet.ArmorItem(cmd.ArmorSlug) < 0 {
+		if env.Armor, env.IsShield, err = a.compendiumArmor(ctx, cmd.ArmorSlug, campaignID); err != nil {
+			return env, userError{err}
+		}
+	}
+	return env, nil
+}
+
+// preparedCaps are the prepared-spell totals of the sheet's classes at
+// their levels, by class slug; a class the compendium lacks has no cap.
+func preparedCaps(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet) (map[string]int, error) {
 	caps := map[string]int{}
 	for _, cl := range sheet.Classes {
-		info, _, err := classEntry(ctx, a.Store.Queries, cl.Slug, cl.Source)
+		info, _, err := classEntry(ctx, q, cl.Slug, cl.Source)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
@@ -284,17 +281,13 @@ func (a *App) preparedCaps(ctx context.Context, ch sqlc.Character) (map[string]i
 }
 
 // masteryEnv is the compendium weapon with a mastery named name, as the
-// compendium spells it ("" when none), and the character's mastery limit.
-func (a *App) masteryEnv(ctx context.Context, ch sqlc.Character, name string) (string, int, error) {
-	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
+// compendium spells it ("" when none), and the sheet's mastery limit.
+func (a *App) masteryEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, campaignID int64, name string) (string, int, error) {
+	weapons, err := a.masteryWeapons(ctx, campaignID)
 	if err != nil {
 		return "", 0, err
 	}
-	weapons, err := a.masteryWeapons(ctx, ch.CampaignID)
-	if err != nil {
-		return "", 0, err
-	}
-	limit, err := masteryLimit(ctx, a.Store.Queries, sheet, "")
+	limit, err := masteryLimit(ctx, q, sheet, "")
 	if i := slices.IndexFunc(weapons, func(w compendium.NameDesc) bool { return strings.EqualFold(w.Name, name) }); i >= 0 {
 		return weapons[i].Name, limit, err
 	}
@@ -463,20 +456,6 @@ func (a *App) characterTopics(ctx context.Context, id int64) ([]hub.Topic, error
 		topics = append(topics, hub.Topic{Kind: hub.TopicEncounter, ID: e})
 	}
 	return topics, err
-}
-
-// hasArmorItem reports whether the character carries armor (or a shield)
-// named name, which it then wears without a compendium lookup.
-func (a *App) hasArmorItem(ctx context.Context, characterID int64, name string) (bool, error) {
-	row, err := a.Store.GetCharacter(ctx, characterID)
-	if err != nil {
-		return false, err
-	}
-	sheet, err := dnd5e.ParseSheet(row.SheetJson)
-	if err != nil {
-		return false, err
-	}
-	return sheet.ArmorItem(name) >= 0, nil
 }
 
 // compendiumArmor finds armor (or a shield) in the compendium by slug.

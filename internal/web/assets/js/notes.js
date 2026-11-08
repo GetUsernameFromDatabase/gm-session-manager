@@ -16,6 +16,12 @@ function randomID() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
+// openWeb opens a peer's link or picture only as a web page: never javascript: or data: URLs.
+function openWeb(url) {
+  const u = new URL(url, location.href);
+  if (u.protocol === "https:" || u.protocol === "http:") window.open(u, "_blank", "noopener");
+}
+
 async function json(res) {
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
@@ -61,6 +67,10 @@ class BlockEditor {
   async start() {
     const data = await json(await fetch(`/blocks/${this.id}/doc`));
     if (this.destroyed) return;
+    // After a 410 (fell behind a snapshot): edits not yet confirmed, to replay onto the fresh doc.
+    const unsent = this.editor && sendableSteps(this.editor.state)?.steps.map((s) => s.toJSON());
+    // Typing goes on into the new editor, at the same place.
+    const caret = this.editor?.isFocused && this.editor.state.selection.from;
     this.editor?.destroy();
     this.editor = new Editor({
       element: this.el,
@@ -79,11 +89,21 @@ class BlockEditor {
     });
     this.lastSnapshot = data.docVersion;
     this.receive({ version: data.docVersion, steps: data.steps, clientIDs: data.clientIDs });
+    if (unsent?.length) this.replay(unsent);
+    if (caret) this.editor.commands.focus(caret);
     gsm.send({ type: "sub", blocks: [this.id] });
     // Steps committed between /doc and the subscription are never pushed.
     this.catchUp();
     clearInterval(this.timer); // start() runs again after a 410
     this.timer = setInterval(() => this.snapshot(), SNAPSHOT_EVERY_MS);
+  }
+
+  // replay applies steps made against an older doc; those that no longer fit are dropped.
+  replay(steps) {
+    const tr = this.editor.state.tr;
+    const dropped = steps.filter((s) => tr.maybeStep(Step.fromJSON(this.editor.schema, s)).failed).length;
+    if (tr.docChanged) this.editor.view.dispatch(tr);
+    if (dropped) window.templ.toast.add({ type: "error", description: "Some of your recent edits to this note could not be kept." });
   }
 
   setEditable(on) {
@@ -274,7 +294,7 @@ function nodeActions(ed, target, e) {
     const attached = /^\/attachments\/(\d+)$/.exec(node.attrs.src);
     if (!attached) {
       showMenu(point, [
-        ["Open", () => window.open(node.attrs.src, "_blank"), "external-link"],
+        ["Open", () => openWeb(node.attrs.src), "external-link"],
         null,
         ["Remove", () => chain().setMeta(KEEP_IMAGES, false).deleteRange({ from: pos, to: pos + node.nodeSize }).run(), "trash-2", true],
       ]);
@@ -293,7 +313,7 @@ function nodeActions(ed, target, e) {
   // Select the whole link so Replace and Remove act on all of its text.
   const select = () => chain().setTextSelection(hit.pos).extendMarkRange("link");
   const actions = [
-    ["Open", () => window.open(href, "_blank"), "external-link"],
+    ["Open", () => openWeb(href), "external-link"],
     null,
     ["Remove", () => select().deleteSelection().run(), "trash-2", true],
   ];

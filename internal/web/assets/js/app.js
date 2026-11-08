@@ -304,7 +304,8 @@
       document.getElementById("link-check-status").textContent =
         `Checked ${done} of ${links.size} links` + (broken ? ` · ${broken} didn't load` : "");
     }
-    document.querySelector("[data-untick-broken]")?.classList.toggle("hidden", !broken);
+    const untick = document.querySelector("[data-untick-broken]");
+    if (untick) untick.hidden = !broken;
   }
 
   // summarizeImport counts the ticked rows, in total and per category they

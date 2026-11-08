@@ -3,11 +3,13 @@ package compendium
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -55,6 +57,19 @@ func serveMirror(t *testing.T, files map[string]string, fail bool) {
 	old := fiveToolsBase
 	fiveToolsBase = srv.URL + "/"
 	t.Cleanup(func() { srv.Close(); fiveToolsBase = old })
+}
+
+func TestMirrorGetMissingFile(t *testing.T) {
+	serveMirror(t, fakeMirror, false)
+	m := &mirror{ctx: context.Background(), files: map[string]json.RawMessage{}}
+	raw, err := m.get("missing.json")
+	if err != nil || raw != nil {
+		t.Fatalf("get(missing) = %q, %v; want nil, nil", raw, err)
+	}
+	_, err = fetch(context.Background(), fiveToolsBase+"missing.json", bookMaxBody)
+	if !errors.Is(err, ErrNoPage) || !strings.Contains(err.Error(), "no page at "+fiveToolsBase) {
+		t.Errorf("fetch 404 = %v; want ErrNoPage with the link", err)
+	}
 }
 
 func TestFiveToolsBooks(t *testing.T) {

@@ -122,6 +122,11 @@ func ParseWikidot(page string, body []byte) (string, Entry, error) {
 			e.Name = strings.TrimSpace(after) // "Monk: Way of Mercy"
 		}
 		d := ClassData{Caster: "none", SubclassOf: prefix}
+		for _, b := range blocks {
+			if b.Rows != nil && d.Caster == "none" {
+				d.Caster = slotCaster(b.Rows) // Eldritch Knight, Arcane Trickster
+			}
+		}
 		d.Desc, d.Features = featuresUnder(blocks, nil, "")
 		e.Data, e.Text = d, joinText(d.Desc, FeaturesText(d.Features))
 	default:
@@ -256,9 +261,17 @@ func collect(n *html.Node, out *[]block) {
 		case "h1", "h2", "h3", "h4", "h5", "h6":
 			*out = append(*out, block{Heading: int(c.Data[1] - '0'), Text: textOf(c)})
 		case "p", "li":
-			if c.Data == "li" && hasChild(c, "ul", "ol") {
-				collect(c, out)
-				continue
+			var nested []*html.Node
+			if c.Data == "li" {
+				// the item's own text ("Option. Choose one:") goes before its sub-lists
+				for k := c.FirstChild; k != nil; k = k.NextSibling {
+					if k.Type == html.ElementNode && (k.Data == "ul" || k.Data == "ol") {
+						nested = append(nested, k)
+					}
+				}
+				for _, k := range nested {
+					c.RemoveChild(k)
+				}
 			}
 			for _, p := range splitAtLabels(c) {
 				text, label := textOf(p), leadingLabel(p)
@@ -270,6 +283,9 @@ func collect(n *html.Node, out *[]block) {
 					label, rest = "", text
 				}
 				*out = append(*out, block{Label: label, Text: rest, Item: c.Data == "li", Links: links(p)})
+			}
+			for _, k := range nested {
+				collect(k, out)
 			}
 		case "table":
 			b := block{Links: links(c)}
@@ -288,15 +304,6 @@ func collect(n *html.Node, out *[]block) {
 			collect(c, out)
 		}
 	}
-}
-
-func hasChild(n *html.Node, tags ...string) bool {
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		if c.Type == html.ElementNode && slices.Contains(tags, c.Data) {
-			return true
-		}
-	}
-	return false
 }
 
 func eachElement(n *html.Node, tag string, f func(*html.Node)) {
@@ -487,7 +494,6 @@ func classTable(d *ClassData, levels map[string][]int, rows [][]string) bool {
 		return false
 	}
 	cols := rows[head]
-	maxSlot := 0
 	for _, r := range rows[head+1:] {
 		m := reOrdinal.FindStringSubmatch(cellAt(r, 0))
 		if m == nil {
@@ -505,11 +511,7 @@ func classTable(d *ClassData, levels map[string][]int, rows [][]string) bool {
 						levels[f] = append(levels[f], level)
 					}
 				}
-			case reOrdinal.MatchString(col):
-				if !empty {
-					n, _ := strconv.Atoi(reOrdinal.FindStringSubmatch(col)[1])
-					maxSlot = max(maxSlot, n)
-				}
+			case reOrdinal.MatchString(col): // spell slots, read by slotCaster
 			case col == "Slot Level":
 				d.Caster = "pact"
 			case !empty:
@@ -520,16 +522,44 @@ func classTable(d *ClassData, levels map[string][]int, rows [][]string) bool {
 			}
 		}
 	}
-	switch {
-	case d.Caster == "pact":
-	case maxSlot == 9:
-		d.Caster = "full"
-	case maxSlot == 5:
-		d.Caster = "half"
-	case maxSlot == 4:
-		d.Caster = "third"
+	if d.Caster != "pact" {
+		d.Caster = slotCaster(rows[head:])
 	}
 	return true
+}
+
+// slotCaster is the caster type a table's spell slot columns ("1st".."9th")
+// show: the highest slot level any level row fills. The header is the first
+// row with an ordinal past its first cell, since level rows open with one.
+func slotCaster(rows [][]string) string {
+	head := slices.IndexFunc(rows, func(r []string) bool {
+		return len(r) > 1 && slices.ContainsFunc(r[1:], reOrdinal.MatchString)
+	})
+	maxSlot := 0
+	if head >= 0 {
+		cols := rows[head]
+		for _, r := range rows[head+1:] {
+			if !reOrdinal.MatchString(cellAt(r, 0)) {
+				continue
+			}
+			for i, col := range cols {
+				m := reOrdinal.FindStringSubmatch(col)
+				if v := cellAt(r, i); i > 0 && m != nil && v != "" && v != "-" && v != "—" {
+					n, _ := strconv.Atoi(m[1])
+					maxSlot = max(maxSlot, n)
+				}
+			}
+		}
+	}
+	switch maxSlot {
+	case 9:
+		return "full"
+	case 5:
+		return "half"
+	case 4:
+		return "third"
+	}
+	return "none"
 }
 
 func cellAt(r []string, i int) string {

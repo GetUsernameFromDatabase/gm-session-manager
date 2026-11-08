@@ -118,6 +118,7 @@ func (a *App) Router() *gin.Engine {
 	r.GET("/characters/:character/create", a.wizardStart)
 	r.GET("/characters/:character/create/:step", a.wizardPage)
 	r.POST("/characters/:character/create/:step", a.wizardSave)
+	r.POST("/characters/:character/create/:step/change", a.wizardChange)
 	r.GET("/characters/:character/levelup", a.levelUpForm)
 	r.POST("/characters/:character/levelup", a.levelUp)
 	r.POST("/characters/:character/levelup/revert", a.revertLevelUp)

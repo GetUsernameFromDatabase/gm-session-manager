@@ -206,6 +206,9 @@ var pageClient = &http.Client{
 	},
 }
 
+// ErrNoPage is returned (wrapped, with the link) when a site answers 404.
+var ErrNoPage = errors.New("no page at")
+
 // fetch gets a page of at most maxBody bytes.
 func fetch(ctx context.Context, link string, maxBody int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
@@ -220,7 +223,7 @@ func fetch(ctx context.Context, link string, maxBody int64) ([]byte, error) {
 	switch res.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotFound:
-		return nil, fmt.Errorf("no page at %s", link)
+		return nil, fmt.Errorf("%w %s", ErrNoPage, link)
 	default:
 		return nil, fmt.Errorf("fetch %s: %s", link, res.Status)
 	}

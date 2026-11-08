@@ -175,10 +175,45 @@ func TestParseWikidotSubclass(t *testing.T) {
 		{Name: "Hands of Healing", Desc: "At 3rd level, your touch can mend wounds.", Levels: []int{3}},
 		{Name: "Physician's Touch", Desc: "Starting at 6th level, you cure more.", Levels: []int{6}},
 	}
-	if e.Kind != KindSubclass || e.Name != "Way of Mercy" || e.Slug != "mercy" || d.SubclassOf != "monk" || !reflect.DeepEqual(d.Features, want) {
+	if e.Kind != KindSubclass || e.Name != "Way of Mercy" || e.Slug != "mercy" || d.SubclassOf != "monk" || d.Caster != "none" || !reflect.DeepEqual(d.Features, want) {
 		t.Errorf("%+v %+v", e, d)
 	}
 	roundTrip(t, e)
+}
+
+// TestParseWikidotSubclassCaster: a subclass's spell slot table makes it a
+// third caster; spell lists and other tables do not.
+func TestParseWikidotSubclassCaster(t *testing.T) {
+	for _, tt := range []struct{ name, table, want string }{
+		{"slots", `<tr><th colspan="3"></th><th colspan="4">Spell Slots per Spell Level</th></tr>
+<tr><th>Fighter Level</th><th>Cantrips Known</th><th>Spells Known</th><th>1st</th><th>2nd</th><th>3rd</th><th>4th</th></tr>
+<tr><td>3rd</td><td>2</td><td>3</td><td>2</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td>19th</td><td>3</td><td>12</td><td>4</td><td>3</td><td>3</td><td>1</td></tr>`, "third"},
+		{"spell list", `<tr><th>Cleric Level</th><th>Spells</th></tr><tr><td>1st</td><td>bless, cure wounds</td></tr>`, "none"},
+		{"no slots filled", `<tr><th>Level</th><th>1st</th></tr><tr><td>3rd</td><td>-</td></tr>`, "none"},
+	} {
+		_, e, err := ParseWikidot("fighter:eldritch-knight", wikiPage("Fighter: Eldritch Knight", `<p>Source: Some Book</p>
+<h3>Spellcasting</h3><p>At 3rd level, you cast spells.</p><table>`+tt.table+`</table>`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := e.Data.(ClassData); d.Caster != tt.want {
+			t.Errorf("%s: caster %q, want %q", tt.name, d.Caster, tt.want)
+		}
+	}
+}
+
+// TestWikidotNestedList: an item holding a sub-list keeps its own text.
+func TestWikidotNestedList(t *testing.T) {
+	_, e, err := ParseWikidot("feat:test", wikiPage("Test", `<p>Source: Some Book</p>
+<ul><li><strong>Option.</strong> Choose one:<ul><li>Fire</li><li>Cold</li></ul></li><li>Plain item</li></ul>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []NameDesc{{Name: "Option", Desc: "Choose one:"}}
+	if d := e.Data.(TextData); !reflect.DeepEqual(d.Parts, want) || d.Desc != "- Fire\n\n- Cold\n\n- Plain item" {
+		t.Errorf("%+v", d)
+	}
 }
 
 func TestParseWikidotClass(t *testing.T) {

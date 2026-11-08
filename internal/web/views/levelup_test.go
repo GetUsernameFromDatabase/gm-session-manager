@@ -8,6 +8,22 @@ import (
 	"gm-session-manager/internal/dnd5e"
 )
 
+// TestOptionText: equipment options read as one sentence, "and" before the last part.
+func TestOptionText(t *testing.T) {
+	for _, tc := range []struct {
+		o    compendium.EquipmentOption
+		want string
+	}{
+		{compendium.EquipmentOption{Letter: "B", GP: 50}, "(B) 50 GP"},
+		{compendium.EquipmentOption{Letter: "A", Items: []compendium.EquipmentItem{{Name: "Book", Qty: 1}, {Name: "Daggers", Qty: 2}}, GP: 8}, "(A) Book, 2 Daggers and 8 GP"},
+		{compendium.EquipmentOption{Letter: "C", Items: []compendium.EquipmentItem{{Name: "Robe", Qty: 1}, {Name: "Staff", Qty: 1}}}, "(C) Robe and Staff"},
+	} {
+		if got := optionText(tc.o); got != tc.want {
+			t.Errorf("optionText(%+v) = %q, want %q", tc.o, got, tc.want)
+		}
+	}
+}
+
 // TestDrawsField: a refusal's field counts as drawn only where the templates
 // render an at for it.
 func TestDrawsField(t *testing.T) {
@@ -62,10 +78,10 @@ func TestDrawsField(t *testing.T) {
 	}{
 		{"name on details", FieldName, WizardView{Step: "details"}, true},
 		{"name elsewhere", FieldName, WizardView{Step: "class"}, false},
-		{"mode with three abilities", FieldMode, WizardView{Step: "background", Choice: background}, true},
-		{"mode on another step", FieldMode, WizardView{Step: "species", Choice: background}, false},
-		{"mode without three abilities", FieldMode, WizardView{Step: "background", Choice: &WizardChoice{Abilities: []string{"int"}}}, false},
-		{"mode with nothing picked", FieldMode, WizardView{Step: "background"}, false},
+		{"mode with three abilities", FieldMode, WizardView{Step: "abilities", Choice: background}, true},
+		{"mode on another step", FieldMode, WizardView{Step: "background", Choice: background}, false},
+		{"mode without three abilities", FieldMode, WizardView{Step: "abilities", Choice: &WizardChoice{Abilities: []string{"int"}}}, false},
+		{"mode with nothing picked", FieldMode, WizardView{Step: "abilities"}, false},
 	} {
 		if got := tt.v.DrawsField(tt.key); got != tt.want {
 			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)

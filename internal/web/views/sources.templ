@@ -110,7 +110,7 @@ templ SourcePreview(v SourcePreviewView) {
 		@switchList("Keep", v.Plan.Keep, v.SourceLabel)
 		<form
 			hx-post={ fmt.Sprintf("/characters/%d/cmd", v.CharacterID) }
-			hx-on::after-request="if (event.detail.successful) this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click()"
+			{ templ.Attributes{"hx-on::after-request": closeDialogJS}... }
 			data-busy
 			class="group/busy"
 		>

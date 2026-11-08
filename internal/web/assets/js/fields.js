@@ -98,7 +98,16 @@ function sync() {
   }
 }
 sync();
-new MutationObserver(sync).observe(document.body, { childList: true, subtree: true });
+// Editors change the DOM on every keystroke; sync at most once a frame.
+let queued = false;
+new MutationObserver(() => {
+  if (queued) return;
+  queued = true;
+  requestAnimationFrame(() => {
+    queued = false;
+    sync();
+  });
+}).observe(document.body, { childList: true, subtree: true });
 
 // Raw text edits go to the input; the editor picks them up when shown again.
 document.addEventListener("input", (e) => {

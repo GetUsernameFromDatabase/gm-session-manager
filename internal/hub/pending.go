@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"crypto/subtle"
 	"slices"
 	"time"
 )
@@ -91,7 +92,7 @@ func (h *Hub) PendingBySecret(secret string) (*Pending, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, p := range h.pending {
-		if secret != "" && p.Secret == secret {
+		if secret != "" && subtle.ConstantTimeCompare([]byte(p.Secret), []byte(secret)) == 1 {
 			return p, true
 		}
 	}

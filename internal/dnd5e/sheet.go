@@ -449,11 +449,21 @@ type Sheet struct {
 	Armor  *WornArmor `json:"armor,omitempty"`
 	Shield bool       `json:"shield,omitempty"`
 	// SetupDone lists the creation steps already applied, which add to the
-	// sheet and so run once: class, species, background, equipment, and
-	// review when the player finished.
-	SetupDone []string `json:"setup_done,omitempty" validate:"dive,oneof=class species background choices equipment review"`
+	// sheet and so run once: class, background, species, abilities, choices,
+	// equipment, and review when the player finished.
+	SetupDone []string `json:"setup_done,omitempty" validate:"dive,oneof=class species background abilities choices equipment review"`
+	// SetupSnapshots are the character before each step in SetupDone, so the
+	// wizard can redo one; dropped once the review is saved.
+	SetupSnapshots map[string]SetupSnapshot `json:"setup_snapshots,omitempty"`
 	// EffectsVersion is the EffectsVersion the features last caught up with.
 	EffectsVersion int `json:"effects_version,omitempty"`
+}
+
+// SetupSnapshot is a character as it was before a creation step.
+type SetupSnapshot struct {
+	Sheet json.RawMessage `json:"sheet"`
+	MaxHP int             `json:"max_hp"`
+	HP    int             `json:"hp"`
 }
 
 // SetUp reports whether a creation step was applied.

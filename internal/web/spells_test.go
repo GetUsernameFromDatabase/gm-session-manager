@@ -108,7 +108,7 @@ func TestSpellCounts(t *testing.T) {
 	}
 	player := e.token(t, auth.RolePlayer)
 	create := fmt.Sprintf("/characters/%d/create/", e.characterID)
-	for _, step := range []string{"class=testlock", "species=human"} {
+	for _, step := range []string{"class=testlock", "species=human", "background=testfolk"} {
 		step, p, _ := strings.Cut(step, "=")
 		if w := e.do(t, http.MethodPost, create+step, player, url.Values{"pick": {p}}, false); w.Code != http.StatusSeeOther {
 			t.Fatalf("%s: %d %s", step, w.Code, w.Body)

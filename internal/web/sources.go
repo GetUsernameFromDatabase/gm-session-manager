@@ -141,8 +141,8 @@ func sourceIssue(kind string, r sheetRef, copies []views.SourceCopy) (views.Sour
 // sourceEnv resolves what the source command for ref needs: the copy at
 // ref.Source and, for a class or subclass, the pinned copy it replaces; name
 // is that copy's name.
-func (a *App) sourceEnv(ctx context.Context, sheet dnd5e.Sheet, ref dnd5e.SourceRef, campaignID int64) (env dnd5e.Env, name string, err error) {
-	row, err := a.Store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(refCompendiumKind[ref.Kind]), Slug: ref.Slug, SourceKey: ref.Source})
+func (a *App) sourceEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, ref dnd5e.SourceRef, campaignID int64) (env dnd5e.Env, name string, err error) {
+	row, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(refCompendiumKind[ref.Kind]), Slug: ref.Slug, SourceKey: ref.Source})
 	if err == nil {
 		var visible bool
 		if visible, err = a.entryVisible(ctx, row, campaignID); err == nil && !visible {
@@ -159,9 +159,9 @@ func (a *App) sourceEnv(ctx context.Context, sheet dnd5e.Sheet, ref dnd5e.Source
 	case dnd5e.RefSpell:
 		env.SourceSpell, err = spellFromRow(row)
 	case dnd5e.RefClass:
-		env.SourceOld, env.SourceNew, err = a.classSwitch(ctx, sheet, row)
+		env.SourceOld, env.SourceNew, err = a.classSwitch(ctx, q, sheet, row)
 	case dnd5e.RefSubclass:
-		env.SourceOld, env.SourceNew, err = a.subclassSwitch(ctx, sheet, row)
+		env.SourceOld, env.SourceNew, err = subclassSwitch(ctx, q, sheet, row)
 	}
 	return env, row.Name, err
 }
@@ -169,7 +169,7 @@ func (a *App) sourceEnv(ctx context.Context, sheet dnd5e.Sheet, ref dnd5e.Source
 // classSwitch is the sheet's pinned copy of row's class (nil when gone) and
 // row's copy, each with the subclass: the new one from row's source when it
 // has it, else the old one's.
-func (a *App) classSwitch(ctx context.Context, sheet dnd5e.Sheet, row sqlc.CompendiumEntry) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
+func (a *App) classSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, row sqlc.CompendiumEntry) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
 	next, err := classInfo(row)
 	i := slices.IndexFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == row.Slug })
 	if err != nil || i < 0 {
@@ -177,7 +177,7 @@ func (a *App) classSwitch(ctx context.Context, sheet dnd5e.Sheet, row sqlc.Compe
 	}
 	cl := sheet.Classes[i]
 	var old *dnd5e.ClassInfo
-	info, missing, err := classEntry(ctx, a.Store.Queries, cl.Slug, cl.Source)
+	info, missing, err := classEntry(ctx, q, cl.Slug, cl.Source)
 	switch {
 	case err == nil && !missing:
 		if err := a.withSubclass(ctx, &info, sheet, ""); err != nil {
@@ -190,11 +190,11 @@ func (a *App) classSwitch(ctx context.Context, sheet dnd5e.Sheet, row sqlc.Compe
 	if cl.Subclass == "" {
 		return old, next, nil
 	}
-	subSlug, _, err := subclassRef(ctx, a.Store.Queries, cl.Slug, cl, cl.Subclass)
+	subSlug, _, err := subclassRef(ctx, q, cl.Slug, cl, cl.Subclass)
 	if err != nil || subSlug == "" {
 		return old, next, err
 	}
-	sub, err := a.Store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(compendium.KindSubclass), Slug: subSlug, SourceKey: row.SourceKey})
+	sub, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(compendium.KindSubclass), Slug: subSlug, SourceKey: row.SourceKey})
 	switch {
 	case err == nil:
 		err = setSubclass(&next, sub)
@@ -209,7 +209,7 @@ func (a *App) classSwitch(ctx context.Context, sheet dnd5e.Sheet, row sqlc.Compe
 
 // subclassSwitch is the sheet's class with its pinned copy of row's
 // subclass (nil when gone) and with row's.
-func (a *App) subclassSwitch(ctx context.Context, sheet dnd5e.Sheet, row sqlc.CompendiumEntry) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
+func subclassSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, row sqlc.CompendiumEntry) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
 	i := slices.IndexFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool {
 		return cl.SubclassSlug == row.Slug || cl.SubclassSlug == "" && cl.Subclass != "" && compendium.Slugify(cl.Subclass) == row.Slug
 	})
@@ -217,7 +217,7 @@ func (a *App) subclassSwitch(ctx context.Context, sheet dnd5e.Sheet, row sqlc.Co
 		return nil, dnd5e.ClassInfo{}, nil // SwitchSource refuses it
 	}
 	cl := sheet.Classes[i]
-	base, _, err := classEntry(ctx, a.Store.Queries, cl.Slug, cl.Source)
+	base, _, err := classEntry(ctx, q, cl.Slug, cl.Source)
 	if errors.Is(err, sql.ErrNoRows) {
 		base, err = dnd5e.ClassInfo{Slug: cl.Slug, Name: cl.Name}, nil
 	}
@@ -228,7 +228,7 @@ func (a *App) subclassSwitch(ctx context.Context, sheet dnd5e.Sheet, row sqlc.Co
 	if err := setSubclass(&next, row); err != nil {
 		return nil, next, err
 	}
-	oldRow, missing, err := entryFor(ctx, a.Store.Queries, compendium.KindSubclass, row.Slug, cl.SubclassSource)
+	oldRow, missing, err := entryFor(ctx, q, compendium.KindSubclass, row.Slug, cl.SubclassSource)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && missing {
 		return nil, next, nil
 	}
@@ -277,7 +277,7 @@ func (a *App) sourcePreview(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	ref := cmd.SourceRef
-	env, name, err := a.sourceEnv(ctx, sheet, ref, ch.CampaignID)
+	env, name, err := a.sourceEnv(ctx, a.Store.Queries, sheet, ref, ch.CampaignID)
 	if a.commandFailed(c, err) {
 		return
 	}

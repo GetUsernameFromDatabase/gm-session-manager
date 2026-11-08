@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -23,14 +24,15 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
-// wizardSteps are the creation wizard's steps, in order. Class, species,
-// background, choices and equipment add to the sheet, so each runs once; afterwards
-// the sheet is changed directly.
+// wizardSteps are the creation wizard's steps, in order: what changes the
+// most comes first. Every step but details adds to the sheet, so each runs
+// once; it can be redone (wizardChange) until the review is saved, then the
+// sheet is changed directly.
 var wizardSteps = []views.WizardStep{
 	{Key: "class", Title: "Class"},
+	{Key: "background", Title: "Background"},
 	{Key: "species", Title: "Species"},
 	{Key: "abilities", Title: "Ability scores"},
-	{Key: "background", Title: "Background"},
 	{Key: "choices", Title: "Choices"},
 	{Key: "equipment", Title: "Equipment"},
 	{Key: "details", Title: "Details"},
@@ -48,6 +50,111 @@ func nextStep(id int64, key string) string {
 		return fmt.Sprintf("/characters/%d", id)
 	}
 	return wizardPath(id, wizardSteps[i+1].Key)
+}
+
+// stepNeeds are the earlier picks a step asks about: saved without them, it
+// could never ask for what they bring (a background feat's spells, a class's gear).
+var stepNeeds = map[string][]string{
+	"abilities": {"background"},
+	"choices":   {"class", "background", "species"},
+	"equipment": {"class", "background"},
+}
+
+// missingSteps are the steps step needs that the sheet lacks. A background
+// is needed only when the compendium has one to pick.
+func (a *App) missingSteps(ctx context.Context, sh dnd5e.Sheet, step string, campaignID int64) ([]views.WizardStep, error) {
+	has := map[string]bool{"class": len(sh.Classes) > 0, "species": sh.Species != "", "background": sh.Background != ""}
+	if !has["background"] && slices.Contains(stepNeeds[step], "background") {
+		names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(compendium.KindBackground), CampaignID: campaignID})
+		if err != nil {
+			return nil, err
+		}
+		has["background"] = len(names) == 0
+	}
+	var out []views.WizardStep
+	for _, s := range wizardSteps {
+		if slices.Contains(stepNeeds[step], s.Key) && !has[s.Key] {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+// legacyBackground reports a sheet whose background step added the ability
+// increases, before they moved to the abilities step.
+// shortcut: also true for a finished new sheet that skipped the abilities, which then shows the "set on the sheet" text; drop once no sheet predates the move.
+func legacyBackground(sh dnd5e.Sheet) bool {
+	_, snap := sh.SetupSnapshots["background"]
+	return sh.SetUp("background") && !snap && !sh.SetUp("abilities")
+}
+
+// backgroundChoice is the sheet's background as the wizard shows it, for its
+// ability increases; nil without one in the compendium with three abilities.
+func (a *App) backgroundChoice(ctx context.Context, sh dnd5e.Sheet) (*views.WizardChoice, error) {
+	if sh.Background == "" {
+		return nil, nil
+	}
+	row, _, err := entryFor(ctx, a.Store.Queries, compendium.KindBackground, compendium.Slugify(sh.Background), sh.BackgroundSource)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	data, err := compendium.DecodeData(compendium.KindBackground, row.DataJson)
+	if err != nil {
+		return nil, err
+	}
+	if c := wizardChoice(row, data); len(c.Abilities) == 3 {
+		return c, nil
+	}
+	return nil, nil
+}
+
+// wizardChange redoes a step: the character goes back to how it was before
+// it, which also undoes every step saved after it.
+func (a *App) wizardChange(c *gin.Context) {
+	_, ch, step, ok := a.wizardAccess(c)
+	if !ok {
+		return
+	}
+	if step != c.Param("step") { // wizardAccess falls back to the first step
+		a.fail(c, http.StatusNotFound, "There is no such step.")
+		return
+	}
+	ctx := c.Request.Context()
+	err := a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, cc *dnd5e.Character) error {
+		snap, ok := cc.Sheet.SetupSnapshots[step]
+		if !ok {
+			return userError{errors.New("this step can no longer be changed here; change it on the sheet")}
+		}
+		sh, err := dnd5e.ParseSheet(string(snap.Sheet))
+		if err != nil {
+			return err
+		}
+		// The steps saved before this one can still be redone.
+		for k, v := range cc.Sheet.SetupSnapshots {
+			if sh.SetUp(k) {
+				if sh.SetupSnapshots == nil {
+					sh.SetupSnapshots = map[string]dnd5e.SetupSnapshot{}
+				}
+				sh.SetupSnapshots[k] = v
+			}
+		}
+		cc.Sheet, cc.MaxHP, cc.HP = sh, snap.MaxHP, snap.HP
+		// Level-ups taken since were undone too: Revert would bring back the old sheet.
+		return q.DeleteLevelUps(ctx, ch.ID)
+	})
+	if a.commandFailed(c, err) {
+		return
+	}
+	topics, err := a.characterTopics(ctx, ch.ID)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.Hub.Publish(ch.CampaignID, topics...)
+	redirect(c, wizardPath(ch.ID, step))
 }
 
 // wizardAccess loads the character for its player, with the step asked for.
@@ -103,6 +210,14 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 	}
 	s.CanSheet, s.CanHP, s.CanConditions = false, false, false // the review is read-only
 	v := views.WizardView{CharacterID: ch.ID, Step: step, Steps: wizardSteps, Sheet: s, Picked: pick}
+	if v.Missing, err = a.missingSteps(ctx, s.C.Sheet, step, ch.CampaignID); err != nil {
+		return v, err
+	}
+	if step == "abilities" {
+		v.Choice, err = a.backgroundChoice(ctx, s.C.Sheet)
+		v.LegacyBackground = legacyBackground(s.C.Sheet)
+		return v, err
+	}
 	kind := map[string]compendium.Kind{"class": compendium.KindClass, "species": compendium.KindSpecies, "background": compendium.KindBackground}[step]
 	if kind == "" {
 		switch step {
@@ -578,19 +693,37 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 	if err != nil {
 		return choiceGroup{}, false, err
 	}
+	slugs := make([]string, len(names))
+	for i, n := range names {
+		slugs[i] = n.Slug
+	}
+	// One query for every feat's priority copy, as entryFor picks unpinned.
+	rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: string(compendium.KindFeat), Slugs: slugs})
+	if err != nil {
+		return choiceGroup{}, false, err
+	}
+	bySlug := make(map[string]sqlc.ListCompendiumBySlugsRow, len(rows))
+	for _, r := range rows {
+		bySlug[r.Slug] = r
+	}
 	key := "trait_" + compendium.Slugify(p.Name)
 	var opts []compendium.NameDesc
 	sub := map[string][]choiceGroup{}
 	sources := map[string]string{}
 	for _, n := range names {
-		td, source, err := a.textEntrySource(ctx, compendium.KindFeat, n.Slug, "")
+		row, ok := bySlug[n.Slug]
+		if !ok {
+			continue
+		}
+		d, err := compendium.DecodeData(compendium.KindFeat, row.DataJson)
 		if err != nil {
 			return choiceGroup{}, false, err
 		}
-		if td == nil || td.Category != "Origin" || !meetsPrerequisite(td.Prerequisite, sh, sh.Level(), nil) {
+		td := d.(*compendium.TextData)
+		if td.Category != "Origin" || !meetsPrerequisite(td.Prerequisite, sh, sh.Level(), nil) {
 			continue
 		}
-		sources[n.Name] = source
+		sources[n.Name] = row.SourceKey
 		opts = append(opts, compendium.NameDesc{Name: n.Name, Desc: textMarkdown(td)})
 		groups, err := a.featChoices(ctx, key+"_"+n.Slug, n.Name, td, "", sh, campaignID)
 		if err != nil {
@@ -1427,15 +1560,35 @@ func (a *App) wizardSave(c *gin.Context) {
 func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dnd5e.Command, error) {
 	ctx := c.Request.Context()
 	pick := c.PostForm("pick")
+	if stepNeeds[step] != nil {
+		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
+		if err != nil {
+			return nil, err
+		}
+		if missing, err := a.missingSteps(ctx, sheet, step, ch.CampaignID); err != nil || len(missing) > 0 {
+			return nil, err // saved now, the step could not ask for what they bring later
+		}
+	}
 	once := func(apply func(s *dnd5e.Sheet, cc *dnd5e.Character) error) *dnd5e.Command {
 		cmd := dnd5e.NewCommand("create "+step, perm.ScopeSheet, func(cc *dnd5e.Character) error {
 			if cc.Sheet.SetUp(step) {
 				return nil
 			}
+			before := cc.Sheet
+			before.SetupSnapshots = nil
+			raw, err := json.Marshal(before)
+			if err != nil {
+				return err
+			}
+			snap := dnd5e.SetupSnapshot{Sheet: raw, MaxHP: cc.MaxHP, HP: cc.HP}
 			if err := apply(&cc.Sheet, cc); err != nil {
 				return err
 			}
 			cc.Sheet.SetupDone = append(cc.Sheet.SetupDone, step)
+			if cc.Sheet.SetupSnapshots == nil {
+				cc.Sheet.SetupSnapshots = map[string]dnd5e.SetupSnapshot{}
+			}
+			cc.Sheet.SetupSnapshots[step] = snap
 			return nil
 		})
 		return &cmd
@@ -1495,18 +1648,12 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 				return nil
 			}), nil
 		}
-		raises, err := backgroundRaises(c, wizardChoice(row, data).Abilities)
-		if err != nil {
-			return nil, err
-		}
 		feat, featSource, err := a.originFeat(ctx, td)
 		if err != nil {
 			return nil, err
 		}
 		return once(func(s *dnd5e.Sheet, _ *dnd5e.Character) error {
-			if err := applyBackground(s, row.Name, td, raises, feat); err != nil {
-				return err
-			}
+			applyBackground(s, row.Name, td, feat)
 			s.BackgroundSource = row.SourceKey
 			if feat != nil {
 				pinFeat(s, feat.Name, featSource)
@@ -1515,8 +1662,8 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		}), nil
 	case "abilities":
 		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
-		if err != nil || sheet.SetUp("background") {
-			return nil, err // base scores would undo the background's increases
+		if err != nil || legacyBackground(sheet) {
+			return nil, err
 		}
 		var f abilitiesForm
 		if err := c.ShouldBind(&f); err != nil {
@@ -1527,25 +1674,33 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			return nil, userError{errors.New("ability scores must be 3 to 20")}
 		}
 		scores := map[string]int{"str": f.Str, "dex": f.Dex, "con": f.Con, "int": f.Int, "wis": f.Wis, "cha": f.Cha}
-		cmd := dnd5e.NewCommand("create abilities", perm.ScopeSheet, func(cc *dnd5e.Character) error {
-			if cc.Sheet.SetUp("background") {
-				// Checked again here: another device may have applied it since.
-				return userError{errors.New("set the ability scores before the background")}
+		bg, err := a.backgroundChoice(ctx, sheet)
+		if err != nil {
+			return nil, err
+		}
+		raises := map[string]int{}
+		if bg != nil {
+			if raises, err = backgroundRaises(c, bg.Abilities); err != nil {
+				return nil, err
 			}
-			before := cc.Sheet.Mod("con")
+		}
+		return once(func(s *dnd5e.Sheet, cc *dnd5e.Character) error {
+			before := s.Mod("con")
 			for ab, n := range scores {
-				cc.Sheet.Scores[ab] = n
+				if n+raises[ab] > 20 {
+					return fieldError{userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])}, views.FieldMode}
+				}
+				s.Scores[ab] = n + raises[ab]
 			}
 			// Hit points already gained follow the new Constitution.
-			delta := (cc.Sheet.Mod("con") - before) * cc.Sheet.Level()
+			delta := (s.Mod("con") - before) * s.Level()
 			cc.MaxHP, cc.HP = max(cc.MaxHP+delta, 0), max(cc.HP+delta, 0)
 			return nil
-		})
-		return &cmd, nil
+		}), nil
 	case "choices":
 		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
-		if err != nil || len(sheet.Classes) == 0 || sheet.Species == "" {
-			return nil, err // saved now, the step could not ask for them later
+		if err != nil {
+			return nil, err
 		}
 		cr, err := a.creationChoices(ctx, sheet, ch.CampaignID)
 		if err != nil {
@@ -1624,7 +1779,14 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		})
 		return &cmd, nil
 	case "review":
-		return once(func(*dnd5e.Sheet, *dnd5e.Character) error { return nil }), nil
+		cmd := dnd5e.NewCommand("create review", perm.ScopeSheet, func(cc *dnd5e.Character) error {
+			if !cc.Sheet.SetUp(step) {
+				cc.Sheet.SetupDone = append(cc.Sheet.SetupDone, step)
+			}
+			cc.Sheet.SetupSnapshots = nil // finished: steps change on the sheet from now on
+			return nil
+		})
+		return &cmd, nil
 	}
 	return nil, nil
 }
@@ -1764,14 +1926,8 @@ func (a *App) originFeat(ctx context.Context, d *compendium.TextData) (*dnd5e.Fe
 	return nil, "", nil
 }
 
-func applyBackground(s *dnd5e.Sheet, name string, d *compendium.TextData, raises map[string]int, feat *dnd5e.Feature) error {
+func applyBackground(s *dnd5e.Sheet, name string, d *compendium.TextData, feat *dnd5e.Feature) {
 	s.Background = name
-	for ab, n := range raises {
-		if s.Scores[ab]+n > 20 {
-			return fieldError{userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])}, views.FieldMode}
-		}
-		s.Scores[ab] += n
-	}
 	for _, p := range d.Parts {
 		switch p.Type {
 		case "skill_proficiency":
@@ -1783,7 +1939,6 @@ func applyBackground(s *dnd5e.Sheet, name string, d *compendium.TextData, raises
 	if feat != nil {
 		addFeat(s, *feat)
 	}
-	return nil
 }
 
 // addFeat puts a feat on the sheet with what the sheet can automate.

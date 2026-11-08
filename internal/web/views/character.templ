@@ -699,7 +699,7 @@ templ conditionChip(s SheetView, slug string) {
 templ exhaustionChip(s SheetView) {
 	{{ c, on := s.condition(exhaustion) }}
 	@tooltip.Tooltip() {
-		<span class={ "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs", templ.KV("border-primary bg-primary text-primary-foreground", on), templ.KV("text-muted-foreground", !on), templ.KV("max-sm:not-group-data-open/conds:hidden", !on) } { tooltip.Trigger(ctx)... }>
+		<span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground data-on:border-primary data-on:bg-primary data-on:text-primary-foreground max-sm:not-data-on:not-group-data-open/conds:hidden" data-on?={ on } { tooltip.Trigger(ctx)... }>
 			if s.CanConditions {
 				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-4", Attributes: templ.Attributes{"aria-label": "Less exhaustion", "hx-post": s.cmdURL(), "hx-vals": cmdVals("exhaustion -1")}}) {
 					@icon.Minus(icon.Props{Size: 12})

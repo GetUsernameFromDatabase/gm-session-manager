@@ -78,3 +78,9 @@ WHERE character_id = ?;
 -- name: DeleteLevelUp :exec
 DELETE FROM level_ups
 WHERE id = ?;
+
+-- DeleteLevelUps drops a character's level-up snapshots, once a creation
+-- step it redoes undid them.
+-- name: DeleteLevelUps :exec
+DELETE FROM level_ups
+WHERE character_id = ?;

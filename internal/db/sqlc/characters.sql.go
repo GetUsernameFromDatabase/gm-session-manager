@@ -131,6 +131,18 @@ func (q *Queries) DeleteLevelUp(ctx context.Context, id int64) error {
 	return err
 }
 
+const deleteLevelUps = `-- name: DeleteLevelUps :exec
+DELETE FROM level_ups
+WHERE character_id = ?
+`
+
+// DeleteLevelUps drops a character's level-up snapshots, once a creation
+// step it redoes undid them.
+func (q *Queries) DeleteLevelUps(ctx context.Context, characterID int64) error {
+	_, err := q.db.ExecContext(ctx, deleteLevelUps, characterID)
+	return err
+}
+
 const getCharacter = `-- name: GetCharacter :one
 SELECT id, campaign_id, name, system, hp, max_hp, temp_hp, sheet_json, created_at, deleted_at FROM characters
 WHERE id = ? AND deleted_at IS NULL

@@ -169,7 +169,7 @@ func (m *mirror) get(rel string) (json.RawMessage, error) {
 	}
 	body, err := fetch(m.ctx, fiveToolsBase+rel, bookMaxBody)
 	if err != nil {
-		if strings.Contains(err.Error(), "no page at") {
+		if errors.Is(err, ErrNoPage) {
 			m.files[rel] = nil
 			return nil, nil
 		}

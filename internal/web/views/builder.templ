@@ -353,7 +353,7 @@ templ profForm(s SheetView, o builderOp, subject string) {
 		<form
 			class="grid gap-4 border-t pt-4"
 			hx-post={ s.cmdURL() }
-			hx-on::after-request="if (event.detail.successful) this.querySelector('[data-slot=dialog-close]').click()"
+			{ templ.Attributes{"hx-on::after-request": closeDialogJS}... }
 		>
 			<input type="hidden" name="prefix" value={ o.Prefix }/>
 			<input type="hidden" name="subject" value={ subject }/>
@@ -444,7 +444,7 @@ templ modEditForm(s SheetView, subject string) {
 		<form
 			class="grid gap-4 border-t pt-4"
 			hx-post={ s.cmdURL() }
-			hx-on::after-request="if (event.detail.successful) this.querySelector('[data-slot=dialog-close]').click()"
+			{ templ.Attributes{"hx-on::after-request": closeDialogJS}... }
 		>
 			<input type="hidden" name="prefix" value="mod edit"/>
 			<input type="hidden" name="from" value={ m.Target }/>
@@ -1225,7 +1225,7 @@ templ coinForm(s SheetView, focus string) {
 	<form
 		class="grid gap-4 border-t pt-4"
 		hx-post={ s.cmdURL() }
-		hx-on::after-request="if (event.detail.successful) this.querySelector('[data-slot=dialog-close]').click()"
+		{ templ.Attributes{"hx-on::after-request": closeDialogJS}... }
 	>
 		<div class="grid grid-cols-5 gap-2">
 			for _, c := range coinList(s.C.Sheet.Coins) {

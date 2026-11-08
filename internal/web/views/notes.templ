@@ -135,10 +135,18 @@ templ noteSection(title string, notes []NoteItem) {
 	}
 }
 
+// closeDialog closes the dialog around this element.
+const closeDialog = "this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click()"
+
 // closeDialogJS closes the dialog around an htmx request's element once the
 // server accepts it.
+var closeDialogJS = closeDialogAfter("")
+
+// closeDialogAfter is closeDialogJS running reset first, to clear fields.
 // A ComponentScript, since templ blanks a spread event handler given a string.
-var closeDialogJS = templ.JSUnsafeFuncCall("if (event.detail.successful) this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click()")
+func closeDialogAfter(reset string) templ.ComponentScript {
+	return templ.JSUnsafeFuncCall("if (event.detail.successful) { " + reset + closeDialog + " }")
+}
 
 // noteFields are a note's title and type, for creating or editing it.
 templ noteFields(id, title, kind string) {
@@ -433,7 +441,7 @@ templ blockMenu(v NoteView, b BlockView, i int) {
 						@label.Label(label.Props{Class: buttonLike}) {
 							@icon.Paperclip()
 							Attach a file
-							<input type="file" class="hidden" data-attach={ fmt.Sprint(b.ID) } onchange={ templ.JSUnsafeFuncCall(closeOnPickJS) }/>
+							<input type="file" class="hidden" data-attach={ fmt.Sprint(b.ID) } onchange={ templ.JSUnsafeFuncCall(closeDialog) }/>
 						}
 					}
 					if v.CanManage && i > 0 {
@@ -472,9 +480,6 @@ templ blockMenu(v NoteView, b BlockView, i int) {
 
 // buttonLike styles a label as an outline button.
 const buttonLike = "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent dark:border-input dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:size-4"
-
-// closeOnPickJS closes the block menu once a file is picked.
-const closeOnPickJS = "this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click()"
 
 templ moveButton(blockID int64, dir string) {
 	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/move", blockID), "hx-vals": fmt.Sprintf(`{"dir":%q}`, dir)}}) {

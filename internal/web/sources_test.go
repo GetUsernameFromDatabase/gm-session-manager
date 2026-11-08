@@ -187,6 +187,41 @@ func classCopy(source, features string) sqlc.UpsertCompendiumEntryParams {
 		DataJson: `{"hit_die":10,"features":[` + features + `]}`}
 }
 
+// TestRunCommandUsesCurrentSheet: a command's compendium lookups read the
+// sheet inside its transaction, not the caller's earlier copy.
+func TestRunCommandUsesCurrentSheet(t *testing.T) {
+	e := newTestEnv(t)
+	e.source(t, oldSrc, "2014")
+	e.source(t, newSrc, "2024")
+	for _, c := range []sqlc.UpsertCompendiumEntryParams{
+		classCopy(oldSrc, `{"name":"Strike","desc":"old strike","levels":[1]}`),
+		classCopy(newSrc, `{"name":"Strike","desc":"new strike","levels":[1]}`),
+	} {
+		if err := e.q().UpsertCompendiumEntry(t.Context(), c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stale, err := e.q().GetCharacter(t.Context(), e.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale.SheetJson = "{}" // read before another device added the class
+	e.setSheet(t, dnd5e.Sheet{
+		Classes:  []dnd5e.ClassLevel{{Slug: "testclass", Name: "Testclass", Level: 1, HitDie: 8, Source: oldSrc}},
+		Features: []dnd5e.Feature{{Name: "Strike", Source: "Testclass", Level: 1, Description: "old strike"}},
+	})
+	cmd, err := dnd5e.Parse("source class testclass " + newSrc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.app.runCommand(t.Context(), stale, cmd); err != nil {
+		t.Fatal(err)
+	}
+	if sh := e.sheet(t); len(sh.Features) != 1 || sh.Features[0].Description != "new strike" || sh.Classes[0].Source != newSrc {
+		t.Errorf("sheet %+v", sh)
+	}
+}
+
 // TestSourceSwitchKeepsEdits: switching a class replaces untouched features,
 // keeps an edited one and adds the new copy's features for levels taken,
 // through the preview and the command.
@@ -220,7 +255,7 @@ func TestSourceSwitchKeepsEdits(t *testing.T) {
 			t.Errorf("preview %v: %d", q, w.Code)
 		}
 	}
-	env, name, err := e.app.sourceEnv(t.Context(), e.sheet(t), dnd5e.SourceRef{Kind: dnd5e.RefClass, Slug: "testclass", Source: newSrc}, e.campaignID)
+	env, name, err := e.app.sourceEnv(t.Context(), e.app.Store.Queries, e.sheet(t), dnd5e.SourceRef{Kind: dnd5e.RefClass, Slug: "testclass", Source: newSrc}, e.campaignID)
 	if err != nil {
 		t.Fatal(err)
 	}

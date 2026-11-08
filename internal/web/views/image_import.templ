@@ -461,7 +461,7 @@ templ importRows(v ImportView) {
 		// Filled by app.js once links are checked.
 		<div id="link-check" hidden class="mb-2 flex flex-wrap items-center gap-2 text-sm">
 			<p id="link-check-status" class="font-medium" aria-live="polite"></p>
-			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Class: "hidden", Attributes: templ.Attributes{"data-untick-broken": ""}}) {
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{"data-untick-broken": "", "hidden": true}}) {
 				Untick them
 			}
 		</div>

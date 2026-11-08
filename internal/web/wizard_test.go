@@ -58,45 +58,53 @@ func TestCreationWizard(t *testing.T) {
 	if w := e.do(t, http.MethodGet, base+"/class?pick=wizard", player, nil, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Choose Wizard") {
 		t.Fatalf("class page: %d %s", w.Code, w.Body)
 	}
-	if w := e.do(t, http.MethodGet, base+"/background?pick=sage", player, nil, false); !strings.Contains(w.Body.String(), "Ability score increases") {
-		t.Errorf("background page lacks the increases: %s", w.Body)
+	if w := e.do(t, http.MethodGet, base+"/abilities", player, nil, false); !strings.Contains(w.Body.String(), "Choose these first") {
+		t.Errorf("abilities page before a background does not ask for it: %s", w.Body)
 	}
 	scores := url.Values{"str": {"8"}, "dex": {"14"}, "con": {"14"}, "int": {"15"}, "wis": {"12"}, "cha": {"10"}}
-	// Choices saved before a class and species change nothing, so the step
-	// still asks for them later (the languages checked below).
+	raised := maps.Clone(scores)
+	raised.Set("mode", "two")
+	raised.Set("plus2", "int")
+	raised.Set("plus1", "con")
+	// Choices and scores saved before what they need change nothing, so the
+	// steps still ask for them later (the languages checked below).
 	e.do(t, http.MethodPost, base+"/choices", player, url.Values{"language": {"Orc"}}, false)
+	e.do(t, http.MethodPost, base+"/abilities", player, scores, false)
 	for _, step := range []struct {
 		step string
 		form url.Values
 		next string
 	}{
-		{"class", url.Values{"pick": {"wizard"}}, "/species"},
+		{"class", url.Values{"pick": {"wizard"}}, "/background"},
+		{"background", url.Values{"pick": {"sage"}}, "/species"},
 		{"species", url.Values{"pick": {"goliath"}}, "/abilities"},
 		{"species", url.Values{"pick": {"goliath"}}, "/abilities"}, // once only
-		{"abilities", scores, "/background"},
-		{"background", url.Values{"pick": {"sage"}, "mode": {"two"}, "plus2": {"int"}, "plus1": {"con"}}, "/choices"},
+		{"abilities", raised, "/choices"},
 		{"choices", url.Values{"trait_giant-ancestry": {"Cloud's Jaunt (Cloud Giant)"}, "trait_giant-ancestry_ability": {"Wisdom"}, "trait_keen-senses": {"Perception"},
 			"trait_versatile": {"Alert"}, "language": {"Elvish", "Dwarvish", "Elvish"}, "spell": {"fire-bolt"}}, "/equipment"},
 		{"equipment", url.Values{"option_background": {"B"}}, "/details"},
 		{"details", url.Values{"name": {"Wren"}, "backstory": {"Raised in a library."}, "size": {"medium"}, "vision": {"Darkvision 60 ft"}}, "/review"},
 		{"review", nil, fmt.Sprintf("/characters/%d", e.characterID)},
 	} {
-		if step.step == "background" {
-			// Refused, the page keeps the increases asked for: two the same, or
-			// +1 to all three taking Wisdom above 20.
+		if step.step == "abilities" {
+			if w := e.do(t, http.MethodGet, base+"/abilities", player, nil, false); !strings.Contains(w.Body.String(), "Sage: ability score increases") {
+				t.Errorf("abilities page lacks the background's increases: %s", w.Body)
+			}
+			// Refused, the page keeps the scores and increases asked for: two
+			// the same, or +1 to all three taking Wisdom above 20.
+			same := maps.Clone(scores)
+			same.Set("mode", "two")
+			same.Set("plus2", "wis")
+			same.Set("plus1", "wis")
 			high := maps.Clone(scores)
 			high.Set("wis", "20")
-			for _, bad := range []struct{ scores, form url.Values }{
-				{scores, url.Values{"pick": {"sage"}, "mode": {"two"}, "plus2": {"wis"}, "plus1": {"wis"}}},
-				{high, url.Values{"pick": {"sage"}, "mode": {"three"}}},
-			} {
-				e.do(t, http.MethodPost, base+"/abilities", player, bad.scores, false)
-				w := e.do(t, http.MethodPost, base+"/background", player, bad.form, false)
-				if lost := lostPicks(w.Body.String(), bad.form); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 || !errorAt(w.Body.String(), views.FieldMode) {
-					t.Errorf("background %v: %d, lost %v, error at mode %v", bad.form, w.Code, lost, errorAt(w.Body.String(), views.FieldMode))
+			high.Set("mode", "three")
+			for _, bad := range []url.Values{same, high} {
+				w := e.do(t, http.MethodPost, base+"/abilities", player, bad, false)
+				if lost := lostPicks(w.Body.String(), bad); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 || !errorAt(w.Body.String(), views.FieldMode) {
+					t.Errorf("abilities %v: %d, lost %v, error at mode %v", bad, w.Code, lost, errorAt(w.Body.String(), views.FieldMode))
 				}
 			}
-			e.do(t, http.MethodPost, base+"/abilities", player, scores, false)
 		}
 		if step.step == "details" {
 			// A blank name is refused at the name, and the page keeps the rest as typed.
@@ -123,10 +131,10 @@ func TestCreationWizard(t *testing.T) {
 			t.Fatalf("%s: %d %q %s", step.step, w.Code, got, w.Body)
 		}
 	}
-	// Choosing the background again, or base scores after it, changes
-	// nothing: that would undo or repeat its increases.
-	e.do(t, http.MethodPost, base+"/background", player, url.Values{"pick": {"sage"}, "mode": {"three"}}, false)
-	e.do(t, http.MethodPost, base+"/abilities", player, scores, false)
+	// Choosing the background or the scores again changes nothing: that
+	// would repeat the increases.
+	e.do(t, http.MethodPost, base+"/background", player, url.Values{"pick": {"sage"}}, false)
+	e.do(t, http.MethodPost, base+"/abilities", player, raised, false)
 
 	row, err := e.q().GetCharacter(ctx, e.characterID)
 	if err != nil {
@@ -160,8 +168,66 @@ func TestCreationWizard(t *testing.T) {
 			t.Errorf("missing feature %s: %s", f, row.SheetJson)
 		}
 	}
-	if strings.Count(row.SheetJson, `"name":"Powerful Build"`) != 1 || !sh.SetUp("review") || !strings.Contains(strings.Join(sh.SkillProfs, ","), "arcana") {
+	if strings.Count(row.SheetJson, `"name":"Powerful Build"`) != 1 || !sh.SetUp("review") || !strings.Contains(strings.Join(sh.SkillProfs, ","), "arcana") || sh.SetupSnapshots != nil {
 		t.Errorf("sheet after the wizard: %s", row.SheetJson)
+	}
+	// Finished: no step can be redone in the wizard any more.
+	if w := e.do(t, http.MethodPost, base+"/species/change", player, nil, false); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("change after the review: %d", w.Code)
+	}
+}
+
+// TestWizardChange: redoing a step puts the character back to before it,
+// undoing the steps saved after it but keeping the earlier ones redoable.
+func TestWizardChange(t *testing.T) {
+	e := newTestEnv(t)
+	loadFeatFixtures(t, e)
+	player := e.token(t, auth.RolePlayer)
+	base := fmt.Sprintf("/characters/%d/create", e.characterID)
+	for _, step := range []struct {
+		step string
+		form url.Values
+	}{
+		{"class", url.Values{"pick": {"wizard"}}},
+		{"background", url.Values{"pick": {"sage"}}},
+		{"species", url.Values{"pick": {"human"}}},
+		{"abilities", url.Values{"str": {"8"}, "dex": {"14"}, "con": {"14"}, "int": {"15"}, "wis": {"12"}, "cha": {"10"}}},
+	} {
+		if w := e.do(t, http.MethodPost, base+"/"+step.step, player, step.form, false); w.Code != http.StatusSeeOther {
+			t.Fatalf("%s: %d %s", step.step, w.Code, w.Body)
+		}
+	}
+	// A level-up taken mid-creation: undone with the step, so Revert must not bring it back.
+	if err := e.q().CreateLevelUp(t.Context(), sqlc.CreateLevelUpParams{CharacterID: e.characterID, MaxHp: 8, SheetJson: "{}"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		step string
+		code int
+	}{
+		{"nonsense", http.StatusNotFound},
+		{"details", http.StatusUnprocessableEntity}, // no snapshot: edited directly
+		{"background", http.StatusSeeOther},
+		{"species", http.StatusUnprocessableEntity}, // undone with the background
+	} {
+		if w := e.do(t, http.MethodPost, base+"/"+c.step+"/change", player, nil, false); w.Code != c.code {
+			t.Errorf("change %s: %d, want %d", c.step, w.Code, c.code)
+		}
+	}
+	row, err := e.q().GetCharacter(t.Context(), e.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh, err := dnd5e.ParseSheet(row.SheetJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sh.Background != "" || sh.Species != "" || sh.Scores["con"] != 10 || !slices.Equal(sh.SetupDone, []string{"class"}) ||
+		!slices.Equal(slices.Sorted(maps.Keys(sh.SetupSnapshots)), []string{"class"}) || sh.ClassSummary() != "Wizard 1" || row.MaxHp != 6 {
+		t.Errorf("after changing the background: max hp %d, sheet %s", row.MaxHp, row.SheetJson)
+	}
+	if n, err := e.q().CountLevelUps(t.Context(), e.characterID); err != nil || n != 0 {
+		t.Errorf("level-ups left after the change: %d %v", n, err)
 	}
 }
 
@@ -180,6 +246,8 @@ var featFixtures = []sqlc.UpsertCompendiumEntryParams{
 	{Kind: "feat", Slug: "boon-of-fate", Name: "Boon of Fate", DataJson: `{"desc":"","category":"Epic Boon","prerequisite":"Level 19+","parts":[{"name":"Ability Score Increase","desc":"Increase one ability score of your choice by 1, to a maximum of 30."}]}`},
 	{Kind: "feat", Slug: "ability-score-improvement", Name: "Ability Score Improvement", DataJson: `{"desc":"","category":"General"}`},
 	{Kind: "background", Slug: "sage", Name: "Sage", DataJson: `{"desc":"","parts":[{"name":"Skill Proficiencies","desc":"Arcana and History","type":"skill_proficiency"},{"name":"Feat","desc":"Magic Initiate (Wizard)","type":"feat"}]}`},
+	// A background that asks nothing, so the choices step opens with only the class's and species' picks.
+	{Kind: "background", Slug: "testfolk", Name: "Testfolk", DataJson: `{"desc":"","parts":[]}`},
 	{Kind: "spell", Slug: "light", Name: "Light", DataJson: `{"level":0,"classes":["cleric","wizard"]}`},
 	{Kind: "spell", Slug: "mage-hand", Name: "Mage Hand", DataJson: `{"level":0,"classes":["wizard"]}`},
 	{Kind: "spell", Slug: "guidance", Name: "Guidance", DataJson: `{"level":0,"classes":["cleric"]}`},
@@ -226,7 +294,8 @@ func TestFeatChoices(t *testing.T) {
 			feat := slices.DeleteFunc(slices.Clone(sh.Spells), func(sp dnd5e.Spell) bool { return sp.Feat == "" })
 			return len(feat) == 3 && mm >= 0 && sh.Spells[mm].Prepared && sh.Spells[mm].Ability == "int" && sh.Spells[mm].Feat == "Magic Initiate (Wizard)" && sh.SpeciesAbility == "" &&
 				slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Magic Missile (free cast)" && f.Uses.Fixed == 1 }) &&
-				slices.Contains(sh.SkillProfs, "stealth") && slices.Contains(sh.SkillProfs, "insight") && slices.Contains(sh.OtherProfs, "Smith's Tools")
+				slices.Contains(sh.SkillProfs, "stealth") && slices.Contains(sh.SkillProfs, "insight") && slices.Contains(sh.OtherProfs, "Smith's Tools") &&
+				sh.FeatSources["skilled"] == "test"
 		}},
 		{"Versatile Magic Initiate takes another list", url.Values{
 			"trait_versatile": {"Magic Initiate"}, mi + "_list": {"Cleric"}, mi + "_cleric_cantrips": {"Guidance", "Light"}, mi + "_cleric_spell": {"Bless"}, mi + "_ability": {"Wisdom"},
@@ -311,7 +380,7 @@ func TestCreationSpeciesSpells(t *testing.T) {
 			}
 			player := e.token(t, auth.RolePlayer)
 			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
-			for _, step := range []string{"class=wizard", "species=" + tc.species} {
+			for _, step := range []string{"class=wizard", "species=" + tc.species, "background=testfolk"} {
 				step, pick, _ := strings.Cut(step, "=")
 				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
 					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
@@ -535,8 +604,11 @@ func TestClassSkillCount(t *testing.T) {
 		// is refused at the top.
 		loadFeatFixtures(t, e)
 		base := fmt.Sprintf("/characters/%d/create/", e.characterID)
-		if w := e.do(t, http.MethodPost, base+"species", player, url.Values{"pick": {"human"}}, false); w.Code != http.StatusSeeOther {
-			t.Fatalf("species: %d %s", w.Code, w.Body)
+		for _, step := range []string{"species=human", "background=testfolk"} {
+			step, pick, _ := strings.Cut(step, "=")
+			if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
+				t.Fatalf("%s: %d %s", step, w.Code, w.Body)
+			}
 		}
 		form = url.Values{"language": {"Elvish", "Dwarvish"}, "trait_versatile": {"Alert"}, "spell": {"light"}}
 		w = e.do(t, http.MethodPost, base+"choices", player, form, false)
@@ -724,7 +796,7 @@ func TestCreationOptionCheck(t *testing.T) {
 			}
 			player := e.token(t, auth.RolePlayer)
 			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
-			for _, step := range []string{"class=testlock", "species=human"} {
+			for _, step := range []string{"class=testlock", "species=human", "background=testfolk"} {
 				step, pick, _ := strings.Cut(step, "=")
 				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
 					t.Fatalf("%s: %d %s", step, w.Code, w.Body)

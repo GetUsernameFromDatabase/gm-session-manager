@@ -572,7 +572,7 @@ templ conditionDialog(c CombatantView) {
 			<form
 				class="grid gap-4"
 				hx-post={ fmt.Sprintf("/combatants/%d/condition", c.ID) }
-				hx-on::after-request="if (event.detail.successful) { this.note.value = ''; this.rounds.value = ''; this.querySelector('[data-slot=dialog-close]').click() }"
+				{ templ.Attributes{"hx-on::after-request": closeDialogAfter("this.note.value = ''; this.rounds.value = ''; ")}... }
 				onchange={ templ.JSUnsafeFuncCall(customToggleJS) }
 			>
 				@dialog.Header() {
@@ -777,7 +777,7 @@ templ hpDialog(c CombatantView) {
 				hx-post={ fmt.Sprintf("/combatants/%d/hp", c.ID) }
 				hx-on:input="this.hp.max = Number(this.max_hp.value) || this.hp.dataset.max; event.target.reportValidity()"
 				hx-on::config-request="for (const el of this.querySelectorAll('input[type=number]')) if (el.value === el.defaultValue) delete event.detail.parameters[el.name]"
-				hx-on::after-request="if (event.detail.successful) { this.reset(); this.hp.max = this.hp.dataset.max; this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click() }"
+				{ templ.Attributes{"hx-on::after-request": closeDialogAfter("this.reset(); this.hp.max = this.hp.dataset.max; ")}... }
 			>
 				<input type="hidden" name="op" value="set"/>
 				<div class="grid grid-cols-3 gap-2">
@@ -791,7 +791,7 @@ templ hpDialog(c CombatantView) {
 				}
 			</form>
 			// Not reset(): it would put the damage type's value back but not its label.
-			<form class="grid gap-4 border-t pt-4" hx-post={ fmt.Sprintf("/combatants/%d/hp", c.ID) } hx-on::after-request="if (event.detail.successful) { this.amount.value = ''; this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click() }">
+			<form class="grid gap-4 border-t pt-4" hx-post={ fmt.Sprintf("/combatants/%d/hp", c.ID) } { templ.Attributes{"hx-on::after-request": closeDialogAfter("this.amount.value = ''; ")}... }>
 				@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
 					@field.Label(field.LabelProps{For: id + "-amount"}) {
 						Amount
