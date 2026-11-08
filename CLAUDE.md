@@ -1,99 +1,49 @@
 # gm-session-manager
 
-A LAN-hosted helper for tabletop RPG game masters and their players. The GM's PC runs a single Go binary; players on the same network join by address or QR code. All data lives on the host in SQLite. GMs manage campaigns, combat, NPCs and the compendium; players manage their characters; everyone shares real-time collaborative notes.
+A LAN-hosted helper for tabletop RPG game masters and their players. The GM's PC runs a single Go binary; players on the same network join by address or QR code. All data lives on the host in SQLite.
 
 Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote play, in-app dice rolling (physical dice only; the one exception is the GM's initiative roll in combat), maps beyond image attachments, device blocklists, offline mode. Ask before adding any of these.
 
 ## Stack
 
-- Go, no CGO; tools (`templ`, `shadcn-templ`) are `tool` deps in `go.mod`. Router: gin.
-- SQLite via `modernc.org/sqlite`, WAL mode, `PRAGMA foreign_keys = ON` on every connection. All queries through `sqlc`; the migrations in `internal/db/migrations` are the schema. FTS5 tables live in a migration, with a stub for sqlc in `internal/db/sqlc_stubs.sql`.
-- Views: `templ` with [shadcn-templ](https://shadcn-templ.com/llms.txt) components, Tailwind (standalone CLI), `htmx` with the websocket extension.
-- Notes: TipTap/ProseMirror with the collab plugin (`internal/web/assets/js/notes.js`). NPC fields reuse TipTap (`fields.js`); both share `wikilink.js`, which renders `[[kind:id|label]]` tokens (parsed server-side in `internal/web/views/wikilinks.go`).
-- **No node or npm.** Browser libraries are vendored into `internal/web/assets/vendor` by `cmd/vendorjs`. Everything ships in one binary via `go:embed`.
-- HTTPS only, with a self-signed certificate generated in `DATA_DIR/tls` (`internal/join/`).
-
-## Layout
-
-See [Project layout](README.md#project-layout) in README.md.
+- Go, no CGO, gin; tools (`templ`, `shadcn-templ`) are `tool` deps in `go.mod`.
+- SQLite (`modernc.org/sqlite`) through `sqlc`. Views: `templ` + [shadcn-templ](https://shadcn-templ.com/llms.txt) + Tailwind standalone CLI + `htmx` websocket extension. Notes: TipTap collab.
+- **No node or npm.** Browser libraries are vendored by `cmd/vendorjs`; everything ships in one binary via `go:embed`.
+- HTTPS only, self-signed certificate in `DATA_DIR/tls`.
+- Layout: [README.md](README.md#project-layout).
 
 ## Rules that must not be broken
 
-- **Visibility is enforced on the server.** Never send hidden data to a browser and hide it client-side. Unrevealed entity fields are stripped entirely (keys included). GM and admin queries never return `owner` note blocks.
-- **Websocket data is as small as possible.** Send only what changed, as JSON data, never HTML. Values that change often are bound in the page (`data-bind`) and patched in place. When a view changes wholesale (a whole sheet, new or removed rows, a level-up), send a refetch order and let the page load the view's HTML from `/live` over HTTP; do not push the changes. Never drop shadcn components to save bytes.
-- **Commands, not saved sheets.** Clients send small commands (`hp -5`, `toggle prone`). The server applies each in a transaction and publishes topics; the hub turns them into per-recipient patches. Commands are deltas, never whole-object overwrites: several devices may hold one character.
+- **Visibility is enforced on the server.** Never send hidden data to a browser and hide it client-side. Unrevealed entity fields are stripped entirely (keys included). GM and admin queries never return `owner` note blocks. Permission tables: `internal/perm/CLAUDE.md`.
+- **Websocket data is as small as possible:** changed values as JSON, never HTML; wholesale changes send a refetch order (`internal/web/CLAUDE.md`).
+- **Commands, not saved sheets.** Clients send small delta commands (`hp -5`, `toggle prone`), never whole-object overwrites: several devices may hold one character. The server applies each in a transaction and publishes topics.
 - **Session tokens:** 32 random bytes; store only the SHA-256 hash; cookie is `HttpOnly`, `SameSite=Lax`, `Secure`.
-- **Admin:** a connection is admin if the real `RemoteAddr` is loopback (never trust `X-Forwarded-For`), or after login with `ADMIN_USERNAME` and `ADMIN_PASSWORD` from `.env`. Refuse to start if either is missing. Constant-time comparison. Never hardcode credentials.
-- **Identity:** players have no passwords. One role per device (log out to switch); logging in while holding a session is refused. Logout and kick are the same thing: delete the `sessions` row. Pending join requests live in memory only. A character may have several devices, each approved separately.
-- **Naming:** the `sessions` table is the login/device token. Game sessions are `game_sessions` everywhere (notes `kind`, UI, code). Never mix the two.
-- **Notes:** each note block is its own collaborative document with its own audience; the server is the authority (stale steps get a 409 and rebase). Trusting client snapshots, text and links is accepted on a LAN of friends.
+- **Admin:** real `RemoteAddr` is loopback (never trust `X-Forwarded-For`), or login with `ADMIN_USERNAME`/`ADMIN_PASSWORD` from `.env` (refuse to start if missing; constant-time compare; never hardcode).
+- **Identity:** players have no passwords. One role per device; logging in while holding a session is refused. Logout and kick both delete the `sessions` row. Pending join requests live in memory only. A character may have several devices, each approved separately.
+- **Naming:** the `sessions` table is the login/device token; game sessions are `game_sessions` everywhere. Never mix the two.
 - **Attachments** are served only through the authorized handler, never as public static files.
-- **Compendium:** normalize source data into our own shape; never leak a source's shape into the app. Keep each entry's license and attribution (the 2024 SRD is CC-BY 4.0).
-
-### Permissions
-
-| Thing | GM | Player |
-|---|---|---|
-| Own character | n/a | full edit (via commands) |
-| Other characters | view; edit HP, conditions and sources | none |
-| Monster HP in combat | always | hidden unless the GM toggles `hp_visible` |
-| Entities | all fields | revealed entities, revealed fields only |
-
-Note blocks (`internal/perm/perm_test.go` mirrors this table):
-
-| Visibility | Who reads | Who edits |
-|---|---|---|
-| `gm` | GM | GM |
-| `players` | GM and every player in the campaign | GM and the note's owner; other players only if `players_can_edit` |
-| `listed` | GM and the characters in its audience (empty audience = GM only: fail closed) | GM only |
-| `owner` | the owning player only; GM and admin never | the owning player |
-
-Any player may add a `players` block to the GM's `game_session` notes. A block's author may always edit it, and may delete it or change its access while they can still read it. Reordering stays with the note's manager.
-
-## Live views
-
-A page region that updates in real time is a live view.
-
-1. Give its root `live(kind, id...)` (kinds and helpers in `internal/web/views/live.go`). The page sends its `data-live` keys in the websocket hello.
-2. Add the kind to `liveAffects` (which topics change it) and `loadLive` (permission checks, HTML) in `internal/web/live.go`.
-3. For values that change often, give the view model `Hot` (adds exactly the keys the markup binds) and `Shape` (the same model with those values fixed) in `internal/web/views/live.go`, and mark the elements with `bind("text=key")`, `bind("aria-pressed=key")`, etc. Everything else is covered by the hash of `Shape`'s markup.
-4. Cover it in `TestLiveVisibility` and `TestLiveBindsMatchState` (`internal/web/live_test.go`).
-
-## UI conventions
-
-- Use shadcn-templ components for every control; add missing ones with `go tool shadcn-templ add <name>`. Reuse the helpers: `formSelect`/`selectItems` (combat.templ), `checkField` (notes.templ), `inlineField` (compendium.templ), `removeButton`.
-- Show dates with `@localTime(t)` (layout.templ), never `Format` in a template: SQLite stores timestamps in UTC and app.js shows them in the viewer's timezone and locale.
-- Style toggled states with `aria-pressed:` or `data-[…]:` variants, so a live update flips one attribute instead of swapping classes.
-- Slow forms show a loading indicator: mark the form `data-busy` with class `group/busy` and put `@busyIndicator("…")` inside (layout.templ). app.js sets `aria-busy` while it submits or runs htmx requests, and disables its submit buttons against double submits.
-- Previews fetch nothing while their place is not visible (a pane hidden on small screens, a collapsed section): check `checkVisibility()` before loading, as the compendium and import previews do; lists of images use `loading="lazy"`.
-- Narrow screens: a grid column needs `min-w-0` before a child's `max-w-full` or truncation works; in a `flex-wrap` row of icon + text + button, give the text `min-w-0 grow basis-48` so the button wraps first instead of leaving the icon alone on a line.
-- New Tailwind classes need `go generate ./internal/web` (rebuilds `output.css`).
-- Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
 
 ## Code conventions
 
-- Keep code DRY and easy to extend; prefer a small number of well-named helpers over repetition. Match the surrounding code's naming and comment density: a one-line comment for the *why*, not the *what*.
-- Use constants for cookie, context, header and event keys, not string literals.
-- Validate request and session structs with `go-playground/validator` struct tags instead of ad hoc per-field checks.
-- Table-driven tests for all permission and visibility logic.
-- `golangci-lint run` must stay clean (`.golangci.yml`: gofmt, goimports with local prefix `gm-session-manager`, revive, gosec, bodyclose, unparam, …).
-- Formatters always win: keep what `templ fmt` and `golangci-lint fmt` change, including in files the change did not otherwise touch.
+- DRY, a few well-named helpers; match the surrounding naming and comment density (one-line *why* comments).
+- Constants for cookie, context, header and event keys. Validate structs with `go-playground/validator` tags.
+- Table-driven tests for all permission and visibility logic. Positional test-table rows break when a field is added; add a separate loop instead.
+- `golangci-lint run` stays clean. Formatters always win: keep what `templ fmt` and `golangci-lint fmt` change, even in untouched files.
+- Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
+- Durable lessons go in the nearest folder's `CLAUDE.md`; workflows in a skill; `HANDOFF.md` holds only current state and open items.
 
 ## Commands
 
-Generated code and built assets are committed, except `internal/web/assets/vendor` and the shadcn-templ script bundle `internal/web/assets/js/shadcn-templ-*.js` (both gitignored; `internal/web/components/scripts_bundle.go` is committed): run `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` once after cloning, then `go build` alone works. After changing sources:
+After cloning: `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` (both outputs gitignored). After changing sources:
 
 | Change | Command |
 |---|---|
-| `internal/db/migrations`, `internal/db/queries` | `go generate ./internal/db` (sqlc on PATH) |
-| `*.templ`, Tailwind classes | `go generate ./internal/web` (script bundle + `templ fmt` + templ + Tailwind standalone CLI on PATH); `./build.sh` fails on unformatted templates |
-| Go formatting | `golangci-lint fmt` (gofmt + goimports, as `golangci-lint run` checks) |
-| shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./internal/web` |
-| browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |
+| migrations, queries | `go generate ./internal/db` (sqlc on PATH) |
+| `*.templ`, Tailwind classes, shadcn-templ components (`go tool shadcn-templ add <name>`) | `go generate ./internal/web` |
+| Go formatting | `golangci-lint fmt` |
+| browser JS versions | `go run ./cmd/vendorjs -check`, edit `cmd/vendorjs/main.go`, `go run ./cmd/vendorjs` |
 
-Then `go build ./...`, `go test ./...`, `golangci-lint run` and `graphify update .`. `./build.sh` is the full build (vendor JS, script bundle, tests, versioned binary in `dist/`); CI runs `./build.sh release` on `v*` tags (`./release.sh <version>` checks, tags and pushes one). Run the app with `./run.sh` (or `go run ./cmd/gm-session-manager`); see README.md for setup.
-
-Every change to `.templ`, CSS or JS is checked in a browser with the `browser-check` skill (Playwright MCP against `./run.sh browser`); pass it the changed pages and controls.
+Then `go build ./...`, `go test ./...`, `golangci-lint run`, `graphify update .`. Full build: `./build.sh`; release: `./release.sh <version>`; run: `./run.sh`.
 
 ## graphify
 
