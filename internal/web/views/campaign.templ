@@ -60,6 +60,10 @@ templ CampaignOverview(l Layout, r Roster, j JoinInfo, s CampaignSourcesView) {
 					@input.Input(input.Props{Name: "name", Value: r.Campaign.Name, Required: true, Class: "h-auto min-w-0 border-transparent px-1 text-2xl font-semibold md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Campaign name", "maxlength": "100", "autocomplete": "off"}})
 				</form>
 				@moreMenu("campaign-menu", "More actions") {
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Href: fmt.Sprintf("/campaigns/%d/export", r.Campaign.ID), Attributes: templ.Attributes{"data-menu-item": ""}}) {
+						@icon.Download()
+						Export campaign (zip)
+					}
 					@menuDelete("Delete campaign", fmt.Sprintf("/campaigns/%d/delete", r.Campaign.ID), "Delete "+r.Campaign.Name+" forever, with all its characters, notes, combat and images? Its players are logged out. This cannot be undone.")
 				}
 			</div>
@@ -69,7 +73,6 @@ templ CampaignOverview(l Layout, r Roster, j JoinInfo, s CampaignSourcesView) {
 			<div class="space-y-4">
 				@joinPanel(j)
 				@CampaignSources(s)
-				<a class="block text-sm underline" href={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/export", r.Campaign.ID)) }>Export campaign (zip)</a>
 			</div>
 		</div>
 	}

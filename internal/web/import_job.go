@@ -67,7 +67,7 @@ func (a *App) runFiveTools(ctx context.Context, dir string, books []compendium.B
 	}
 	reports, err := compendium.ImportProgress(ctx, a.Store, dir, func(done, total int, source string) {
 		tell(func(j *views.FiveToolsJob) { j.Importing, j.Done, j.Total, j.Current = true, done, total, source })
-	})
+	}, nil)
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
 	if err != nil {
 		slog.Error("5etools import", "err", err)

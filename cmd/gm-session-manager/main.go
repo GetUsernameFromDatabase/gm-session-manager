@@ -74,16 +74,35 @@ func run() error {
 	slog.Info("tls certificate", "new", created, "sha256", join.Fingerprint(cert), "lan", lanIPs)
 
 	store := db.NewStore(conn)
-	reports, err := compendium.Import(ctx, store, filepath.Join(cfg.DataDir, compendiumDir))
-	if err != nil {
-		return err
-	}
-	for _, r := range reports {
+	// Each source is logged as it finishes, so a long import does not look stalled.
+	reports, err := compendium.ImportProgress(ctx, store, filepath.Join(cfg.DataDir, compendiumDir), func(done, total int, _ string) {
+		if done == 0 {
+			slog.Info("compendium importing", "sources", total)
+		}
+	}, func(r compendium.Report) {
 		if r.Err != nil {
 			slog.Warn("compendium import failed", "source", r.Source, "err", r.Err)
 		} else {
 			slog.Info("compendium", "source", r.Source, "unchanged", r.Unchanged, "entries", r.Entries, "removed", r.Removed)
 		}
+	})
+	if err != nil {
+		return err
+	}
+	if len(reports) > 0 {
+		var changed, unchanged, failed, entries int
+		for _, r := range reports {
+			switch {
+			case r.Err != nil:
+				failed++
+			case r.Unchanged:
+				unchanged++
+			default:
+				changed++
+				entries += r.Entries
+			}
+		}
+		slog.Info("compendium done", "changed", changed, "unchanged", unchanged, "failed", failed, "entries", entries)
 	}
 	if n, err := web.UpgradeSheets(ctx, store); err != nil {
 		slog.Warn("sheet upgrade failed", "err", err)

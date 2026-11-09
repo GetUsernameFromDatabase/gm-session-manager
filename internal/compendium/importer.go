@@ -37,12 +37,13 @@ type Report struct {
 // the last import. A missing dir is not an error: the compendium is
 // optional. One bad source does not stop the others.
 func Import(ctx context.Context, store *db.Store, dir string) ([]Report, error) {
-	return ImportProgress(ctx, store, dir, nil)
+	return ImportProgress(ctx, store, dir, nil, nil)
 }
 
 // ImportProgress is Import telling progress, if set, of each source as it
-// starts: done of total sources so far.
-func ImportProgress(ctx context.Context, store *db.Store, dir string, progress func(done, total int, source string)) ([]Report, error) {
+// starts: done of total sources so far; and finished, if set, each source's
+// report as soon as it is imported.
+func ImportProgress(ctx context.Context, store *db.Store, dir string, progress func(done, total int, source string), finished func(Report)) ([]Report, error) {
 	all, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -59,6 +60,9 @@ func ImportProgress(ctx context.Context, store *db.Store, dir string, progress f
 		}
 		r := importSource(ctx, store, d.Name(), filepath.Join(dir, d.Name()))
 		reports = append(reports, r)
+		if finished != nil {
+			finished(r)
+		}
 		// Only data folders get the guessed picture, also when unchanged;
 		// 5etools books name their own pictures.
 		if r.Err != nil || strings.HasPrefix(d.Name(), FiveToolsPrefix) {
