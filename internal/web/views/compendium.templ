@@ -379,15 +379,15 @@ templ SourcePriority(sources []sqlc.CompendiumSource) {
 					Source priority
 				}
 				@card.Description() {
-					When several sources hold the same entry, the one higher up is shown and used. Drag a source by its handle, or use the arrows.
+					When several sources hold the same entry, the one higher up is shown and used. Drag a source, or use the arrows.
 				}
 			}
 			@card.Content() {
 				// app.js makes the list sortable (SortableJS) and posts the new order.
 				<ol class={ "divide-y rounded-lg border text-sm", scrollBox } data-sortable={ SourceOrderPath } data-sort-target={ "#" + SourcesID }>
 					for i, s := range sources {
-						<li class="flex flex-wrap items-center gap-x-3 gap-y-1 bg-card px-3 py-1.5" data-source-key={ s.SourceKey }>
-							<span class="cursor-grab touch-none text-muted-foreground active:cursor-grabbing" data-sort-handle aria-hidden="true">
+						<li class="flex flex-wrap items-center gap-x-3 gap-y-1 cursor-grab bg-card px-3 py-1.5 active:cursor-grabbing" data-source-key={ s.SourceKey }>
+							<span class="text-muted-foreground" aria-hidden="true">
 								@icon.GripVertical(icon.Props{Size: 16})
 							</span>
 							<span class="min-w-0 grow basis-48" title={ s.Attribution }>
@@ -397,6 +397,9 @@ templ SourcePriority(sources []sqlc.CompendiumSource) {
 							<span class="flex gap-1" hx-target={ "#" + SourcesID } hx-swap="outerHTML">
 								@sourceMoveButton(s.SourceKey, SourceUp, "Move "+s.SourceKey+" up", i == 0)
 								@sourceMoveButton(s.SourceKey, SourceDown, "Move "+s.SourceKey+" down", i == len(sources)-1)
+								if s.SourceKey != "homebrew" {
+									@sourceDeleteButton(s.SourceKey)
+								}
 							</span>
 						</li>
 					}
@@ -404,6 +407,15 @@ templ SourcePriority(sources []sqlc.CompendiumSource) {
 			}
 		}
 	</div>
+}
+
+templ sourceDeleteButton(key string) {
+	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Class: quietDestructive, Attributes: templ.Attributes{
+		"aria-label": "Delete " + key, "title": "Delete " + key, "hx-post": "/compendium/sources/" + url.PathEscape(key) + "/delete",
+		"hx-confirm": "Delete " + key + " and all its entries?",
+	}}) {
+		@icon.Trash2()
+	}
 }
 
 templ sourceMoveButton(key, dir, label string, disabled bool) {

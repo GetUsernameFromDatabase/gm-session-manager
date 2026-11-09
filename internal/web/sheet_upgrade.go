@@ -67,6 +67,23 @@ func UpgradeSheets(ctx context.Context, store *db.Store) (int, error) {
 					changed++
 				}
 			}
+			// Version 4: features older level-ups added once per level, speed
+			// bonuses that scale with a table column, profs features grant.
+			if sheet.EffectsVersion < 4 {
+				fixed := sheet.DedupeFeatures()
+				for _, cl := range sheet.Classes {
+					info, err := upgradeClass(ctx, q, classes, cl)
+					if err != nil {
+						return err
+					}
+					if info != nil && sheet.ScaleSpeeds(*info, cl.Level) {
+						fixed = true
+					}
+				}
+				if sheet.CatchUpProfs() || fixed {
+					changed++
+				}
+			}
 			sheet.EffectsVersion = dnd5e.EffectsVersion
 			raw, err := sheet.JSON()
 			if err != nil {

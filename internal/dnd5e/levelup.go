@@ -3,6 +3,7 @@ package dnd5e
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,8 +14,10 @@ type ClassInfo struct {
 	Slug string
 	Name string
 	// Source is the compendium copy's source key; SubclassSlug and
-	// SubclassSource are the subclass copy whose SubclassFeatures these are.
+	// SubclassSource are the subclass copy whose SubclassFeatures these are,
+	// SubclassName its name.
 	Source         string
+	SubclassName   string
 	SubclassSlug   string
 	SubclassSource string
 	HitDie         int
@@ -256,10 +259,9 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 	s.CatchUpUses(ch.Class)
 	for _, f := range plan.Features {
 		feat := Feature{Name: f.Name, Source: ch.Class.Name, Level: plan.ClassLevel, Description: f.Description}
-		mods := ParseEffects(f.Name, f.Description, ch.Class.Table, ch.Class.Name).Apply(&feat)
-		s.Features = append(s.Features, feat)
-		s.Modifiers = append(s.Modifiers, mods...)
+		s.AddFeature(feat, ParseEffects(f.Name, f.Description, ch.Class.Table, ch.Class.Name))
 	}
+	s.ScaleSpeeds(ch.Class, plan.ClassLevel)
 	for _, sp := range ch.Spells {
 		s.AddSpell(sp)
 	}
@@ -273,8 +275,67 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 
 // EffectsVersion goes up whenever saved sheets need catching up once at
 // startup: 1 when ParseEffects learned more uses, 2 for species resistances,
-// 3 for third casters and weapon masteries.
-const EffectsVersion = 3
+// 3 for third casters and weapon masteries, 4 for features added once per
+// level, scaling speed bonuses and proficiencies granted by features.
+const EffectsVersion = 4
+
+// reNumber is the number in a class table cell ("+15 ft.").
+var reNumber = regexp.MustCompile(`[+-]?\d+`)
+
+// ScaleSpeeds sets the speed bonus of the class's features to the class
+// table column of the feature's name at the class level (Unarmored Movement:
+// "This bonus increases ... as shown on the Monk Features table"). It
+// reports whether anything changed.
+func (s *Sheet) ScaleSpeeds(class ClassInfo, level int) bool {
+	changed := false
+	for i, m := range s.Modifiers {
+		if m.Target != ModSpeed || s.featureIndex(m.Source, class.Name) < 0 {
+			continue
+		}
+		for col, byLevel := range class.Table {
+			if !strings.EqualFold(col, m.Source) {
+				continue
+			}
+			if n, err := strconv.Atoi(reNumber.FindString(byLevel[level])); err == nil && n != m.Value {
+				s.Modifiers[i].Value, changed = n, true
+			}
+		}
+	}
+	return changed
+}
+
+// DedupeFeatures collapses the copies older level-ups added of a feature
+// listed at several levels (same name and source) into the first, and
+// their stacked modifiers into one. It reports whether anything changed.
+func (s *Sheet) DedupeFeatures() bool {
+	type key struct{ name, source string }
+	seen, dup := map[key]bool{}, map[string]bool{}
+	features := s.Features[:0]
+	for _, f := range s.Features {
+		k := key{strings.ToLower(f.Name), f.Source}
+		if seen[k] {
+			dup[f.Name] = true
+			continue
+		}
+		seen[k] = true
+		features = append(features, f)
+	}
+	if len(dup) == 0 {
+		return false
+	}
+	s.Features = features
+	kept := map[CustomMod]bool{}
+	s.Modifiers = slices.DeleteFunc(s.Modifiers, func(m CustomMod) bool {
+		if !dup[m.Source] {
+			return false
+		}
+		m.Value = 0 // copies of one bonus differ by nothing else
+		drop := kept[m]
+		kept[m] = true
+		return drop
+	})
+	return true
+}
 
 // CatchUpUses gives class features without uses the uses their text names,
 // for features added before the parser knew them (Focus Points). Uses already
@@ -290,6 +351,20 @@ func (s *Sheet) CatchUpUses(class ClassInfo) bool {
 		}
 	}
 	return changed
+}
+
+// CatchUpProfs gives the proficiencies class, subclass and species features
+// grant, for features added before the parser knew them. It reports whether
+// anything changed.
+func (s *Sheet) CatchUpProfs() bool {
+	before := len(s.SkillProfs) + len(s.OtherProfs)
+	for _, f := range s.Features {
+		if f.Source == s.Species || slices.Contains(s.classNames(), f.Source) {
+			e := ParseEffects(f.Name, f.Description, nil, "")
+			s.AddProfs(f.Name, e.Skills, e.Tools...)
+		}
+	}
+	return len(s.SkillProfs)+len(s.OtherProfs) > before
 }
 
 // ASIError is a refusal about the ability score increase or feat pick, so the

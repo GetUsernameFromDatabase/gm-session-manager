@@ -487,3 +487,81 @@ func TestRevertLevelUpInterleaved(t *testing.T) {
 		t.Errorf("revert with nothing left: %d, want 422", w.Code)
 	}
 }
+
+// TestSubclassPanels checks each subclass row becomes a panel with its source
+// and features ordered by first level (features without levels first).
+// TestChangeSubclass: only the owner opens the form and changes the
+// subclass; the GM is refused; the name resolves to the compendium copy.
+func TestChangeSubclass(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
+		t.Fatal(err)
+	}
+	ch, _ := e.q().GetCharacter(ctx, e.characterID)
+	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
+	sh.Classes = []dnd5e.ClassLevel{{Slug: "wizard", Name: "Wizard", Level: 3, HitDie: 6, Caster: dnd5e.CasterFull, Subclass: "Old School"}}
+	raw, _ := sh.JSON()
+	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/characters/%d/subclass", e.characterID)
+	tests := []struct {
+		name   string
+		role   auth.Role
+		method string
+		form   url.Values
+		want   int
+	}{
+		// htmx turns the 403 into a 422 flash; the message below tells them apart.
+		{"gm form", auth.RoleAdmin, http.MethodGet, nil, http.StatusUnprocessableEntity},
+		{"gm change", auth.RoleAdmin, http.MethodPost, url.Values{"class": {"wizard"}, "subclass": {"Evoker"}}, http.StatusUnprocessableEntity},
+		{"owner form", auth.RolePlayer, http.MethodGet, nil, http.StatusOK},
+		{"owner, unknown subclass", auth.RolePlayer, http.MethodPost, url.Values{"class": {"wizard"}, "subclass": {"Necromancer"}}, http.StatusUnprocessableEntity},
+		{"owner change", auth.RolePlayer, http.MethodPost, url.Values{"class": {"wizard"}, "subclass": {"Evoker"}}, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := path
+			if tt.method == http.MethodGet {
+				p += "?class=wizard"
+			}
+			w := e.do(t, tt.method, p, e.token(t, tt.role), tt.form, true)
+			if w.Code != tt.want {
+				t.Fatalf("status %d, want %d: %s", w.Code, tt.want, w.Body)
+			}
+			if tt.role == auth.RoleAdmin && !strings.Contains(w.Body.String(), "Only the player changes their subclass") {
+				t.Errorf("gm not refused: %s", w.Body)
+			}
+			if tt.name == "owner form" && !strings.Contains(w.Body.String(), "Spells or options Old School gave you stay on the sheet") {
+				t.Errorf("form lacks the warning: %s", w.Body)
+			}
+		})
+	}
+	ch, _ = e.q().GetCharacter(ctx, e.characterID)
+	sh, _ = dnd5e.ParseSheet(ch.SheetJson)
+	if cl := sh.Classes[0]; cl.Subclass != "Evoker" || cl.SubclassSlug == "" || cl.SubclassSource == "" {
+		t.Errorf("class after change = %+v", cl)
+	}
+}
+
+func TestSubclassPanels(t *testing.T) {
+	rows := []sqlc.ListSubclassesOfRow{{
+		Name: "Way of Mercy", SourceKey: "5etools-tce",
+		DataJson: `{"subclass_of":"monk","features":[{"name":"Late","desc":"b","levels":[11]},{"name":"Early","desc":"a","levels":[3,6]},{"name":"None","desc":"c"}]}`,
+	}}
+	got, err := subclassPanels(rows)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("subclassPanels = %v, %v", got, err)
+	}
+	if got[0].Name != "Way of Mercy" || got[0].Source != "5etools-tce" {
+		t.Errorf("panel = %+v", got[0])
+	}
+	var names []string
+	for _, f := range got[0].Features {
+		names = append(names, f.Name)
+	}
+	if want := "None,Early,Late"; strings.Join(names, ",") != want {
+		t.Errorf("order = %v, want %s", names, want)
+	}
+}

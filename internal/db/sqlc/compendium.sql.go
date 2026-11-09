@@ -1170,6 +1170,42 @@ func (q *Queries) ListMonstersByName(ctx context.Context, filter string) ([]List
 	return items, nil
 }
 
+const listSourceRefUsers = `-- name: ListSourceRefUsers :many
+SELECT DISTINCT n.name FROM (
+    SELECT en.name, en.compendium_ref AS ref FROM entities AS en
+    UNION ALL
+    SELECT cb.name, cb.monster_ref FROM combatants AS cb
+) AS n
+JOIN compendium_entries AS e ON e.id = n.ref
+WHERE e.source_key = ?
+ORDER BY n.name
+`
+
+// ListSourceRefUsers names the entities and combatants whose compendium link
+// points at an entry of the source, for the delete and untick checks.
+func (q *Queries) ListSourceRefUsers(ctx context.Context, sourceKey string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listSourceRefUsers, sourceKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSpellsForClass = `-- name: ListSpellsForClass :many
 SELECT e.id, e.slug, e.name, e.source_key, CAST(json_extract(e.data_json, '$.level') AS INTEGER) AS level
 FROM compendium_entries AS e
@@ -1226,15 +1262,17 @@ func (q *Queries) ListSpellsForClass(ctx context.Context, arg ListSpellsForClass
 }
 
 const listSubclassesOf = `-- name: ListSubclassesOf :many
-SELECT id, slug, name FROM compendium_entries
+SELECT id, slug, name, source_key, data_json FROM compendium_entries
 WHERE kind = 'subclass' AND id IN (SELECT id FROM compendium_top) AND json_extract(data_json, '$.subclass_of') = CAST(?1 AS TEXT)
 ORDER BY name
 `
 
 type ListSubclassesOfRow struct {
-	ID   int64
-	Slug string
-	Name string
+	ID        int64
+	Slug      string
+	Name      string
+	SourceKey string
+	DataJson  string
 }
 
 func (q *Queries) ListSubclassesOf(ctx context.Context, classSlug string) ([]ListSubclassesOfRow, error) {
@@ -1246,7 +1284,13 @@ func (q *Queries) ListSubclassesOf(ctx context.Context, classSlug string) ([]Lis
 	items := []ListSubclassesOfRow{}
 	for rows.Next() {
 		var i ListSubclassesOfRow
-		if err := rows.Scan(&i.ID, &i.Slug, &i.Name); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.SourceKey,
+			&i.DataJson,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

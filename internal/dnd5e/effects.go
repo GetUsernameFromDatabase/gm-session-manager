@@ -20,6 +20,10 @@ type FeatureEffects struct {
 	Unarmored string
 	NoShield  bool
 	Mods      []CustomMod
+	// Skills (keys) and Tools are fixed proficiencies the text grants; choices
+	// ("of your choice", "Insight, Perception, or Survival") are not.
+	Skills []string
+	Tools  []string
 }
 
 var (
@@ -35,6 +39,13 @@ var (
 	reShortRest = regexp.MustCompile(`(?i)finish a short or long rest`)
 	reSpeed     = regexp.MustCompile(`(?i)your speed increases by (\d+) feet([^.]*)`)
 	reUnarmored = regexp.MustCompile(`(?i)base armor class equals 10 plus your dexterity and (strength|constitution|intelligence|wisdom|charisma) modifiers`)
+	reSkillProf = regexp.MustCompile(`(?i)proficiency in (?:the )?([a-z ,]+?) skills?\b`)
+	reToolProf  = regexp.MustCompile(`(?i)proficiency with ([^.;:]+)`)
+	reTool      = regexp.MustCompile(`(?i)^(?:(?:the|an?) )?((?:[a-z']+ ){0,3}(?:kit|tools|supplies|set|utensils))$`)
+	reChoice    = regexp.MustCompile(`(?i)\b(?:or|one|two|any|type|choice|choose|this)\b`)
+	// reTag is a 5etools tag ({@skill Insight|XPHB}) or a compendium link
+	// ([[compendium:skill/insight|Insight]]); both keep their label.
+	reTag = regexp.MustCompile(`\{@\w+ ([^|}]*)[^}]*\}|\[\[[^\]|]*\|([^\]]*)\]\]`)
 )
 
 var abilityByName = map[string]string{
@@ -89,7 +100,84 @@ func ParseEffects(name, desc string, table map[string]map[int]string, class stri
 		sentenceStart := strings.LastIndex(desc[:m[0]], ".") + 1
 		e.NoShield = strings.Contains(strings.ToLower(desc[sentenceStart:m[0]]), "wielding a shield")
 	}
+	e.Skills, e.Tools = parseProfs(desc)
 	return e
+}
+
+// parseProfs reads fixed grants: "proficiency in the Insight and Medicine
+// skills", "proficiency with the herbalism kit". A list with any word that
+// is not a skill, or a tool named with "one", "type", "choice"..., is a
+// choice the wizard asks for (skillPick, feat picks), not a grant.
+func parseProfs(desc string) (skills, tools []string) {
+	text := reTag.ReplaceAllString(desc, "$1$2")
+	for _, m := range reSkillProf.FindAllStringSubmatch(text, -1) {
+		if reChoice.MatchString(m[1]) {
+			continue
+		}
+		var keys []string
+		for part := range strings.SplitSeq(strings.ReplaceAll(m[1], " and ", ","), ",") {
+			if part = strings.TrimSpace(part); part == "" {
+				continue // "History, and Religion"
+			}
+			i := slices.IndexFunc(Skills, func(sk Skill) bool { return strings.EqualFold(sk.Name, part) })
+			if i < 0 {
+				keys = nil
+				break
+			}
+			keys = append(keys, Skills[i].Key)
+		}
+		skills = append(skills, keys...)
+	}
+	// "heavy armor and smith's tools", "the disguise kit, the forgery kit":
+	// each listed tool, not the armor or weapons beside it.
+	for _, m := range reToolProf.FindAllStringSubmatch(text, -1) {
+		for part := range strings.SplitSeq(strings.ReplaceAll(m[1], " and ", ","), ",") {
+			if t := reTool.FindStringSubmatch(strings.TrimSpace(part)); t != nil && !reChoice.MatchString(t[1]) {
+				tools = append(tools, t[1])
+			}
+		}
+	}
+	return skills, tools
+}
+
+// AddProfs adds skill (by key) and other proficiencies granted by origin,
+// recording origin for those the sheet did not have yet.
+func (s *Sheet) AddProfs(origin string, skills []string, other ...string) {
+	note := func(k string) {
+		if origin == "" {
+			return
+		}
+		if s.ProfSources == nil {
+			s.ProfSources = map[string]string{}
+		}
+		s.ProfSources[k] = origin
+	}
+	for _, k := range skills {
+		if !slices.Contains(s.SkillProfs, k) {
+			s.SkillProfs = append(s.SkillProfs, k)
+			note(k)
+		}
+	}
+	for _, o := range other {
+		if !slices.ContainsFunc(s.OtherProfs, func(x string) bool { return strings.EqualFold(x, o) }) {
+			s.OtherProfs = append(s.OtherProfs, o)
+			note(o)
+		}
+	}
+}
+
+// RemoveProfsFrom removes the proficiencies ProfSources says origin added
+// (a feature dropped by a subclass or source change); others stay.
+func (s *Sheet) RemoveProfsFrom(origin string) {
+	for k, from := range s.ProfSources {
+		if from != origin {
+			continue
+		}
+		s.SkillProfs = slices.DeleteFunc(s.SkillProfs, func(x string) bool { return x == k })
+		s.Expertise = slices.DeleteFunc(s.Expertise, func(x string) bool { return x == k })
+		s.OtherProfs = slices.DeleteFunc(s.OtherProfs, func(x string) bool { return x == k })
+		delete(s.ProfSources, k)
+	}
 }
 
 // armorCondition reads "while you aren't wearing Heavy armor" and the like.
@@ -196,7 +284,31 @@ func SaveFeature(f Feature, mods []CustomMod, featKey, featSource string) Comman
 
 // PutFeature is SaveFeature's change, for code that builds sheets.
 func (s *Sheet) PutFeature(f Feature, mods []CustomMod) {
-	if i := slices.IndexFunc(s.Features, func(x Feature) bool { return strings.EqualFold(x.Name, f.Name) }); i >= 0 {
+	s.putFeature(slices.IndexFunc(s.Features, func(x Feature) bool { return strings.EqualFold(x.Name, f.Name) }), f, mods)
+}
+
+// AddFeature puts a gained class, subclass or species feature and its
+// effects on the sheet. One of the same name and source already there (a
+// feature listed at several levels) is updated, keeping the level first
+// gained and the uses spent; its modifiers replace the old ones, never
+// stack. The fixed proficiencies it grants are recorded as the feature's.
+func (s *Sheet) AddFeature(f Feature, e FeatureEffects) {
+	mods := e.Apply(&f)
+	i := s.featureIndex(f.Name, f.Source)
+	if i >= 0 {
+		f.Level = cmp.Or(s.Features[i].Level, f.Level)
+	}
+	s.putFeature(i, f, mods)
+	s.AddProfs(f.Name, e.Skills, e.Tools...)
+}
+
+func (s Sheet) featureIndex(name, source string) int {
+	return slices.IndexFunc(s.Features, func(x Feature) bool { return strings.EqualFold(x.Name, name) && x.Source == source })
+}
+
+// putFeature replaces the feature at i (appends when i < 0) and its mods.
+func (s *Sheet) putFeature(i int, f Feature, mods []CustomMod) {
+	if i >= 0 {
 		old := s.Features[i]
 		f.Name, f.Source, f.Level = old.Name, cmp.Or(f.Source, old.Source), cmp.Or(f.Level, old.Level)
 		f.Uses.Used = old.Uses.Used

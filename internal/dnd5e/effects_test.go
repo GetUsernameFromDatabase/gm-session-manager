@@ -2,6 +2,7 @@ package dnd5e
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -171,5 +172,95 @@ func TestArmorAndFeatureUses(t *testing.T) {
 	}
 	if c.Sheet.Features[0].Uses.Used != 0 || c.Sheet.ArmorClass() != 10 || len(c.Sheet.Modifiers) != 0 {
 		t.Errorf("after long rest, armor off, feature removed: %+v AC %d mods %+v", c.Sheet.Features, c.Sheet.ArmorClass(), c.Sheet.Modifiers)
+	}
+}
+
+// TestParseProfs reads fixed proficiency grants and leaves choices alone.
+func TestParseProfs(t *testing.T) {
+	tests := []struct {
+		name, desc    string
+		skills, tools []string
+	}{
+		{"xphb tagged", "You gain proficiency in the {@skill Insight|XPHB} and {@skill Medicine|XPHB} skills, and you gain proficiency with the {@item Herbalism Kit|XPHB}.", []string{"insight", "medicine"}, []string{"Herbalism Kit"}},
+		{"compendium links", "You gain proficiency in the [[compendium:skill/insight|Insight]] skill.", []string{"insight"}, nil},
+		{"plain srd", "You gain proficiency in the Insight and Medicine skills, and you gain proficiency with the herbalism kit.", []string{"insight", "medicine"}, []string{"herbalism kit"}},
+		{"three skills", "You gain proficiency in the Arcana, History, and Religion skills.", []string{"arcana", "history", "religion"}, nil},
+		{"choice of listed skills", "You have proficiency in the Insight, Perception, or Survival skill.", nil, nil},
+		{"skills of your choice", "You gain proficiency in two skills of your choice.", nil, nil},
+		{"tool of your choice", "You gain proficiency with one type of Artisan's Tools of your choice.", nil, nil},
+		{"weapons are not tools", "You have proficiency with all firearms.", nil, nil},
+		{"two tools", "You gain proficiency with [[compendium:item/alchemist-s-supplies|Alchemist's Supplies]] and the [[compendium:item/herbalism-kit|Herbalism Kit]].", nil, []string{"Alchemist's Supplies", "Herbalism Kit"}},
+		{"armor beside a tool", "you gain proficiency with heavy armor and [[compendium:item/smith-s-tools|smith's tools]].", nil, []string{"smith's tools"}},
+		{"listed with a choice", "You gain proficiency with the disguise kit, the forgery kit, and one gaming set of your choice.", nil, []string{"disguise kit", "forgery kit"}},
+		{"a set already given", "You gain a Gaming Set. You have proficiency with this Gaming Set, and you can use it as a Spellcasting Focus: a drum.", nil, nil},
+	}
+	for _, tt := range tests {
+		e := ParseEffects("Test", tt.desc, nil, "")
+		if !slices.Equal(e.Skills, tt.skills) || !slices.Equal(e.Tools, tt.tools) {
+			t.Errorf("%s: skills %q tools %q, want %q %q", tt.name, e.Skills, e.Tools, tt.skills, tt.tools)
+		}
+	}
+}
+
+// TestRepeatedFeature levels a Monk to 6: Unarmored Movement, listed at
+// every level by the old parser or once by the new one, is one row whose
+// speed bonus follows the table column.
+func TestRepeatedFeature(t *testing.T) {
+	desc := "Your speed increases by 10 feet while you aren't wearing armor or wielding a Shield. This bonus increases when you reach certain Monk levels, as shown on the Monk Features table."
+	for _, tt := range []struct {
+		name   string
+		levels []int
+	}{
+		{"once", []int{2}},
+		{"every level", []int{2, 2, 3, 4, 5, 6}},
+	} {
+		monk := ClassInfo{
+			Slug: "monk", Name: "Monk", HitDie: 8, Caster: CasterNone,
+			Table:    map[string]map[int]string{"Unarmored Movement": {2: "+10 ft.", 3: "+10 ft.", 4: "+10 ft.", 5: "+10 ft.", 6: "+15 ft."}},
+			Features: []ClassFeature{{Name: "Unarmored Movement", Description: desc, Levels: tt.levels}},
+		}
+		c := Character{Name: "Tam", Sheet: NewSheet()}
+		for range 6 {
+			if err := c.LevelUp(LevelUpChoice{Class: monk}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		rows := slices.DeleteFunc(slices.Clone(c.Sheet.Features), func(f Feature) bool { return f.Name != "Unarmored Movement" })
+		if len(rows) != 1 || rows[0].Level != 2 || c.Sheet.WalkSpeed() != c.Sheet.Speed+15 {
+			t.Errorf("%s: rows %+v, speed %d, mods %+v", tt.name, rows, c.Sheet.WalkSpeed(), c.Sheet.Modifiers)
+		}
+	}
+}
+
+// TestDedupeFeatures collapses a sheet holding three copies of a feature
+// and its stacked bonus, as older level-ups left mercymonk.
+func TestDedupeFeatures(t *testing.T) {
+	s := NewSheet()
+	s.Speed = 30
+	s.Classes = []ClassLevel{{Slug: "monk", Name: "Monk", Level: 4}}
+	mod := CustomMod{Target: ModSpeed, Value: 10, Note: "Unarmoed Movement", Source: "Unarmoed Movement", When: "unarmored-no-shield"}
+	mobile := CustomMod{Target: ModSpeed, Value: 10, Note: "Mobile", Source: "Mobile"}
+	for _, lvl := range []int{2, 3, 4} {
+		s.Features = append(s.Features, Feature{Name: "Unarmoed Movement", Source: "Monk", Level: lvl})
+	}
+	s.Features = append(s.Features, Feature{Name: "Mobile", Source: "Feat"}, Feature{Name: "Way of Mercy", Source: "Monk", Level: 3,
+		Description: "**Implements of Mercy.** You gain proficiency in the Insight and Medicine skills, and you gain proficiency with the herbalism kit."})
+	s.Modifiers = []CustomMod{mod, mod, mod, mobile}
+
+	if !s.DedupeFeatures() || len(s.Features) != 3 || s.Features[0].Level != 2 || !slices.Equal(s.Modifiers, []CustomMod{mod, mobile}) {
+		t.Errorf("features %+v, mods %+v", s.Features, s.Modifiers)
+	}
+	if s.DedupeFeatures() {
+		t.Error("second dedupe changed the sheet")
+	}
+	if s.WalkSpeed() != 50 { // 30 + Unarmored Movement 10 + Mobile 10
+		t.Errorf("speed %d", s.WalkSpeed())
+	}
+	if !s.CatchUpProfs() || s.ProfSources["insight"] != "Way of Mercy" || s.ProfSources["herbalism kit"] != "Way of Mercy" || !slices.Contains(s.SkillProfs, "medicine") {
+		t.Errorf("profs %q %q sources %v", s.SkillProfs, s.OtherProfs, s.ProfSources)
+	}
+	s.RemoveProfsFrom("Way of Mercy")
+	if len(s.SkillProfs) != 0 || len(s.OtherProfs) != 0 || len(s.ProfSources) != 0 {
+		t.Errorf("after removal: %q %q %v", s.SkillProfs, s.OtherProfs, s.ProfSources)
 	}
 }

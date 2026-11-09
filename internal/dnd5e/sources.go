@@ -118,10 +118,11 @@ func planSwitch(s Sheet, kind, slug string, old *ClassInfo, next ClassInfo) (fea
 		if onSheet[strings.ToLower(f.Name)] {
 			continue
 		}
-		// One per level gained, as LevelUp adds them.
+		// Once, at the first level gained, as LevelUp adds them.
 		for _, lvl := range slices.Sorted(slices.Values(f.Levels)) {
 			if lvl >= 1 && lvl <= cl.Level {
 				sw.add = append(sw.add, Feature{Name: f.Name, Source: cl.Name, Level: lvl, Description: f.Description})
+				break
 			}
 		}
 	}
@@ -235,17 +236,13 @@ func (s *Sheet) applySwitch(sw featureSwitch, next ClassInfo) {
 			drop = append(drop, i)
 			continue
 		}
-		// By index, not PutFeature: a feature gained at several levels is
-		// on the sheet once per level under the same name.
+		// By index: an older sheet may still hold a feature once per level.
 		old := s.Features[i]
 		f := Feature{Name: old.Name, Source: old.Source, Level: old.Level, Description: to.Description}
-		mods := ParseEffects(to.Name, to.Description, next.Table, next.Name).Apply(&f)
-		f.Uses.Used = old.Uses.Used
-		s.Features[i] = f
-		for j := range mods {
-			mods[j].Note, mods[j].Source = f.Name, f.Name
-		}
-		s.Modifiers = append(slices.DeleteFunc(s.Modifiers, func(m CustomMod) bool { return m.Source == f.Name }), mods...)
+		e := ParseEffects(to.Name, to.Description, next.Table, next.Name)
+		s.putFeature(i, f, e.Apply(&f))
+		s.RemoveProfsFrom(old.Name)
+		s.AddProfs(old.Name, e.Skills, e.Tools...)
 	}
 	slices.Sort(drop)
 	for _, i := range slices.Backward(drop) {
@@ -253,11 +250,56 @@ func (s *Sheet) applySwitch(sw featureSwitch, next ClassInfo) {
 		s.Features = slices.Delete(s.Features, i, i+1)
 		if !slices.ContainsFunc(s.Features, func(f Feature) bool { return f.Name == name }) {
 			s.Modifiers = slices.DeleteFunc(s.Modifiers, func(m CustomMod) bool { return m.Source == name })
+			s.RemoveProfsFrom(name)
 		}
 	}
 	for _, f := range sw.add {
-		mods := ParseEffects(f.Name, f.Description, next.Table, next.Name).Apply(&f)
-		s.Features = append(s.Features, f)
-		s.Modifiers = append(s.Modifiers, mods...)
+		s.AddFeature(f, ParseEffects(f.Name, f.Description, next.Table, next.Name))
 	}
+	s.ScaleSpeeds(next, s.Classes[sw.class].Level)
+}
+
+// SubclassRef names a class on the sheet and the subclass copy to give it.
+type SubclassRef struct {
+	Class, Slug, Source string
+}
+
+// ChangeSubclass swaps ref.Class's subclass for env.SourceNew's: untouched
+// features of the current one (env.SourceOld) leave with the proficiencies
+// they gave, the new one's arrive for every level taken. Spells and option
+// picks the old one gave are not tracked, so they stay.
+func (c *Character) ChangeSubclass(ref SubclassRef, env Env) error {
+	s := &c.Sheet
+	i := s.classIndex(ref.Class)
+	if i < 0 || s.Classes[i].Subclass == "" {
+		return fmt.Errorf("no subclass of %q to change", ref.Class)
+	}
+	next := env.SourceNew
+	if next.Slug != ref.Class || next.SubclassSlug != ref.Slug || next.SubclassName == "" {
+		return fmt.Errorf("unknown subclass %q", ref.Slug)
+	}
+	cl := s.Classes[i]
+	// An unpinned subclass is found by its name.
+	sw, err := planSwitch(*s, RefSubclass, cmp.Or(cl.SubclassSlug, cl.Subclass), env.SourceOld, next)
+	if err != nil {
+		return err
+	}
+	if sw.class != i {
+		return fmt.Errorf("no subclass of %q to change", ref.Class)
+	}
+	s.applySwitch(sw, next)
+	s.Classes[i].Subclass, s.Classes[i].SubclassSlug, s.Classes[i].SubclassSource = next.SubclassName, ref.Slug, ref.Source
+	s.Classes[i].Caster = cmp.Or(next.Caster, CasterNone)
+	s.RecomputeSlots()
+	return nil
+}
+
+// PinsSource reports whether the sheet pins any compendium ref to the source.
+func (s Sheet) PinsSource(key string) bool {
+	if s.SpeciesSource == key || s.BackgroundSource == key || s.Armor != nil && s.Armor.Source == key {
+		return true
+	}
+	return slices.ContainsFunc(s.Classes, func(c ClassLevel) bool { return c.Source == key || c.SubclassSource == key }) ||
+		slices.ContainsFunc(s.Spells, func(sp Spell) bool { return sp.Source == key }) ||
+		slices.Contains(slices.Collect(maps.Values(s.FeatSources)), key)
 }

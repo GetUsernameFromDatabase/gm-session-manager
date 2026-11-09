@@ -84,3 +84,9 @@ WHERE id = ?;
 -- name: DeleteLevelUps :exec
 DELETE FROM level_ups
 WHERE character_id = ?;
+
+-- ListCharacterSheetsNamed is every character's name and sheet, deleted ones
+-- too (a restore must not find its source gone), for the source usage check.
+-- name: ListCharacterSheetsNamed :many
+SELECT name, sheet_json FROM characters
+ORDER BY name;

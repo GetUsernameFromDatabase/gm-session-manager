@@ -142,6 +142,24 @@ templ CharacterSheet(s SheetView) {
 								Revert level-up
 							}
 						}
+						// CanSheet is the owner only (perm.CanChangeSubclass); the GM never sees it.
+						for _, cl := range s.C.Sheet.Classes {
+							if cl.Subclass != "" {
+								@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: with(dialog.TriggerFor(builderID), templ.Attributes{
+									"data-menu-item": "",
+									"hx-get":         fmt.Sprintf("/characters/%d/subclass?class=%s", s.ID, url.QueryEscape(cl.Slug)),
+									"hx-target":      "#builder",
+									"hx-swap":        "innerHTML",
+								})}) {
+									@icon.Shuffle()
+									if len(s.C.Sheet.Classes) > 1 {
+										{ "Change " + cl.Name + " subclass" }
+									} else {
+										Change subclass
+									}
+								}
+							}
+						}
 						@menuDelete("Delete character", fmt.Sprintf("/characters/%d/remove", s.ID), "Delete "+s.C.Name+"? This logs out every device playing it. The GM can restore it.")
 					}
 				</div>
@@ -856,7 +874,7 @@ templ skillsCard(s SheetView) {
 				<p class="mt-3 text-xs text-muted-foreground">
 					@editable(s, edit{"profs", "other-add", ""}, "Change other proficiencies", "mx-0 whitespace-normal text-left") {
 						if len(s.C.Sheet.OtherProfs) > 0 {
-							{ strings.Join(s.C.Sheet.OtherProfs, ", ") }
+							{ strings.Join(s.C.Sheet.OtherProfLabels(), ", ") }
 						} else {
 							Add armor, weapon or tool proficiencies
 						}

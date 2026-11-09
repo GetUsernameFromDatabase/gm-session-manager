@@ -421,7 +421,11 @@ type Sheet struct {
 	SkillProfs []string `json:"skill_profs"          validate:"dive,required"`
 	Expertise  []string `json:"expertise"            validate:"dive,required"`
 	OtherProfs []string `json:"other_profs"          validate:"dive,required,max=200"`
-	Languages  []string `json:"languages"            validate:"dive,required,max=100"`
+	// ProfSources names what granted a skill (by key) or other proficiency:
+	// a feature, class, species trait or background. Profs added by hand or
+	// before it was kept have none.
+	ProfSources map[string]string `json:"prof_sources,omitempty" validate:"dive,keys,max=200,endkeys,max=200"`
+	Languages   []string          `json:"languages"            validate:"dive,required,max=100"`
 	// Resistances are the damage types (DamageTypes) the character resists.
 	Resistances     []string `json:"resistances,omitempty"     validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`
 	Immunities      []string `json:"immunities,omitempty"      validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`

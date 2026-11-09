@@ -174,7 +174,7 @@ func upsert(ctx context.Context, q *sqlc.Queries, src Source, e Entry) error {
 // normalizeVersion salts the source hash. Bump it only when the parser
 // changes (the normalized shape gains data), so unchanged source files are
 // imported again once. Edits to the files are caught by the hash itself.
-const normalizeVersion = "9"
+const normalizeVersion = "10"
 
 // readSource reads the .json files of a source directory and hashes their
 // names and contents, so re-importing unchanged files is a no-op.
@@ -521,4 +521,14 @@ func SaveHomebrew(ctx context.Context, q *sqlc.Queries, id int64, in HomebrewInp
 		err = q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: row.ID, CampaignID: owner.CampaignID})
 	}
 	return row.ID, err
+}
+
+// RemoveSourceDir deletes the data folder dir/key, so the next import does
+// not bring the source back. A key that is not one plain folder name (a web
+// page source has none) removes nothing.
+func RemoveSourceDir(dir, key string) error {
+	if key == "" || key == "." || key == ".." || key != filepath.Base(key) || strings.ContainsAny(key, `/\`) {
+		return nil
+	}
+	return os.RemoveAll(filepath.Join(dir, key))
 }

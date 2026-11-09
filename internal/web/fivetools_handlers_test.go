@@ -1,6 +1,7 @@
 package web
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -314,5 +315,55 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 				t.Error("link to a missing entry")
 			}
 		})
+	}
+}
+
+// TestSourceDeleteUsed: a source a sheet pins is refused and kept; once the
+// pin is gone it is deleted with its folder.
+func TestSourceDeleteUsed(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, auth.RoleAdmin)
+	e.source(t, "my-folder", "2024")
+	featID := e.feat(t, "my-folder", "alert", "x")
+	folder := filepath.Join(e.app.compendiumDir(), "my-folder")
+	if err := os.MkdirAll(folder, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	pin := func(sheet string) {
+		if err := e.q().UpdateCharacterSheet(t.Context(), sqlc.UpdateCharacterSheetParams{SheetJson: sheet, ID: e.characterID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pin(`{"species_source":"my-folder"}`)
+	w := e.do(t, http.MethodPost, "/compendium/sources/my-folder/delete", gm, nil, true)
+	if !strings.Contains(w.Body.String(), "my-folder is used by") || !strings.Contains(w.Body.String(), "Switch their sources first.") {
+		t.Errorf("no refusal naming users: %d %s", w.Code, w.Body)
+	}
+	if got := w.Header().Get("HX-Reswap"); got != "none" {
+		t.Errorf("HX-Reswap = %q, want none (the card must not be swapped for the flash)", got)
+	}
+	if _, err := e.q().GetCompendiumSource(t.Context(), "my-folder"); err != nil {
+		t.Errorf("used source deleted: %v", err)
+	}
+	pin(`{}`)
+	// An entity linked to one of its entries keeps it too.
+	ent, err := e.q().CreateEntity(t.Context(), sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Goblin boss", FieldsJson: "{}", CompendiumRef: sql.NullInt64{Int64: featID, Valid: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do(t, http.MethodPost, "/compendium/sources/my-folder/delete", gm, nil, true); !strings.Contains(w.Body.String(), "my-folder is used by Goblin boss.") {
+		t.Errorf("entity link not counted: %d %s", w.Code, w.Body)
+	}
+	if err := e.q().DeleteEntity(t.Context(), ent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do(t, http.MethodPost, "/compendium/sources/my-folder/delete", gm, nil, true); w.Code != http.StatusOK {
+		t.Fatalf("delete: %d %s", w.Code, w.Body)
+	}
+	if _, err := e.q().GetCompendiumSource(t.Context(), "my-folder"); err == nil {
+		t.Error("source kept")
+	}
+	if _, err := os.Stat(folder); !os.IsNotExist(err) {
+		t.Errorf("folder kept: %v", err)
 	}
 }

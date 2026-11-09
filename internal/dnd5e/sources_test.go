@@ -176,6 +176,69 @@ func TestSwitchSource(t *testing.T) {
 	}
 }
 
+func TestChangeSubclass(t *testing.T) {
+	old := oldFighter
+	sub := func(name, slug, caster string, fs ...ClassFeature) Env {
+		next := oldFighter
+		next.SubclassName, next.SubclassSlug, next.SubclassSource, next.Caster, next.SubclassFeatures = name, slug, "XPHB", caster, fs
+		return Env{SourceOld: &old, SourceNew: next}
+	}
+	battleMaster := sub("Battle Master", "battle-master", CasterNone,
+		ClassFeature{Name: "Combat Superiority", Description: "dice", Levels: []int{3}},
+		ClassFeature{Name: "Know Your Enemy", Description: "study", Levels: []int{7}})
+	eldritch := sub("Eldritch Knight", "eldritch-knight", CasterThird, ClassFeature{Name: "War Bond", Description: "bond", Levels: []int{3}})
+	has := func(c Character, name string) bool {
+		return slices.ContainsFunc(c.Sheet.Features, func(f Feature) bool { return f.Name == name })
+	}
+	tests := []struct {
+		name    string
+		input   string
+		env     Env
+		edit    func(s *Sheet)
+		check   func(c Character) bool
+		wantErr bool
+	}{
+		{"to battle master", "change-subclass fighter battle-master XPHB", battleMaster, nil, func(c Character) bool {
+			cl := c.Sheet.Classes[0]
+			return !has(c, "Improved Critical") && has(c, "Combat Superiority") && !has(c, "Know Your Enemy") &&
+				has(c, "Second Wind") && !slices.Contains(c.Sheet.SkillProfs, "athletics") &&
+				cl.Subclass == "Battle Master" && cl.SubclassSlug == "battle-master" && cl.SubclassSource == "XPHB" && cl.Caster == CasterNone
+		}, false},
+		{"to a caster subclass", "change-subclass fighter eldritch-knight XPHB", eldritch, nil, func(c Character) bool {
+			return has(c, "War Bond") && c.Sheet.Classes[0].Caster == CasterThird && c.Sheet.Slots[0].Max > 0
+		}, false},
+		{"edited old feature stays", "change-subclass fighter battle-master XPHB", battleMaster, func(s *Sheet) {
+			s.Features[slices.IndexFunc(s.Features, func(f Feature) bool { return f.Name == "Improved Critical" })].Description = "my crit"
+		}, func(c Character) bool { return has(c, "Improved Critical") && has(c, "Combat Superiority") }, false},
+		{"env for another subclass", "change-subclass fighter samurai XPHB", battleMaster, nil, nil, true},
+		{"class not on the sheet", "change-subclass wizard battle-master XPHB", battleMaster, nil, nil, true},
+		{"no subclass yet", "change-subclass fighter battle-master XPHB", battleMaster, func(s *Sheet) { s.Classes[0].Subclass = "" }, nil, true},
+		{"missing argument", "change-subclass fighter battle-master", battleMaster, nil, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := switchFighter()
+			c.Sheet.AddProfs("Improved Critical", []string{"athletics"})
+			if tt.edit != nil {
+				tt.edit(&c.Sheet)
+			}
+			cmd, err := Parse(tt.input)
+			if err == nil {
+				if cmd.Scope != perm.ScopeSheet || cmd.SubclassChange.Class == "" {
+					t.Errorf("scope %v ref %+v", cmd.Scope, cmd.SubclassChange)
+				}
+				_, err = cmd.Apply(&c, tt.env)
+			}
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil && !tt.check(c) {
+				t.Errorf("unexpected result: %+v", c.Sheet)
+			}
+		})
+	}
+}
+
 // TestDropFeat: removing a feat's feature takes the feat off, and its pin
 // only once no copy of the feat shares it.
 func TestDropFeat(t *testing.T) {
@@ -193,6 +256,30 @@ func TestDropFeat(t *testing.T) {
 		s.dropFeat(tt.remove)
 		if _, pinned := s.FeatSources["magic-initiate"]; !slices.Equal(s.Feats, tt.wantFeats) || pinned != tt.wantPin {
 			t.Errorf("%s: feats %q, pins %v", tt.name, s.Feats, s.FeatSources)
+		}
+	}
+}
+
+func TestSheetPinsSource(t *testing.T) {
+	const key = "5etools-tce"
+	cases := []struct {
+		name  string
+		sheet Sheet
+		want  bool
+	}{
+		{"empty", Sheet{}, false},
+		{"other pin", Sheet{SpeciesSource: "srd-2024"}, false},
+		{"class", Sheet{Classes: []ClassLevel{{Source: key}}}, true},
+		{"subclass", Sheet{Classes: []ClassLevel{{SubclassSource: key}}}, true},
+		{"species", Sheet{SpeciesSource: key}, true},
+		{"background", Sheet{BackgroundSource: key}, true},
+		{"feat", Sheet{FeatSources: map[string]string{"x": key}}, true},
+		{"spell", Sheet{Spells: []Spell{{Source: key}}}, true},
+		{"armor", Sheet{Armor: &WornArmor{Source: key}}, true},
+	}
+	for _, tc := range cases {
+		if got := tc.sheet.PinsSource(key); got != tc.want {
+			t.Errorf("%s: PinsSource = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }

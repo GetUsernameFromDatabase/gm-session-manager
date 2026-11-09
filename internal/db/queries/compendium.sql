@@ -256,7 +256,7 @@ WHERE e.kind = 'item' AND e.id IN (SELECT id FROM compendium_top)
 ORDER BY e.name;
 
 -- name: ListSubclassesOf :many
-SELECT id, slug, name FROM compendium_entries
+SELECT id, slug, name, source_key, data_json FROM compendium_entries
 WHERE kind = 'subclass' AND id IN (SELECT id FROM compendium_top) AND json_extract(data_json, '$.subclass_of') = CAST(sqlc.arg(class_slug) AS TEXT)
 ORDER BY name;
 
@@ -351,3 +351,15 @@ DELETE FROM monster_habitats
 WHERE habitat = CAST(sqlc.arg(habitat) AS TEXT) AND entry_id IN (
     SELECT id FROM compendium_entries
     WHERE kind = 'monster' AND instr(lower(name), lower(CAST(sqlc.arg(filter) AS TEXT))) > 0);
+
+-- ListSourceRefUsers names the entities and combatants whose compendium link
+-- points at an entry of the source, for the delete and untick checks.
+-- name: ListSourceRefUsers :many
+SELECT DISTINCT n.name FROM (
+    SELECT en.name, en.compendium_ref AS ref FROM entities AS en
+    UNION ALL
+    SELECT cb.name, cb.monster_ref FROM combatants AS cb
+) AS n
+JOIN compendium_entries AS e ON e.id = n.ref
+WHERE e.source_key = ?
+ORDER BY n.name;

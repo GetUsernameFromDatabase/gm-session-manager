@@ -36,6 +36,9 @@ type Command struct {
 	// the caller resolves Env.SourceOld and Env.SourceNew (a class or
 	// subclass) or Env.SourceSpell before Apply.
 	SourceRef SourceRef
+	// SubclassChange is set when the command swaps a class's subclass; the
+	// caller resolves Env.SourceOld and Env.SourceNew before Apply.
+	SubclassChange SubclassRef
 	// MasteryWeapon is set when the command masters a weapon kind; the
 	// caller resolves Env.MasteryWeapon and Env.MasteryLimit before Apply.
 	MasteryWeapon string
@@ -56,7 +59,8 @@ type Env struct {
 	// Command.PrepareCaps; a class without an entry has no cap.
 	PreparedCaps map[string]int
 	// SourceOld and SourceNew are the class (with the subclass's features)
-	// in the pinned copy and in Command.SourceRef's; SourceOld is nil when
+	// in the pinned copy and in Command.SourceRef's (for change-subclass:
+	// with the current subclass and with the new one); SourceOld is nil when
 	// the pinned copy is gone. SourceSpell is the spell in the new copy.
 	SourceOld   *ClassInfo
 	SourceNew   ClassInfo
@@ -128,6 +132,7 @@ func (c Character) clone() Character {
 	s.SkillProfs = slices.Clone(s.SkillProfs)
 	s.Expertise = slices.Clone(s.Expertise)
 	s.OtherProfs = slices.Clone(s.OtherProfs)
+	s.ProfSources = maps.Clone(s.ProfSources)
 	s.Languages = slices.Clone(s.Languages)
 	s.Resistances = slices.Clone(s.Resistances)
 	s.Immunities = slices.Clone(s.Immunities)
@@ -320,6 +325,16 @@ func init() {
 		"armor":       parseArmor,
 		"shield":      parseShield,
 		"source":      parseSource,
+		// Owner only (ScopeSheet), unlike source: it rebuilds the character.
+		"change-subclass": func(args []string) (Command, error) {
+			if err := want(args, 3, "change-subclass <class> <slug> <source>"); err != nil {
+				return Command{}, err
+			}
+			ref := SubclassRef{Class: strings.ToLower(args[0]), Slug: strings.ToLower(args[1]), Source: args[2]}
+			cmd := scoped(perm.ScopeSheet, func(c *Character, env Env, _ *Effects) error { return c.ChangeSubclass(ref, env) })
+			cmd.SubclassChange = ref
+			return cmd, nil
+		},
 	}
 }
 
@@ -969,6 +984,9 @@ func parseProfSet(args []string) (Command, error) {
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			setIn(&c.Sheet.SkillProfs, key, level != ProfNone)
 			setIn(&c.Sheet.Expertise, key, level == ProfExpertise)
+			if level == ProfNone {
+				delete(c.Sheet.ProfSources, key)
+			}
 			return nil
 		}), nil
 	case kind == "save" && slices.Contains(Abilities, key) && (level == ProfNone || level == ProfProficient):
@@ -1028,6 +1046,9 @@ func parseProf(args []string) (Command, error) {
 	}
 	return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 		setIn(pick(&c.Sheet), value, op == "add")
+		if op == "remove" && (kind == "skill" || kind == "other") {
+			delete(c.Sheet.ProfSources, value) // removed by hand: no longer the feature's
+		}
 		return nil
 	}), nil
 }

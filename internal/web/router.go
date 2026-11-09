@@ -123,6 +123,8 @@ func (a *App) Router() *gin.Engine {
 	r.GET("/characters/:character/levelup", a.levelUpForm)
 	r.POST("/characters/:character/levelup", a.levelUp)
 	r.POST("/characters/:character/levelup/revert", a.revertLevelUp)
+	r.GET("/characters/:character/subclass", a.subclassChangeForm)
+	r.POST("/characters/:character/subclass", a.changeSubclass)
 	r.POST("/conditions/:condition/delete", a.deleteCondition)
 
 	// Combat.
@@ -204,6 +206,7 @@ func (a *App) Router() *gin.Engine {
 	r.POST("/compendium/5etools", gm, a.fiveToolsImport)
 	r.POST("/compendium/5etools/:book/delete", gm, a.fiveToolsRemove)
 	r.POST("/compendium/sources/:key/move", gm, a.sourceMove)
+	r.POST("/compendium/sources/:key/delete", gm, a.sourceDelete)
 	r.POST(views.SourceOrderPath, gm, a.sourceOrder)
 	r.POST("/compendium/page/preview", gm, a.compendiumPagePreview)
 	r.POST("/compendium/page", gm, a.compendiumPageSave)

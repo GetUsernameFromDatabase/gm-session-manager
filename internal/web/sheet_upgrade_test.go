@@ -50,6 +50,38 @@ func TestUpgradeSheets(t *testing.T) {
 	}
 }
 
+// TestUpgradeRepeatedFeature: a sheet holding three copies of a feature
+// listed at several levels, each with its +10, keeps one whose bonus follows
+// the class table column, and gets the profs its features grant.
+func TestUpgradeRepeatedFeature(t *testing.T) {
+	e := newTestEnv(t)
+	if _, err := compendium.Import(t.Context(), e.app.Store, "../compendium/testdata"); err != nil {
+		t.Fatal(err)
+	}
+	s := dnd5e.NewSheet()
+	s.EffectsVersion = 3
+	s.Classes = []dnd5e.ClassLevel{{Slug: "wizard", Name: "Wizard", Level: 12, HitDie: 6, Caster: dnd5e.CasterFull}}
+	mod := dnd5e.CustomMod{Target: dnd5e.ModSpeed, Value: 10, Note: "Fast Feet", Source: "Fast Feet"}
+	for _, lvl := range []int{9, 10, 11} {
+		s.Features = append(s.Features, dnd5e.Feature{Name: "Fast Feet", Source: "Wizard", Level: lvl})
+		s.Modifiers = append(s.Modifiers, mod)
+	}
+	s.Features = append(s.Features, dnd5e.Feature{Name: "Herb Lore", Source: "Wizard", Level: 1, Description: "You gain proficiency with the herbalism kit."})
+	e.setSheet(t, s)
+	for run, want := range []int{1, 0} {
+		if n, err := UpgradeSheets(t.Context(), e.app.Store); err != nil || n != want {
+			t.Fatalf("run %d: changed %d, err %v", run, n, err)
+		}
+	}
+	got := e.sheet(t)
+	if len(got.Features) != 2 || got.Features[0].Level != 9 || len(got.Modifiers) != 1 || got.Modifiers[0].Value != 15 {
+		t.Errorf("features %+v, mods %+v", got.Features, got.Modifiers)
+	}
+	if !slices.Equal(got.OtherProfLabels(), []string{"herbalism kit (Herb Lore)"}) {
+		t.Errorf("other profs %q", got.OtherProfLabels())
+	}
+}
+
 // TestUpgradeThirdCaster: a subclass chosen before third casters, unpinned,
 // brings its slots, and weapons added before mastery get theirs; a second run
 // changes nothing.

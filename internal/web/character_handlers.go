@@ -237,6 +237,11 @@ func (a *App) commandEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet
 			return env, err
 		}
 	}
+	if cmd.SubclassChange.Class != "" {
+		if env.SourceOld, env.SourceNew, err = a.subclassChangeEnv(ctx, q, sheet, cmd.SubclassChange, campaignID); err != nil {
+			return env, err
+		}
+	}
 	if cmd.SpellSlug != "" {
 		if env.Spell, err = a.compendiumSpell(ctx, cmd.SpellSlug, campaignID); err != nil {
 			return env, userError{err}
@@ -731,8 +736,111 @@ func setSubclass(info *dnd5e.ClassInfo, row sqlc.CompendiumEntry) error {
 		info.Caster = sub.Caster
 	}
 	info.SubclassFeatures = classFeatures(sub)
-	info.SubclassSlug, info.SubclassSource = row.Slug, row.SourceKey
+	info.SubclassName, info.SubclassSlug, info.SubclassSource = row.Name, row.Slug, row.SourceKey
 	return nil
+}
+
+// subclassPanels is the details panel of each subclass row, features by level.
+func subclassPanels(rows []sqlc.ListSubclassesOfRow) ([]views.SubclassPanel, error) {
+	out := make([]views.SubclassPanel, 0, len(rows))
+	for _, r := range rows {
+		d, err := compendium.DecodeData(compendium.KindSubclass, r.DataJson)
+		if err != nil {
+			return nil, err
+		}
+		p := views.SubclassPanel{Name: r.Name, Source: r.SourceKey}
+		for _, f := range d.(*compendium.ClassData).Features {
+			p.Features = append(p.Features, views.SubclassFeature{Name: f.Name, Desc: f.Desc, Levels: f.Levels})
+		}
+		slices.SortStableFunc(p.Features, func(a, b views.SubclassFeature) int { return cmp.Compare(a.FirstLevel(), b.FirstLevel()) })
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// subclassForm swaps the subclass of the sheet's class Class for the one
+// named Subclass (the picker is valued by name).
+type subclassForm struct {
+	Class    string `form:"class"    validate:"required,max=200"`
+	Subclass string `form:"subclass" validate:"required,max=200"`
+}
+
+// subclassOwner is the character when the viewer may change its subclass.
+func (a *App) subclassOwner(c *gin.Context) (sqlc.Character, bool) {
+	w, ch, ok := a.characterAccess(c)
+	if ok && !perm.CanChangeSubclass(w.viewer, ch.ID) {
+		a.fail(c, http.StatusForbidden, "Only the player changes their subclass.")
+		ok = false
+	}
+	return ch, ok
+}
+
+// subclassChangeForm renders the subclass picker for one class into the
+// command builder dialog.
+func (a *App) subclassChangeForm(c *gin.Context) {
+	ch, ok := a.subclassOwner(c)
+	if !ok {
+		return
+	}
+	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	i := slices.IndexFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == c.Query("class") })
+	if i < 0 || sheet.Classes[i].Subclass == "" {
+		a.fail(c, http.StatusNotFound, "That class has no subclass to change.")
+		return
+	}
+	cl := sheet.Classes[i]
+	subs, err := a.Store.ListSubclassesOf(c.Request.Context(), cl.Slug)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	v := views.SubclassChangeView{CharacterID: ch.ID, Class: cl.Slug, ClassName: cl.Name, Current: cl.Subclass, Level: cl.Level}
+	for _, s := range subs {
+		v.Subclasses = append(v.Subclasses, views.Option{Slug: s.Slug, Name: s.Name})
+	}
+	if v.Panels, err = subclassPanels(subs); err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.render(c, http.StatusOK, views.SubclassChange(v))
+}
+
+// changeSubclass resolves the picked name to a compendium copy and runs
+// change-subclass with it.
+func (a *App) changeSubclass(c *gin.Context) {
+	ch, ok := a.subclassOwner(c)
+	if !ok {
+		return
+	}
+	var f subclassForm
+	if c.ShouldBind(&f) != nil {
+		a.fail(c, http.StatusUnprocessableEntity, "Choose a subclass.")
+		return
+	}
+	ctx := c.Request.Context()
+	subs, err := a.Store.ListSubclassesOf(ctx, f.Class)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	i := slices.IndexFunc(subs, func(s sqlc.ListSubclassesOfRow) bool { return strings.EqualFold(s.Name, f.Subclass) })
+	if i < 0 {
+		a.fail(c, http.StatusUnprocessableEntity, "Choose a subclass from the list.")
+		return
+	}
+	cmd, err := dnd5e.Parse("change-subclass", f.Class, subs[i].Slug, subs[i].SourceKey)
+	if err != nil {
+		a.fail(c, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if a.commandFailed(c, a.runCommand(ctx, ch, cmd)) {
+		return
+	}
+	a.characterChanged(c, ch)
 }
 
 // levelUpView previews a level in classSlug; with pickDefault it picks the
@@ -781,6 +889,9 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	}
 	for _, s := range subs {
 		v.Subclasses = append(v.Subclasses, views.Option{Slug: s.Slug, Name: s.Name})
+	}
+	if v.SubclassPanels, err = subclassPanels(subs); err != nil {
+		return v, err
 	}
 	feats, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(compendium.KindFeat), CampaignID: ch.CampaignID})
 	if err != nil {

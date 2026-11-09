@@ -584,6 +584,60 @@ func TestCheckNewOptions(t *testing.T) {
 	}
 }
 
+// TestBackgroundRepicksClassSkill: a Monk picks Insight; an Acolyte
+// background, which gives Insight, asks for one more Monk skill, and
+// Insight is held once. Redone afterwards, the class step shows the
+// background's skills known and offers the rest.
+func TestBackgroundRepicksClassSkill(t *testing.T) {
+	e := newTestEnv(t)
+	for _, p := range []sqlc.UpsertCompendiumEntryParams{
+		{Kind: "class", Slug: "testmonk", Name: "Testmonk", SourceKey: "test", ContentHash: "x",
+			DataJson: `{"hit_die":8,"desc":"|Skill Proficiencies|Choose 2: Acrobatics, Athletics, History, Insight, Religion, or Stealth|"}`},
+		{Kind: "background", Slug: "testacolyte", Name: "Testacolyte", SourceKey: "test", ContentHash: "x",
+			DataJson: `{"desc":"","parts":[{"name":"Skill Proficiencies","type":"skill_proficiency","desc":"Insight, Religion"}]}`},
+	} {
+		if err := e.q().UpsertCompendiumEntry(t.Context(), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base, player := fmt.Sprintf("/characters/%d/create/", e.characterID), e.token(t, auth.RolePlayer)
+	if w := e.do(t, http.MethodPost, base+"class", player, url.Values{"pick": {"testmonk"}, "skill": {"insight", "stealth"}}, false); w.Code != http.StatusSeeOther {
+		t.Fatalf("class: %d %s", w.Code, w.Body)
+	}
+	page := e.do(t, http.MethodGet, base+"background?pick=testacolyte", player, nil, false).Body.String()
+	if !strings.Contains(page, "choose one more") || !strings.Contains(page, `value="athletics"`) || strings.Contains(page, `value="insight"`) {
+		t.Errorf("background page does not ask for one more class skill")
+	}
+	for _, tc := range []struct {
+		name   string
+		skills []string
+		code   int
+	}{
+		{"none", nil, http.StatusUnprocessableEntity},
+		{"a background skill", []string{"stealth", "religion"}, http.StatusUnprocessableEntity},
+		{"not a class skill", []string{"stealth", "perception"}, http.StatusUnprocessableEntity},
+		{"one more", []string{"stealth", "athletics"}, http.StatusSeeOther},
+	} {
+		w := e.do(t, http.MethodPost, base+"background", player, url.Values{"pick": {"testacolyte"}, "skill": tc.skills}, false)
+		if w.Code != tc.code {
+			t.Errorf("%s: %d, want %d", tc.name, w.Code, tc.code)
+		}
+	}
+	sh := e.sheet(t)
+	if got := slices.Sorted(slices.Values(sh.SkillProfs)); !slices.Equal(got, []string{"athletics", "insight", "religion", "stealth"}) ||
+		sh.ProfSources["insight"] != "Testacolyte" || sh.ProfSources["athletics"] != "Testmonk" {
+		t.Errorf("skills %q, sources %v", sh.SkillProfs, sh.ProfSources)
+	}
+
+	// A class step after the background shows its skills known.
+	s := dnd5e.NewSheet()
+	s.Background, s.SkillProfs = "Testacolyte", []string{"insight", "religion"}
+	p := classSkillPick(s, []string{"acrobatics", "athletics", "history", "insight", "religion", "stealth"}, 2, nil)
+	if !slices.Equal(p.Known, []string{"insight", "religion"}) || len(p.Options) != 4 || p.Count != 2 {
+		t.Errorf("class pick after background: %+v", p)
+	}
+}
+
 // TestClassSkillCount: the class step takes exactly its skill count, of its
 // listed skills, each once.
 func TestClassSkillCount(t *testing.T) {

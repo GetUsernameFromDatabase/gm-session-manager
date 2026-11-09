@@ -252,7 +252,13 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 		return v, err
 	}
 	v.Choice = wizardChoice(e, data)
-	return v, nil
+	switch step {
+	case "class":
+		v.Choice.SkillPick = classSkillPick(s.C.Sheet, v.Choice.Skills, v.Choice.SkillCount, nil)
+	case "background":
+		v.Choice.SkillPick, err = a.backgroundSkillPick(ctx, s.C.Sheet, v.Choice.Skills)
+	}
+	return v, err
 }
 
 // wizardChoice is what a class, species or background gives, for the page
@@ -294,6 +300,79 @@ func wizardChoice(e sqlc.CompendiumEntry, data any) *views.WizardChoice {
 func skillChoice(s string) (int, []string) {
 	n, names := compendium.SkillChoice(s)
 	return n, skillKeys(names)
+}
+
+// classSkillPick asks for count of a class's skills, leaving out those the
+// sheet has from elsewhere (its background), which it shows known; picked
+// are ticked at first. Nil when the class picks no skills.
+func classSkillPick(sh dnd5e.Sheet, skills []string, count int, picked []string) *views.SkillPick {
+	if count == 0 {
+		return nil
+	}
+	p := &views.SkillPick{Picked: picked}
+	for _, k := range skills {
+		if slices.Contains(sh.SkillProfs, k) {
+			p.Known = append(p.Known, k)
+		} else {
+			p.Options = append(p.Options, k)
+		}
+	}
+	p.Count = min(count, len(p.Options))
+	return p
+}
+
+// backgroundSkillPick re-asks the class step's skill pick when the
+// background grants (bgSkills) a skill it picked: the class's list less the
+// background's skills, the other picks ticked. It is nil otherwise; the
+// picks are those ProfSources credits to the class.
+func (a *App) backgroundSkillPick(ctx context.Context, sh dnd5e.Sheet, bgSkills []string) (*views.SkillPick, error) {
+	if len(sh.Classes) == 0 {
+		return nil, nil
+	}
+	cl := sh.Classes[0]
+	var picks, kept []string
+	for _, k := range sh.SkillProfs {
+		if sh.ProfSources[k] == cl.Name {
+			picks = append(picks, k)
+			if !slices.Contains(bgSkills, k) {
+				kept = append(kept, k)
+			}
+		}
+	}
+	if len(kept) == len(picks) {
+		return nil, nil
+	}
+	row, _, err := entryFor(ctx, a.Store.Queries, compendium.KindClass, cl.Slug, cl.Source)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	data, err := compendium.DecodeData(compendium.KindClass, row.DataJson)
+	if err != nil {
+		return nil, err
+	}
+	c := wizardChoice(row, data)
+	after := sh
+	after.SkillProfs = slices.Concat(slices.DeleteFunc(slices.Clone(sh.SkillProfs), func(k string) bool { return slices.Contains(picks, k) }), bgSkills)
+	return classSkillPick(after, c.Skills, len(picks), kept), nil
+}
+
+func postedSkills(c *gin.Context) []string {
+	return slices.Compact(slices.Sorted(slices.Values(c.PostFormArray("skill"))))
+}
+
+// checkSkillPick refuses posted skills that are not p's count of its options.
+func checkSkillPick(p *views.SkillPick, skills []string) error {
+	need, opts := 0, []string(nil)
+	if p != nil {
+		need, opts = p.Count, p.Options
+	}
+	if len(skills) != need || slices.ContainsFunc(skills, func(k string) bool { return !slices.Contains(opts, k) }) {
+		return fieldError{userError{errors.New(views.Choose(need, false))}, views.FieldSkill}
+	}
+	return nil
 }
 
 // skillKeys matches skill names (spaces from the source's PDF text and all)
@@ -1026,7 +1105,7 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 			tools := slices.DeleteFunc(slices.Clone(picked), func(p string) bool {
 				return slices.ContainsFunc(dnd5e.Skills, func(sk dnd5e.Skill) bool { return sk.Name == p })
 			})
-			addProfs(s, skillKeys(picked), tools...)
+			s.AddProfs(name, skillKeys(picked), tools...)
 		}, nil})
 	}
 	if n := featMasteries(td); n > 0 {
@@ -1193,7 +1272,8 @@ func (a *App) lineageChoice(ctx context.Context, p compendium.NameDesc, opts []c
 // skillPick reads "proficiency in the Insight, Perception, or Survival
 // skill" or "in one skill of your choice" as a choice of one skill.
 func skillPick(p compendium.NameDesc) (choiceGroup, bool) {
-	if !strings.Contains(p.Desc, "proficiency in") || !strings.Contains(p.Desc, "skill") {
+	if !strings.Contains(p.Desc, "proficiency in") || !strings.Contains(p.Desc, "skill") ||
+		len(dnd5e.ParseEffects(p.Name, p.Desc, nil, "").Skills) > 0 { // a fixed grant ("the Insight and Medicine skills") is no choice
 		return choiceGroup{}, false
 	}
 	var opts []compendium.NameDesc
@@ -1206,7 +1286,7 @@ func skillPick(p compendium.NameDesc) (choiceGroup, bool) {
 		return choiceGroup{}, false
 	}
 	g := views.ChoiceGroup{Key: "trait_" + compendium.Slugify(p.Name), Title: p.Name, Count: 1, Options: opts}
-	return choiceGroup{g, func(s *dnd5e.Sheet, picked []string) { addProfs(s, skillKeys(picked)) }, nil}, true
+	return choiceGroup{g, func(s *dnd5e.Sheet, picked []string) { s.AddProfs(p.Name, skillKeys(picked)) }, nil}, true
 }
 
 // classChoices offers the class's spells and its "… Options" features
@@ -1614,10 +1694,9 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		}
 		data, _ := compendium.DecodeData(compendium.KindClass, row.DataJson)
 		choice := wizardChoice(row, data)
-		skills := slices.Compact(slices.Sorted(slices.Values(c.PostFormArray("skill"))))
-		need := min(choice.SkillCount, len(choice.Skills))
-		if len(skills) != need || slices.ContainsFunc(skills, func(k string) bool { return !slices.Contains(choice.Skills, k) }) {
-			return nil, fieldError{userError{errors.New(views.Choose(need, false))}, views.FieldSkill}
+		skills := postedSkills(c)
+		if err := checkSkillPick(classSkillPick(sheet, choice.Skills, choice.SkillCount, nil), skills); err != nil {
+			return nil, err
 		}
 		return once(func(s *dnd5e.Sheet, cc *dnd5e.Character) error {
 			if s.Level() > 0 {
@@ -1626,7 +1705,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			if err := cc.LevelUp(dnd5e.LevelUpChoice{Class: info}); err != nil {
 				return err
 			}
-			addProfs(&cc.Sheet, skills, trainedIn(choice.Traits)...)
+			cc.Sheet.AddProfs(info.Name, skills, trainedIn(choice.Traits)...)
 			return nil
 		}), nil
 	case "species", "background":
@@ -1654,8 +1733,28 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if err != nil {
 			return nil, err
 		}
+		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
+		if err != nil {
+			return nil, err
+		}
+		pickAgain, err := a.backgroundSkillPick(ctx, sheet, wizardChoice(row, data).Skills)
+		if err != nil {
+			return nil, err
+		}
+		skills := postedSkills(c)
+		if err := checkSkillPick(pickAgain, skills); err != nil {
+			return nil, err
+		}
 		return once(func(s *dnd5e.Sheet, _ *dnd5e.Character) error {
+			if pickAgain != nil { // the class's picks are made again, with the background's known
+				class := s.Classes[0].Name
+				s.SkillProfs = slices.DeleteFunc(s.SkillProfs, func(k string) bool { return s.ProfSources[k] == class })
+				maps.DeleteFunc(s.ProfSources, func(k, from string) bool { return from == class && !slices.Contains(s.OtherProfs, k) })
+			}
 			applyBackground(s, row.Name, td, feat)
+			if pickAgain != nil {
+				s.AddProfs(s.Classes[0].Name, skills)
+			}
 			s.BackgroundSource = row.SourceKey
 			if feat != nil {
 				pinFeat(s, feat.Name, featSource)
@@ -1835,19 +1934,6 @@ func trainedIn(traits map[string]string) []string {
 	return out
 }
 
-func addProfs(s *dnd5e.Sheet, skills []string, other ...string) {
-	for _, k := range skills {
-		if !slices.Contains(s.SkillProfs, k) {
-			s.SkillProfs = append(s.SkillProfs, k)
-		}
-	}
-	for _, o := range other {
-		if !slices.Contains(s.OtherProfs, o) {
-			s.OtherProfs = append(s.OtherProfs, o)
-		}
-	}
-}
-
 var reFeet = regexp.MustCompile(`(\d+)\s*feet`)
 
 // applySpecies sets the species, its speed, size and darkvision, and its
@@ -1871,8 +1957,9 @@ func applySpecies(s *dnd5e.Sheet, name string, d *compendium.TextData) {
 			}
 		default:
 			f := dnd5e.Feature{Name: p.Name, Source: name, Description: p.Desc}
-			mods := dnd5e.ParseEffects(p.Name, p.Desc, nil, "").Apply(&f)
-			s.PutFeature(f, mods)
+			e := dnd5e.ParseEffects(p.Name, p.Desc, nil, "")
+			s.PutFeature(f, e.Apply(&f))
+			s.AddProfs(p.Name, e.Skills, e.Tools...)
 		}
 	}
 }
@@ -1953,9 +2040,9 @@ func applyBackground(s *dnd5e.Sheet, name string, d *compendium.TextData, feat *
 	for _, p := range d.Parts {
 		switch p.Type {
 		case "skill_proficiency":
-			addProfs(s, skillKeys(compendium.SplitList(p.Desc)))
+			s.AddProfs(name, skillKeys(compendium.SplitList(p.Desc)))
 		case "tool_proficiency":
-			addProfs(s, nil, p.Desc)
+			s.AddProfs(name, nil, p.Desc)
 		}
 	}
 	if feat != nil {

@@ -30,7 +30,6 @@
       "Bash(git add:*)"
     ],
     "deny": [
-      "Read(*.env)",
       "Bash(rm:*)",
       "Bash(curl:*)",
       "Bash(rm -rf /)",

@@ -205,9 +205,28 @@ func (s Sheet) skillParts(sk Skill) []Part {
 	case slices.Contains(s.Expertise, sk.Key):
 		parts = append(parts, Part{Label: "Expertise (twice proficiency)", Value: 2 * s.ProficiencyBonus()})
 	case slices.Contains(s.SkillProfs, sk.Key):
-		parts = append(parts, Part{Label: "Proficiency", Value: s.ProficiencyBonus()})
+		parts = append(parts, Part{Label: s.ProfLabel("Proficiency", sk.Key), Value: s.ProficiencyBonus()})
 	}
 	return append(parts, s.modParts("skill."+sk.Key)...)
+}
+
+// ProfLabel is label with what granted the proficiency key, when known:
+// "Proficiency (Way of Mercy)".
+func (s Sheet) ProfLabel(label, key string) string {
+	if from := s.ProfSources[key]; from != "" {
+		return label + " (" + from + ")"
+	}
+	return label
+}
+
+// OtherProfLabels are the other proficiencies, each with what granted it
+// when known: "herbalism kit (Way of Mercy)".
+func (s Sheet) OtherProfLabels() []string {
+	out := make([]string, len(s.OtherProfs))
+	for i, p := range s.OtherProfs {
+		out[i] = s.ProfLabel(p, p)
+	}
+	return out
 }
 
 // weaponAbilityPart is the ability modifier a weapon attacks and damages with.

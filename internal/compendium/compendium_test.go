@@ -125,11 +125,15 @@ func TestNormalizedShapes(t *testing.T) {
 	}
 
 	c := get(KindClass, "wizard").(*ClassData)
-	if c.HitDie != 6 || c.Caster != "full" || c.Table["Cantrips"][4] != "4" || len(c.Features) != 2 {
+	if c.HitDie != 6 || c.Caster != "full" || c.Table["Cantrips"][4] != "4" || len(c.Features) != 3 {
 		t.Errorf("class %+v", c)
 	}
 	if c.Features[1].Name != "Ability Score Improvement" || len(c.Features[1].Levels) != 2 {
 		t.Errorf("features %+v", c.Features)
+	}
+	// A feature's valued rows are its table column, not levels it is gained at.
+	if f := c.Features[2]; f.Name != "Fast Feet" || !slices.Equal(f.Levels, []int{9}) || c.Table["Fast Feet"][12] != "+15 ft." {
+		t.Errorf("column feature %+v, table %v", f, c.Table["Fast Feet"])
 	}
 	sub := get(KindSubclass, "wizard_evoker").(*ClassData)
 	if sub.SubclassOf != "wizard" {

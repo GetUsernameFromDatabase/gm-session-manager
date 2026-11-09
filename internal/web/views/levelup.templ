@@ -6,6 +6,7 @@ import (
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
+	"gm-session-manager/internal/web/components/dialog"
 	"gm-session-manager/internal/web/components/input"
 	"gm-session-manager/internal/web/components/label"
 	selectcomp "gm-session-manager/internal/web/components/select"
@@ -25,6 +26,28 @@ type Option struct {
 	TaughtBy []string
 }
 
+// SubclassPanel is one subclass's details, shown while it is picked.
+type SubclassPanel struct {
+	Name     string
+	Source   string
+	Features []SubclassFeature
+}
+
+// SubclassFeature is a subclass feature and the class levels it is gained at.
+type SubclassFeature struct {
+	Name   string
+	Desc   string
+	Levels []int
+}
+
+// FirstLevel is the lowest level the feature is gained at (0 for none).
+func (f SubclassFeature) FirstLevel() int {
+	if len(f.Levels) == 0 {
+		return 0
+	}
+	return slices.Min(f.Levels)
+}
+
 // LevelUpView is the level-up helper.
 type LevelUpView struct {
 	CharacterID int64
@@ -36,7 +59,9 @@ type LevelUpView struct {
 	Selected   string
 	Plan       *dnd5e.LevelUpPlan
 	Subclasses []Option
-	Feats      []Option
+	// SubclassPanels are the subclasses' details, in the same order.
+	SubclassPanels []SubclassPanel
+	Feats          []Option
 	// FeatChoices are each feat's own choices, by slug (Grappler's ability).
 	FeatChoices map[string][]ChoiceGroup
 	Spells      []Option
@@ -281,7 +306,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 							@label.Label(label.Props{For: "subclass-trigger", Class: "mb-1"}) {
 								Subclass
 							}
-							@formSelect("subclass", "subclass", optionItems("Decide later", v.Subclasses, func(o Option) string { return o.Name }), v.Form.Get("subclass"), "", "")
+							@SubclassPicker(v.Subclasses, v.SubclassPanels, v.Form.Get("subclass"), p.NewLevel)
 						</div>
 					}
 					if p.ASI {
@@ -332,6 +357,77 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 			}
 		}
 	</form>
+}
+
+// SubclassPicker is the subclass select (field "subclass", valued by name)
+// with a panel per subclass that shows while it is picked; features gained at
+// or below level start open.
+templ SubclassPicker(subs []Option, panels []SubclassPanel, selected string, level int) {
+	@formSelect("subclass", "subclass", optionItems("Decide later", subs, func(o Option) string { return o.Name }), selected, "", "")
+	for _, sp := range panels {
+		<div class="mt-2 space-y-1 rounded-md border p-3 text-sm" data-show-for={ "subclass=" + sp.Name } hidden?={ selected != sp.Name }>
+			<div class="font-medium">{ sp.Name }</div>
+			if sp.Source != "" {
+				<div class="text-xs text-muted-foreground">{ "Source: " + sp.Source }</div>
+			}
+			for _, f := range sp.Features {
+				<details open?={ f.FirstLevel() > 0 && f.FirstLevel() <= level }>
+					<summary class="cursor-pointer">
+						{ f.Name }
+						if len(f.Levels) > 0 {
+							<span class="text-muted-foreground">{ " (level " + joinInts(f.Levels) + ")" }</span>
+						}
+					</summary>
+					<div class="mt-1 text-muted-foreground">
+						@markdown(f.Desc)
+					</div>
+				</details>
+			}
+		</div>
+	}
+}
+
+// SubclassChangeView is the form that swaps a class's subclass.
+type SubclassChangeView struct {
+	CharacterID      int64
+	Class, ClassName string
+	Current          string
+	Level            int
+	Subclasses       []Option
+	Panels           []SubclassPanel
+}
+
+// SubclassChange loads into the command builder dialog from the sheet's
+// more menu; the owner picks another subclass for one class.
+templ SubclassChange(v SubclassChangeView) {
+	<form
+		class="grid gap-4"
+		hx-post={ fmt.Sprintf("/characters/%d/subclass", v.CharacterID) }
+		hx-on::after-request={ templ.JSUnsafeFuncCall(builderDoneJS) }
+	>
+		<input type="hidden" name="class" value={ v.Class }/>
+		<p class="text-sm">{ "Choose another " + v.ClassName + " subclass. Its features replace those of " + v.Current + " at every level you have." }</p>
+		<div>
+			@SubclassPicker(v.Subclasses, v.Panels, v.Current, v.Level)
+		</div>
+		<p class="text-sm text-muted-foreground">{ "Spells or options " + v.Current + " gave you stay on the sheet; remove them by hand." }</p>
+		<div class="flex justify-end gap-2">
+			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.CloseFor(builderID)}) {
+				Cancel
+			}
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				Change subclass
+			}
+		</div>
+	</form>
+}
+
+func joinInts(n []int) string {
+	s := make([]string, len(n))
+	for i, v := range n {
+		s[i] = fmt.Sprint(v)
+	}
+	return strings.Join(s, ", ")
 }
 
 // spellChecklist picks spells to learn or prepare, under the class table's

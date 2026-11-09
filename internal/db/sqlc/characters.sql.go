@@ -248,6 +248,41 @@ func (q *Queries) ListCharacterSheets(ctx context.Context) ([]ListCharacterSheet
 	return items, nil
 }
 
+const listCharacterSheetsNamed = `-- name: ListCharacterSheetsNamed :many
+SELECT name, sheet_json FROM characters
+ORDER BY name
+`
+
+type ListCharacterSheetsNamedRow struct {
+	Name      string
+	SheetJson string
+}
+
+// ListCharacterSheetsNamed is every character's name and sheet, deleted ones
+// too (a restore must not find its source gone), for the source usage check.
+func (q *Queries) ListCharacterSheetsNamed(ctx context.Context) ([]ListCharacterSheetsNamedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCharacterSheetsNamed)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCharacterSheetsNamedRow{}
+	for rows.Next() {
+		var i ListCharacterSheetsNamedRow
+		if err := rows.Scan(&i.Name, &i.SheetJson); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCharactersByCampaign = `-- name: ListCharactersByCampaign :many
 SELECT id, campaign_id, name, system, hp, max_hp, temp_hp, sheet_json, created_at, deleted_at FROM characters
 WHERE campaign_id = ? AND deleted_at IS NULL

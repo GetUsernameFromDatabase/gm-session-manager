@@ -803,12 +803,15 @@
   });
   htmx.onLoad(() => document.querySelectorAll("form:has([data-check-all])").forEach(syncCheckAll));
 
-  // Source priority: drag a row by its handle; the new order of every key is
+  // Source priority: drag a row from anywhere; the new order of every key is
   // posted and the answer replaces the card.
   htmx.onLoad((root) => {
     root.querySelectorAll?.("[data-sortable]").forEach((list) => {
       Sortable.create(list, {
-        handle: "[data-sort-handle]",
+        filter: "button, a, input",
+        preventOnFilter: false,
+        delayOnTouchOnly: true, // touch still scrolls the list
+        delay: 150,
         animation: 150,
         onEnd(e) {
           if (e.oldIndex === e.newIndex) return;

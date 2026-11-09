@@ -142,16 +142,7 @@ func sourceIssue(kind string, r sheetRef, copies []views.SourceCopy) (views.Sour
 // ref.Source and, for a class or subclass, the pinned copy it replaces; name
 // is that copy's name.
 func (a *App) sourceEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, ref dnd5e.SourceRef, campaignID int64) (env dnd5e.Env, name string, err error) {
-	row, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(refCompendiumKind[ref.Kind]), Slug: ref.Slug, SourceKey: ref.Source})
-	if err == nil {
-		var visible bool
-		if visible, err = a.entryVisible(ctx, row, campaignID); err == nil && !visible {
-			err = sql.ErrNoRows
-		}
-	}
-	if errors.Is(err, sql.ErrNoRows) {
-		return env, "", userError{fmt.Errorf("%s has no %s %q", ref.Source, ref.Kind, ref.Slug)}
-	}
+	row, err := a.visibleCopy(ctx, q, ref, campaignID)
 	if err != nil {
 		return env, "", err
 	}
@@ -164,6 +155,49 @@ func (a *App) sourceEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet,
 		env.SourceOld, env.SourceNew, err = subclassSwitch(ctx, q, sheet, row)
 	}
 	return env, row.Name, err
+}
+
+// visibleCopy is ref's entry at ref.Source when campaignID may see it; a
+// userError otherwise.
+func (a *App) visibleCopy(ctx context.Context, q *sqlc.Queries, ref dnd5e.SourceRef, campaignID int64) (sqlc.CompendiumEntry, error) {
+	row, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(refCompendiumKind[ref.Kind]), Slug: ref.Slug, SourceKey: ref.Source})
+	if err == nil {
+		var visible bool
+		if visible, err = a.entryVisible(ctx, row, campaignID); err == nil && !visible {
+			err = sql.ErrNoRows
+		}
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return row, userError{fmt.Errorf("%s has no %s %q", ref.Source, ref.Kind, ref.Slug)}
+	}
+	return row, err
+}
+
+// subclassChangeEnv is the sheet's class ref.Class with its current
+// subclass (nil when that copy is gone) and with ref's, which must be a
+// subclass of that class the campaign sees.
+func (a *App) subclassChangeEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, ref dnd5e.SubclassRef, campaignID int64) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
+	i := slices.IndexFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == ref.Class })
+	if i < 0 {
+		return nil, dnd5e.ClassInfo{}, nil // ChangeSubclass refuses it
+	}
+	row, err := a.visibleCopy(ctx, q, dnd5e.SourceRef{Kind: dnd5e.RefSubclass, Slug: ref.Slug, Source: ref.Source}, campaignID)
+	if err != nil {
+		return nil, dnd5e.ClassInfo{}, err
+	}
+	d, err := compendium.DecodeData(compendium.KindSubclass, row.DataJson)
+	if err != nil {
+		return nil, dnd5e.ClassInfo{}, err
+	}
+	if d.(*compendium.ClassData).SubclassOf != ref.Class {
+		return nil, dnd5e.ClassInfo{}, userError{fmt.Errorf("%s is not a %s subclass", row.Name, sheet.Classes[i].Name)}
+	}
+	cl := sheet.Classes[i]
+	oldSlug, oldPin, err := subclassRef(ctx, q, cl.Slug, cl, cl.Subclass)
+	if err != nil {
+		return nil, dnd5e.ClassInfo{}, err
+	}
+	return subclassPair(ctx, q, cl, oldSlug, oldPin, row)
 }
 
 // classSwitch is the sheet's pinned copy of row's class (nil when gone) and
@@ -216,7 +250,12 @@ func subclassSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, row
 	if i < 0 {
 		return nil, dnd5e.ClassInfo{}, nil // SwitchSource refuses it
 	}
-	cl := sheet.Classes[i]
+	return subclassPair(ctx, q, sheet.Classes[i], row.Slug, sheet.Classes[i].SubclassSource, row)
+}
+
+// subclassPair is cl's class with the subclass oldSlug at oldPin (nil when
+// that copy is gone or oldSlug is "") and with row's.
+func subclassPair(ctx context.Context, q *sqlc.Queries, cl dnd5e.ClassLevel, oldSlug, oldPin string, row sqlc.CompendiumEntry) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
 	base, _, err := classEntry(ctx, q, cl.Slug, cl.Source)
 	if errors.Is(err, sql.ErrNoRows) {
 		base, err = dnd5e.ClassInfo{Slug: cl.Slug, Name: cl.Name}, nil
@@ -228,7 +267,10 @@ func subclassSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, row
 	if err := setSubclass(&next, row); err != nil {
 		return nil, next, err
 	}
-	oldRow, missing, err := entryFor(ctx, q, compendium.KindSubclass, row.Slug, cl.SubclassSource)
+	if oldSlug == "" {
+		return nil, next, nil
+	}
+	oldRow, missing, err := entryFor(ctx, q, compendium.KindSubclass, oldSlug, oldPin)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && missing {
 		return nil, next, nil
 	}
@@ -292,3 +334,74 @@ func (a *App) sourcePreview(c *gin.Context) {
 		Plan: dnd5e.PlanSourceSwitch(sheet, ref.Kind, ref.Slug, env.SourceOld, env.SourceNew),
 	}))
 }
+
+// sourceUsers names the characters whose sheet pins the source, and the
+// entities and combatants linked to one of its entries. C03 reuses it for
+// the per-campaign untick rule.
+func sourceUsers(ctx context.Context, q *sqlc.Queries, key string) ([]string, error) {
+	rows, err := q.ListCharacterSheetsNamed(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var users []string
+	for _, r := range rows {
+		if sheet, err := dnd5e.ParseSheet(r.SheetJson); err == nil && sheet.PinsSource(key) {
+			users = append(users, r.Name)
+		}
+	}
+	linked, err := q.ListSourceRefUsers(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return append(users, linked...), nil
+}
+
+// sourceInUseMsg is the refusal naming who uses the source.
+func sourceInUseMsg(key string, users []string) string {
+	return key + " is used by " + strings.Join(users, ", ") + ". Switch their sources first."
+}
+
+// sourceDelete removes a source and its entries unless something uses it.
+func (a *App) sourceDelete(c *gin.Context) {
+	ctx := c.Request.Context()
+	key := c.Param("key")
+	if key == compendium.HomebrewSource {
+		a.fail(c, http.StatusBadRequest, "Homebrew cannot be deleted.")
+		return
+	}
+	if a.fiveTools.get().Running {
+		a.fail(c, http.StatusConflict, errImportRunning)
+		return
+	}
+	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		users, err := sourceUsers(ctx, q, key)
+		if err != nil {
+			return err
+		}
+		if len(users) > 0 {
+			return &sourceUsedError{users}
+		}
+		if err := q.DeleteCompendiumEntriesBySource(ctx, key); err != nil {
+			return err
+		}
+		return q.DeleteCompendiumSource(ctx, key)
+	})
+	var used *sourceUsedError
+	if errors.As(err, &used) {
+		a.fail(c, http.StatusConflict, sourceInUseMsg(key, used.users))
+		return
+	}
+	if err == nil {
+		err = compendium.RemoveSourceDir(a.compendiumDir(), key)
+	}
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.sourcesChanged(c)
+}
+
+// sourceUsedError carries the users out of the delete transaction.
+type sourceUsedError struct{ users []string }
+
+func (e *sourceUsedError) Error() string { return "source in use" }

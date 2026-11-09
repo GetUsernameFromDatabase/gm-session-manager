@@ -649,11 +649,21 @@ func (n normalizer) classes() ([]Entry, error) {
 					}
 				}
 			default:
+				// A feature's rows with a value are its class table column
+				// (Unarmored Movement's "+15 ft."); the others list it as gained.
 				cf := ClassFeature{Name: f.Name, Desc: f.Desc}
 				for _, row := range rows {
-					cf.Levels = append(cf.Levels, row.Level)
+					if row.ColumnValue == nil {
+						cf.Levels = append(cf.Levels, row.Level)
+						continue
+					}
+					if d.Table[f.Name] == nil {
+						d.Table[f.Name] = map[int]string{}
+					}
+					d.Table[f.Name][row.Level] = *row.ColumnValue
 				}
 				slices.Sort(cf.Levels)
+				cf.Levels = slices.Compact(cf.Levels)
 				d.Features = append(d.Features, cf)
 				text = append(text, f.Name+". "+f.Desc)
 			}

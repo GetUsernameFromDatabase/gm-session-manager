@@ -89,6 +89,18 @@ type WizardChoice struct {
 	// Abilities are a background's three abilities for its increases.
 	Abilities []string
 	Features  []FeaturePreview
+	// SkillPick is the class's skill choice: on the class step, and on the
+	// background step when the background grants a skill the class step
+	// picked, so the player picks another class skill instead.
+	SkillPick *SkillPick
+}
+
+// SkillPick asks for Count of a class's skill Options. Known are had
+// already (from the background), shown ticked and disabled; Picked are
+// ticked at first (the class picks a background did not overlap).
+type SkillPick struct {
+	Count                  int
+	Options, Known, Picked []string
 }
 
 // FeaturePreview is a feature as the wizard shows it, with what the sheet
@@ -267,13 +279,25 @@ templ wizardPick(v WizardView) {
 					@card.Content() {
 						<div class="space-y-4 text-sm">
 							@wizardFacts(c)
-							if v.Step == "class" && c.SkillCount > 0 {
+							if p := c.SkillPick; p != nil {
 								<fieldset { v.fieldErr().describedBy(FieldSkill)... }>
-									<legend class="font-medium">Choose { fmt.Sprint(c.SkillCount) } skills</legend>
+									<legend class="font-medium">
+										{ utils.IfElse(v.Step == "class", "Skills", "Class skills") }
+										<span class="font-normal text-muted-foreground">({ Choose(p.Count-len(p.Picked), len(p.Picked)+len(p.Known) > 0) })</span>
+									</legend>
+									if v.Step == "background" {
+										<p class="text-muted-foreground">This background gives a skill you picked with your class: pick another class skill.</p>
+									}
 									@v.fieldErr().at(FieldSkill)
 									<div class="mt-1 grid grid-cols-2 gap-1 sm:grid-cols-3">
-										for _, k := range c.Skills {
-											@checkField("skill", k, slices.Contains(v.Form["skill"], k)) {
+										for _, k := range p.Known {
+											@label.Label(label.Props{Class: "font-normal text-muted-foreground"}) {
+												@checkbox.Checkbox(checkbox.Props{DefaultChecked: true, Disabled: true})
+												{ skillName(k) } (known)
+											}
+										}
+										for _, k := range p.Options {
+											@checkField("skill", k, slices.Contains(utils.IfElse(v.Form != nil, v.Form["skill"], p.Picked), k)) {
 												{ skillName(k) }
 											}
 										}
@@ -477,7 +501,7 @@ func (v WizardView) DrawsField(key string) bool {
 	case FieldMode:
 		return v.Step == "abilities" && v.Choice != nil && len(v.Choice.Abilities) == 3
 	case FieldSkill:
-		return v.Step == "class" && v.Choice != nil && v.Choice.SkillCount > 0
+		return v.Choice != nil && (v.Step == "class" && v.Choice.SkillCount > 0 || v.Step == "background" && v.Choice.SkillPick != nil)
 	case FieldSpell:
 		return v.Choices != nil && len(v.Choices.Spells) > 0
 	}

@@ -145,6 +145,12 @@ func CanCharacter(v Viewer, characterID int64, scope CharacterScope) bool {
 	return v.IsGM && scope <= ScopeSources
 }
 
+// CanChangeSubclass reports whether v may swap a character's subclass: its
+// player only, never the GM, as for the rest of the sheet (ScopeSheet).
+func CanChangeSubclass(v Viewer, characterID int64) bool {
+	return CanCharacter(v, characterID, ScopeSheet)
+}
+
 // CanDeleteCharacter reports whether v may delete a character: its player
 // or the GM. Deleting only hides it; restoring and deleting it forever are
 // the GM's alone.

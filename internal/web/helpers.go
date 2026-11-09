@@ -199,6 +199,8 @@ func (a *App) failBack(c *gin.Context, status int, msg, backURL, backLabel strin
 	c.Set(failMsgKey, msg)
 	c.Set(failStatusKey, status)
 	if isHTMX(c) {
+		// Only the out-of-band flash: an outerHTML target must not be emptied.
+		c.Header("HX-Reswap", "none")
 		a.render(c, http.StatusUnprocessableEntity, views.Flash(msg, true))
 		c.Abort()
 		return
