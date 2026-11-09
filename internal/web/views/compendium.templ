@@ -9,6 +9,7 @@ import (
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
+	"gm-session-manager/internal/web/components/checkbox"
 	"gm-session-manager/internal/web/components/combobox"
 	"gm-session-manager/internal/web/components/empty"
 	"gm-session-manager/internal/web/components/icon"
@@ -91,6 +92,8 @@ type ImportNotice struct {
 	// the host, which may open it in the file manager.
 	Dir    string
 	OnHost bool
+	// Job is the background 5etools import.
+	Job FiveToolsJob
 }
 
 templ CompendiumPage(l Layout, v CompendiumView) {
@@ -149,14 +152,16 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 	}
 }
 
-// compendiumSearchForm searches as one types: it swaps only the results and
-// keeps the URL in step, so back/forward work without reloads.
+// compendiumSearchForm searches once typing pauses: it swaps only the
+// results, a newer search cancels the one in flight, and the URL keeps in
+// step, so back/forward work without reloads.
 templ compendiumSearchForm(v CompendiumView) {
 	<form
 		method="get"
 		class="mb-3 flex gap-2"
 		hx-get="/compendium"
-		hx-trigger="submit, input[target.id==='compendium-q'] delay:200ms"
+		hx-trigger="submit, input[target.id==='compendium-q'] delay:500ms"
+		hx-sync="this:replace"
 		hx-target={ "#" + CompendiumResultsID }
 		hx-swap="outerHTML"
 		hx-push-url="true"
@@ -282,13 +287,24 @@ templ FiveToolsPicker(v FiveToolsView) {
 		hx-swap="outerHTML"
 	>
 		if v.Msg != "" {
-			@Notice(v.Msg, v.Failed, "")
+			@Notice(v.Msg, v.Failed, scrollBox)
+		}
+		// Select-all boxes have no name, so they are not posted (app.js ticks the books).
+		@label.Label(label.Props{Class: "font-normal"}) {
+			@checkbox.Checkbox(checkbox.Props{Attributes: templ.Attributes{"data-check-all": ""}})
+			Select all books
 		}
 		// The list is long (hundreds of books): it scrolls inside its card.
-		<div class="max-h-[28rem] space-y-4 overflow-y-auto pr-1">
+		<div class={ "space-y-4 pr-1", scrollBox }>
 			for _, g := range v.Groups {
 				<section>
-					<h3 class="mb-1 font-medium">{ g.Title }</h3>
+					<div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+						<h3 class="font-medium">{ g.Title }</h3>
+						@label.Label(label.Props{Class: "font-normal text-muted-foreground"}) {
+							@checkbox.Checkbox(checkbox.Props{Attributes: templ.Attributes{"data-check-all": "section", "aria-label": "Select all " + g.Title}})
+							Select all
+						}
+					</div>
 					<ul class="divide-y rounded-lg border">
 						for _, b := range g.Books {
 							<li class="relative flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
@@ -315,14 +331,42 @@ templ FiveToolsPicker(v FiveToolsView) {
 				</section>
 			}
 		</div>
-		<div>
-			@button.Button(button.Props{Type: button.TypeSubmit}) {
+		<div class="flex flex-wrap items-center gap-3">
+			@button.Button(button.Props{Type: button.TypeSubmit, Disabled: v.Running}) {
 				@icon.Download()
 				Import selected
 			}
+			if v.Running {
+				<span class="text-muted-foreground">An import is running; wait for it to finish.</span>
+			}
 		</div>
-		@busyIndicator("Downloading…")
+		@busyIndicator("Starting the import…")
 	</form>
+}
+
+// FiveToolsProgress is the background import: what it is downloading or
+// importing while it runs, then the last one's summary. Refetched as it
+// ends (reload), it also reloads the picker, whose import dates changed.
+templ FiveToolsProgress(j FiveToolsJob, reload bool) {
+	<div id="fivetools-progress" hx-swap-oob="true" { live(LiveImport, 0)... }>
+		if j.Running {
+			<div class="space-y-2 rounded-lg border p-3" role="status">
+				<div class="flex items-center gap-2">
+					@spinner.Spinner()
+					<span class="min-w-0 truncate" { bind("text=imp.label")... }>{ j.label() }</span>
+				</div>
+				<div class="h-2 overflow-hidden rounded-full bg-muted">
+					<div class="h-full bg-primary transition-[width]" style={ j.bar() } { bind("style=imp.bar")... }></div>
+				</div>
+				<p class="text-xs text-muted-foreground">The import goes on if you leave this page.</p>
+			</div>
+		} else if j.Msg != "" {
+			@Notice(j.Msg, j.Failed, scrollBox)
+			if reload {
+				<div hidden hx-get={ FiveToolsPath } hx-trigger="load" hx-target={ "#" + FiveToolsID } hx-swap="outerHTML"></div>
+			}
+		}
+	</div>
 }
 
 // SourcePriority orders the sources: the first holding an entry wins its
@@ -335,13 +379,17 @@ templ SourcePriority(sources []sqlc.CompendiumSource) {
 					Source priority
 				}
 				@card.Description() {
-					When several sources hold the same entry, the one higher up is shown and used.
+					When several sources hold the same entry, the one higher up is shown and used. Drag a source by its handle, or use the arrows.
 				}
 			}
 			@card.Content() {
-				<ol class="divide-y rounded-lg border text-sm">
+				// app.js makes the list sortable (SortableJS) and posts the new order.
+				<ol class={ "divide-y rounded-lg border text-sm", scrollBox } data-sortable={ SourceOrderPath } data-sort-target={ "#" + SourcesID }>
 					for i, s := range sources {
-						<li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+						<li class="flex flex-wrap items-center gap-x-3 gap-y-1 bg-card px-3 py-1.5" data-source-key={ s.SourceKey }>
+							<span class="cursor-grab touch-none text-muted-foreground active:cursor-grabbing" data-sort-handle aria-hidden="true">
+								@icon.GripVertical(icon.Props{Size: 16})
+							</span>
 							<span class="min-w-0 grow basis-48" title={ s.Attribution }>
 								<span class="font-medium">{ s.SourceKey }</span>
 								<span class="text-xs text-muted-foreground">{ s.Edition }</span>
@@ -394,8 +442,9 @@ templ importTabs(n ImportNotice) {
 				For private use at your own table; the books stay the property of their publishers.
 			</p>
 			if n.Msg != "" && n.Tab == ImportTabFiveTools {
-				@Notice(n.Msg, n.Failed, "")
+				@Notice(n.Msg, n.Failed, scrollBox)
 			}
+			@FiveToolsProgress(n.Job, false)
 			// The list comes from the network: it loads when the tab is first shown.
 			<div id={ FiveToolsID } class="text-muted-foreground" hx-get="/compendium/5etools" hx-trigger="intersect once" hx-swap="outerHTML">Loading books…</div>
 		}
@@ -430,7 +479,7 @@ templ importTabs(n ImportNotice) {
 				@busyIndicator("Importing…")
 			</form>
 			if n.Msg != "" && n.Tab == ImportTabFolder {
-				@Notice(n.Msg, n.Failed, "")
+				@Notice(n.Msg, n.Failed, scrollBox)
 			}
 		}
 		@tabs.Content(tabs.ContentProps{Value: ImportTabPage, Class: "max-w-2xl space-y-3 text-sm"}) {
@@ -444,7 +493,7 @@ templ importTabs(n ImportNotice) {
 				@busyIndicator("Fetching…")
 			</form>
 			if n.Msg != "" && n.Tab == ImportTabPage {
-				@Notice(n.Msg, n.Failed, "")
+				@Notice(n.Msg, n.Failed, scrollBox)
 			}
 			<p class="text-muted-foreground">Pages can come from these sites only; open one, find the page and paste its link.</p>
 			<ul class="list-disc space-y-1 pl-5 text-muted-foreground">

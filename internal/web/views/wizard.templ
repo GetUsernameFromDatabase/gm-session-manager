@@ -8,6 +8,7 @@ import (
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
+	"gm-session-manager/internal/web/components/checkbox"
 	"gm-session-manager/internal/web/components/field"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
@@ -33,9 +34,9 @@ type WizardView struct {
 	Steps       []WizardStep
 	// Sheet is the character as it stands, read-only.
 	Sheet SheetView
-	Error string
-	// ErrorFor is the form field Error is about, shown there; "" at the top.
-	ErrorFor string
+	// Error is shown at the top; Errors next to their fields.
+	Error  string
+	Errors FieldErrors
 	// Form is the refused form's values, ticked again; nil on a fresh page.
 	Form url.Values
 	// Options are the compendium's classes, species or backgrounds;
@@ -67,6 +68,8 @@ type ChoiceGroup struct {
 	Key, Title string
 	Count      int
 	Options    []compendium.NameDesc
+	// Known are had already: shown ticked and disabled, not posted.
+	Known []string
 	// Sub are the choices an option brings, shown while it is picked.
 	Sub map[string][]ChoiceGroup
 }
@@ -147,7 +150,7 @@ templ WizardPage(l Layout, v WizardView) {
 				</a>
 			}
 		</nav>
-		if v.Error != "" && v.ErrorFor == "" {
+		if v.Error != "" {
 			@Notice(v.Error, true, "mb-4")
 		}
 		switch v.Step {
@@ -341,10 +344,10 @@ templ wizardFacts(c *WizardChoice) {
 
 // backgroundAbilities raises the background's abilities: +2 and +1, or +1
 // to all three.
-templ backgroundAbilities(c *WizardChoice, form url.Values, fe FieldError) {
+templ backgroundAbilities(c *WizardChoice, form url.Values, fe FieldErrors) {
 	{{ items := selectItems(c.Abilities, func(a string) string { return a }, func(a string) string { return dnd5e.AbilityNames[a] }) }}
 	{{ three := form.Get("mode") == "three" }}
-	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe.Key == FieldMode) } { fe.describedBy(FieldMode)... }>
+	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe[FieldMode] != "") } { fe.describedBy(FieldMode)... }>
 		<legend class="font-medium">{ c.Name }: ability score increases</legend>
 		@fe.at(FieldMode)
 		@radiogroup.RadioGroup(radiogroup.Props{Name: "mode", DefaultValue: utils.IfElse(three, "three", "two"), Class: "gap-2", Attributes: templ.Attributes{"aria-label": "Ability score increases"}}) {
@@ -391,7 +394,8 @@ templ abilityForm(v WizardView) {
 					@label.Label(label.Props{For: "score-" + a}) {
 						{ dnd5e.AbilityNames[a] }
 					}
-					@input.Input(input.Props{ID: "score-" + a, Name: a, Type: "number", Value: cmp.Or(v.Form.Get(a), fmt.Sprint(v.Sheet.C.Sheet.Scores[a])), Class: "text-center", Attributes: templ.Attributes{"min": "3", "max": "20", "required": true}})
+					@input.Input(input.Props{ID: "score-" + a, Name: a, Type: "number", Value: cmp.Or(v.Form.Get(a), fmt.Sprint(v.Sheet.C.Sheet.Scores[a])), Class: "text-center", Attributes: v.Errors.inputAttrs(a, templ.Attributes{"min": "3", "max": "20", "required": true})})
+					@v.Errors.at(a)
 				</div>
 			}
 		</div>
@@ -430,28 +434,46 @@ templ wizardChoices(v WizardView) {
 	}
 }
 
-// FieldError is a refused form's error and the field it is about.
-type FieldError struct{ Key, Msg string }
+// Choose asks for n picks, as legends and errors say it: "choose one",
+// "choose 2", "choose 2 more" (more: on top of ones already had).
+func Choose(n int, more bool) string {
+	s := "choose " + map[int]string{0: "none", 1: "one"}[n]
+	if n > 1 {
+		s += fmt.Sprint(n)
+	}
+	if more && n > 0 {
+		s += " more"
+	}
+	return s
+}
+
+// FieldErrors are a refused form's errors, by the field they are about.
+type FieldErrors map[string]string
 
 // Error keys shared by handlers, templates and tests.
 const (
-	FieldName  = "name"
-	FieldMode  = "mode"
-	FieldSkill = "skill"
-	FieldSpell = "spell"
-	FieldASI   = "asi"
+	FieldName      = "name"
+	FieldSize      = "size"
+	FieldVision    = "vision"
+	FieldBackstory = "backstory"
+	FieldMode      = "mode"
+	FieldSkill     = "skill"
+	FieldSpell     = "spell"
+	FieldASI       = "asi"
 	// FieldMastery is the Weapon Mastery choice group's key.
 	FieldMastery = "weapon_mastery"
 )
 
-func (v WizardView) fieldErr() FieldError { return FieldError{Key: v.ErrorFor, Msg: v.Error} }
+func (v WizardView) fieldErr() FieldErrors { return v.Errors }
 
 // DrawsField reports whether the page shows an error at key; the handler shows
 // one for a field it does not draw (a crafted post) at the top instead.
 func (v WizardView) DrawsField(key string) bool {
 	switch key {
-	case FieldName:
+	case FieldName, FieldSize, FieldVision, FieldBackstory:
 		return v.Step == "details"
+	case "str", "dex", "con", "int", "wis", "cha":
+		return v.Step == "abilities"
 	case FieldMode:
 		return v.Step == "abilities" && v.Choice != nil && len(v.Choice.Abilities) == 3
 	case FieldSkill:
@@ -478,29 +500,29 @@ func drawsGroup(groups []ChoiceGroup, key string) bool {
 }
 
 // at shows the error when it is about key; app.js scrolls to it.
-templ (fe FieldError) at(key string) {
-	if fe.Key == key {
+templ (fe FieldErrors) at(key string) {
+	if msg := fe[key]; msg != "" {
 		@field.Error(field.ErrorProps{ID: "error-" + key, Attributes: templ.Attributes{"data-error-for": key}}) {
-			{ fe.Msg }
+			{ msg }
 		}
 	}
 }
 
 // describedBy links a control group to the error at(key) shows; no attribute
-// when the error is about another field.
-func (fe FieldError) describedBy(key string) templ.Attributes {
-	if fe.Key != key {
+// when key has no error.
+func (fe FieldErrors) describedBy(key string) templ.Attributes {
+	if fe[key] == "" {
 		return nil
 	}
 	return templ.Attributes{"aria-describedby": "error-" + key}
 }
 
 // radioAttrs labels a single-pick radio group, and marks it invalid when
-// it holds the error (aria-invalid is valid on a radiogroup, not a fieldset).
+// it holds an error (aria-invalid is valid on a radiogroup, not a fieldset).
 // The fieldset links the error already (describedBy), so this does not.
-func (fe FieldError) radioAttrs(key, label string) templ.Attributes {
+func (fe FieldErrors) radioAttrs(key, label string) templ.Attributes {
 	a := templ.Attributes{"aria-label": label}
-	if fe.Key == key {
+	if fe[key] != "" {
 		a["aria-invalid"] = "true"
 	}
 	return a
@@ -510,7 +532,7 @@ func (fe FieldError) radioAttrs(key, label string) templ.Attributes {
 // checkboxes for more. An option's own choices follow, hidden until it is
 // picked (app.js); outside the radio group, which would take their radios.
 // form holds a refused form's picks, ticked again, and fe its error.
-templ choiceFieldset(g ChoiceGroup, form url.Values, fe FieldError) {
+templ choiceFieldset(g ChoiceGroup, form url.Values, fe FieldErrors) {
 	<div class="space-y-4">
 		@choiceOptions(g, form, fe)
 		for _, o := range g.Options {
@@ -525,12 +547,12 @@ templ choiceFieldset(g ChoiceGroup, form url.Values, fe FieldError) {
 	</div>
 }
 
-templ choiceOptions(g ChoiceGroup, form url.Values, fe FieldError) {
-	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe.Key == g.Key) } { fe.describedBy(g.Key)... }>
+templ choiceOptions(g ChoiceGroup, form url.Values, fe FieldErrors) {
+	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe[g.Key] != "") } { fe.describedBy(g.Key)... }>
 		<legend class="px-1 font-medium">
 			{ g.Title }
-			if g.Count > 1 {
-				<span class="font-normal text-muted-foreground">(choose { fmt.Sprint(g.Count) })</span>
+			if g.Count > 0 {
+				<span class="font-normal text-muted-foreground">({ Choose(g.Count, len(g.Known) > 0) })</span>
 			}
 		</legend>
 		@fe.at(g.Key)
@@ -548,6 +570,12 @@ templ choiceOptions(g ChoiceGroup, form url.Values, fe FieldError) {
 			}
 		} else {
 			<div class={ "grid gap-2", optionsGrid(g.Options, "sm:grid-cols-2") }>
+				for _, k := range g.Known {
+					@label.Label(label.Props{Class: "font-normal text-muted-foreground"}) {
+						@checkbox.Checkbox(checkbox.Props{DefaultChecked: true, Disabled: true})
+						{ k } { utils.IfElse(k == "Common", "(every character knows it)", "(known)") }
+					}
+				}
 				for _, o := range g.Options {
 					<div>
 						@checkField(g.Key, o.Name, slices.Contains(form[g.Key], o.Name)) {
@@ -632,11 +660,16 @@ func optionText(o compendium.EquipmentOption) string {
 	return "(" + o.Letter + ") " + strings.Join(items, ", ")
 }
 
-// nameAttrs are the name input's attributes, linked to its error.
-func nameAttrs(fe FieldError) templ.Attributes {
-	a := templ.Attributes{"maxlength": "100"}
-	maps.Copy(a, fe.describedBy(FieldName))
-	return a
+// inputAttrs are an input's attributes, linked to its error and marked
+// invalid when key has one.
+func (fe FieldErrors) inputAttrs(key string, a templ.Attributes) templ.Attributes {
+	if fe[key] == "" {
+		return a
+	}
+	out := templ.Attributes{"aria-invalid": "true"}
+	maps.Copy(out, a)
+	maps.Copy(out, fe.describedBy(key))
+	return out
 }
 
 // wizardDetails shows what was typed after a refusal, not the saved sheet.
@@ -647,29 +680,32 @@ templ wizardDetails(v WizardView) {
 			@label.Label(label.Props{For: "details-name"}) {
 				Name
 			}
-			@input.Input(input.Props{ID: "details-name", Name: "name", Value: typed("name", v.Sheet.C.Name), Required: true, Attributes: nameAttrs(v.fieldErr())})
-			@v.fieldErr().at(FieldName)
+			@input.Input(input.Props{ID: "details-name", Name: "name", Value: typed("name", v.Sheet.C.Name), Required: true, Attributes: v.Errors.inputAttrs(FieldName, templ.Attributes{"maxlength": "100"})})
+			@v.Errors.at(FieldName)
 		</div>
 		// Species set these when they can; a species of two sizes leaves the pick here.
 		<div class="flex flex-wrap gap-4">
-			<div class="space-y-1">
+			<div class="space-y-1" role="group" aria-label="Size" { v.Errors.describedBy(FieldSize)... }>
 				@label.Label(label.Props{For: "details-size-trigger"}) {
 					Size
 				}
 				@formSelect("details-size", "size", sizeItems, cmp.Or(typed("size", v.Sheet.C.Sheet.Size), "Medium"), "w-40", "")
+				@v.Errors.at(FieldSize)
 			</div>
 			<div class="flex-1 space-y-1">
 				@label.Label(label.Props{For: "details-vision"}) {
 					Vision
 				}
-				@input.Input(input.Props{ID: "details-vision", Name: "vision", Value: typed("vision", v.Sheet.C.Sheet.Vision), Placeholder: "Normal sight, or Darkvision 60 ft", Attributes: templ.Attributes{"maxlength": "200"}})
+				@input.Input(input.Props{ID: "details-vision", Name: "vision", Value: typed("vision", v.Sheet.C.Sheet.Vision), Placeholder: "Normal sight, or Darkvision 60 ft", Attributes: v.Errors.inputAttrs(FieldVision, templ.Attributes{"maxlength": "200"})})
+				@v.Errors.at(FieldVision)
 			</div>
 		</div>
 		<div class="space-y-1">
 			@label.Label(label.Props{For: "details-backstory"}) {
 				Backstory
 			}
-			@textarea.Textarea(textarea.Props{ID: "details-backstory", Name: "backstory", Rows: 8, Value: typed("backstory", v.Sheet.C.Sheet.Backstory), Placeholder: "Where they come from, what they want…"})
+			@textarea.Textarea(textarea.Props{ID: "details-backstory", Name: "backstory", Rows: 8, Value: typed("backstory", v.Sheet.C.Sheet.Backstory), Placeholder: "Where they come from, what they want…", Attributes: v.Errors.inputAttrs(FieldBackstory, nil)})
+			@v.Errors.at(FieldBackstory)
 		</div>
 		@wizardNav(v, "Save")
 	</form>

@@ -39,9 +39,10 @@ type Deps struct {
 // App is the web layer: the router and the websocket hub it renders for.
 type App struct {
 	Deps
-	Hub     *hub.Hub
-	imports csvImports
-	reqs    reqLog
+	Hub       *hub.Hub
+	imports   csvImports
+	reqs      reqLog
+	fiveTools fiveToolsJob
 }
 
 // New builds the app. The hub renders fragments through the app.
@@ -203,6 +204,7 @@ func (a *App) Router() *gin.Engine {
 	r.POST("/compendium/5etools", gm, a.fiveToolsImport)
 	r.POST("/compendium/5etools/:book/delete", gm, a.fiveToolsRemove)
 	r.POST("/compendium/sources/:key/move", gm, a.sourceMove)
+	r.POST(views.SourceOrderPath, gm, a.sourceOrder)
 	r.POST("/compendium/page/preview", gm, a.compendiumPagePreview)
 	r.POST("/compendium/page", gm, a.compendiumPageSave)
 

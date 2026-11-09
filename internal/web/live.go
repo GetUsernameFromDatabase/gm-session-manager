@@ -65,6 +65,7 @@ var liveAffects = map[string]struct {
 	views.LiveNote:         {hub.TopicNote, false},
 	views.LiveEntities:     {hub.TopicEntities, true},
 	views.LiveEntity:       {hub.TopicEntity, false},
+	views.LiveImport:       {hub.TopicImport, true},
 }
 
 // Affects implements hub.Handler. Publishes are already scoped to the
@@ -165,6 +166,11 @@ func (a *App) loadLive(ctx context.Context, vc viewerCtx, key string) (liveView,
 			return liveView{}, notFoundIsNil(err)
 		}
 		return liveView{html: views.CampaignRoster(r), shape: views.CampaignRoster(r.Shape()), hot: r.Hot, ok: true}, nil
+	case views.LiveImport:
+		if v.IsGM {
+			j := a.fiveTools.get()
+			return liveView{html: views.FiveToolsProgress(j, true), shape: views.FiveToolsProgress(j.Shape(), true), hot: j.Hot, ok: true}, nil
+		}
 	case views.LiveRequests:
 		if v.IsGM {
 			return liveView{html: views.PendingRequests(a.pendingViews()), ok: true}, nil

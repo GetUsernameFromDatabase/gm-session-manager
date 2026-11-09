@@ -25,6 +25,7 @@ Each note block is its own collaborative document (TipTap, `assets/js/notes.js`)
 - Toggled states: `aria-pressed:` or `data-[…]:` variants, so a live update flips one attribute.
 - Slow forms: `data-busy` + class `group/busy` + `@busyIndicator("…")` inside; app.js sets `aria-busy` and disables submit buttons.
 - Previews fetch nothing while hidden: check `checkVisibility()` first; image lists use `loading="lazy"`.
+- Long lists and notices (books, sources, import summaries) scroll inside a capped box (`scrollBox` in `views/fivetools.go`), so the controls around them stay close together.
 - Narrow screens: a grid column needs `min-w-0` before a child's `max-w-full` or truncation works; in a `flex-wrap` row of icon + text + button, give the text `min-w-0 grow basis-48`.
 - `sr-only` (or any absolute) text in rows of an `overflow-*-auto` list needs a `relative` row, or the page scrolls far past the body.
 

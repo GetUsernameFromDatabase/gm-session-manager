@@ -409,7 +409,7 @@ func (a *App) creationChoices(ctx context.Context, sh dnd5e.Sheet, campaignID in
 			langs = append(langs, compendium.NameDesc{Name: l})
 		}
 	}
-	cr.groups = append(cr.groups, choiceGroup{views.ChoiceGroup{Key: "language", Title: "Languages", Count: 2, Options: langs}, func(s *dnd5e.Sheet, picked []string) {
+	cr.groups = append(cr.groups, choiceGroup{views.ChoiceGroup{Key: "language", Title: "Languages", Count: 2, Options: langs, Known: sh.Languages}, func(s *dnd5e.Sheet, picked []string) {
 		s.Languages = append(s.Languages, picked...)
 	}, nil})
 	cr.view.Groups = groupViews(cr.groups)
@@ -434,8 +434,10 @@ func groupViews(groups []choiceGroup) []views.ChoiceGroup {
 // readPicks reads each group's picks from the form: its count (or all of
 // fewer options), only of its options, each once. A group offering "No
 // change" may be left empty. Only the picked options' own choices are read.
+// Every bad group is reported, joined.
 func readPicks(c *gin.Context, groups []choiceGroup) (map[string][]string, error) {
 	picks := map[string][]string{}
+	var errs []error
 	for _, g := range groups {
 		picked := slices.Compact(slices.Sorted(slices.Values(c.PostFormArray(g.Key))))
 		need := min(g.Count, len(g.Options))
@@ -443,14 +445,13 @@ func readPicks(c *gin.Context, groups []choiceGroup) (map[string][]string, error
 		if (len(picked) != need && !optional) || slices.ContainsFunc(picked, func(p string) bool {
 			return !slices.ContainsFunc(g.Options, func(o compendium.NameDesc) bool { return o.Name == p })
 		}) {
-			return nil, fieldError{userError{fmt.Errorf("choose %d of the listed %s", need, strings.ToLower(g.Title))}, g.Key}
+			errs = append(errs, pickError{fieldError{userError{errors.New(views.Choose(need, len(g.Known) > 0))}, g.Key}, g.Title})
+			continue
 		}
 		picks[g.Key] = picked
 		for _, p := range picked {
 			sub, err := readPicks(c, g.sub[p])
-			if err != nil {
-				return nil, err
-			}
+			errs = append(errs, err)
 			maps.Copy(picks, sub)
 		}
 	}
@@ -462,10 +463,13 @@ func readPicks(c *gin.Context, groups []choiceGroup) (map[string][]string, error
 		}
 		for _, p := range picks[k] {
 			if seen[p] {
-				return nil, fieldError{userError{fmt.Errorf("%s is picked twice: choose another weapon", p)}, k}
+				errs = append(errs, fieldError{userError{fmt.Errorf("%s is picked twice: choose another weapon", p)}, k})
 			}
 			seen[p] = true
 		}
+	}
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
 	return picks, nil
 }
@@ -1535,10 +1539,8 @@ func (a *App) wizardSave(c *gin.Context) {
 			a.serverError(c, verr)
 			return
 		}
-		v.Error, v.ErrorFor, v.Form = ue.Error(), errorField(err), c.Request.PostForm
-		if !v.DrawsField(v.ErrorFor) {
-			v.ErrorFor = "" // a crafted post's field is not on the page: show it at the top
-		}
+		v.Error, v.Errors = formErrors(err, v.DrawsField)
+		v.Form = c.Request.PostForm
 		a.renderWizard(c, http.StatusUnprocessableEntity, w, ch, v)
 		return
 	}
@@ -1615,7 +1617,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		skills := slices.Compact(slices.Sorted(slices.Values(c.PostFormArray("skill"))))
 		need := min(choice.SkillCount, len(choice.Skills))
 		if len(skills) != need || slices.ContainsFunc(skills, func(k string) bool { return !slices.Contains(choice.Skills, k) }) {
-			return nil, fieldError{userError{fmt.Errorf("choose %d of the listed skills", need)}, views.FieldSkill}
+			return nil, fieldError{userError{errors.New(views.Choose(need, false))}, views.FieldSkill}
 		}
 		return once(func(s *dnd5e.Sheet, cc *dnd5e.Character) error {
 			if s.Level() > 0 {
@@ -1666,12 +1668,16 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			return nil, err
 		}
 		var f abilitiesForm
+		var errs []error
 		if err := c.ShouldBind(&f); err != nil {
 			var ve validator.ValidationErrors
-			if errors.As(err, &ve) {
-				return nil, userError{fmt.Errorf("%s must be 3 to 20", dnd5e.AbilityNames[strings.ToLower(ve[0].StructField())])}
+			if !errors.As(err, &ve) {
+				return nil, userError{errors.New("ability scores must be 3 to 20")}
 			}
-			return nil, userError{errors.New("ability scores must be 3 to 20")}
+			for _, e := range ve {
+				ab := strings.ToLower(e.StructField())
+				errs = append(errs, fieldError{userError{fmt.Errorf("%s must be 3 to 20", dnd5e.AbilityNames[ab])}, ab})
+			}
 		}
 		scores := map[string]int{"str": f.Str, "dex": f.Dex, "con": f.Con, "int": f.Int, "wis": f.Wis, "cha": f.Cha}
 		bg, err := a.backgroundChoice(ctx, sheet)
@@ -1681,15 +1687,20 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		raises := map[string]int{}
 		if bg != nil {
 			if raises, err = backgroundRaises(c, bg.Abilities); err != nil {
-				return nil, err
+				errs = append(errs, err)
 			}
+		}
+		for _, ab := range dnd5e.Abilities {
+			if scores[ab]+raises[ab] > 20 {
+				errs = append(errs, fieldError{userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])}, ab})
+			}
+		}
+		if err := errors.Join(errs...); err != nil {
+			return nil, err
 		}
 		return once(func(s *dnd5e.Sheet, cc *dnd5e.Character) error {
 			before := s.Mod("con")
 			for ab, n := range scores {
-				if n+raises[ab] > 20 {
-					return fieldError{userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])}, views.FieldMode}
-				}
 				s.Scores[ab] = n + raises[ab]
 			}
 			// Hit points already gained follow the new Constitution.
@@ -1706,12 +1717,13 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if err != nil {
 			return nil, err
 		}
-		picks, err := readPicks(c, cr.groups)
-		if err != nil {
+		// Refused together, so every field shows its own error.
+		picks, pickErr := readPicks(c, cr.groups)
+		spells, err := a.classSpellPicks(c, sheet.Classes[0].Slug, cr.view.Spells, cr.view.SpellNeed, ch.CampaignID)
+		if err != nil && !errors.As(err, new(userError)) {
 			return nil, err
 		}
-		spells, err := a.classSpellPicks(c, sheet.Classes[0].Slug, cr.view.Spells, cr.view.SpellNeed, ch.CampaignID)
-		if err != nil {
+		if err := errors.Join(pickErr, err); err != nil {
 			return nil, err
 		}
 		learned, err := a.cantripData(ctx, append(slices.Clone(sheet.Spells), spells...), ch.CampaignID)
@@ -1761,17 +1773,27 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		}), nil
 	case "details":
 		var f detailsForm
+		var errs []error
 		if err := c.ShouldBind(&f); err != nil {
-			return nil, userError{errors.New("keep the name to 100 characters, the vision to 200 and the backstory to 20000")}
+			var ve validator.ValidationErrors
+			if !errors.As(err, &ve) {
+				return nil, userError{errors.New("keep the name to 100 characters, the vision to 200 and the backstory to 20000")}
+			}
+			for _, e := range ve {
+				errs = append(errs, fieldError{userError{fmt.Errorf("keep it to %s characters", e.Param())}, strings.ToLower(e.StructField())})
+			}
 		}
 		name := strings.TrimSpace(f.Name)
 		if name == "" {
-			return nil, fieldError{userError{errors.New("give your character a name")}, views.FieldName}
+			errs = append(errs, fieldError{userError{errors.New("give your character a name")}, views.FieldName})
 		}
 		backstory, vision := f.Backstory, strings.TrimSpace(f.Vision)
 		size := dnd5e.SizeNamed(f.Size)
 		if size == "" {
-			return nil, userError{errors.New("pick a size")}
+			errs = append(errs, fieldError{userError{errors.New("pick a size")}, views.FieldSize})
+		}
+		if err := errors.Join(errs...); err != nil {
+			return nil, err
 		}
 		cmd := dnd5e.NewCommand("create details", perm.ScopeSheet, func(cc *dnd5e.Character) error {
 			cc.Name, cc.Sheet.Backstory, cc.Sheet.Size, cc.Sheet.Vision = name, backstory, size, vision

@@ -110,7 +110,7 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 	}
 	ctx := c.Request.Context()
 	v := views.CompendiumView{Query: strings.TrimSpace(c.Query("q")), Kind: c.Query("kind"), IsGM: w.isGM(), Import: notice, Tab: c.Query("tab")}
-	v.Import.Dir, v.Import.OnHost = a.compendiumDir(), w.id.Loopback
+	v.Import.Dir, v.Import.OnHost, v.Import.Job = a.compendiumDir(), w.id.Loopback, a.fiveTools.get()
 	// Only monsters have habitats, so the filter applies to them alone.
 	if v.Kind == string(compendium.KindMonster) {
 		v.Habitat = c.Query("habitat")
@@ -142,11 +142,11 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 		a.render(c, http.StatusOK, views.CompendiumRows(v))
 		return
 	}
-	if v.Counts, err = a.Store.CountCompendium(ctx); err != nil {
+	if v.Counts, err = a.Store.CountCompendium(ctx, viewerCampaign(camp)); err != nil {
 		a.serverError(c, err)
 		return
 	}
-	if v.HabitatCounts, err = a.Store.CountHabitats(ctx); err != nil {
+	if v.HabitatCounts, err = a.Store.CountHabitats(ctx, viewerCampaign(camp)); err != nil {
 		a.serverError(c, err)
 		return
 	}
@@ -733,6 +733,7 @@ func ImportSummary(reports []compendium.Report) (string, bool) {
 	}
 	var lines []string
 	failed := false
+	entries, removed := 0, 0
 	for _, r := range reports {
 		switch {
 		case r.Err != nil:
@@ -742,7 +743,11 @@ func ImportSummary(reports []compendium.Report) (string, bool) {
 			lines = append(lines, r.Source+": unchanged")
 		default:
 			lines = append(lines, fmt.Sprintf("%s: %d entries imported, %d removed", r.Source, r.Entries, r.Removed))
+			entries, removed = entries+r.Entries, removed+r.Removed
 		}
+	}
+	if len(reports) > 1 {
+		lines = append([]string{fmt.Sprintf("%d sources: %d entries imported, %d removed in all", len(reports), entries, removed)}, lines...)
 	}
 	return strings.Join(lines, "\n"), failed
 }

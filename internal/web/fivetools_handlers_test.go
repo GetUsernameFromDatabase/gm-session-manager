@@ -1,16 +1,20 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"gm-session-manager/internal/auth"
+	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/web/views"
 )
 
 func (e testEnv) source(t *testing.T, key, edition string) {
@@ -51,6 +55,7 @@ func TestFiveToolsGMOnly(t *testing.T) {
 		{http.MethodPost, "/compendium/5etools"},
 		{http.MethodPost, "/compendium/5etools/phb/delete"},
 		{http.MethodPost, "/compendium/sources/5etools-phb/move"},
+		{http.MethodPost, views.SourceOrderPath},
 	}
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
@@ -107,6 +112,115 @@ func TestSourceMove(t *testing.T) {
 			}
 			if got := order(); got != tt.want {
 				t.Errorf("order %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSourceOrder: a drag posts every key in the new order; a list that
+// misses a source (a stale page) changes nothing.
+func TestSourceOrder(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, auth.RoleAdmin)
+	e.source(t, "book-a", "2024")
+	e.source(t, "book-b", "2014")
+	order := func() string {
+		rows, err := e.q().ListCompendiumSources(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var keys []string
+		for _, r := range rows {
+			keys = append(keys, r.SourceKey)
+		}
+		return strings.Join(keys, ",")
+	}
+	for _, tt := range []struct {
+		name string
+		keys []string
+		code int
+		want string
+	}{
+		{name: "dragged", keys: []string{"book-b", "homebrew", "book-a"}, code: http.StatusOK, want: "book-b,homebrew,book-a"},
+		// Refusals answer htmx with a flash message (a.fail).
+		{name: "stale page", keys: []string{"book-a", "book-b"}, code: http.StatusUnprocessableEntity, want: "book-b,homebrew,book-a"},
+		{name: "nothing sent", code: http.StatusUnprocessableEntity, want: "book-b,homebrew,book-a"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := e.do(t, http.MethodPost, views.SourceOrderPath, gm, url.Values{views.SourceKeyField: tt.keys}, true)
+			if w.Code != tt.code {
+				t.Fatalf("code %d, want %d: %s", w.Code, tt.code, w.Body)
+			}
+			if got := order(); got != tt.want {
+				t.Errorf("order %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFiveToolsImportRunning: the import tab shows a running import's
+// progress, and a second import or a removal waits for it to finish.
+func TestFiveToolsImportRunning(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, auth.RoleAdmin)
+	e.source(t, "5etools-phb", "2014")
+	e.app.fiveTools.start(4)
+	e.app.fiveTools.update(func(j *views.FiveToolsJob) { j.Done, j.Current = 1, "Test Book" })
+	body := e.do(t, http.MethodGet, "/compendium?import="+views.ImportTabFiveTools, gm, nil, false).Body.String()
+	if !strings.Contains(body, "Downloading 2 of 4: Test Book") || !regexp.MustCompile(`style="width:\s?25%;?"`).MatchString(body) {
+		t.Error("import tab misses the progress label or bar")
+	}
+	if w := e.do(t, http.MethodPost, views.FiveToolsPath, gm, url.Values{views.FiveToolsField: {"phb"}}, false); !strings.Contains(w.Body.String(), errImportRunning) {
+		t.Errorf("second import: %d, not refused", w.Code)
+	}
+	if w := e.do(t, http.MethodPost, views.FiveToolsPath+"/phb/delete", gm, nil, true); !strings.Contains(w.Body.String(), errImportRunning) {
+		t.Errorf("removal during an import: %d, not refused", w.Code)
+	}
+	// Done, the tab shows the summary instead.
+	e.app.fiveTools.update(func(j *views.FiveToolsJob) {
+		*j = views.FiveToolsJob{Msg: "5etools-phb: 3 entries imported, 0 removed"}
+	})
+	if body := e.do(t, http.MethodGet, "/compendium?import="+views.ImportTabFiveTools, gm, nil, false).Body.String(); !strings.Contains(body, "3 entries imported") || strings.Contains(body, "Downloading") {
+		t.Error("finished import shows no summary, or still its progress")
+	}
+}
+
+// TestRunFiveToolsFinishes: a run always ends the job with its summary, so
+// the next import is not refused.
+func TestRunFiveToolsFinishes(t *testing.T) {
+	e := newTestEnv(t)
+	if !e.app.fiveTools.start(0) {
+		t.Fatal("job busy before the run")
+	}
+	e.app.runFiveTools(t.Context(), t.TempDir(), nil) // no books: nothing to download
+	if j := e.app.fiveTools.get(); j.Running || !j.Failed || !strings.Contains(j.Msg, "No source folders") {
+		t.Errorf("job after the run: %+v", j)
+	}
+	if !e.app.fiveTools.start(1) {
+		t.Error("the next import is refused")
+	}
+}
+
+// TestImportSummary: several sources get a total line first, which leaves
+// out failed and unchanged ones; a single source does not.
+func TestImportSummary(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		reports []compendium.Report
+		want    string
+		failed  bool
+	}{
+		{name: "one", reports: []compendium.Report{{Source: "a", Entries: 3, Removed: 1}}, want: "a: 3 entries imported, 1 removed"},
+		{
+			name:    "several",
+			reports: []compendium.Report{{Source: "a", Entries: 3, Removed: 1}, {Source: "b", Entries: 5}, {Source: "c", Unchanged: true}, {Source: "d", Err: errors.New("bad")}},
+			want:    "4 sources: 8 entries imported, 1 removed in all\na: 3 entries imported, 1 removed\nb: 5 entries imported, 0 removed\nc: unchanged\nd: failed: bad",
+			failed:  true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got, failed := ImportSummary(tt.reports); got != tt.want || failed != tt.failed {
+				t.Errorf("got %q %v, want %q %v", got, failed, tt.want, tt.failed)
 			}
 		})
 	}

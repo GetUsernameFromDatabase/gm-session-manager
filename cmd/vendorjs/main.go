@@ -1,5 +1,5 @@
 // Command vendorjs downloads the browser JavaScript the app serves (htmx, its
-// websocket extension, TipTap and ProseMirror) from jsDelivr into
+// websocket extension, SortableJS, TipTap and ProseMirror) from jsDelivr into
 // internal/web/assets/vendor, so the binary embeds it and never needs a CDN or npm at
 // runtime. jsDelivr's +esm modules import their dependencies by absolute
 // /npm/... paths; those are followed and rewritten to local paths.
@@ -42,6 +42,7 @@ const (
 var scripts = map[string]string{
 	"htmx.min.js": "/npm/htmx.org@2.0.11/dist/htmx.min.js",
 	"htmx-ws.js":  "/npm/htmx-ext-ws@2.0.4/dist/ws.min.js",
+	"sortable.js": "/npm/sortablejs@1.15.7/Sortable.min.js",
 }
 
 // modules are ES module entry points; everything they import is fetched too.

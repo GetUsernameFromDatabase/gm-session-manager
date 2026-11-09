@@ -89,9 +89,12 @@ func (q *Queries) BindMonsterImages(ctx context.Context, arg BindMonsterImagesPa
 }
 
 const countCompendium = `-- name: CountCompendium :many
-SELECT kind, count(*) AS n FROM compendium_entries
-GROUP BY kind
-ORDER BY kind
+SELECT e.kind, count(*) AS n FROM compendium_entries AS e
+WHERE e.id IN (SELECT id FROM compendium_top)
+  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
+GROUP BY e.kind
+ORDER BY e.kind
 `
 
 type CountCompendiumRow struct {
@@ -99,8 +102,10 @@ type CountCompendiumRow struct {
 	N    int64
 }
 
-func (q *Queries) CountCompendium(ctx context.Context) ([]CountCompendiumRow, error) {
-	rows, err := q.db.QueryContext(ctx, countCompendium)
+// CountCompendium counts what browsing lists: the top copy of each entry,
+// with player homebrew only in its campaigns.
+func (q *Queries) CountCompendium(ctx context.Context, campaignID int64) ([]CountCompendiumRow, error) {
+	rows, err := q.db.QueryContext(ctx, countCompendium, campaignID)
 	if err != nil {
 		return nil, err
 	}
@@ -123,8 +128,12 @@ func (q *Queries) CountCompendium(ctx context.Context) ([]CountCompendiumRow, er
 }
 
 const countHabitats = `-- name: CountHabitats :many
-SELECT habitat, count(*) AS n FROM monster_habitats
-GROUP BY habitat
+SELECT h.habitat, count(*) AS n FROM monster_habitats AS h
+JOIN compendium_entries AS e ON e.id = h.entry_id
+WHERE e.id IN (SELECT id FROM compendium_top)
+  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
+GROUP BY h.habitat
 `
 
 type CountHabitatsRow struct {
@@ -132,8 +141,10 @@ type CountHabitatsRow struct {
 	N       int64
 }
 
-func (q *Queries) CountHabitats(ctx context.Context) ([]CountHabitatsRow, error) {
-	rows, err := q.db.QueryContext(ctx, countHabitats)
+// CountHabitats counts the monsters browsing lists in each habitat (see
+// CountCompendium).
+func (q *Queries) CountHabitats(ctx context.Context, campaignID int64) ([]CountHabitatsRow, error) {
+	rows, err := q.db.QueryContext(ctx, countHabitats, campaignID)
 	if err != nil {
 		return nil, err
 	}

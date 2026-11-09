@@ -29,6 +29,7 @@ const (
 	LiveNote         = "note"         // note title and block layout, id = note
 	LiveEntities     = "entities"     // NPC list, id = campaign
 	LiveEntity       = "entity"       // id = entity
+	LiveImport       = "import"       // GM: the background 5etools import, id = 0
 )
 
 // LiveKey builds a view key.

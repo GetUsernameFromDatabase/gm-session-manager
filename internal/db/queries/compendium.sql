@@ -212,10 +212,15 @@ WHERE id = ? AND is_homebrew = 1;
 DELETE FROM compendium_entries
 WHERE id = ? AND is_homebrew = 1;
 
+-- CountCompendium counts what browsing lists: the top copy of each entry,
+-- with player homebrew only in its campaigns.
 -- name: CountCompendium :many
-SELECT kind, count(*) AS n FROM compendium_entries
-GROUP BY kind
-ORDER BY kind;
+SELECT e.kind, count(*) AS n FROM compendium_entries AS e
+WHERE e.id IN (SELECT id FROM compendium_top)
+  AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
+GROUP BY e.kind
+ORDER BY e.kind;
 
 -- ListSpellsForClass lists the spells a player in campaign_id may see (0: all).
 -- name: ListSpellsForClass :many
@@ -309,9 +314,15 @@ ORDER BY name, id;
 -- name: ListMonsterHabitats :many
 SELECT entry_id, habitat FROM monster_habitats;
 
+-- CountHabitats counts the monsters browsing lists in each habitat (see
+-- CountCompendium).
 -- name: CountHabitats :many
-SELECT habitat, count(*) AS n FROM monster_habitats
-GROUP BY habitat;
+SELECT h.habitat, count(*) AS n FROM monster_habitats AS h
+JOIN compendium_entries AS e ON e.id = h.entry_id
+WHERE e.id IN (SELECT id FROM compendium_top)
+  AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
+GROUP BY h.habitat;
 
 -- name: ListEntryHabitats :many
 SELECT habitat FROM monster_habitats

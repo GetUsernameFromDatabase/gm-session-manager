@@ -37,18 +37,25 @@ type Report struct {
 // the last import. A missing dir is not an error: the compendium is
 // optional. One bad source does not stop the others.
 func Import(ctx context.Context, store *db.Store, dir string) ([]Report, error) {
-	dirs, err := os.ReadDir(dir)
+	return ImportProgress(ctx, store, dir, nil)
+}
+
+// ImportProgress is Import telling progress, if set, of each source as it
+// starts: done of total sources so far.
+func ImportProgress(ctx context.Context, store *db.Store, dir string, progress func(done, total int, source string)) ([]Report, error) {
+	all, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("compendium: %w", err)
 	}
+	// Dot folders are caches and downloads in progress (.5etools).
+	dirs := slices.DeleteFunc(all, func(d fs.DirEntry) bool { return !d.IsDir() || strings.HasPrefix(d.Name(), ".") })
 	var reports []Report
-	for _, d := range dirs {
-		// Dot folders are caches and downloads in progress (.5etools).
-		if !d.IsDir() || strings.HasPrefix(d.Name(), ".") {
-			continue
+	for i, d := range dirs {
+		if progress != nil {
+			progress(i, len(dirs), d.Name())
 		}
 		r := importSource(ctx, store, d.Name(), filepath.Join(dir, d.Name()))
 		reports = append(reports, r)

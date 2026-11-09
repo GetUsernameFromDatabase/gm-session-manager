@@ -55,14 +55,14 @@ type LevelUpView struct {
 	Groups []ChoiceGroup
 	// LineageSpells are the species spells this character level teaches.
 	LineageSpells []dnd5e.Spell
-	Error         string
-	// ErrorFor is the form field Error is about, shown there; "" at the top.
-	ErrorFor string
+	// Error is shown at the top; Errors next to their fields.
+	Error  string
+	Errors FieldErrors
 	// Form is the refused form's values, ticked again; nil on a fresh page.
 	Form url.Values
 }
 
-func (v LevelUpView) fieldErr() FieldError { return FieldError{Key: v.ErrorFor, Msg: v.Error} }
+func (v LevelUpView) fieldErr() FieldErrors { return v.Errors }
 
 // DrawsField reports whether the page shows an error at key (see WizardView's).
 func (v LevelUpView) DrawsField(key string) bool {
@@ -206,7 +206,7 @@ func LevelUpPage(l Layout, v LevelUpView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if v.Error != "" && v.ErrorFor == "" {
+			if v.Error != "" {
 				templ_7745c5c3_Err = Notice(v.Error, true, "mb-4").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -917,7 +917,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var39 = []any{"space-y-2 rounded-md border p-3", templ.KV("border-destructive", v.ErrorFor == FieldASI)}
+						var templ_7745c5c3_Var39 = []any{"space-y-2 rounded-md border p-3", templ.KV("border-destructive", v.Errors[FieldASI] != "")}
 						templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_ElementWriter, templ_7745c5c3_Var39...)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
@@ -1150,7 +1150,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 // spellChecklist picks spells to learn or prepare, under the class table's
 // totals at the new level (cols) and what they leave to pick (need), with a
 // refused form's picked slugs ticked and its lineage picks applied.
-func spellChecklist(spells []Option, cols map[string]string, need SpellNeed, form url.Values, fe FieldError) templ.Component {
+func spellChecklist(spells []Option, cols map[string]string, need SpellNeed, form url.Values, fe FieldErrors) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {

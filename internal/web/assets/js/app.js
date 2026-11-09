@@ -769,6 +769,56 @@
   });
   htmx.onLoad(() => document.querySelectorAll("form[data-homebrew]").forEach(showKindFields));
 
+  // 5etools books: a "Select all" box (data-check-all, not posted) ticks the
+  // books of its section, or of the whole list, and shows mixed when only
+  // some are. checkbox.js redraws a box on its change event; the flag keeps
+  // those events from coming back here.
+  let syncingAll = false;
+  const allScope = (root, form) => (root.dataset.checkAll === "section" ? root.closest("section") : form);
+  const books = (scope) => [...scope.querySelectorAll("input[type=checkbox][name]")];
+  const setBox = (input, checked, mixed) => {
+    input.checked = checked;
+    input.indeterminate = mixed;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  function syncCheckAll(form) {
+    syncingAll = true;
+    form.querySelectorAll("[data-check-all]").forEach((root) => {
+      const all = books(allScope(root, form));
+      const n = all.filter((b) => b.checked).length;
+      setBox(root.nextElementSibling, n > 0 && n === all.length, n > 0 && n < all.length);
+    });
+    syncingAll = false;
+  }
+  document.addEventListener("change", (e) => {
+    const form = e.target.form;
+    if (syncingAll || !form?.querySelector("[data-check-all]")) return;
+    const root = e.target.previousElementSibling;
+    if (root?.matches("[data-check-all]")) {
+      syncingAll = true;
+      books(allScope(root, form)).forEach((b) => b.checked !== e.target.checked && setBox(b, e.target.checked, false));
+      syncingAll = false;
+    }
+    syncCheckAll(form);
+  });
+  htmx.onLoad(() => document.querySelectorAll("form:has([data-check-all])").forEach(syncCheckAll));
+
+  // Source priority: drag a row by its handle; the new order of every key is
+  // posted and the answer replaces the card.
+  htmx.onLoad((root) => {
+    root.querySelectorAll?.("[data-sortable]").forEach((list) => {
+      Sortable.create(list, {
+        handle: "[data-sort-handle]",
+        animation: 150,
+        onEnd(e) {
+          if (e.oldIndex === e.newIndex) return;
+          const key = [...list.querySelectorAll("[data-source-key]")].map((li) => li.dataset.sourceKey);
+          htmx.ajax("POST", list.dataset.sortable, { target: list.dataset.sortTarget, swap: "outerHTML", values: { key } });
+        },
+      });
+    });
+  });
+
   // The creation wizard's ability scores show their point-buy cost (27
   // points for scores 8 to 15), or why they are not a point buy.
   const POINT_COSTS = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };

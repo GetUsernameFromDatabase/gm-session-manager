@@ -46,14 +46,14 @@ type LevelUpView struct {
 	Groups []ChoiceGroup
 	// LineageSpells are the species spells this character level teaches.
 	LineageSpells []dnd5e.Spell
-	Error         string
-	// ErrorFor is the form field Error is about, shown there; "" at the top.
-	ErrorFor string
+	// Error is shown at the top; Errors next to their fields.
+	Error  string
+	Errors FieldErrors
 	// Form is the refused form's values, ticked again; nil on a fresh page.
 	Form url.Values
 }
 
-func (v LevelUpView) fieldErr() FieldError { return FieldError{Key: v.ErrorFor, Msg: v.Error} }
+func (v LevelUpView) fieldErr() FieldErrors { return v.Errors }
 
 // DrawsField reports whether the page shows an error at key (see WizardView's).
 func (v LevelUpView) DrawsField(key string) bool {
@@ -167,7 +167,7 @@ func Plural(n int, noun string) string {
 templ LevelUpPage(l Layout, v LevelUpView) {
 	@Page(l) {
 		@PageHeader("Level up "+v.Name, fmt.Sprintf("Currently level %d. Structured parts are filled in for you; you can still change anything afterwards with commands.", v.Level))
-		if v.Error != "" && v.ErrorFor == "" {
+		if v.Error != "" {
 			@Notice(v.Error, true, "mb-4")
 		}
 		<form method="get" class="mb-6 flex items-center gap-2" onchange="this.submit()">
@@ -285,7 +285,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 						</div>
 					}
 					if p.ASI {
-						<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", v.ErrorFor == FieldASI) } { v.fieldErr().describedBy(FieldASI)... }>
+						<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", v.Errors[FieldASI] != "") } { v.fieldErr().describedBy(FieldASI)... }>
 							<legend class="font-medium">Ability Score Improvement or feat</legend>
 							@v.fieldErr().at(FieldASI)
 							<div class="flex flex-wrap items-center gap-2">
@@ -337,7 +337,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 // spellChecklist picks spells to learn or prepare, under the class table's
 // totals at the new level (cols) and what they leave to pick (need), with a
 // refused form's picked slugs ticked and its lineage picks applied.
-templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, form url.Values, fe FieldError) {
+templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, form url.Values, fe FieldErrors) {
 	if len(spells) > 0 {
 		<div role="group" aria-labelledby="spell-checklist-title" { fe.describedBy(FieldSpell)... }>
 			<div id="spell-checklist-title" class="font-medium">Learn or prepare spells</div>

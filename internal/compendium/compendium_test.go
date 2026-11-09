@@ -265,7 +265,7 @@ func TestRealSource(t *testing.T) {
 		}
 		t.Logf("%s: %d entries", r.Source, r.Entries)
 	}
-	counts, err := store.CountCompendium(t.Context())
+	counts, err := store.CountCompendium(t.Context(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}

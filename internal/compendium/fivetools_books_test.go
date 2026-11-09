@@ -123,7 +123,7 @@ func TestDownloadFiveTools(t *testing.T) {
 	serveMirror(t, fakeMirror, false)
 	dir := t.TempDir()
 	books := []Book{{ID: "XPHB", Name: "PHB", Group: GroupCore}, {ID: "TCE", Name: "Tasha", Group: GroupSupplement}}
-	if err := DownloadFiveTools(context.Background(), dir, books); err != nil {
+	if err := DownloadFiveTools(context.Background(), dir, books, nil); err != nil {
 		t.Fatal(err)
 	}
 	ls := func(id string) []string {
@@ -235,7 +235,7 @@ func TestDownloadFiveToolsFailureLeavesNothing(t *testing.T) {
 	files["items.json"] = "not json"
 	serveMirror(t, files, false)
 	dir := t.TempDir()
-	if err := DownloadFiveTools(context.Background(), dir, []Book{{ID: "XPHB"}}); err == nil {
+	if err := DownloadFiveTools(context.Background(), dir, []Book{{ID: "XPHB"}}, nil); err == nil {
 		t.Fatal("want error")
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {

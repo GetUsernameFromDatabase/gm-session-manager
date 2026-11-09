@@ -113,27 +113,24 @@ func TestLevelUpInvocations(t *testing.T) {
 		err  string // in the refused page
 	}{
 		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusSeeOther, ""},
-		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusUnprocessableEntity, "listed eldritch invocations"},                                                     // taken
-		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}, "hp_roll": {"3"}}, http.StatusUnprocessableEntity, "choose 2 of the listed eldritch invocations"},                     // level 2 adds two
+		{url.Values{"class": {"testlock"}, pick: {"Armor of Shadows"}}, http.StatusUnprocessableEntity, "@" + pick + ": choose 2"},                                                         // taken
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear"}, "hp_roll": {"3"}}, http.StatusUnprocessableEntity, "@" + pick + ": choose 2"},                                         // level 2 adds two
 		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Test Blast"}}, http.StatusUnprocessableEntity, "choose 1 cantrip: you ticked 0 cantrips"}, // Test Blast not ticked
 		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Test Blast"}, "spell": {"test-spark"}}, http.StatusUnprocessableEntity, "Eldritch Spear needs Level 2+ Warlock, a Testlock Cantrip"},
-		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Mage Hand"}, "spell": {"test-blast"}}, http.StatusUnprocessableEntity, "listed eldritch spear: cantrip"},
+		{url.Values{"class": {"testlock"}, pick: {"Eldritch Spear", "Agonizing Blast"}, spear: {"Mage Hand"}, "spell": {"test-blast"}}, http.StatusUnprocessableEntity, "@" + spear + ": choose one"},
 		// Shadow Step needs Armor of Shadows, which the same level-up replaces.
 		{url.Values{"class": {"testlock"}, pick: {"Shadow Step", "Agonizing Blast"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}, "spell": {"test-blast"}}, http.StatusUnprocessableEntity, "Shadow Step needs"},
 		{url.Values{"class": {"testlock"}, pick: {"Shadow Step", "Eldritch Spear"}, spear: {"Test Blast"}, "spell": {"test-blast"}}, http.StatusSeeOther, ""},
 		// Shadow Step needs Armor of Shadows, so it cannot be replaced.
-		{url.Values{"class": {"testlock"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "listed replace one eldritch invocation"},
+		{url.Values{"class": {"testlock"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "@" + replace + ": choose one"},
 		{url.Values{"class": {"testlock"}, replace: {"Shadow Step"}, "replace_eldritch-invocation_shadow-step": {"Agonizing Blast"}}, http.StatusSeeOther, ""},
 	} {
 		w := e.do(t, http.MethodPost, base, player, step.form, false)
-		if w.Code != step.code || !strings.Contains(w.Body.String(), step.err) {
+		if w.Code != step.code || !hasError(w.Body.String(), step.err) {
 			t.Fatalf("%v: %d, want %d with %q", step.form, w.Code, step.code, step.err)
 		}
 		if lost := lostPicks(w.Body.String(), step.form); step.code == http.StatusUnprocessableEntity && len(lost) > 0 {
 			t.Errorf("%v: refused page lost %v", step.form, lost)
-		}
-		if strings.Contains(step.err, "of the listed eldritch invocations") && !errorAt(w.Body.String(), pick) {
-			t.Errorf("%v: error not at the invocations", step.form)
 		}
 	}
 	ch, _ := e.q().GetCharacter(ctx, e.characterID)
@@ -397,7 +394,7 @@ func TestLevelUpFeatWithoutASI(t *testing.T) {
 	form := url.Values{"class": {"wizard"}, "feat": {"magic-initiate"}}
 	w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, form), false)
 	body := w.Body.String()
-	if w.Code != http.StatusUnprocessableEntity || errorAt(body, mi+"_list") || !strings.Contains(body, "choose 1 of the listed magic initiate: spell list") {
+	if w.Code != http.StatusUnprocessableEntity || errorAt(body, mi+"_list") || !strings.Contains(body, ": choose one") {
 		t.Errorf("feat choice without an ASI: %d, message not at the top", w.Code)
 	}
 }

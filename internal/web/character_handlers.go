@@ -392,11 +392,45 @@ type fieldError struct {
 
 func (e fieldError) Unwrap() error { return e.userError }
 
-// errorField is the form field err is about, "" for none.
-func errorField(err error) string {
-	var fe fieldError
-	errors.As(err, &fe)
-	return fe.field
+// pickError is a choice group's fieldError, named by its group's title when
+// the page does not draw the group and shows it at the top.
+type pickError struct {
+	fieldError
+	title string
+}
+
+func (e pickError) Unwrap() error { return e.fieldError }
+
+// formErrors splits err (one error or several joined) into the field errors
+// the page draws, the first per field, and the rest as top lines.
+func formErrors(err error, draws func(string) bool) (string, views.FieldErrors) {
+	var top []string
+	fields := views.FieldErrors{}
+	var walk func(error)
+	walk = func(err error) {
+		var joined interface{ Unwrap() []error }
+		var pe pickError
+		var fe fieldError
+		var ue userError
+		switch {
+		case errors.As(err, &joined):
+			for _, x := range joined.Unwrap() {
+				walk(x)
+			}
+		case errors.As(err, &pe) && !draws(pe.field):
+			top = append(top, pe.title+": "+pe.Error())
+		case errors.As(err, &fe):
+			if !draws(fe.field) {
+				top = append(top, fe.Error()) // a crafted post's field is not on the page
+			} else if fields[fe.field] == "" {
+				fields[fe.field] = fe.Error()
+			}
+		case errors.As(err, &ue):
+			top = append(top, ue.Error())
+		}
+	}
+	walk(err)
+	return strings.Join(top, "\n"), fields
 }
 
 func (a *App) commandFailed(c *gin.Context, err error) bool {
@@ -1072,6 +1106,7 @@ func (a *App) levelUp(c *gin.Context) {
 		return
 	}
 	groups := slices.Concat(classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), mastery, changes)
+	notFeat := len(groups)
 	if choice.Feat != "" {
 		slug := c.PostForm("feat")
 		td, err := a.textEntry(ctx, compendium.KindFeat, slug)
@@ -1089,13 +1124,12 @@ func (a *App) levelUp(c *gin.Context) {
 		}
 		groups = append(groups, fg...)
 	}
-	picks, err := readPicks(c, groups)
+	read := groups
 	if featErr != nil {
-		err = featErr // ahead of the feat's own choices: it may not be taken at all
+		read = groups[:notFeat] // the feat's own choices are moot: it may not be taken at all
 	}
-	if err == nil {
-		err = spellErr
-	}
+	picks, err := readPicks(c, read)
+	err = errors.Join(featErr, err, spellErr)
 	if err == nil {
 		err = a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
 			before, err := dc.Sheet.JSON()
@@ -1135,10 +1169,8 @@ func (a *App) levelUp(c *gin.Context) {
 			a.serverError(c, verr)
 			return
 		}
-		v.Error, v.ErrorFor, v.Form = ue.Error(), errorField(err), c.Request.PostForm
-		if !v.DrawsField(v.ErrorFor) {
-			v.ErrorFor = "" // a crafted post's field is not on the page: show it at the top
-		}
+		v.Error, v.Errors = formErrors(err, v.DrawsField)
+		v.Form = c.Request.PostForm
 		camp, _ := a.Store.GetCampaign(ctx, ch.CampaignID)
 		a.render(c, http.StatusUnprocessableEntity, views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v))
 		return

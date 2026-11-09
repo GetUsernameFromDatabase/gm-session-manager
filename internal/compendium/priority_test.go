@@ -102,6 +102,10 @@ func TestSourcePriority(t *testing.T) {
 	if err != nil || len(rows) != 1 || rows[0].SourceKey != "srd-2024" {
 		t.Errorf("browse: %+v %v", rows, err)
 	}
+	// The kind badges count what browsing lists: three copies are one spell.
+	if counts, err := store.CountCompendium(ctx, 0); err != nil || len(counts) != 1 || counts[0].N != 1 {
+		t.Errorf("counts: %+v %v, want 1 spell", counts, err)
+	}
 	copies, err := store.ListEntryCopies(ctx, sqlc.ListEntryCopiesParams{Kind: "spell", Slug: "fireball"})
 	if err != nil {
 		t.Fatal(err)
@@ -112,6 +116,34 @@ func TestSourcePriority(t *testing.T) {
 	}
 	if !slices.Equal(keys, []string{"srd-2024", "xphb", "phb-2014"}) {
 		t.Errorf("copies: %v", keys)
+	}
+}
+
+func TestSetSourceOrder(t *testing.T) {
+	store := newStore(t)
+	ctx := t.Context()
+	addCopy(t, store, "aaa", "2014", "x")
+	addCopy(t, store, "bbb", "2024", "x")
+	for _, tt := range []struct {
+		name    string
+		keys    []string
+		wantErr bool
+		winner  string
+	}{
+		{name: "aaa first", keys: []string{"aaa", "homebrew", "bbb"}, winner: "aaa"},
+		{name: "bbb first", keys: []string{"bbb", "aaa", "homebrew"}, winner: "bbb"},
+		{name: "missing key", keys: []string{"aaa", "homebrew"}, wantErr: true, winner: "bbb"},
+		{name: "unknown key", keys: []string{"aaa", "homebrew", "nope"}, wantErr: true, winner: "bbb"},
+		{name: "repeated key", keys: []string{"aaa", "aaa", "homebrew"}, wantErr: true, winner: "bbb"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := SetSourceOrder(ctx, store, tt.keys); (err != nil) != tt.wantErr {
+				t.Fatalf("err %v", err)
+			}
+			if got := winningSource(t, store, "x"); got != tt.winner {
+				t.Errorf("winner: got %s, want %s", got, tt.winner)
+			}
+		})
 	}
 }
 
@@ -144,6 +176,50 @@ func TestMoveSourceBreaksTies(t *testing.T) {
 	}
 	if row, err := store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: "spell", Slug: "x", SourceKey: "aaa"}); err != nil || len(names) != 1 || names[0].ID != row.ID {
 		t.Errorf("compendium_top: %+v %v", names, err)
+	}
+}
+
+// TestCountsHideOtherCampaignsHomebrew: a player's monster linked to no
+// campaign counts for the GM (campaign 0), not in another campaign, in both
+// the kind and the habitat counts.
+func TestCountsHideOtherCampaignsHomebrew(t *testing.T) {
+	store := newStore(t)
+	ctx := t.Context()
+	row, err := store.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: "monster", Slug: "mire-hag", Name: "Mire Hag", DataJson: `{}`, ContentHash: "h", Scoped: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: row.ID, Habitat: "Swamp"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name     string
+		campaign int64
+		want     int64
+	}{
+		{name: "GM", campaign: 0, want: 1},
+		{name: "another campaign", campaign: 7, want: 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var kinds, habitats int64
+			counts, err := store.CountCompendium(ctx, tt.campaign)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, c := range counts {
+				kinds += c.N
+			}
+			hc, err := store.CountHabitats(ctx, tt.campaign)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, c := range hc {
+				habitats += c.N
+			}
+			if kinds != tt.want || habitats != tt.want {
+				t.Errorf("kinds %d, habitats %d, want %d", kinds, habitats, tt.want)
+			}
+		})
 	}
 }
 

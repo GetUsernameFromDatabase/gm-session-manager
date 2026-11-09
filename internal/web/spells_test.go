@@ -121,6 +121,16 @@ func TestSpellCounts(t *testing.T) {
 	book := lock
 	book.ContentHash = "book" // the upsert skips an unchanged hash
 	book.DataJson = strings.Replace(lock.DataJson, `"features":[`, `"features":[{"name":"Spellbook","desc":"It starts with one level 1 Testlock spells. Whenever you gain a Testlock level after 1, add one Testlock spells to it.","levels":[1]},`, 1)
+	// A wrong group and wrong spells are refused together, each at its field.
+	bad := maps.Clone(choices)
+	delete(bad, "language")
+	bad["spell"] = []string{"test-ward", "test-hex"}
+	w := e.do(t, http.MethodPost, create+"choices", player, bad, false)
+	for _, at := range []string{"language", views.FieldSpell} {
+		if w.Code != http.StatusUnprocessableEntity || !errorAt(w.Body.String(), at) {
+			t.Errorf("choices %v: %d, no error at %s", bad, w.Code, at)
+		}
+	}
 	for _, step := range []struct {
 		class *sqlc.UpsertCompendiumEntryParams // replaces the class first
 		url   string

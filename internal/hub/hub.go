@@ -42,6 +42,8 @@ const (
 	TopicPending TopicKind = "pending"
 	// TopicCompendium: books or source priority changed, for every campaign.
 	TopicCompendium TopicKind = "compendium"
+	// TopicImport: the GM's background 5etools import moved on.
+	TopicImport TopicKind = "import"
 )
 
 // Topic is one thing that changed.
@@ -270,7 +272,7 @@ func (h *Hub) sync(c *Client, epoch string, seq uint64, hello bool) {
 func (c *Client) receives(campaignID int64, topics []Topic) bool {
 	return c.CampaignID == campaignID ||
 		slices.ContainsFunc(topics, func(t Topic) bool { return t.Kind == TopicCompendium }) ||
-		c.Viewer.IsGM && slices.ContainsFunc(topics, func(t Topic) bool { return t.Kind == TopicPending })
+		c.Viewer.IsGM && slices.ContainsFunc(topics, func(t Topic) bool { return t.Kind == TopicPending || t.Kind == TopicImport })
 }
 
 func (h *Hub) enqueueLocked(c *Client, m message) {

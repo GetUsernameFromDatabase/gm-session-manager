@@ -51,7 +51,7 @@ func (a *App) fiveToolsView(ctx context.Context, msg string, failed bool) (views
 		}
 	}
 	v := views.NewFiveToolsView(books, downloaded)
-	v.Msg, v.Failed = msg, failed
+	v.Msg, v.Failed, v.Running = msg, failed, a.fiveTools.get().Running
 	return v, nil
 }
 
@@ -79,13 +79,19 @@ type fiveToolsForm struct {
 	Books []string `form:"book" validate:"required,max=2000,dive,max=64"`
 }
 
-// fiveToolsImport downloads the checked books and imports every folder.
+// fiveToolsImport starts downloading the checked books and importing every
+// folder in the background; the import tab shows its progress.
 func (a *App) fiveToolsImport(c *gin.Context) {
 	ctx := c.Request.Context()
 	notice := views.ImportNotice{Tab: views.ImportTabFiveTools}
 	var f fiveToolsForm
 	if c.ShouldBind(&f) != nil {
 		notice.Msg, notice.Failed = "Pick at least one book.", true
+		a.renderCompendium(c, notice)
+		return
+	}
+	if a.fiveTools.get().Running { // before the book list's download; start checks again
+		notice.Msg, notice.Failed = errImportRunning, true
 		a.renderCompendium(c, notice)
 		return
 	}
@@ -102,25 +108,27 @@ func (a *App) fiveToolsImport(c *gin.Context) {
 			picked = append(picked, b)
 		}
 	}
-	if err := compendium.DownloadFiveTools(ctx, dir, picked); err != nil {
-		notice.Msg, notice.Failed = "Download failed: "+err.Error(), true
+	if !a.fiveTools.start(len(picked)) {
+		notice.Msg, notice.Failed = errImportRunning, true
 		a.renderCompendium(c, notice)
 		return
 	}
-	reports, err := compendium.Import(ctx, a.Store, dir)
-	if err != nil {
-		a.serverError(c, err)
-		return
-	}
-	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
-	notice.Msg, notice.Failed = ImportSummary(reports)
-	a.renderCompendium(c, notice)
+	// The import outlives the request.
+	go a.runFiveTools(context.WithoutCancel(ctx), dir, picked)
+	c.Redirect(http.StatusSeeOther, "/compendium?import="+views.ImportTabFiveTools)
 }
+
+// errImportRunning refuses a second import, or a removal under the running one.
+const errImportRunning = "An import is running; wait for it to finish."
 
 // fiveToolsRemove deletes a book's entries and source, then its folder.
 func (a *App) fiveToolsRemove(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := c.Param("book")
+	if a.fiveTools.get().Running {
+		a.renderFiveTools(c, errImportRunning, true)
+		return
+	}
 	key := fiveToolsKey(id)
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		if err := q.DeleteCompendiumEntriesBySource(ctx, key); err != nil {
@@ -161,8 +169,37 @@ func (a *App) sourceMove(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
+	a.sourcesChanged(c)
+}
+
+// sourceOrderForm is every source key in the new order (a drag).
+type sourceOrderForm struct {
+	Keys []string `form:"key" validate:"required,max=2000,dive,max=200"`
+}
+
+// sourceOrder sets the order a drag left and answers with the card.
+func (a *App) sourceOrder(c *gin.Context) {
+	var f sourceOrderForm
+	if c.ShouldBind(&f) != nil {
+		a.fail(c, http.StatusBadRequest, "Send every source in its new order.")
+		return
+	}
+	err := compendium.SetSourceOrder(c.Request.Context(), a.Store, f.Keys)
+	if errors.Is(err, compendium.ErrNoSource) {
+		a.fail(c, http.StatusConflict, "The sources changed meanwhile: reload the page and drag again.")
+		return
+	}
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.sourcesChanged(c)
+}
+
+// sourcesChanged tells every page and answers with the priority card.
+func (a *App) sourcesChanged(c *gin.Context) {
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
-	sources, err := a.Store.ListCompendiumSources(ctx)
+	sources, err := a.Store.ListCompendiumSources(c.Request.Context())
 	if err != nil {
 		a.serverError(c, err)
 		return

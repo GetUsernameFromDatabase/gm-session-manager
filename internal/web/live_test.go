@@ -99,6 +99,8 @@ func TestLiveVisibility(t *testing.T) {
 		{"player may not see the roster", player, f.campaignID, views.LiveKey(views.LiveRoster, f.campaignID), false, nil, nil},
 		{"GM sees join requests outside a campaign", perm.GM, 0, views.LiveKey(views.LiveRequests, 0), true, nil, nil},
 		{"player may not see join requests", player, f.campaignID, views.LiveKey(views.LiveRequests, 0), false, nil, nil},
+		{"GM sees the 5etools import", perm.GM, 0, views.LiveKey(views.LiveImport, 0), true, nil, nil},
+		{"player may not see the 5etools import", player, f.campaignID, views.LiveKey(views.LiveImport, 0), false, nil, nil},
 		{"player sees a revealed NPC", player, f.campaignID, views.LiveKey(views.LiveEntity, f.entity), true, nil, nil},
 		{"player may not see a GM-only note", player, f.campaignID, views.LiveKey(views.LiveNote, f.gmNote), false, nil, nil},
 		{"player sees own sheet with HP", player, f.campaignID, views.LiveKey(views.LiveCharacter, f.characterID), true, []string{"hp"}, nil},
@@ -247,10 +249,14 @@ func TestLiveBindsMatchState(t *testing.T) {
 			t.Fatalf("%s: %d %s", c, w.Code, w.Body)
 		}
 	}
+	// A 5etools import is running, so the compendium binds its progress.
+	f.app.fiveTools.start(3)
+	f.app.fiveTools.update(func(j *views.FiveToolsJob) { j.Current = "Test Book" })
 	tests := []struct {
 		name, path, cookie string
 		viewer             perm.Viewer
 	}{
+		{"GM compendium import", "/compendium?import=" + views.ImportTabFiveTools, gm, perm.GM},
 		{"player sheet", fmt.Sprintf("/characters/%d", f.characterID), player, perm.Player(f.characterID)},
 		{"GM sheet", fmt.Sprintf("/characters/%d", f.characterID), gm, perm.GM},
 		{"player combat", fmt.Sprintf("/campaigns/%d/combat", f.campaignID), player, perm.Player(f.characterID)},

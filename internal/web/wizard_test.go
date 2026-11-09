@@ -90,28 +90,46 @@ func TestCreationWizard(t *testing.T) {
 			if w := e.do(t, http.MethodGet, base+"/abilities", player, nil, false); !strings.Contains(w.Body.String(), "Sage: ability score increases") {
 				t.Errorf("abilities page lacks the background's increases: %s", w.Body)
 			}
-			// Refused, the page keeps the scores and increases asked for: two
-			// the same, or +1 to all three taking Wisdom above 20.
+			// Refused, the page keeps the scores and increases asked for and
+			// shows every error: two increases the same and Wisdom above 20;
+			// +1 to all three taking Wisdom above 20; two scores out of range.
 			same := maps.Clone(scores)
 			same.Set("mode", "two")
 			same.Set("plus2", "wis")
 			same.Set("plus1", "wis")
+			same.Set("wis", "21")
 			high := maps.Clone(scores)
 			high.Set("wis", "20")
 			high.Set("mode", "three")
-			for _, bad := range []url.Values{same, high} {
-				w := e.do(t, http.MethodPost, base+"/abilities", player, bad, false)
-				if lost := lostPicks(w.Body.String(), bad); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 || !errorAt(w.Body.String(), views.FieldMode) {
-					t.Errorf("abilities %v: %d, lost %v, error at mode %v", bad, w.Code, lost, errorAt(w.Body.String(), views.FieldMode))
+			low := maps.Clone(scores)
+			low.Set("str", "2")
+			low.Set("cha", "21")
+			for _, bad := range []struct {
+				form url.Values
+				at   []string
+			}{
+				{form: same, at: []string{views.FieldMode, "wis"}},
+				{form: high, at: []string{"wis"}},
+				{form: low, at: []string{"str", "cha"}},
+			} {
+				w := e.do(t, http.MethodPost, base+"/abilities", player, bad.form, false)
+				if lost := lostPicks(w.Body.String(), bad.form); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 {
+					t.Errorf("abilities %v: %d, lost %v", bad.form, w.Code, lost)
+				}
+				for _, at := range bad.at {
+					if !errorAt(w.Body.String(), at) {
+						t.Errorf("abilities %v: no error at %s", bad.form, at)
+					}
 				}
 			}
 		}
 		if step.step == "details" {
-			// A blank name is refused at the name, and the page keeps the rest as typed.
-			blank := url.Values{"name": {"  "}, "backstory": {"Raised in a library."}, "size": {"Large"}, "vision": {"Darkvision 60 ft"}}
+			// A blank name and an unknown size are refused at their fields
+			// together, and the page keeps the rest as typed.
+			blank := url.Values{"name": {"  "}, "backstory": {"Raised in a library."}, "size": {"Huge-ish"}, "vision": {"Darkvision 60 ft"}}
 			w := e.do(t, http.MethodPost, base+"/details", player, blank, false)
-			if lost := lostPicks(w.Body.String(), blank); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 || !errorAt(w.Body.String(), views.FieldName) {
-				t.Errorf("details %v: %d, lost %v, error at name %v", blank, w.Code, lost, errorAt(w.Body.String(), views.FieldName))
+			if w.Code != http.StatusUnprocessableEntity || !errorAt(w.Body.String(), views.FieldName) || !errorAt(w.Body.String(), views.FieldSize) {
+				t.Errorf("details %v: %d, error at name %v, at size %v", blank, w.Code, errorAt(w.Body.String(), views.FieldName), errorAt(w.Body.String(), views.FieldSize))
 			}
 			for _, kept := range []string{"Raised in a library.", `value="Darkvision 60 ft"`} {
 				if !strings.Contains(w.Body.String(), kept) {
@@ -124,6 +142,16 @@ func TestCreationWizard(t *testing.T) {
 				if w := e.do(t, http.MethodPost, base+"/choices", player, bad, false); w.Code != http.StatusUnprocessableEntity {
 					t.Errorf("choices %v: %d", bad, w.Code)
 				}
+			}
+			// Every wrong group shows its own error in one refusal.
+			w := e.do(t, http.MethodPost, base+"/choices", player, url.Values{"language": {"Orc"}, "trait_keen-senses": {"Arcana"}}, false)
+			for _, at := range []string{"language", "trait_keen-senses"} {
+				if !errorAt(w.Body.String(), at) {
+					t.Errorf("choices: no error at %s", at)
+				}
+			}
+			if !strings.Contains(w.Body.String(), "Common (every character knows it)") {
+				t.Error("choices page does not show Common as known")
 			}
 		}
 		w := e.do(t, http.MethodPost, base+"/"+step.step, player, step.form, false)
@@ -567,7 +595,7 @@ func TestClassSkillCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	w0 := e0.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/create/class", e0.characterID), e0.token(t, auth.RolePlayer), url.Values{"pick": {"testcommoner"}, "skill": {"athletics"}}, false)
-	if body := w0.Body.String(); w0.Code != http.StatusUnprocessableEntity || errorAt(body, views.FieldSkill) || !strings.Contains(body, "choose 0 of the listed skills") {
+	if body := w0.Body.String(); w0.Code != http.StatusUnprocessableEntity || errorAt(body, views.FieldSkill) || !strings.Contains(body, ">choose none<") {
 		t.Errorf("skill on a class without skills: %d, message not at the top", w0.Code)
 	}
 	for _, tc := range []struct {
@@ -629,6 +657,17 @@ var (
 
 // errorAt reports whether a refused page shows its error at the field key
 // instead of the top.
+// hasError reports whether body shows want: "@key: msg" is msg in the error
+// drawn at key (legends say "choose …" too), anything else is in the page.
+func hasError(body, want string) bool {
+	key, msg, ok := strings.Cut(strings.TrimPrefix(want, "@"), ": ")
+	if !strings.HasPrefix(want, "@") || !ok {
+		return strings.Contains(body, want)
+	}
+	re := regexp.MustCompile(`<div id="error-` + regexp.QuoteMeta(html.EscapeString(key)) + `"[^>]*>` + regexp.QuoteMeta(html.EscapeString(msg)) + `</div>`)
+	return re.MatchString(body)
+}
+
 func errorAt(body, key string) bool {
 	k := html.EscapeString(key)
 	return strings.Contains(body, `data-error-for="`+k+`"`) &&

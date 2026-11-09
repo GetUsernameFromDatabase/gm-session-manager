@@ -533,15 +533,18 @@ func (m *mirror) keepClassParents(raw json.RawMessage, doc map[string][]json.Raw
 func bookFolder(id string) string { return FiveToolsPrefix + strings.ToLower(id) }
 
 // DownloadFiveTools writes a folder under dir for each book. A failed book
-// leaves no folder behind.
-func DownloadFiveTools(ctx context.Context, dir string, books []Book) error {
+// leaves no folder behind. progress, if set, hears of each book as it starts.
+func DownloadFiveTools(ctx context.Context, dir string, books []Book, progress func(done int, next Book)) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil { //nolint:gosec // dir is the operator's DATA_DIR, never request input
 		return err
 	}
 	m := &mirror{ctx: ctx, files: map[string]json.RawMessage{}}
-	for _, b := range books {
+	for i, b := range books {
 		if !bookIDPattern.MatchString(strings.ToLower(b.ID)) {
 			return fmt.Errorf("bad 5etools book id %q", b.ID)
+		}
+		if progress != nil {
+			progress(i, b)
 		}
 		if err := downloadBook(m, dir, b); err != nil {
 			return fmt.Errorf("5etools %s: %w", b.ID, err)
