@@ -27,6 +27,7 @@ func TestPagesRender(t *testing.T) {
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
+	e.allowEntrySources(t)
 	gm := e.token(t, auth.RoleAdmin)
 	player := e.token(t, auth.RolePlayer)
 

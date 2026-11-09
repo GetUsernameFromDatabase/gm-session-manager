@@ -61,7 +61,7 @@ type PendingGroup struct {
 	Requests     []PendingView
 }
 
-func CampaignOverview(l Layout, r Roster, j JoinInfo) templ.Component {
+func CampaignOverview(l Layout, r Roster, j JoinInfo, s CampaignSourcesView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -137,7 +137,7 @@ func CampaignOverview(l Layout, r Roster, j JoinInfo) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div><p class=\"text-sm text-muted-foreground\">Table overview</p></div><div class=\"grid gap-6 md:grid-cols-[1fr_20rem]\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div></div><div class=\"grid gap-6 md:grid-cols-[1fr_20rem]\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -150,6 +150,10 @@ func CampaignOverview(l Layout, r Roster, j JoinInfo) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			templ_7745c5c3_Err = joinPanel(j).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = CampaignSources(s).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

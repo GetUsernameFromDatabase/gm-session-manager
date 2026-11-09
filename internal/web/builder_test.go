@@ -119,6 +119,7 @@ func TestBuilderCompendium(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.allowEntrySources(t)
 	player := e.token(t, auth.RolePlayer)
 	id := e.characterID
 	for _, tt := range []struct{ path, want string }{

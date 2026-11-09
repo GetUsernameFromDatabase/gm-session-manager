@@ -13,6 +13,7 @@ import (
 	"gm-session-manager/internal/web/components/spinner"
 	"gm-session-manager/internal/web/components/toast"
 	"gm-session-manager/internal/web/utils"
+	"net/url"
 	"time"
 )
 
@@ -202,7 +203,7 @@ templ navLinks(l Layout) {
 			@separator.Separator(separator.Props{Class: "my-1 sm:hidden"})
 			@separator.Separator(separator.Props{Orientation: separator.OrientationVertical, Class: "mx-2 my-1 hidden sm:block"})
 		}
-		@navLink("/compendium", "Compendium", l.Active == NavCompendium, compendiumLinkAttrs(l.CampaignID)) {
+		@navLink(compendiumNavHref(l), "Compendium", l.Active == NavCompendium, compendiumLinkAttrs(l.CampaignID)) {
 			if l.CampaignID != 0 {
 				@icon.ExternalLink(icon.Props{Class: "size-3.5 text-muted-foreground"})
 			}
@@ -211,6 +212,15 @@ templ navLinks(l Layout) {
 	if l.IsGM {
 		@navLink(PathFiles, "Files", l.Active == NavFiles, nil)
 	}
+}
+
+// compendiumNavHref is the compendium as the campaign sees it: the GM names
+// the campaign, a player's is always their own.
+func compendiumNavHref(l Layout) string {
+	if !l.IsGM {
+		return "/compendium"
+	}
+	return CompendiumURL(url.Values{}, l.CampaignID)
 }
 
 // compendiumLinkAttrs opens the compendium in a new tab inside a campaign, since the compendium page has no campaign navbar.

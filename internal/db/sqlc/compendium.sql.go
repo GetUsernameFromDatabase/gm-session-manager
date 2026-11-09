@@ -53,6 +53,40 @@ func (q *Queries) AddMonsterHabitat(ctx context.Context, arg AddMonsterHabitatPa
 	return result.RowsAffected()
 }
 
+const allowAllSources = `-- name: AllowAllSources :exec
+INSERT INTO campaign_sources (campaign_id, source_key)
+SELECT CAST(?1 AS INTEGER), source_key FROM compendium_sources
+WHERE source_key <> 'homebrew'
+ON CONFLICT DO NOTHING
+`
+
+// AllowAllSources gives a new campaign every source there is.
+func (q *Queries) AllowAllSources(ctx context.Context, campaignID int64) error {
+	_, err := q.db.ExecContext(ctx, allowAllSources, campaignID)
+	return err
+}
+
+const allowCampaignSource = `-- name: AllowCampaignSource :execrows
+INSERT INTO campaign_sources (campaign_id, source_key)
+SELECT CAST(?1 AS INTEGER), s.source_key FROM compendium_sources AS s
+WHERE s.source_key = CAST(?2 AS TEXT) AND s.source_key <> 'homebrew'
+ON CONFLICT DO UPDATE SET campaign_id = excluded.campaign_id
+`
+
+type AllowCampaignSourceParams struct {
+	CampaignID int64
+	SourceKey  string
+}
+
+// AllowCampaignSource ticks an imported source; 0 rows means no such source.
+func (q *Queries) AllowCampaignSource(ctx context.Context, arg AllowCampaignSourceParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, allowCampaignSource, arg.CampaignID, arg.SourceKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const bindMonsterImage = `-- name: BindMonsterImage :exec
 UPDATE compendium_entries SET image_url = ?1
 WHERE kind = 'monster' AND image_url IS NULL AND source_key = ?2 AND slug = ?3
@@ -90,7 +124,7 @@ func (q *Queries) BindMonsterImages(ctx context.Context, arg BindMonsterImagesPa
 
 const countCompendium = `-- name: CountCompendium :many
 SELECT e.kind, count(*) AS n FROM compendium_entries AS e
-WHERE e.id IN (SELECT id FROM compendium_top)
+WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
   AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 GROUP BY e.kind
@@ -130,7 +164,7 @@ func (q *Queries) CountCompendium(ctx context.Context, campaignID int64) ([]Coun
 const countHabitats = `-- name: CountHabitats :many
 SELECT h.habitat, count(*) AS n FROM monster_habitats AS h
 JOIN compendium_entries AS e ON e.id = h.entry_id
-WHERE e.id IN (SELECT id FROM compendium_top)
+WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
   AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 GROUP BY h.habitat
@@ -259,6 +293,21 @@ func (q *Queries) DeleteHomebrew(ctx context.Context, id int64) error {
 	return err
 }
 
+const disallowCampaignSource = `-- name: DisallowCampaignSource :exec
+DELETE FROM campaign_sources
+WHERE campaign_id = ? AND source_key = ?
+`
+
+type DisallowCampaignSourceParams struct {
+	CampaignID int64
+	SourceKey  string
+}
+
+func (q *Queries) DisallowCampaignSource(ctx context.Context, arg DisallowCampaignSourceParams) error {
+	_, err := q.db.ExecContext(ctx, disallowCampaignSource, arg.CampaignID, arg.SourceKey)
+	return err
+}
+
 const getCompendiumEntry = `-- name: GetCompendiumEntry :one
 SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, is_homebrew, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries
 WHERE id = ?
@@ -336,6 +385,7 @@ type GetCompendiumEntryBySlugParams struct {
 
 // Player homebrew never shadows an imported or GM entry of the same slug;
 // among the rest the source with the lowest priority wins, then the newest.
+// Lookups ignore the campaign's sources: a sheet may use an unticked one.
 func (q *Queries) GetCompendiumEntryBySlug(ctx context.Context, arg GetCompendiumEntryBySlugParams) (CompendiumEntry, error) {
 	row := q.db.QueryRowContext(ctx, getCompendiumEntryBySlug, arg.Kind, arg.Slug)
 	var i CompendiumEntry
@@ -430,6 +480,35 @@ func (q *Queries) LinkEntryCampaign(ctx context.Context, arg LinkEntryCampaignPa
 	return err
 }
 
+const listCampaignSources = `-- name: ListCampaignSources :many
+SELECT source_key FROM campaign_sources
+WHERE campaign_id = ?
+`
+
+// ListCampaignSources is the sources campaign_id allows (homebrew is implied).
+func (q *Queries) ListCampaignSources(ctx context.Context, campaignID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listCampaignSources, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var source_key string
+		if err := rows.Scan(&source_key); err != nil {
+			return nil, err
+		}
+		items = append(items, source_key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCompendiumByKind = `-- name: ListCompendiumByKind :many
 
 SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
@@ -441,22 +520,22 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
         WHEN 'spell' THEN json_extract(e.data_json, '$.level')
         WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
 FROM compendium_entries AS e
-WHERE e.id IN (SELECT id FROM compendium_top)
-  AND (CAST(?1 AS TEXT) = '' OR instr(',' || CAST(?1 AS TEXT) || ',', ',' || e.kind || ',') > 0)
-  AND (e.name > CAST(?2 AS TEXT) OR (e.name = CAST(?2 AS TEXT) AND e.id > ?3))
-  AND (CAST(?4 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?4 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
-  AND (e.scoped = 0 OR CAST(?5 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?5 AS INTEGER)))
+WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
+  AND (CAST(?2 AS TEXT) = '' OR instr(',' || CAST(?2 AS TEXT) || ',', ',' || e.kind || ',') > 0)
+  AND (e.name > CAST(?3 AS TEXT) OR (e.name = CAST(?3 AS TEXT) AND e.id > ?4))
+  AND (CAST(?5 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?5 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
+  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 ORDER BY e.name, e.id
 LIMIT ?6
 `
 
 type ListCompendiumByKindParams struct {
+	CampaignID int64
 	Kind       string
 	AfterName  string
 	AfterID    int64
 	Habitat    string
-	CampaignID int64
 	PageSize   int64
 }
 
@@ -476,16 +555,17 @@ type ListCompendiumByKindRow struct {
 
 // Browse, random and search show player homebrew (scoped) only in the
 // campaigns it is linked to; campaign_id 0 is the GM, who sees it all
-// (perm.CanSeeEntry).
+// (perm.CanSeeEntry). campaign_top ranks over the sources the campaign
+// allows, so an unticked book's entry falls back to the next allowed copy.
 // ListCompendiumByKind reads one kind, or every kind when kind is ”, after
 // the (name, id) cursor; names repeat, so id breaks ties.
 func (q *Queries) ListCompendiumByKind(ctx context.Context, arg ListCompendiumByKindParams) ([]ListCompendiumByKindRow, error) {
 	rows, err := q.db.QueryContext(ctx, listCompendiumByKind,
+		arg.CampaignID,
 		arg.Kind,
 		arg.AfterName,
 		arg.AfterID,
 		arg.Habitat,
-		arg.CampaignID,
 		arg.PageSize,
 	)
 	if err != nil {
@@ -550,7 +630,7 @@ type ListCompendiumBySlugsRow struct {
 }
 
 // ListCompendiumBySlugs reads the entries a sheet links to, in one query: the
-// copy compendium_top would pick, found through the (kind, slug) index
+// copy campaign_top would pick for campaign 0, found through the (kind, slug) index
 // instead of ranking the whole compendium on every sheet render.
 func (q *Queries) ListCompendiumBySlugs(ctx context.Context, arg ListCompendiumBySlugsParams) ([]ListCompendiumBySlugsRow, error) {
 	query := listCompendiumBySlugs
@@ -629,7 +709,7 @@ func (q *Queries) ListCompendiumKeysBySource(ctx context.Context, sourceKey stri
 
 const listCompendiumNames = `-- name: ListCompendiumNames :many
 SELECT e.id, e.kind, e.slug, e.name FROM compendium_entries AS e
-WHERE e.kind = ?1 AND e.id IN (SELECT id FROM compendium_top)
+WHERE e.kind = ?1 AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?2 AS INTEGER))
   AND json_extract(e.data_json, '$.version_of') IS NULL
   AND (e.scoped = 0 OR CAST(?2 AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?2 AS INTEGER)))
@@ -1024,16 +1104,16 @@ func (q *Queries) ListHomebrewLinks(ctx context.Context) ([]ListHomebrewLinksRow
 const listItemsByCategory = `-- name: ListItemsByCategory :many
 SELECT e.name, CAST(COALESCE(json_extract(e.data_json, '$.desc'), '') AS TEXT) AS description
 FROM compendium_entries AS e
-WHERE e.kind = 'item' AND e.id IN (SELECT id FROM compendium_top)
-  AND json_extract(e.data_json, '$.category') = CAST(?1 AS TEXT)
-  AND (e.scoped = 0 OR CAST(?2 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?2 AS INTEGER)))
+WHERE e.kind = 'item' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
+  AND json_extract(e.data_json, '$.category') = CAST(?2 AS TEXT)
+  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 ORDER BY e.name
 `
 
 type ListItemsByCategoryParams struct {
-	Category   string
 	CampaignID int64
+	Category   string
 }
 
 type ListItemsByCategoryRow struct {
@@ -1042,7 +1122,7 @@ type ListItemsByCategoryRow struct {
 }
 
 func (q *Queries) ListItemsByCategory(ctx context.Context, arg ListItemsByCategoryParams) ([]ListItemsByCategoryRow, error) {
-	rows, err := q.db.QueryContext(ctx, listItemsByCategory, arg.Category, arg.CampaignID)
+	rows, err := q.db.QueryContext(ctx, listItemsByCategory, arg.CampaignID, arg.Category)
 	if err != nil {
 		return nil, err
 	}
@@ -1067,7 +1147,7 @@ func (q *Queries) ListItemsByCategory(ctx context.Context, arg ListItemsByCatego
 const listMasteryWeapons = `-- name: ListMasteryWeapons :many
 SELECT e.name, CAST(json_extract(e.data_json, '$.mastery') AS TEXT) AS mastery
 FROM compendium_entries AS e
-WHERE e.kind = 'item' AND e.id IN (SELECT id FROM compendium_top)
+WHERE e.kind = 'item' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
   AND COALESCE(json_extract(e.data_json, '$.mastery'), '') != ''
   AND COALESCE(json_extract(e.data_json, '$.rarity'), '') = ''
   AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
@@ -1135,7 +1215,7 @@ func (q *Queries) ListMonsterHabitats(ctx context.Context) ([]MonsterHabitat, er
 
 const listMonstersByName = `-- name: ListMonstersByName :many
 SELECT id, name FROM compendium_entries
-WHERE kind = 'monster' AND id IN (SELECT id FROM compendium_top)
+WHERE kind = 'monster' AND id IN (SELECT id FROM campaign_top WHERE campaign_id = 0)
   AND instr(lower(name), lower(CAST(?1 AS TEXT))) > 0
 ORDER BY name, id
 `
@@ -1171,31 +1251,38 @@ func (q *Queries) ListMonstersByName(ctx context.Context, filter string) ([]List
 }
 
 const listSourceRefUsers = `-- name: ListSourceRefUsers :many
-SELECT DISTINCT n.name FROM (
-    SELECT en.name, en.compendium_ref AS ref FROM entities AS en
+SELECT DISTINCT e.source_key, n.name FROM (
+    SELECT en.name, en.compendium_ref AS ref, en.campaign_id FROM entities AS en
     UNION ALL
-    SELECT cb.name, cb.monster_ref FROM combatants AS cb
+    SELECT cb.name, cb.monster_ref, enc.campaign_id FROM combatants AS cb
+    JOIN encounters AS enc ON enc.id = cb.encounter_id
 ) AS n
 JOIN compendium_entries AS e ON e.id = n.ref
-WHERE e.source_key = ?
-ORDER BY n.name
+WHERE CAST(?1 AS INTEGER) = 0 OR n.campaign_id = CAST(?1 AS INTEGER)
+ORDER BY e.source_key, n.name
 `
 
-// ListSourceRefUsers names the entities and combatants whose compendium link
-// points at an entry of the source, for the delete and untick checks.
-func (q *Queries) ListSourceRefUsers(ctx context.Context, sourceKey string) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listSourceRefUsers, sourceKey)
+type ListSourceRefUsersRow struct {
+	SourceKey string
+	Name      string
+}
+
+// ListSourceRefUsers names, per source, the entities and combatants whose
+// compendium link points at one of its entries, for the delete and untick
+// checks; in campaign_id only, or everywhere for 0.
+func (q *Queries) ListSourceRefUsers(ctx context.Context, campaignID int64) ([]ListSourceRefUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSourceRefUsers, campaignID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []ListSourceRefUsersRow{}
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var i ListSourceRefUsersRow
+		if err := rows.Scan(&i.SourceKey, &i.Name); err != nil {
 			return nil, err
 		}
-		items = append(items, name)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -1209,18 +1296,18 @@ func (q *Queries) ListSourceRefUsers(ctx context.Context, sourceKey string) ([]s
 const listSpellsForClass = `-- name: ListSpellsForClass :many
 SELECT e.id, e.slug, e.name, e.source_key, CAST(json_extract(e.data_json, '$.level') AS INTEGER) AS level
 FROM compendium_entries AS e
-WHERE e.kind = 'spell' AND e.id IN (SELECT id FROM compendium_top)
-  AND CAST(json_extract(e.data_json, '$.level') AS INTEGER) <= CAST(?1 AS INTEGER)
-  AND EXISTS (SELECT 1 FROM json_each(e.data_json, '$.classes') AS c WHERE c.value = CAST(?2 AS TEXT))
-  AND (e.scoped = 0 OR CAST(?3 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?3 AS INTEGER)))
+WHERE e.kind = 'spell' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
+  AND CAST(json_extract(e.data_json, '$.level') AS INTEGER) <= CAST(?2 AS INTEGER)
+  AND EXISTS (SELECT 1 FROM json_each(e.data_json, '$.classes') AS c WHERE c.value = CAST(?3 AS TEXT))
+  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 ORDER BY level, e.name
 `
 
 type ListSpellsForClassParams struct {
+	CampaignID int64
 	MaxLevel   int64
 	ClassSlug  string
-	CampaignID int64
 }
 
 type ListSpellsForClassRow struct {
@@ -1233,7 +1320,7 @@ type ListSpellsForClassRow struct {
 
 // ListSpellsForClass lists the spells a player in campaign_id may see (0: all).
 func (q *Queries) ListSpellsForClass(ctx context.Context, arg ListSpellsForClassParams) ([]ListSpellsForClassRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSpellsForClass, arg.MaxLevel, arg.ClassSlug, arg.CampaignID)
+	rows, err := q.db.QueryContext(ctx, listSpellsForClass, arg.CampaignID, arg.MaxLevel, arg.ClassSlug)
 	if err != nil {
 		return nil, err
 	}
@@ -1263,9 +1350,14 @@ func (q *Queries) ListSpellsForClass(ctx context.Context, arg ListSpellsForClass
 
 const listSubclassesOf = `-- name: ListSubclassesOf :many
 SELECT id, slug, name, source_key, data_json FROM compendium_entries
-WHERE kind = 'subclass' AND id IN (SELECT id FROM compendium_top) AND json_extract(data_json, '$.subclass_of') = CAST(?1 AS TEXT)
+WHERE kind = 'subclass' AND id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER)) AND json_extract(data_json, '$.subclass_of') = CAST(?2 AS TEXT)
 ORDER BY name
 `
+
+type ListSubclassesOfParams struct {
+	CampaignID int64
+	ClassSlug  string
+}
 
 type ListSubclassesOfRow struct {
 	ID        int64
@@ -1275,8 +1367,9 @@ type ListSubclassesOfRow struct {
 	DataJson  string
 }
 
-func (q *Queries) ListSubclassesOf(ctx context.Context, classSlug string) ([]ListSubclassesOfRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSubclassesOf, classSlug)
+// ListSubclassesOf is what the subclass pickers offer in campaign_id (0: all).
+func (q *Queries) ListSubclassesOf(ctx context.Context, arg ListSubclassesOfParams) ([]ListSubclassesOfRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSubclassesOf, arg.CampaignID, arg.ClassSlug)
 	if err != nil {
 		return nil, err
 	}
@@ -1306,23 +1399,23 @@ func (q *Queries) ListSubclassesOf(ctx context.Context, classSlug string) ([]Lis
 
 const randomCompendiumEntry = `-- name: RandomCompendiumEntry :one
 SELECT e.id FROM compendium_entries AS e
-WHERE e.id IN (SELECT id FROM compendium_top)
-  AND (CAST(?1 AS TEXT) = '' OR instr(',' || CAST(?1 AS TEXT) || ',', ',' || e.kind || ',') > 0)
-  AND (CAST(?2 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?2 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
-  AND (e.scoped = 0 OR CAST(?3 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?3 AS INTEGER)))
+WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
+  AND (CAST(?2 AS TEXT) = '' OR instr(',' || CAST(?2 AS TEXT) || ',', ',' || e.kind || ',') > 0)
+  AND (CAST(?3 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?3 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
+  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 ORDER BY random()
 LIMIT 1
 `
 
 type RandomCompendiumEntryParams struct {
+	CampaignID int64
 	Kind       string
 	Habitat    string
-	CampaignID int64
 }
 
 func (q *Queries) RandomCompendiumEntry(ctx context.Context, arg RandomCompendiumEntryParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, randomCompendiumEntry, arg.Kind, arg.Habitat, arg.CampaignID)
+	row := q.db.QueryRowContext(ctx, randomCompendiumEntry, arg.CampaignID, arg.Kind, arg.Habitat)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -1375,20 +1468,20 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
 FROM compendium_fts
 JOIN compendium_entries AS e ON e.id = compendium_fts.rowid
 WHERE compendium_fts MATCH CAST(?1 AS TEXT)
-  AND e.id IN (SELECT id FROM compendium_top)
-  AND (CAST(?2 AS TEXT) = '' OR instr(',' || CAST(?2 AS TEXT) || ',', ',' || e.kind || ',') > 0)
-  AND (CAST(?3 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?3 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
-  AND (e.scoped = 0 OR CAST(?4 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?4 AS INTEGER)))
+  AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?2 AS INTEGER))
+  AND (CAST(?3 AS TEXT) = '' OR instr(',' || CAST(?3 AS TEXT) || ',', ',' || e.kind || ',') > 0)
+  AND (CAST(?4 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?4 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
+  AND (e.scoped = 0 OR CAST(?2 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?2 AS INTEGER)))
 ORDER BY compendium_fts.rank
 LIMIT ?5
 `
 
 type SearchCompendiumParams struct {
 	Query      string
+	CampaignID int64
 	Kind       string
 	Habitat    string
-	CampaignID int64
 	MaxResults int64
 }
 
@@ -1409,9 +1502,9 @@ type SearchCompendiumRow struct {
 func (q *Queries) SearchCompendium(ctx context.Context, arg SearchCompendiumParams) ([]SearchCompendiumRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchCompendium,
 		arg.Query,
+		arg.CampaignID,
 		arg.Kind,
 		arg.Habitat,
-		arg.CampaignID,
 		arg.MaxResults,
 	)
 	if err != nil {

@@ -682,19 +682,20 @@ func classFeatures(cd *compendium.ClassData) []dnd5e.ClassFeature {
 }
 
 // withSubclass adds the features of the class's subclass named name (the
-// sheet's, or the one being chosen) to info; an unknown name adds none.
-func (a *App) withSubclass(ctx context.Context, info *dnd5e.ClassInfo, sheet dnd5e.Sheet, name string) error {
+// sheet's, or the one being chosen in campaignID) to info; an unknown name
+// adds none.
+func (a *App) withSubclass(ctx context.Context, info *dnd5e.ClassInfo, sheet dnd5e.Sheet, name string, campaignID int64) error {
 	var cl dnd5e.ClassLevel
 	if i := slices.IndexFunc(sheet.Classes, func(c dnd5e.ClassLevel) bool { return c.Slug == info.Slug }); i >= 0 {
 		cl = sheet.Classes[i]
 	}
 	if name == "" {
-		name = cl.Subclass
+		name, campaignID = cl.Subclass, 0 // the sheet keeps its own, ticked or not
 	}
 	if name == "" {
 		return nil
 	}
-	slug, pin, err := subclassRef(ctx, a.Store.Queries, info.Slug, cl, name)
+	slug, pin, err := subclassRef(ctx, a.Store.Queries, info.Slug, cl, name, campaignID)
 	if err != nil || slug == "" {
 		return err
 	}
@@ -709,19 +710,26 @@ func (a *App) withSubclass(ctx context.Context, info *dnd5e.ClassInfo, sheet dnd
 }
 
 // subclassRef is the slug and pin of classSlug's subclass named name: the
-// sheet's pin when it is cl's subclass, else found by name ("" for none).
-func subclassRef(ctx context.Context, q *sqlc.Queries, classSlug string, cl dnd5e.ClassLevel, name string) (slug, pin string, err error) {
+// sheet's pin when it is cl's subclass, else found by name among those
+// campaignID allows (0: all; "" for none). A subclass only an unticked
+// source has is a userError.
+func subclassRef(ctx context.Context, q *sqlc.Queries, classSlug string, cl dnd5e.ClassLevel, name string, campaignID int64) (slug, pin string, err error) {
 	if cl.SubclassSlug != "" && strings.EqualFold(name, cl.Subclass) {
 		return cl.SubclassSlug, cl.SubclassSource, nil
 	}
-	subs, err := q.ListSubclassesOf(ctx, classSlug)
+	subs, err := q.ListSubclassesOf(ctx, sqlc.ListSubclassesOfParams{ClassSlug: classSlug, CampaignID: campaignID})
 	if err != nil {
 		return "", "", err
 	}
 	if i := slices.IndexFunc(subs, func(s sqlc.ListSubclassesOfRow) bool { return strings.EqualFold(s.Name, name) }); i >= 0 {
 		return subs[i].Slug, "", nil
 	}
-	return "", "", nil
+	if campaignID != 0 {
+		if slug, _, err = subclassRef(ctx, q, classSlug, cl, name, 0); err == nil && slug != "" {
+			err = userError{fmt.Errorf("%s is not in this campaign's sources", name)}
+		}
+	}
+	return "", "", err
 }
 
 // setSubclass gives info the features and pin of the subclass row, and its
@@ -793,7 +801,7 @@ func (a *App) subclassChangeForm(c *gin.Context) {
 		return
 	}
 	cl := sheet.Classes[i]
-	subs, err := a.Store.ListSubclassesOf(c.Request.Context(), cl.Slug)
+	subs, err := a.Store.ListSubclassesOf(c.Request.Context(), sqlc.ListSubclassesOfParams{ClassSlug: cl.Slug, CampaignID: ch.CampaignID})
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -822,7 +830,7 @@ func (a *App) changeSubclass(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	subs, err := a.Store.ListSubclassesOf(ctx, f.Class)
+	subs, err := a.Store.ListSubclassesOf(ctx, sqlc.ListSubclassesOfParams{ClassSlug: f.Class, CampaignID: ch.CampaignID})
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -874,7 +882,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if err != nil {
 		return v, err
 	}
-	if err := a.withSubclass(ctx, &info, sheet, ""); err != nil {
+	if err := a.withSubclass(ctx, &info, sheet, "", 0); err != nil {
 		return v, err
 	}
 	plan, err := sheet.Plan(info)
@@ -883,7 +891,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		return v, nil
 	}
 	v.Plan = &plan
-	subs, err := a.Store.ListSubclassesOf(ctx, classSlug)
+	subs, err := a.Store.ListSubclassesOf(ctx, sqlc.ListSubclassesOfParams{ClassSlug: classSlug, CampaignID: ch.CampaignID})
 	if err != nil {
 		return v, err
 	}
@@ -1141,8 +1149,7 @@ func (a *App) levelUp(c *gin.Context) {
 	choice := dnd5e.LevelUpChoice{Class: info, Subclass: strings.TrimSpace(c.PostForm("subclass"))}
 	// The form's level; a second submit (a double click, another device) finds it taken.
 	level, checkLevel := formInt(c, "level")
-	if err := a.withSubclass(ctx, &choice.Class, sheet, choice.Subclass); err != nil {
-		a.serverError(c, err)
+	if a.commandFailed(c, a.withSubclass(ctx, &choice.Class, sheet, choice.Subclass, ch.CampaignID)) {
 		return
 	}
 	if roll, ok := formInt(c, "hp_roll"); ok {

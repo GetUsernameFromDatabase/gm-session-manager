@@ -169,13 +169,13 @@ func TestMoveSourceBreaksTies(t *testing.T) {
 	if got := winningSource(t, store, "x"); got != "aaa" {
 		t.Errorf("winner after move: %s", got)
 	}
-	// Lists (compendium_top) show the same copy.
+	// Lists (campaign_top) show the same copy.
 	names, err := store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: "spell"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if row, err := store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: "spell", Slug: "x", SourceKey: "aaa"}); err != nil || len(names) != 1 || names[0].ID != row.ID {
-		t.Errorf("compendium_top: %+v %v", names, err)
+		t.Errorf("campaign_top: %+v %v", names, err)
 	}
 }
 

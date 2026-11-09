@@ -52,6 +52,9 @@ type CompendiumView struct {
 	More    string // URL of the next batch when browsing; "" at the end
 	// Tab is the page tab to open (CompendiumTab*); "" is Browse.
 	Tab string
+	// Campaign is the campaign the GM browses with (?campaign=); 0 for
+	// everything, and for players, who always see their own.
+	Campaign int64
 }
 
 // Page tabs of the compendium page.
@@ -174,8 +177,11 @@ templ compendiumSearchForm(v CompendiumView) {
 		}
 		<input type="hidden" name="kind" value={ v.Kind }/>
 		<input type="hidden" name="habitat" value={ v.Habitat }/>
+		if v.Campaign != 0 {
+			<input type="hidden" name={ CompendiumCampaignKey } value={ fmt.Sprint(v.Campaign) }/>
+		}
 		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{
-			"onclick": templ.JSUnsafeFuncCall("const f = new FormData(this.form); window.open('/compendium/random?kind=' + encodeURIComponent(f.get('kind') ?? '') + '&habitat=' + encodeURIComponent(f.get('habitat') ?? ''), '_blank')"), "title": "Random entry of the chosen kind and habitat (new tab)",
+			"onclick": templ.JSUnsafeFuncCall("window.open('/compendium/random?' + new URLSearchParams(new FormData(this.form)), '_blank')"), "title": "Random entry of the chosen kind and habitat (new tab)",
 		}}) {
 			@icon.Dices()
 			<span class="max-sm:sr-only">Random</span>
@@ -715,7 +721,7 @@ templ kindCounts(v CompendiumView) {
 		<div class={ chipRow }>
 			for _, c := range v.Counts {
 				{{ on := slices.Contains(kindSet(v.Kind), c.Kind) }}
-				@badge.Badge(badge.Props{Href: kindHref(v.Query, c.Kind, v.Kind), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "h-7 gap-1.5 px-2.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on)}}) {
+				@badge.Badge(badge.Props{Href: kindHref(v.Query, c.Kind, v.Kind, v.Campaign), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "h-7 gap-1.5 px-2.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on)}}) {
 					@kindIcon(c.Kind, utils.IfElse(on, "text-current", ""))
 					@kindName(c.Kind)
 					<span class="tabular-nums opacity-60">{ fmt.Sprint(c.N) }</span>
@@ -748,7 +754,7 @@ templ habitatCounts(v CompendiumView) {
 			for _, h := range compendium.Habitats {
 				if counts[h] > 0 {
 					{{ on := slices.Contains(kindSet(v.Habitat), h) }}
-					@badge.Badge(badge.Props{Href: habitatHref(v.Query, h, v.Habitat), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "gap-1.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on), "data-habitat": h}}) {
+					@badge.Badge(badge.Props{Href: habitatHref(v.Query, h, v.Habitat, v.Campaign), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "gap-1.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on), "data-habitat": h}}) {
 						{ h }
 						<span class="tabular-nums opacity-60">{ fmt.Sprint(counts[h]) }</span>
 					}
@@ -766,8 +772,20 @@ func habitatCountMap(rows []sqlc.CountHabitatsRow) map[string]int64 {
 	return m
 }
 
+// CompendiumCampaignKey is the query key naming the campaign whose sources
+// the GM browses the compendium with.
+const CompendiumCampaignKey = "campaign"
+
+// CompendiumURL is /compendium with q, keeping the GM's campaign (0: none).
+func CompendiumURL(q url.Values, campaign int64) string {
+	if campaign != 0 {
+		q.Set(CompendiumCampaignKey, fmt.Sprint(campaign))
+	}
+	return "/compendium?" + q.Encode()
+}
+
 // habitatHref toggles habitat in the monster filter, in Habitats order.
-func habitatHref(query, habitat, current string) string {
+func habitatHref(query, habitat, current string, campaign int64) string {
 	q := url.Values{"kind": {string(compendium.KindMonster)}}
 	if query != "" {
 		q.Set("q", query)
@@ -782,10 +800,10 @@ func habitatHref(query, habitat, current string) string {
 	if len(next) > 0 {
 		q.Set("habitat", strings.Join(next, ","))
 	}
-	return "/compendium?" + q.Encode()
+	return CompendiumURL(q, campaign)
 }
 
-func kindHref(query, kind, current string) string {
+func kindHref(query, kind, current string, campaign int64) string {
 	q := url.Values{}
 	if query != "" {
 		q.Set("q", query)
@@ -801,7 +819,7 @@ func kindHref(query, kind, current string) string {
 	if len(next) > 0 {
 		q.Set("kind", strings.Join(next, ","))
 	}
-	return "/compendium?" + q.Encode()
+	return CompendiumURL(q, campaign)
 }
 
 // kindSet splits the comma-separated kind filter; "" is every kind.

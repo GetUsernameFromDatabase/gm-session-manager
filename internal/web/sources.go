@@ -14,6 +14,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
 )
@@ -157,20 +158,35 @@ func (a *App) sourceEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet,
 	return env, row.Name, err
 }
 
-// visibleCopy is ref's entry at ref.Source when campaignID may see it; a
-// userError otherwise.
+// visibleCopy is ref's entry at ref.Source when campaignID may see it and
+// allows the source; a userError otherwise.
 func (a *App) visibleCopy(ctx context.Context, q *sqlc.Queries, ref dnd5e.SourceRef, campaignID int64) (sqlc.CompendiumEntry, error) {
 	row, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(refCompendiumKind[ref.Kind]), Slug: ref.Slug, SourceKey: ref.Source})
 	if err == nil {
-		var visible bool
+		var visible, allowed bool
 		if visible, err = a.entryVisible(ctx, row, campaignID); err == nil && !visible {
 			err = sql.ErrNoRows
+		}
+		if err == nil {
+			if allowed, err = sourceAllowed(ctx, q, campaignID, ref.Source); err == nil && !allowed {
+				err = sql.ErrNoRows
+			}
 		}
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return row, userError{fmt.Errorf("%s has no %s %q", ref.Source, ref.Kind, ref.Slug)}
 	}
 	return row, err
+}
+
+// sourceAllowed reports whether campaignID (0: any) allows the source key;
+// homebrew is always allowed.
+func sourceAllowed(ctx context.Context, q *sqlc.Queries, campaignID int64, key string) (bool, error) {
+	if campaignID == 0 || key == compendium.HomebrewSource {
+		return true, nil
+	}
+	keys, err := q.ListCampaignSources(ctx, campaignID)
+	return slices.Contains(keys, key), err
 }
 
 // subclassChangeEnv is the sheet's class ref.Class with its current
@@ -193,7 +209,7 @@ func (a *App) subclassChangeEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5
 		return nil, dnd5e.ClassInfo{}, userError{fmt.Errorf("%s is not a %s subclass", row.Name, sheet.Classes[i].Name)}
 	}
 	cl := sheet.Classes[i]
-	oldSlug, oldPin, err := subclassRef(ctx, q, cl.Slug, cl, cl.Subclass)
+	oldSlug, oldPin, err := subclassRef(ctx, q, cl.Slug, cl, cl.Subclass, 0)
 	if err != nil {
 		return nil, dnd5e.ClassInfo{}, err
 	}
@@ -214,7 +230,7 @@ func (a *App) classSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Shee
 	info, missing, err := classEntry(ctx, q, cl.Slug, cl.Source)
 	switch {
 	case err == nil && !missing:
-		if err := a.withSubclass(ctx, &info, sheet, ""); err != nil {
+		if err := a.withSubclass(ctx, &info, sheet, "", 0); err != nil {
 			return nil, next, err
 		}
 		old = &info
@@ -224,7 +240,7 @@ func (a *App) classSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Shee
 	if cl.Subclass == "" {
 		return old, next, nil
 	}
-	subSlug, _, err := subclassRef(ctx, q, cl.Slug, cl, cl.Subclass)
+	subSlug, _, err := subclassRef(ctx, q, cl.Slug, cl, cl.Subclass, 0)
 	if err != nil || subSlug == "" {
 		return old, next, err
 	}
@@ -335,25 +351,37 @@ func (a *App) sourcePreview(c *gin.Context) {
 	}))
 }
 
-// sourceUsers names the characters whose sheet pins the source, and the
-// entities and combatants linked to one of its entries. C03 reuses it for
-// the per-campaign untick rule.
-func sourceUsers(ctx context.Context, q *sqlc.Queries, key string) ([]string, error) {
-	rows, err := q.ListCharacterSheetsNamed(ctx)
+// sourceUsers names, per source key, the characters whose sheet pins it and
+// the entities and combatants linked to one of its entries: in campaignID
+// (the untick rule) or everywhere for 0 (the delete rule). Keys nobody uses
+// are left out.
+func sourceUsers(ctx context.Context, q *sqlc.Queries, campaignID int64, keys ...string) (map[string][]string, error) {
+	rows, err := q.ListCharacterSheetsNamed(ctx, campaignID)
 	if err != nil {
 		return nil, err
 	}
-	var users []string
-	for _, r := range rows {
-		if sheet, err := dnd5e.ParseSheet(r.SheetJson); err == nil && sheet.PinsSource(key) {
-			users = append(users, r.Name)
+	sheets := make([]dnd5e.Sheet, len(rows))
+	for i, r := range rows {
+		sheets[i], _ = dnd5e.ParseSheet(r.SheetJson) // an unreadable sheet pins nothing
+	}
+	users := map[string][]string{}
+	for _, key := range keys {
+		for i, r := range rows {
+			if sheets[i].PinsSource(key) {
+				users[key] = append(users[key], r.Name)
+			}
 		}
 	}
-	linked, err := q.ListSourceRefUsers(ctx, key)
+	linked, err := q.ListSourceRefUsers(ctx, campaignID)
 	if err != nil {
 		return nil, err
 	}
-	return append(users, linked...), nil
+	for _, l := range linked {
+		if slices.Contains(keys, l.SourceKey) {
+			users[l.SourceKey] = append(users[l.SourceKey], l.Name)
+		}
+	}
+	return users, nil
 }
 
 // sourceInUseMsg is the refusal naming who uses the source.
@@ -374,12 +402,12 @@ func (a *App) sourceDelete(c *gin.Context) {
 		return
 	}
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		users, err := sourceUsers(ctx, q, key)
+		users, err := sourceUsers(ctx, q, 0, key)
 		if err != nil {
 			return err
 		}
-		if len(users) > 0 {
-			return &sourceUsedError{users}
+		if len(users[key]) > 0 {
+			return &sourceUsedError{users[key]}
 		}
 		if err := q.DeleteCompendiumEntriesBySource(ctx, key); err != nil {
 			return err
@@ -399,6 +427,106 @@ func (a *App) sourceDelete(c *gin.Context) {
 		return
 	}
 	a.sourcesChanged(c)
+}
+
+// campaignSourcesView is the campaign's Sources card: every imported source
+// but homebrew, ticked or not, with who in the campaign uses it.
+func (a *App) campaignSourcesView(ctx context.Context, campaignID int64) (views.CampaignSourcesView, error) {
+	v := views.CampaignSourcesView{CampaignID: campaignID}
+	all, err := a.Store.ListCompendiumSources(ctx)
+	if err != nil {
+		return v, err
+	}
+	on, err := a.Store.ListCampaignSources(ctx, campaignID)
+	if err != nil {
+		return v, err
+	}
+	var keys []string
+	for _, s := range all {
+		if s.SourceKey != compendium.HomebrewSource {
+			keys = append(keys, s.SourceKey)
+		}
+	}
+	users, err := sourceUsers(ctx, a.Store.Queries, campaignID, keys...)
+	if err != nil {
+		return v, err
+	}
+	for _, s := range all {
+		if s.SourceKey != compendium.HomebrewSource {
+			v.Sources = append(v.Sources, views.CampaignSource{
+				Key: s.SourceKey, Edition: s.Edition, Attribution: s.Attribution,
+				On: slices.Contains(on, s.SourceKey), Users: users[s.SourceKey],
+			})
+		}
+	}
+	return v, nil
+}
+
+// campaignSourcesForm ticks (on) or unticks sources for a campaign.
+type campaignSourcesForm struct {
+	Keys []string `form:"key" validate:"required,min=1,max=1000,dive,required,max=200"`
+	On   bool     `form:"on"`
+}
+
+// campaignSourcesSet changes the campaign's allow list. A source some
+// character or NPC in the campaign uses is never unticked.
+func (a *App) campaignSourcesSet(c *gin.Context) {
+	id, ok := a.idParam(c, "campaign")
+	if !ok {
+		return
+	}
+	if _, _, ok := a.campaignAccess(c, id); !ok {
+		return
+	}
+	var f campaignSourcesForm
+	if !a.bindForm(c, &f) {
+		return
+	}
+	ctx := c.Request.Context()
+	var usedKey string
+	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		if !f.On {
+			users, err := sourceUsers(ctx, q, id, f.Keys...)
+			if err != nil {
+				return err
+			}
+			for _, k := range f.Keys {
+				if len(users[k]) > 0 {
+					usedKey = k
+					return &sourceUsedError{users[k]}
+				}
+			}
+		}
+		for _, k := range f.Keys {
+			var err error
+			if f.On {
+				_, err = q.AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: id, SourceKey: k})
+			} else {
+				err = q.DisallowCampaignSource(ctx, sqlc.DisallowCampaignSourceParams{CampaignID: id, SourceKey: k})
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	var used *sourceUsedError
+	if errors.As(err, &used) {
+		a.fail(c, http.StatusConflict, sourceInUseMsg(usedKey, used.users))
+		return
+	}
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	// Every picker and list in the campaign changes; pages refetch.
+	a.Hub.Publish(id, hub.Topic{Kind: hub.TopicCompendium})
+	v, err := a.campaignSourcesView(ctx, id)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.render(c, http.StatusOK, views.CampaignSources(v))
 }
 
 // sourceUsedError carries the users out of the delete transaction.

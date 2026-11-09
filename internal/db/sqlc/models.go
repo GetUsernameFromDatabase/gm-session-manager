@@ -37,6 +37,16 @@ type Campaign struct {
 	CreatedAt time.Time
 }
 
+type CampaignSource struct {
+	CampaignID int64
+	SourceKey  string
+}
+
+type CampaignTop struct {
+	CampaignID int64
+	ID         int64
+}
+
 type Character struct {
 	ID         int64
 	CampaignID int64
@@ -113,10 +123,6 @@ type CompendiumSource struct {
 	LastImported time.Time
 	Priority     int64
 	Published    string
-}
-
-type CompendiumTop struct {
-	ID int64
 }
 
 type Condition struct {

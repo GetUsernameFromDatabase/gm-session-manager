@@ -803,6 +803,18 @@
   });
   htmx.onLoad(() => document.querySelectorAll("form:has([data-check-all])").forEach(syncCheckAll));
 
+  // Campaign sources: the filter box hides the rows (and edition groups) that
+  // do not match. The box survives the card's swaps (hx-preserve), so the
+  // filter is applied again to each new card.
+  function filterSources(box) {
+    const q = box.value.trim().toLowerCase();
+    const card = box.closest("[data-sources]");
+    card.querySelectorAll("[data-source-name]").forEach((li) => (li.hidden = !li.dataset.sourceName.includes(q)));
+    card.querySelectorAll("[data-source-group]").forEach((g) => (g.hidden = !g.querySelector("[data-source-name]:not([hidden])")));
+  }
+  document.addEventListener("input", (e) => e.target.matches?.("[data-source-filter]") && filterSources(e.target));
+  htmx.onLoad((root) => root.querySelectorAll?.("[data-source-filter]").forEach(filterSources));
+
   // Source priority: drag a row from anywhere; the new order of every key is
   // posted and the answer replaces the card.
   htmx.onLoad((root) => {

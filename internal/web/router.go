@@ -97,6 +97,7 @@ func (a *App) Router() *gin.Engine {
 	r.POST("/campaigns/:campaign/requests/all/:decision", gm, a.decideAll)
 	r.POST("/campaigns/:campaign/requests/:request/:decision", gm, a.decideRequest)
 	r.GET("/campaigns/:campaign/export", gm, a.exportCampaign)
+	r.POST("/campaigns/:campaign/sources", gm, a.campaignSourcesSet)
 	r.POST("/sessions/:session/kick", gm, a.kick)
 	r.POST("/characters/:character/delete", gm, a.deleteCharacter)
 	r.POST("/characters/:character/copy", gm, a.copyCharacter)

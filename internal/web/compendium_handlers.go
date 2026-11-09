@@ -28,7 +28,8 @@ import (
 )
 
 // compendiumReader allows the GM and any player: the compendium is rules
-// text, shared by every campaign.
+// text, shared by every campaign. The campaign is the player's, or the one
+// the GM names with ?campaign= (nil: everything).
 func (a *App) compendiumReader(c *gin.Context) (who, *sqlc.Campaign, bool) {
 	w, err := a.whoami(c)
 	if err != nil {
@@ -39,18 +40,23 @@ func (a *App) compendiumReader(c *gin.Context) (who, *sqlc.Campaign, bool) {
 		a.fail(c, http.StatusForbidden, "Join a campaign first.")
 		return w, nil, false
 	}
-	if w.character == nil {
+	id := w.campaignID()
+	if w.isGM() {
+		// The GM browses everything, or one campaign's sources and homebrew.
+		id, _ = strconv.ParseInt(c.Query(views.CompendiumCampaignKey), 10, 64)
+	}
+	if id == 0 {
 		return w, nil, true
 	}
-	camp, err := a.Store.GetCampaign(c.Request.Context(), w.character.CampaignID)
+	camp, err := a.Store.GetCampaign(c.Request.Context(), id)
 	if !a.found(c, err) {
 		return w, nil, false
 	}
 	return w, &camp, true
 }
 
-// viewerCampaign is the campaign whose player homebrew the viewer sees: the
-// player's, or 0 for the GM, who sees it all.
+// viewerCampaign is the campaign whose sources and player homebrew the
+// viewer sees: the player's, or 0 for the GM, who sees it all.
 func viewerCampaign(camp *sqlc.Campaign) int64 {
 	if camp == nil {
 		return 0
@@ -111,6 +117,9 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 	ctx := c.Request.Context()
 	v := views.CompendiumView{Query: strings.TrimSpace(c.Query("q")), Kind: c.Query("kind"), IsGM: w.isGM(), Import: notice, Tab: c.Query("tab")}
 	v.Import.Dir, v.Import.OnHost, v.Import.Job = a.compendiumDir(), w.id.Loopback, a.fiveTools.get()
+	if w.isGM() {
+		v.Campaign = viewerCampaign(camp)
+	}
 	// Only monsters have habitats, so the filter applies to them alone.
 	if v.Kind == string(compendium.KindMonster) {
 		v.Habitat = c.Query("habitat")
@@ -135,7 +144,7 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 		}
 		if len(rows) == compendiumBatch {
 			last := rows[len(rows)-1]
-			v.More = "/compendium?" + url.Values{"kind": {v.Kind}, "habitat": {v.Habitat}, compendiumAfterName: {last.Name}, compendiumAfterID: {strconv.FormatInt(last.ID, 10)}}.Encode()
+			v.More = views.CompendiumURL(url.Values{"kind": {v.Kind}, "habitat": {v.Habitat}, compendiumAfterName: {last.Name}, compendiumAfterID: {strconv.FormatInt(last.ID, 10)}}, v.Campaign)
 		}
 	}
 	if c.Query(compendiumAfterID) != "" {
@@ -212,7 +221,12 @@ func (a *App) compendiumSearch(c *gin.Context) {
 		c.Status(http.StatusOK) // cleared box: empty list, so the dropdown hides
 		return
 	}
-	names, text, err := compendium.Search(c.Request.Context(), a.Store.Queries, c.Query("q"), c.Query("kind"), "", viewerCampaign(camp), 15)
+	campaignID, err := a.pickerCampaign(c.Request.Context(), t, viewerCampaign(camp))
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	names, text, err := compendium.Search(c.Request.Context(), a.Store.Queries, c.Query("q"), c.Query("kind"), "", campaignID, 15)
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -223,6 +237,26 @@ func (a *App) compendiumSearch(c *gin.Context) {
 		return
 	}
 	a.render(c, http.StatusOK, views.SearchResults(names, text, t))
+}
+
+// pickerCampaign is the campaign whose sources the GM's combat and NPC
+// pickers offer: the encounter's or the NPC's (campaignID when neither).
+func (a *App) pickerCampaign(ctx context.Context, t views.PickerTarget, campaignID int64) (int64, error) {
+	switch {
+	case t.EncounterID != 0:
+		enc, err := a.Store.GetEncounter(ctx, t.EncounterID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return campaignID, nil // the add itself reports the missing encounter
+		}
+		return enc.CampaignID, err
+	case t.EntityID != 0:
+		en, err := a.Store.GetEntity(ctx, t.EntityID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return campaignID, nil
+		}
+		return en.CampaignID, err
+	}
+	return campaignID, nil
 }
 
 func (a *App) entryParam(c *gin.Context) (sqlc.CompendiumEntry, bool) {

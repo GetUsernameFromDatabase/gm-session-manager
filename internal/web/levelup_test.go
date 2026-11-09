@@ -99,6 +99,7 @@ func TestLevelUpInvocations(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	e.allowEntrySources(t)
 	player := e.token(t, auth.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	if w := e.do(t, http.MethodGet, base+"?class=testlock", player, nil, false); !strings.Contains(w.Body.String(), "Eldritch Invocations") || strings.Contains(w.Body.String(), "Agonizing Blast") {
@@ -190,6 +191,7 @@ func TestLevelUpLineage(t *testing.T) {
 	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
 		t.Fatal(err)
 	}
+	e.allowEntrySources(t)
 	player := e.token(t, auth.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	// Each level's new invocations: one, two, none.
@@ -418,6 +420,7 @@ func TestLevelUpEpicBoon(t *testing.T) {
 	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
 		t.Fatal(err)
 	}
+	e.allowEntrySources(t)
 	player := e.token(t, auth.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	if body := e.do(t, http.MethodGet, base+"?class=boonling", player, nil, false).Body.String(); !strings.Contains(body, `value="boon-of-fate"`) {
@@ -505,6 +508,7 @@ func TestChangeSubclass(t *testing.T) {
 	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
 		t.Fatal(err)
 	}
+	e.allowEntrySources(t)
 	path := fmt.Sprintf("/characters/%d/subclass", e.characterID)
 	tests := []struct {
 		name   string

@@ -106,6 +106,7 @@ func TestSpellCounts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	e.allowEntrySources(t)
 	player := e.token(t, auth.RolePlayer)
 	create := fmt.Sprintf("/characters/%d/create/", e.characterID)
 	for _, step := range []string{"class=testlock", "species=human", "background=testfolk"} {

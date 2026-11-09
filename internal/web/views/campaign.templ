@@ -52,7 +52,7 @@ type PendingGroup struct {
 	Requests     []PendingView
 }
 
-templ CampaignOverview(l Layout, r Roster, j JoinInfo) {
+templ CampaignOverview(l Layout, r Roster, j JoinInfo, s CampaignSourcesView) {
 	@Page(l) {
 		<div class="mb-6">
 			<div class="flex items-center gap-2">
@@ -63,12 +63,12 @@ templ CampaignOverview(l Layout, r Roster, j JoinInfo) {
 					@menuDelete("Delete campaign", fmt.Sprintf("/campaigns/%d/delete", r.Campaign.ID), "Delete "+r.Campaign.Name+" forever, with all its characters, notes, combat and images? Its players are logged out. This cannot be undone.")
 				}
 			</div>
-			<p class="text-sm text-muted-foreground">Table overview</p>
 		</div>
 		<div class="grid gap-6 md:grid-cols-[1fr_20rem]">
 			@CampaignRoster(r)
 			<div class="space-y-4">
 				@joinPanel(j)
+				@CampaignSources(s)
 				<a class="block text-sm underline" href={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/export", r.Campaign.ID)) }>Export campaign (zip)</a>
 			</div>
 		</div>

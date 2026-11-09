@@ -50,6 +50,7 @@ func TestCreationWizard(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	e.allowEntrySources(t)
 	player := e.token(t, auth.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/create", e.characterID)
 	if w := e.do(t, http.MethodGet, base, player, nil, false); w.Header().Get("Location") != base+"/class" {
@@ -302,6 +303,7 @@ func loadFeatFixtures(t *testing.T, e testEnv) {
 			t.Fatal(err)
 		}
 	}
+	e.allowEntrySources(t)
 }
 
 // TestFeatChoices: the background's Magic Initiate and Human Versatile's
@@ -789,6 +791,7 @@ func wizardLevelUp(t *testing.T, e testEnv, form url.Values) url.Values {
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.allowEntrySources(t)
 	v, err := e.app.levelUpView(t.Context(), ch, "wizard", false)
 	if err != nil {
 		t.Fatal(err)

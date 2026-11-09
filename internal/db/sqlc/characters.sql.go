@@ -250,6 +250,7 @@ func (q *Queries) ListCharacterSheets(ctx context.Context) ([]ListCharacterSheet
 
 const listCharacterSheetsNamed = `-- name: ListCharacterSheetsNamed :many
 SELECT name, sheet_json FROM characters
+WHERE CAST(?1 AS INTEGER) = 0 OR campaign_id = CAST(?1 AS INTEGER)
 ORDER BY name
 `
 
@@ -259,9 +260,10 @@ type ListCharacterSheetsNamedRow struct {
 }
 
 // ListCharacterSheetsNamed is every character's name and sheet, deleted ones
-// too (a restore must not find its source gone), for the source usage check.
-func (q *Queries) ListCharacterSheetsNamed(ctx context.Context) ([]ListCharacterSheetsNamedRow, error) {
-	rows, err := q.db.QueryContext(ctx, listCharacterSheetsNamed)
+// too (a restore must not find its source gone), for the source usage check;
+// in campaign_id only, or everywhere for 0.
+func (q *Queries) ListCharacterSheetsNamed(ctx context.Context, campaignID int64) ([]ListCharacterSheetsNamedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCharacterSheetsNamed, campaignID)
 	if err != nil {
 		return nil, err
 	}

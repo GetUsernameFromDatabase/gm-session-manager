@@ -37,6 +37,7 @@ func seedMastery(t *testing.T, e testEnv) {
 			t.Fatal(err)
 		}
 	}
+	e.allowEntrySources(t)
 }
 
 // TestWeaponMastery: level 1 and 3 ask for the kinds the class table adds,
@@ -174,6 +175,7 @@ func TestMasteryMulticlass(t *testing.T) {
 		t.Fatal(err)
 	}
 	sh := dnd5e.Sheet{Classes: []dnd5e.ClassLevel{{Slug: "testrogue", Level: 1}}, Masteries: []string{"Club"}}
+	e.allowEntrySources(t)
 	groups, err := e.app.masteryGroups(t.Context(), sh, info, 1, ch.CampaignID)
 	// Rogue 1 (1) + Fighter 1 (2) = 3, one already chosen: the highest alone would offer 1.
 	if err != nil || len(groups) != 1 || groups[0].Count != 2 {
@@ -255,6 +257,7 @@ func TestFeatMastery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.allowEntrySources(t)
 	groups, err := e.app.featChoices(t.Context(), "feat_weapon-master", "Weapon Master", td, "", sh, ch.CampaignID)
 	if err != nil || len(groups) != 1 || groups[0].Count != 1 || slices.ContainsFunc(groups[0].Options, func(o compendium.NameDesc) bool { return o.Name == "Club" }) {
 		t.Fatalf("groups %+v %v, want one pick without Club", groups, err)

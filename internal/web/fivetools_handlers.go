@@ -131,12 +131,12 @@ func (a *App) fiveToolsRemove(c *gin.Context) {
 	}
 	key := fiveToolsKey(id)
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		users, err := sourceUsers(ctx, q, key)
+		users, err := sourceUsers(ctx, q, 0, key)
 		if err != nil {
 			return err
 		}
-		if len(users) > 0 {
-			return &sourceUsedError{users}
+		if len(users[key]) > 0 {
+			return &sourceUsedError{users[key]}
 		}
 		if err := q.DeleteCompendiumEntriesBySource(ctx, key); err != nil {
 			return err

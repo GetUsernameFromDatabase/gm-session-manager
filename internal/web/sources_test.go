@@ -159,6 +159,7 @@ func TestSourceCommandPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.allowEntrySources(t)
 	cmdPath := fmt.Sprintf("/characters/%d/cmd", e.characterID)
 	tests := []struct {
 		name, cookie, to string
@@ -206,6 +207,7 @@ func TestRunCommandUsesCurrentSheet(t *testing.T) {
 		t.Fatal(err)
 	}
 	stale.SheetJson = "{}" // read before another device added the class
+	e.allowEntrySources(t)
 	e.setSheet(t, dnd5e.Sheet{
 		Classes:  []dnd5e.ClassLevel{{Slug: "testclass", Name: "Testclass", Level: 1, HitDie: 8, Source: oldSrc}},
 		Features: []dnd5e.Feature{{Name: "Strike", Source: "Testclass", Level: 1, Description: "old strike"}},
@@ -244,6 +246,7 @@ func TestSourceSwitchKeepsEdits(t *testing.T) {
 			{Name: "Guard", Source: "Testclass", Level: 1, Description: "my guard"},
 		},
 	})
+	e.allowEntrySources(t)
 	player := e.token(t, auth.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/sources/preview?", e.characterID)
 	preview := url.Values{"kind": {"class"}, "slug": {"testclass"}, "source": {newSrc}}

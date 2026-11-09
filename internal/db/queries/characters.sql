@@ -86,7 +86,9 @@ DELETE FROM level_ups
 WHERE character_id = ?;
 
 -- ListCharacterSheetsNamed is every character's name and sheet, deleted ones
--- too (a restore must not find its source gone), for the source usage check.
+-- too (a restore must not find its source gone), for the source usage check;
+-- in campaign_id only, or everywhere for 0.
 -- name: ListCharacterSheetsNamed :many
 SELECT name, sheet_json FROM characters
+WHERE CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)
 ORDER BY name;

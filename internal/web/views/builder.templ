@@ -166,10 +166,12 @@ templ builderButton(s SheetView, verb, op, label string) {
 // builderDialog is the empty dialog the builder forms load into.
 templ builderDialog() {
 	@dialog.Dialog(dialog.Props{ID: builderID}) {
-		@dialog.Content(dialog.ContentProps{Class: "max-h-[90dvh] overflow-y-auto sm:max-w-xl"}) {
+		@dialog.Content(dialog.ContentProps{Class: "group/dlg max-h-[90dvh] overflow-y-auto sm:max-w-xl"}) {
 			@dialog.Header() {
 				@dialog.Title() {
-					Change character
+					// The SubclassChange form (data-subclass-form) swaps the title via :has.
+					<span class="group-has-[[data-subclass-form]]/dlg:hidden">Change character</span>
+					<span class="hidden group-has-[[data-subclass-form]]/dlg:inline">Change subclass</span>
 				}
 			}
 			<div id="builder"></div>

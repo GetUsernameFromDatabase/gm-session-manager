@@ -1,0 +1,167 @@
+package views
+
+import (
+	"cmp"
+	"fmt"
+	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/card"
+	"gm-session-manager/internal/web/components/checkbox"
+	"gm-session-manager/internal/web/components/input"
+	"gm-session-manager/internal/web/components/label"
+	"gm-session-manager/internal/web/components/tooltip"
+	"strings"
+)
+
+// CampaignSourcesID is the Sources card on the campaign page, which every
+// toggle redraws.
+const CampaignSourcesID = "campaign-sources"
+
+// CampaignSource is one imported source on the campaign's Sources card.
+type CampaignSource struct {
+	Key, Edition, Attribution string
+	On                        bool
+	// Users are the characters and NPCs in the campaign that use it; a used
+	// source cannot be unticked.
+	Users []string
+}
+
+// CampaignSourcesView is the campaign's allow list, in priority order.
+// Homebrew is always allowed and not listed.
+type CampaignSourcesView struct {
+	CampaignID int64
+	Sources    []CampaignSource
+}
+
+// sourceGroup is the sources of one edition.
+type sourceGroup struct {
+	Title   string
+	Sources []CampaignSource
+}
+
+// groups splits the sources by edition, in order of first appearance.
+func (v CampaignSourcesView) groups() []sourceGroup {
+	var out []sourceGroup
+	at := map[string]int{}
+	for _, s := range v.Sources {
+		i, ok := at[s.Edition]
+		if !ok {
+			i, at[s.Edition] = len(out), len(out)
+			out = append(out, sourceGroup{Title: cmp.Or(s.Edition, "Other")})
+		}
+		out[i].Sources = append(out[i].Sources, s)
+	}
+	return out
+}
+
+func (v CampaignSourcesView) onCount() int {
+	n := 0
+	for _, s := range v.Sources {
+		if s.On {
+			n++
+		}
+	}
+	return n
+}
+
+// groupKeys are the group's keys the all (on) or none (off) button changes:
+// those not already so, and for none only unused ones.
+func (g sourceGroup) groupKeys(on bool) []string {
+	var keys []string
+	for _, s := range g.Sources {
+		if s.On != on && (on || len(s.Users) == 0) {
+			keys = append(keys, s.Key)
+		}
+	}
+	return keys
+}
+
+func (v CampaignSourcesView) postURL() string {
+	return fmt.Sprintf("/campaigns/%d/sources", v.CampaignID)
+}
+
+// CampaignSources is the GM's allow list for the campaign: pickers and lists
+// in it offer only ticked sources.
+templ CampaignSources(v CampaignSourcesView) {
+	<div id={ CampaignSourcesID } data-sources>
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					Sources
+				}
+				@card.Action() {
+					<span class="text-sm text-muted-foreground tabular-nums">{ fmt.Sprintf("%d of %d on", v.onCount(), len(v.Sources)) }</span>
+				}
+				@card.Description() {
+					Pickers and lists in this campaign offer only ticked sources. Homebrew is always on.
+				}
+			}
+			@card.Content(card.ContentProps{Class: "space-y-3"}) {
+				if len(v.Sources) == 0 {
+					<p class="text-sm text-muted-foreground">No sources imported yet.</p>
+				} else {
+					// Kept across the card's swaps; app.js filters the rows.
+					@input.Input(input.Props{ID: "campaign-sources-filter", Type: "search", Placeholder: "Filter sources…", Attributes: templ.Attributes{"aria-label": "Filter sources", "autocomplete": "off", "data-source-filter": "", "hx-preserve": "true"}})
+					<div class={ "space-y-3 pr-1", scrollBox }>
+						for _, g := range v.groups() {
+							<section data-source-group>
+								<div class="mb-1 flex items-center justify-between gap-2">
+									<h3 class="text-sm font-medium">{ g.Title }</h3>
+									<span class="flex gap-1">
+										@sourceGroupButton(v, g, true)
+										@sourceGroupButton(v, g, false)
+									</span>
+								</div>
+								<ul class="divide-y rounded-lg border text-sm">
+									for _, s := range g.Sources {
+										@campaignSourceRow(v, s)
+									}
+								</ul>
+							</section>
+						}
+					</div>
+				}
+			}
+		}
+	</div>
+}
+
+templ sourceGroupButton(v CampaignSourcesView, g sourceGroup, on bool) {
+	{{ keys := g.groupKeys(on) }}
+	{{ what := map[bool]string{true: "All", false: "None"}[on] }}
+	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Disabled: len(keys) == 0, Attributes: templ.Attributes{
+		"type": "button", "aria-label": fmt.Sprintf("%s of %s", what, g.Title),
+		"hx-post": v.postURL(), "hx-vals": toJSON(map[string]any{"key": keys, "on": fmt.Sprint(on)}),
+		"hx-target": "#" + CampaignSourcesID, "hx-swap": "outerHTML",
+	}}) {
+		{ strings.ToLower(what) }
+	}
+}
+
+// campaignSourceRow ticks one source; one some character or NPC uses stays
+// on (the server refuses it too).
+templ campaignSourceRow(v CampaignSourcesView, s CampaignSource) {
+	{{ locked := s.On && len(s.Users) > 0 }}
+	<li class="relative flex items-center gap-2 px-3 py-1.5" data-source-name={ strings.ToLower(s.Key + " " + s.Attribution) }>
+		<form class="min-w-0 grow" hx-post={ v.postURL() } hx-trigger="change" hx-vals={ toJSON(map[string]string{"key": s.Key}) } hx-target={ "#" + CampaignSourcesID } hx-swap="outerHTML">
+			@label.Label(label.Props{Class: "font-normal", Attributes: templ.Attributes{"title": sourceRowTitle(s, locked)}}) {
+				@checkbox.Checkbox(checkbox.Props{Name: "on", Value: "true", DefaultChecked: s.On, Disabled: locked})
+				<span class="min-w-0 truncate">{ s.Key }</span>
+			}
+		</form>
+		if len(s.Users) > 0 {
+			@tooltip.Tooltip() {
+				<span class="text-xs text-muted-foreground tabular-nums" aria-label={ "Used by " + strings.Join(s.Users, ", ") } { tooltip.Trigger(ctx)... }>{ fmt.Sprint(len(s.Users)) }</span>
+				@tooltip.Content() {
+					{ "Used by " + strings.Join(s.Users, ", ") }
+				}
+			}
+		}
+	</li>
+}
+
+func sourceRowTitle(s CampaignSource, locked bool) string {
+	if locked {
+		return s.Key + " is used by " + strings.Join(s.Users, ", ") + "; switch their sources first."
+	}
+	return cmp.Or(s.Attribution, s.Key)
+}

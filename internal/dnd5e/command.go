@@ -199,6 +199,8 @@ var Help = []HelpEntry{
 	{"mastery add|remove <weapon>", "mastery add Longsword", "Choose or drop a weapon kind whose mastery property you use"},
 	{`mod add <target> ±n "<source>"`, `mod add ac +1 "Ring of Protection"`, "Add a custom bonus or penalty"},
 	{`mod remove <target> "<source>"`, `mod remove ac "Ring of Protection"`, "Remove a custom modifier"},
+	{"source <kind> <slug> <source>", "source spell shield XPHB", "Point a class, subclass, spell, species, background, feat or armor at another source"},
+	{"change-subclass <class> <slug> <source>", "change-subclass fighter champion XPHB", "Swap a class's subclass (owner only); its features replace the old ones"},
 }
 
 // Verbs are the command words Parse knows, for the command bar's checks.

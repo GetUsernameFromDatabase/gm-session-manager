@@ -159,7 +159,7 @@ func catchUpCasters(ctx context.Context, q *sqlc.Queries, s *dnd5e.Sheet) (bool,
 		if cl.Subclass == "" || (cl.Caster != "" && cl.Caster != dnd5e.CasterNone) {
 			continue
 		}
-		slug, pin, err := subclassRef(ctx, q, cl.Slug, cl, cl.Subclass)
+		slug, pin, err := subclassRef(ctx, q, cl.Slug, cl, cl.Subclass, 0)
 		if err != nil {
 			return false, err
 		}

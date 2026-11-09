@@ -22,8 +22,17 @@ func (a *App) createCampaign(c *gin.Context) {
 	if !a.bindForm(c, &form) {
 		return
 	}
-	camp, err := a.Store.CreateCampaign(c.Request.Context(), sqlc.CreateCampaignParams{
-		Name: strings.TrimSpace(form.Name), System: dnd5e.System, Edition: dnd5e.Edition,
+	ctx := c.Request.Context()
+	var camp sqlc.Campaign
+	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		var err error
+		camp, err = q.CreateCampaign(ctx, sqlc.CreateCampaignParams{
+			Name: strings.TrimSpace(form.Name), System: dnd5e.System, Edition: dnd5e.Edition,
+		})
+		if err != nil {
+			return err
+		}
+		return q.AllowAllSources(ctx, camp.ID) // a new campaign starts with every source
 	})
 	if err != nil {
 		a.serverError(c, err)
@@ -47,7 +56,12 @@ func (a *App) campaignOverview(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	a.render(c, http.StatusOK, views.CampaignOverview(l, r, a.joinInfo(id)))
+	s, err := a.campaignSourcesView(c.Request.Context(), id)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.render(c, http.StatusOK, views.CampaignOverview(l, r, a.joinInfo(id), s))
 }
 
 func (a *App) toggleOpenJoin(c *gin.Context) {

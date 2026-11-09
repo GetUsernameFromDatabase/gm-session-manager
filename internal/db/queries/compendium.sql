@@ -42,6 +42,7 @@ WHERE id = ?;
 
 -- Player homebrew never shadows an imported or GM entry of the same slug;
 -- among the rest the source with the lowest priority wins, then the newest.
+-- Lookups ignore the campaign's sources: a sheet may use an unticked one.
 -- name: GetCompendiumEntryBySlug :one
 SELECT e.* FROM compendium_entries AS e
 LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
@@ -108,7 +109,8 @@ WHERE source_key = ? AND source_key <> 'homebrew';
 
 -- Browse, random and search show player homebrew (scoped) only in the
 -- campaigns it is linked to; campaign_id 0 is the GM, who sees it all
--- (perm.CanSeeEntry).
+-- (perm.CanSeeEntry). campaign_top ranks over the sources the campaign
+-- allows, so an unticked book's entry falls back to the next allowed copy.
 
 -- ListCompendiumByKind reads one kind, or every kind when kind is '', after
 -- the (name, id) cursor; names repeat, so id breaks ties.
@@ -122,7 +124,7 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
         WHEN 'spell' THEN json_extract(e.data_json, '$.level')
         WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
 FROM compendium_entries AS e
-WHERE e.id IN (SELECT id FROM compendium_top)
+WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (e.name > CAST(sqlc.arg(after_name) AS TEXT) OR (e.name = CAST(sqlc.arg(after_name) AS TEXT) AND e.id > sqlc.arg(after_id)))
   AND (CAST(sqlc.arg(habitat) AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(sqlc.arg(habitat) AS TEXT) || ',', ',' || h.habitat || ',') > 0))
@@ -133,7 +135,7 @@ LIMIT sqlc.arg(page_size);
 
 -- name: RandomCompendiumEntry :one
 SELECT e.id FROM compendium_entries AS e
-WHERE e.id IN (SELECT id FROM compendium_top)
+WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (CAST(sqlc.arg(habitat) AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(sqlc.arg(habitat) AS TEXT) || ',', ',' || h.habitat || ',') > 0))
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
@@ -187,7 +189,7 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
 FROM compendium_fts
 JOIN compendium_entries AS e ON e.id = compendium_fts.rowid
 WHERE compendium_fts MATCH CAST(sqlc.arg(query) AS TEXT)
-  AND e.id IN (SELECT id FROM compendium_top)
+  AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (CAST(sqlc.arg(habitat) AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(sqlc.arg(habitat) AS TEXT) || ',', ',' || h.habitat || ',') > 0))
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
@@ -216,7 +218,7 @@ WHERE id = ? AND is_homebrew = 1;
 -- with player homebrew only in its campaigns.
 -- name: CountCompendium :many
 SELECT e.kind, count(*) AS n FROM compendium_entries AS e
-WHERE e.id IN (SELECT id FROM compendium_top)
+WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
 GROUP BY e.kind
@@ -226,7 +228,7 @@ ORDER BY e.kind;
 -- name: ListSpellsForClass :many
 SELECT e.id, e.slug, e.name, e.source_key, CAST(json_extract(e.data_json, '$.level') AS INTEGER) AS level
 FROM compendium_entries AS e
-WHERE e.kind = 'spell' AND e.id IN (SELECT id FROM compendium_top)
+WHERE e.kind = 'spell' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND CAST(json_extract(e.data_json, '$.level') AS INTEGER) <= CAST(sqlc.arg(max_level) AS INTEGER)
   AND EXISTS (SELECT 1 FROM json_each(e.data_json, '$.classes') AS c WHERE c.value = CAST(sqlc.arg(class_slug) AS TEXT))
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
@@ -236,7 +238,7 @@ ORDER BY level, e.name;
 -- name: ListItemsByCategory :many
 SELECT e.name, CAST(COALESCE(json_extract(e.data_json, '$.desc'), '') AS TEXT) AS description
 FROM compendium_entries AS e
-WHERE e.kind = 'item' AND e.id IN (SELECT id FROM compendium_top)
+WHERE e.kind = 'item' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND json_extract(e.data_json, '$.category') = CAST(sqlc.arg(category) AS TEXT)
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
@@ -248,20 +250,21 @@ ORDER BY e.name;
 -- name: ListMasteryWeapons :many
 SELECT e.name, CAST(json_extract(e.data_json, '$.mastery') AS TEXT) AS mastery
 FROM compendium_entries AS e
-WHERE e.kind = 'item' AND e.id IN (SELECT id FROM compendium_top)
+WHERE e.kind = 'item' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND COALESCE(json_extract(e.data_json, '$.mastery'), '') != ''
   AND COALESCE(json_extract(e.data_json, '$.rarity'), '') = ''
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
 ORDER BY e.name;
 
+-- ListSubclassesOf is what the subclass pickers offer in campaign_id (0: all).
 -- name: ListSubclassesOf :many
 SELECT id, slug, name, source_key, data_json FROM compendium_entries
-WHERE kind = 'subclass' AND id IN (SELECT id FROM compendium_top) AND json_extract(data_json, '$.subclass_of') = CAST(sqlc.arg(class_slug) AS TEXT)
+WHERE kind = 'subclass' AND id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)) AND json_extract(data_json, '$.subclass_of') = CAST(sqlc.arg(class_slug) AS TEXT)
 ORDER BY name;
 
 -- ListCompendiumBySlugs reads the entries a sheet links to, in one query: the
--- copy compendium_top would pick, found through the (kind, slug) index
+-- copy campaign_top would pick for campaign 0, found through the (kind, slug) index
 -- instead of ranking the whole compendium on every sheet render.
 -- name: ListCompendiumBySlugs :many
 SELECT e.id, e.slug, e.name, e.data_json, e.source_key, e.scoped FROM compendium_entries AS e
@@ -281,7 +284,7 @@ ORDER BY e.slug;
 -- player in campaign_id may see (0: all).
 -- name: ListCompendiumNames :many
 SELECT e.id, e.kind, e.slug, e.name FROM compendium_entries AS e
-WHERE e.kind = sqlc.arg(kind) AND e.id IN (SELECT id FROM compendium_top)
+WHERE e.kind = sqlc.arg(kind) AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND json_extract(e.data_json, '$.version_of') IS NULL
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
@@ -307,7 +310,7 @@ WHERE id = ? AND kind = 'monster';
 -- needs no escaping of % and _.
 -- name: ListMonstersByName :many
 SELECT id, name FROM compendium_entries
-WHERE kind = 'monster' AND id IN (SELECT id FROM compendium_top)
+WHERE kind = 'monster' AND id IN (SELECT id FROM campaign_top WHERE campaign_id = 0)
   AND instr(lower(name), lower(CAST(sqlc.arg(filter) AS TEXT))) > 0
 ORDER BY name, id;
 
@@ -319,7 +322,7 @@ SELECT entry_id, habitat FROM monster_habitats;
 -- name: CountHabitats :many
 SELECT h.habitat, count(*) AS n FROM monster_habitats AS h
 JOIN compendium_entries AS e ON e.id = h.entry_id
-WHERE e.id IN (SELECT id FROM compendium_top)
+WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
 GROUP BY h.habitat;
@@ -352,14 +355,39 @@ WHERE habitat = CAST(sqlc.arg(habitat) AS TEXT) AND entry_id IN (
     SELECT id FROM compendium_entries
     WHERE kind = 'monster' AND instr(lower(name), lower(CAST(sqlc.arg(filter) AS TEXT))) > 0);
 
--- ListSourceRefUsers names the entities and combatants whose compendium link
--- points at an entry of the source, for the delete and untick checks.
+-- ListSourceRefUsers names, per source, the entities and combatants whose
+-- compendium link points at one of its entries, for the delete and untick
+-- checks; in campaign_id only, or everywhere for 0.
 -- name: ListSourceRefUsers :many
-SELECT DISTINCT n.name FROM (
-    SELECT en.name, en.compendium_ref AS ref FROM entities AS en
+SELECT DISTINCT e.source_key, n.name FROM (
+    SELECT en.name, en.compendium_ref AS ref, en.campaign_id FROM entities AS en
     UNION ALL
-    SELECT cb.name, cb.monster_ref FROM combatants AS cb
+    SELECT cb.name, cb.monster_ref, enc.campaign_id FROM combatants AS cb
+    JOIN encounters AS enc ON enc.id = cb.encounter_id
 ) AS n
 JOIN compendium_entries AS e ON e.id = n.ref
-WHERE e.source_key = ?
-ORDER BY n.name;
+WHERE CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR n.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)
+ORDER BY e.source_key, n.name;
+
+-- ListCampaignSources is the sources campaign_id allows (homebrew is implied).
+-- name: ListCampaignSources :many
+SELECT source_key FROM campaign_sources
+WHERE campaign_id = ?;
+
+-- AllowAllSources gives a new campaign every source there is.
+-- name: AllowAllSources :exec
+INSERT INTO campaign_sources (campaign_id, source_key)
+SELECT CAST(sqlc.arg(campaign_id) AS INTEGER), source_key FROM compendium_sources
+WHERE source_key <> 'homebrew'
+ON CONFLICT DO NOTHING;
+
+-- AllowCampaignSource ticks an imported source; 0 rows means no such source.
+-- name: AllowCampaignSource :execrows
+INSERT INTO campaign_sources (campaign_id, source_key)
+SELECT CAST(sqlc.arg(campaign_id) AS INTEGER), s.source_key FROM compendium_sources AS s
+WHERE s.source_key = CAST(sqlc.arg(source_key) AS TEXT) AND s.source_key <> 'homebrew'
+ON CONFLICT DO UPDATE SET campaign_id = excluded.campaign_id;
+
+-- name: DisallowCampaignSource :exec
+DELETE FROM campaign_sources
+WHERE campaign_id = ? AND source_key = ?;

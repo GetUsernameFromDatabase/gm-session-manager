@@ -402,6 +402,7 @@ type SubclassChangeView struct {
 templ SubclassChange(v SubclassChangeView) {
 	<form
 		class="grid gap-4"
+		data-subclass-form
 		hx-post={ fmt.Sprintf("/characters/%d/subclass", v.CharacterID) }
 		hx-on::after-request={ templ.JSUnsafeFuncCall(builderDoneJS) }
 	>

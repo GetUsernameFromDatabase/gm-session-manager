@@ -1,6 +1,7 @@
 package web
 
 import (
+	"database/sql"
 	"fmt"
 	"net"
 	"net/http"
@@ -32,6 +33,19 @@ type testEnv struct {
 	app         *App
 	campaignID  int64
 	characterID int64
+	conn        *sql.DB
+}
+
+// allowEntrySources ticks, for the test campaign, every source an entry
+// uses: a real campaign gets every source when created, but tests fill the
+// compendium after creating theirs, often with entries of no source row.
+// Call it once after the test's compendium data is in.
+func (e testEnv) allowEntrySources(t *testing.T) {
+	t.Helper()
+	if _, err := e.conn.ExecContext(t.Context(), `INSERT OR IGNORE INTO campaign_sources (campaign_id, source_key)
+		SELECT DISTINCT ?, source_key FROM compendium_entries WHERE source_key <> 'homebrew'`, e.campaignID); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func newTestEnv(t *testing.T) testEnv {
@@ -55,7 +69,7 @@ func newTestEnv(t *testing.T) testEnv {
 	mgr := auth.NewManager(q, testAdminUser, testAdminPass)
 	app := New(Deps{Auth: mgr, Store: q, DataDir: t.TempDir(), Port: 8080})
 	t.Cleanup(app.Close)
-	return testEnv{router: app.Router(), mgr: mgr, app: app, campaignID: camp.ID, characterID: char.ID}
+	return testEnv{router: app.Router(), mgr: mgr, app: app, campaignID: camp.ID, characterID: char.ID, conn: conn}
 }
 
 // token issues a session of the given role, or returns "" for none.
