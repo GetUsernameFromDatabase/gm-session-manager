@@ -188,6 +188,36 @@ func TestCampaignSourcePicks(t *testing.T) {
 	})
 }
 
+// TestSubclassPickBySlug: two sources' subclasses of one name are separate
+// choices, labelled with their source, and the picked slug decides the copy.
+func TestSubclassPickBySlug(t *testing.T) {
+	e := sourcesEnv(t)
+	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
+		Kind: "subclass", Slug: "shared-school-hb", Name: "Shared School", SourceKey: compendium.HomebrewSource,
+		DataJson: `{"subclass_of":"wizard"}`, ContentHash: "hb", IsHomebrew: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, auth.RolePlayer)
+	path := fmt.Sprintf("/characters/%d/subclass", e.characterID)
+	e.wizard3(t, "Evoker", "", "")
+	form := e.do(t, http.MethodGet, path+"?class=wizard", player, nil, true).Body.String()
+	for _, label := range []string{"Shared School · " + onBook, "Shared School · " + compendium.HomebrewSource} {
+		if !strings.Contains(form, label) {
+			t.Errorf("change form lacks %q", label)
+		}
+	}
+	for slug, source := range map[string]string{"shared-school-hb": compendium.HomebrewSource, "shared-school": onBook} {
+		e.wizard3(t, "Evoker", "", "")
+		if w := e.do(t, http.MethodPost, path, player, url.Values{"class": {"wizard"}, "subclass": {slug}}, true); w.Code != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", slug, w.Code, w.Body)
+		}
+		if cl := e.sheet(t).Classes[0]; cl.Subclass != "Shared School" || cl.SubclassSlug != slug || cl.SubclassSource != source {
+			t.Errorf("%s: class after change = %+v", slug, cl)
+		}
+	}
+}
+
 // TestCampaignSourcesSet: only the GM changes the list, and never unticks a
 // source someone in the campaign uses; a new campaign starts with every
 // source.

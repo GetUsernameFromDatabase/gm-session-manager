@@ -549,7 +549,8 @@
     if (e.detail.xhr.status !== 422 || !form) return;
     const flash = new DOMParser().parseFromString(e.detail.serverResponse, "text/html").querySelector("#flash[hx-swap-oob]");
     if (!flash) return;
-    showFormError(form, flash.textContent.trim());
+    // An error toast keeps its message in an attribute, not in its text.
+    showFormError(form, flash.querySelector("[data-templ-title]")?.dataset.templTitle ?? flash.textContent.trim());
     e.detail.shouldSwap = false;
   });
   // A form with a [data-form-errors] slot shows errors there, else at its end.
@@ -827,11 +828,36 @@
         animation: 150,
         onEnd(e) {
           if (e.oldIndex === e.newIndex) return;
+          rememberSourceRow(e.item);
           const key = [...list.querySelectorAll("[data-source-key]")].map((li) => li.dataset.sourceKey);
           htmx.ajax("POST", list.dataset.sortable, { target: list.dataset.sortTarget, swap: "outerHTML", values: { key } });
         },
       });
     });
+  });
+
+  // The answer replaces the card, which would start the list at its top: it
+  // comes back to the row moved, or after a delete to the row now in its
+  // place (the last one when it was last). By position, not scroll offset.
+  let sourceRow = null;
+  function rememberSourceRow(li) {
+    sourceRow = { key: li.dataset.sourceKey, index: [...li.parentElement.children].indexOf(li) };
+  }
+  document.addEventListener("htmx:beforeRequest", (e) => {
+    const li = e.detail.elt.closest?.("[data-sortable] > li");
+    if (li) rememberSourceRow(li);
+  });
+  document.addEventListener("htmx:afterRequest", (e) => {
+    if (!e.detail.successful) sourceRow = null; // a refusal swaps nothing
+  });
+  document.addEventListener("htmx:afterSwap", (e) => {
+    if (e.detail.xhr?.status >= 400) return; // only the error toast swapped in; the list did not change
+    const list = sourceRow && document.querySelector("[data-sortable]");
+    if (!list) return;
+    const rows = [...list.children];
+    const row = rows.find((li) => li.dataset.sourceKey === sourceRow.key) ?? rows[Math.min(sourceRow.index, rows.length - 1)];
+    sourceRow = null;
+    if (row) centerRow(list, row, false);
   });
 
   // The creation wizard's ability scores show their point-buy cost (27
@@ -975,17 +1001,22 @@
       if (!row || row === from) return;
       watch.disconnect();
       const list = row.closest("[data-keep-scroll]");
-      if (!list) return;
-      const r = row.getBoundingClientRect();
-      const box = list.getBoundingClientRect();
-      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-      // The browser clamps at the ends, so the first and last rows sit as near the middle as they can.
-      const top = list.scrollTop + r.top - box.top - list.clientTop - (list.clientHeight - r.height) / 2;
-      list.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
+      if (list) centerRow(list, row, true);
     }));
     watch.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-active"] });
     setTimeout(() => watch.disconnect(), 3000);
   });
+
+  // centerRow scrolls list (its own scroll box) so row sits in its middle,
+  // without moving the page.
+  function centerRow(list, row, smooth) {
+    const r = row.getBoundingClientRect();
+    const box = list.getBoundingClientRect();
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // The browser clamps at the ends, so the first and last rows sit as near the middle as they can.
+    const top = list.scrollTop + r.top - box.top - list.clientTop - (list.clientHeight - r.height) / 2;
+    list.scrollTo({ top, behavior: smooth && !reduce ? "smooth" : "auto" });
+  }
 
   // Page tabs (data-url-param, one group per page) keep their value in the
   // address, so a link shares the view. Each tab keeps its own query: Browse's

@@ -14,7 +14,7 @@ func TestRemoveSourceDir(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, key := range []string{"book", "../keep", "..", "", "a/b", `a\b`, "web-page"} {
+	for _, key := range []string{"book", "../keep", "..", "", "a/b", `a\b`, "web-page", "wikidot:lineage:giff"} {
 		if err := RemoveSourceDir(dir, key); err != nil {
 			t.Fatalf("%q: %v", key, err)
 		}

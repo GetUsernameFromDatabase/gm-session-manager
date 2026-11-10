@@ -199,9 +199,10 @@ func (a *App) failBack(c *gin.Context, status int, msg, backURL, backLabel strin
 	c.Set(failMsgKey, msg)
 	c.Set(failStatusKey, status)
 	if isHTMX(c) {
-		// Only the out-of-band flash: an outerHTML target must not be emptied.
+		// Only the out-of-band toast: an outerHTML target must not be emptied,
+		// and a toast is seen wherever the user clicked.
 		c.Header("HX-Reswap", "none")
-		a.render(c, http.StatusUnprocessableEntity, views.Flash(msg, true))
+		a.render(c, http.StatusUnprocessableEntity, views.Toast(msg, true))
 		c.Abort()
 		return
 	}

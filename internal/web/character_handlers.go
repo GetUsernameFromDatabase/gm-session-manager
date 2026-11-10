@@ -709,19 +709,19 @@ func (a *App) withSubclass(ctx context.Context, info *dnd5e.ClassInfo, sheet dnd
 	return setSubclass(info, row)
 }
 
-// subclassRef is the slug and pin of classSlug's subclass named name: the
-// sheet's pin when it is cl's subclass, else found by name among those
+// subclassRef is the slug and pin of classSlug's subclass with slug or name
+// name: the sheet's pin when it is cl's subclass, else found among those
 // campaignID allows (0: all; "" for none). A subclass only an unticked
 // source has is a userError.
 func subclassRef(ctx context.Context, q *sqlc.Queries, classSlug string, cl dnd5e.ClassLevel, name string, campaignID int64) (slug, pin string, err error) {
-	if cl.SubclassSlug != "" && strings.EqualFold(name, cl.Subclass) {
+	if cl.SubclassSlug != "" && (name == cl.SubclassSlug || strings.EqualFold(name, cl.Subclass)) {
 		return cl.SubclassSlug, cl.SubclassSource, nil
 	}
 	subs, err := q.ListSubclassesOf(ctx, sqlc.ListSubclassesOfParams{ClassSlug: classSlug, CampaignID: campaignID})
 	if err != nil {
 		return "", "", err
 	}
-	if i := slices.IndexFunc(subs, func(s sqlc.ListSubclassesOfRow) bool { return strings.EqualFold(s.Name, name) }); i >= 0 {
+	if i := subclassIndex(subs, name); i >= 0 {
 		return subs[i].Slug, "", nil
 	}
 	if campaignID != 0 {
@@ -730,6 +730,29 @@ func subclassRef(ctx context.Context, q *sqlc.Queries, classSlug string, cl dnd5
 		}
 	}
 	return "", "", err
+}
+
+// subclassIndex finds v in subs by slug (the picker's value: two sources may
+// name a subclass alike), else by name (typed commands), or -1.
+func subclassIndex(subs []sqlc.ListSubclassesOfRow, v string) int {
+	if i := slices.IndexFunc(subs, func(s sqlc.ListSubclassesOfRow) bool { return s.Slug == v }); i >= 0 {
+		return i
+	}
+	return slices.IndexFunc(subs, func(s sqlc.ListSubclassesOfRow) bool { return strings.EqualFold(s.Name, v) })
+}
+
+// subclassOptions are the picker's choices; a name two rows share is
+// labelled with each one's source.
+func subclassOptions(subs []sqlc.ListSubclassesOfRow) []views.Option {
+	out := make([]views.Option, 0, len(subs))
+	for _, s := range subs {
+		name := s.Name
+		if slices.ContainsFunc(subs, func(o sqlc.ListSubclassesOfRow) bool { return o.Slug != s.Slug && strings.EqualFold(o.Name, s.Name) }) {
+			name += " · " + s.SourceKey
+		}
+		out = append(out, views.Option{Slug: s.Slug, Name: name})
+	}
+	return out
 }
 
 // setSubclass gives info the features and pin of the subclass row, and its
@@ -756,7 +779,7 @@ func subclassPanels(rows []sqlc.ListSubclassesOfRow) ([]views.SubclassPanel, err
 		if err != nil {
 			return nil, err
 		}
-		p := views.SubclassPanel{Name: r.Name, Source: r.SourceKey}
+		p := views.SubclassPanel{Slug: r.Slug, Name: r.Name, Source: r.SourceKey}
 		for _, f := range d.(*compendium.ClassData).Features {
 			p.Features = append(p.Features, views.SubclassFeature{Name: f.Name, Desc: f.Desc, Levels: f.Levels})
 		}
@@ -767,7 +790,7 @@ func subclassPanels(rows []sqlc.ListSubclassesOfRow) ([]views.SubclassPanel, err
 }
 
 // subclassForm swaps the subclass of the sheet's class Class for the one
-// named Subclass (the picker is valued by name).
+// with slug (the picker's value) or name Subclass.
 type subclassForm struct {
 	Class    string `form:"class"    validate:"required,max=200"`
 	Subclass string `form:"subclass" validate:"required,max=200"`
@@ -806,9 +829,9 @@ func (a *App) subclassChangeForm(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	v := views.SubclassChangeView{CharacterID: ch.ID, Class: cl.Slug, ClassName: cl.Name, Current: cl.Subclass, Level: cl.Level}
-	for _, s := range subs {
-		v.Subclasses = append(v.Subclasses, views.Option{Slug: s.Slug, Name: s.Name})
+	v := views.SubclassChangeView{
+		CharacterID: ch.ID, Class: cl.Slug, ClassName: cl.Name, Level: cl.Level, Subclasses: subclassOptions(subs),
+		Current: cl.Subclass, CurrentSlug: cmp.Or(cl.SubclassSlug, compendium.Slugify(cl.Subclass)),
 	}
 	if v.Panels, err = subclassPanels(subs); err != nil {
 		a.serverError(c, err)
@@ -835,7 +858,7 @@ func (a *App) changeSubclass(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	i := slices.IndexFunc(subs, func(s sqlc.ListSubclassesOfRow) bool { return strings.EqualFold(s.Name, f.Subclass) })
+	i := subclassIndex(subs, f.Subclass)
 	if i < 0 {
 		a.fail(c, http.StatusUnprocessableEntity, "Choose a subclass from the list.")
 		return
@@ -895,9 +918,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if err != nil {
 		return v, err
 	}
-	for _, s := range subs {
-		v.Subclasses = append(v.Subclasses, views.Option{Slug: s.Slug, Name: s.Name})
-	}
+	v.Subclasses = subclassOptions(subs)
 	if v.SubclassPanels, err = subclassPanels(subs); err != nil {
 		return v, err
 	}
@@ -1152,6 +1173,11 @@ func (a *App) levelUp(c *gin.Context) {
 	if a.commandFailed(c, a.withSubclass(ctx, &choice.Class, sheet, choice.Subclass, ch.CampaignID)) {
 		return
 	}
+	if choice.Subclass != "" && choice.Class.SubclassName == "" {
+		a.fail(c, http.StatusUnprocessableEntity, "Choose a subclass from the list.") // gone since the form loaded
+		return
+	}
+	choice.Subclass = choice.Class.SubclassName // the sheet keeps the name, not the picked slug
 	if roll, ok := formInt(c, "hp_roll"); ok {
 		choice.HPRoll = int(roll)
 	}

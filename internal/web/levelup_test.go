@@ -401,6 +401,20 @@ func TestLevelUpFeatWithoutASI(t *testing.T) {
 	}
 }
 
+// TestLevelUpGoneSubclass: a subclass no longer in the compendium (its source
+// deleted since the form loaded) is refused, not saved under its slug.
+func TestLevelUpGoneSubclass(t *testing.T) {
+	e := newTestEnv(t)
+	loadFeatFixtures(t, e)
+	player := e.token(t, auth.RolePlayer)
+	before := e.sheet(t).Level()
+	form := url.Values{"class": {"wizard"}, "subclass": {"gone-school"}}
+	w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/levelup", e.characterID), player, wizardLevelUp(t, e, form), true)
+	if w.Code != http.StatusUnprocessableEntity || e.sheet(t).Level() != before {
+		t.Errorf("gone subclass: status %d, level %d → %d", w.Code, before, e.sheet(t).Level())
+	}
+}
+
 // TestLevelUpEpicBoon checks the Epic Boon level (the test SRD has none): the
 // feat is offered, and its own maximum of 30 beats the usual 20.
 func TestLevelUpEpicBoon(t *testing.T) {

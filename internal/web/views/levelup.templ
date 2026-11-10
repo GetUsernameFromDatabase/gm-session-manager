@@ -28,6 +28,7 @@ type Option struct {
 
 // SubclassPanel is one subclass's details, shown while it is picked.
 type SubclassPanel struct {
+	Slug     string
 	Name     string
 	Source   string
 	Features []SubclassFeature
@@ -359,13 +360,13 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 	</form>
 }
 
-// SubclassPicker is the subclass select (field "subclass", valued by name)
-// with a panel per subclass that shows while it is picked; features gained at
-// or below level start open.
+// SubclassPicker is the subclass select (field "subclass", valued by slug, as
+// two sources may name a subclass alike) with a panel per subclass that shows
+// while it is picked; features gained at or below level start open.
 templ SubclassPicker(subs []Option, panels []SubclassPanel, selected string, level int) {
-	@formSelect("subclass", "subclass", optionItems("Decide later", subs, func(o Option) string { return o.Name }), selected, "", "")
+	@formSelect("subclass", "subclass", optionItems("Decide later", subs, func(o Option) string { return o.Slug }), selected, "", "")
 	for _, sp := range panels {
-		<div class="mt-2 space-y-1 rounded-md border p-3 text-sm" data-show-for={ "subclass=" + sp.Name } hidden?={ selected != sp.Name }>
+		<div class="mt-2 space-y-1 rounded-md border p-3 text-sm" data-show-for={ "subclass=" + sp.Slug } hidden?={ selected != sp.Slug }>
 			<div class="font-medium">{ sp.Name }</div>
 			if sp.Source != "" {
 				<div class="text-xs text-muted-foreground">{ "Source: " + sp.Source }</div>
@@ -392,6 +393,7 @@ type SubclassChangeView struct {
 	CharacterID      int64
 	Class, ClassName string
 	Current          string
+	CurrentSlug      string
 	Level            int
 	Subclasses       []Option
 	Panels           []SubclassPanel
@@ -409,7 +411,7 @@ templ SubclassChange(v SubclassChangeView) {
 		<input type="hidden" name="class" value={ v.Class }/>
 		<p class="text-sm">{ "Choose another " + v.ClassName + " subclass. Its features replace those of " + v.Current + " at every level you have." }</p>
 		<div>
-			@SubclassPicker(v.Subclasses, v.Panels, v.Current, v.Level)
+			@SubclassPicker(v.Subclasses, v.Panels, v.CurrentSlug, v.Level)
 		</div>
 		<p class="text-sm text-muted-foreground">{ "Spells or options " + v.Current + " gave you stay on the sheet; remove them by hand." }</p>
 		<div class="flex justify-end gap-2">

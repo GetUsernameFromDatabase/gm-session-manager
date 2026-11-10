@@ -529,9 +529,10 @@ func SaveHomebrew(ctx context.Context, q *sqlc.Queries, id int64, in HomebrewInp
 
 // RemoveSourceDir deletes the data folder dir/key, so the next import does
 // not bring the source back. A key that is not one plain folder name (a web
-// page source has none) removes nothing.
+// page source like wikidot:lineage:giff has none; Windows rejects the colons)
+// removes nothing.
 func RemoveSourceDir(dir, key string) error {
-	if key == "" || key == "." || key == ".." || key != filepath.Base(key) || strings.ContainsAny(key, `/\`) {
+	if key == "" || key == "." || key == ".." || key != filepath.Base(key) || strings.ContainsAny(key, `/\:`) {
 		return nil
 	}
 	return os.RemoveAll(filepath.Join(dir, key))

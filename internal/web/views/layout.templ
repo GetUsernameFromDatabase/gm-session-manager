@@ -282,10 +282,15 @@ templ Flash(msg string, isError bool) {
 	</div>
 }
 
-// Toast confirms a change where the user is looking; it also clears the flash.
-templ Toast(msg string) {
+// Toast confirms a change or shows an error where the user is looking; it also
+// clears the flash. Errors stay longer so they are not missed.
+templ Toast(msg string, isError bool) {
 	<div id="flash" hx-swap-oob="true">
-		@toast.Toast(toast.Props{Title: msg, Type: toast.TypeSuccess})
+		if isError {
+			@toast.Toast(toast.Props{Title: msg, Type: toast.TypeError, Timeout: 10000})
+		} else {
+			@toast.Toast(toast.Props{Title: msg, Type: toast.TypeSuccess})
+		}
 	</div>
 }
 

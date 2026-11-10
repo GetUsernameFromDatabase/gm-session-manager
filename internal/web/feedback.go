@@ -125,7 +125,7 @@ func (a *App) sendFeedback(c *gin.Context) {
 		return
 	}
 	// Named like the dialog's button: "Send report" / "Send idea".
-	a.render(c, http.StatusOK, views.Toast(map[string]string{"bug": "Report sent.", "idea": "Idea sent."}[f.Kind]))
+	a.render(c, http.StatusOK, views.Toast(map[string]string{"bug": "Report sent.", "idea": "Idea sent."}[f.Kind], false))
 }
 
 // saveReport writes r into a new folder (removed again if that fails) and

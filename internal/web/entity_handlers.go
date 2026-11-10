@@ -149,7 +149,7 @@ func (a *App) updateEntity(c *gin.Context) {
 		return
 	}
 	// A toast, as the page flash is far above the Save bar.
-	a.changedWith(c, e.CampaignID, views.Toast("Saved "+strings.TrimSpace(form.Name)+"."), entityTopics(e)...)
+	a.changedWith(c, e.CampaignID, views.Toast("Saved "+strings.TrimSpace(form.Name)+".", false), entityTopics(e)...)
 }
 
 // saveFieldLinks replaces an NPC's field [[links]] with those in fields.
