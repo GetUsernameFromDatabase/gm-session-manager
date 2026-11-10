@@ -27,6 +27,7 @@ type ftSubclass struct {
 	ftNamed
 	ShortName         string         `json:"shortName"`
 	ClassName         string         `json:"className"`
+	ClassSource       string         `json:"classSource"`
 	CasterProgression string         `json:"casterProgression"`
 	SubclassFeatures  []string       `json:"subclassFeatures"`
 	TableGroups       []ftTableGroup `json:"subclassTableGroups"`
@@ -206,8 +207,18 @@ func (p *ftBook) classFile(file string) error {
 	}); err != nil {
 		return err
 	}
+	// Some books ship a subclass twice, for the 2014 and the 2024 class; the 2024 copy wins.
+	twin := func(s ftSubclass) string { return strings.ToLower(s.Name + "|" + s.ShortName + "|" + s.Source) }
+	has2024 := map[string]bool{}
+	if err := each(p, file, "subclass", func(s ftSubclass) {
+		if strings.EqualFold(s.ClassSource, "XPHB") {
+			has2024[twin(s)] = true
+		}
+	}); err != nil {
+		return err
+	}
 	return each(p, file, "subclass", func(s ftSubclass) {
-		if !strings.EqualFold(s.Source, p.id) {
+		if !strings.EqualFold(s.Source, p.id) || (!strings.EqualFold(s.ClassSource, "XPHB") && has2024[twin(s)]) {
 			return
 		}
 		d := ClassData{

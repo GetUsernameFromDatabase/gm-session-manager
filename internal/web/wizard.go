@@ -185,7 +185,7 @@ func (a *App) wizardPage(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, err := a.wizardView(c.Request.Context(), w, ch, step, c.Query("pick"))
+	v, err := a.wizardView(c.Request.Context(), w, ch, step, c.Query("pick"), c.Query("variant"))
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -202,8 +202,8 @@ func (a *App) renderWizard(c *gin.Context, status int, w who, ch sqlc.Character,
 }
 
 // wizardView builds a step's page; pick is the class, species or
-// background being looked at.
-func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pick string) (views.WizardView, error) {
+// background being looked at, variant the subrace of a species picked.
+func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pick, variant string) (views.WizardView, error) {
 	s, err := a.sheetView(ctx, w.viewer, ch)
 	if err != nil {
 		return views.WizardView{}, err
@@ -251,6 +251,11 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 	if err != nil {
 		return v, err
 	}
+	if step == "species" {
+		if e, data, err = a.speciesVariant(ctx, &v, e, data, variant, ch.CampaignID); err != nil {
+			return v, err
+		}
+	}
 	v.Choice = wizardChoice(e, data)
 	switch step {
 	case "class":
@@ -259,6 +264,34 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 		v.Choice.SkillPick, err = a.backgroundSkillPick(ctx, s.C.Sheet, v.Choice.Skills)
 	}
 	return v, err
+}
+
+// speciesVariant offers the picked species' subraces and returns the entry
+// to preview and save: the variant when it is one of them. A subrace picked
+// (a refused save shown again) shows as its base with itself as the variant.
+func (a *App) speciesVariant(ctx context.Context, v *views.WizardView, e sqlc.CompendiumEntry, data any, variant string, campaignID int64) (sqlc.CompendiumEntry, any, error) {
+	if td, ok := data.(*compendium.TextData); ok && td.SubraceOf != "" {
+		v.Picked, v.Variant = td.SubraceOf, e.Slug
+	}
+	subs, err := a.Store.ListSubracesOf(ctx, sqlc.ListSubracesOfParams{CampaignID: campaignID, SpeciesSlug: v.Picked})
+	if err != nil {
+		return e, data, err
+	}
+	for _, s := range subs {
+		v.Variants = append(v.Variants, views.Option{Slug: s.Slug, Name: s.Name + " · " + s.SourceKey})
+	}
+	if v.Variant != "" || !slices.ContainsFunc(subs, func(s sqlc.ListSubracesOfRow) bool { return s.Slug == variant }) {
+		return e, data, nil
+	}
+	sub, err := a.entryBySlug(ctx, compendium.KindSpecies, variant, campaignID)
+	if err != nil {
+		return e, data, err
+	}
+	d, err := compendium.DecodeData(compendium.KindSpecies, sub.DataJson)
+	if err == nil {
+		v.Variant = variant
+	}
+	return sub, d, err
 }
 
 // wizardChoice is what a class, species or background gives, for the page
@@ -1614,7 +1647,7 @@ func (a *App) wizardSave(c *gin.Context) {
 	}
 	var ue userError
 	if errors.As(err, &ue) {
-		v, verr := a.wizardView(ctx, w, ch, step, c.PostForm("pick"))
+		v, verr := a.wizardView(ctx, w, ch, step, c.PostForm("pick"), "")
 		if verr != nil {
 			a.serverError(c, verr)
 			return

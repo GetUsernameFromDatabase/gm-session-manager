@@ -41,8 +41,11 @@ type WizardView struct {
 	Form url.Values
 	// Options are the compendium's classes, species or backgrounds;
 	// Picked is the one being looked at and Choice what it gives.
-	Options   []Option
-	Picked    string
+	Options []Option
+	Picked  string
+	// Variants are the picked species' subraces; Variant the one looked at.
+	Variants  []Option
+	Variant   string
 	Choice    *WizardChoice
 	Equipment []EquipmentChoice
 	Choices   *CreationChoices
@@ -253,11 +256,17 @@ templ wizardPick(v WizardView) {
 		{{ s := v.Sheet.C.Sheet }}
 		@wizardDone(v, "Already chosen: "+map[string]string{"class": s.ClassSummary() + " (level up for more classes)", "species": s.Species, "background": s.Background}[v.Step]+".")
 	} else {
-		<form method="get" class="mb-6 flex items-center gap-2" onchange="this.submit()">
+		<form method="get" class="mb-6 flex flex-wrap items-center gap-2" onchange="this.submit()">
 			@label.Label(label.Props{For: "pick-trigger"}) {
 				{ map[string]string{"class": "Class", "species": "Species", "background": "Background"}[v.Step] }
 			}
 			@formSelect("pick", "pick", optionItems("Choose…", v.Options, func(o Option) string { return o.Slug }), v.Picked, "", "")
+			if len(v.Variants) > 0 {
+				@label.Label(label.Props{For: "variant-trigger"}) {
+					Variant
+				}
+				@formSelect("variant", "variant", optionItems("Standard", v.Variants, func(o Option) string { return o.Slug }), v.Variant, "", "")
+			}
 			<noscript>
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
 					Show
@@ -268,7 +277,7 @@ templ wizardPick(v WizardView) {
 			<p class="mb-4 text-sm text-muted-foreground">Nothing in the compendium yet. Skip this step and fill it in on the sheet.</p>
 		}
 		<form method="post" class="space-y-4">
-			<input type="hidden" name="pick" value={ v.Picked }/>
+			<input type="hidden" name="pick" value={ utils.IfElse(v.Variant != "", v.Variant, v.Picked) }/>
 			if c := v.Choice; c != nil {
 				@card.Card() {
 					@card.Header() {

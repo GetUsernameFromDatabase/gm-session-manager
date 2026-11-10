@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -32,7 +33,8 @@ var fakeMirror = map[string]string{
 	"spells/sources.json":         `{"XPHB":{"Fireball":{"class":[{"name":"Wizard","source":"XPHB"}]}},"MM":{}}`,
 	"items.json":                  `{"item":[{"name":"Wand","source":"XPHB"},{"name":"Cloak","source":"TCE","rarity":"rare"},{"name":"Wand Cloak","source":"XPHB","_copy":{"name":"Cloak","source":"TCE"}}],"itemGroup":[]}`,
 	"items-base.json":             `{"baseitem":[{"name":"Dagger","source":"PHB"}]}`,
-	"races.json":                  `{"race":[{"name":"Elf","source":"XPHB"},{"name":"Tiefling","source":"TCE"}],"subrace":[]}`,
+	"magicvariants.json":          `{"magicvariant":[{"name":"+1 Weapon","requires":[{"weapon":true}],"inherits":{"source":"XPHB"}},{"name":"Vorpal Sword","inherits":{"source":"DMG"}}]}`,
+	"races.json":                  `{"race":[{"name":"Elf","source":"XPHB"},{"name":"Tiefling","source":"TCE"},{"name":"Half-Elf","source":"PHB"}],"subrace":[{"name":"Variant; Drow Descent","source":"XPHB","raceName":"Half-Elf","raceSource":"PHB"}]}`,
 	"class/index.json":            `{"wizard":"class-wizard.json","fighter":"class-fighter.json","x/../../evil":"class-evil.json"}`,
 	"class/class-evil.json":       `{"class":[{"name":"Evil","source":"TCE"}]}`,
 	"class/class-wizard.json": `{"class":[{"name":"Wizard","source":"PHB"}],
@@ -141,7 +143,7 @@ func TestDownloadFiveTools(t *testing.T) {
 		id   string
 		want []string
 	}{
-		{"xphb", []string{"bestiary.json", "book.json", "items-base.json", "items.json", "races.json", "spell-classes.json", "spells.json"}},
+		{"xphb", []string{"bestiary.json", "book.json", "items-base.json", "items.json", "magicvariants.json", "races.json", "spell-classes.json", "spells.json"}},
 		{"tce", []string{"book.json", "class-wizard.json", "items-base.json", "items.json", "races.json"}},
 	}
 	for _, tc := range tests {
@@ -155,6 +157,10 @@ func TestDownloadFiveTools(t *testing.T) {
 	if base := readDoc(t, filepath.Join(dir, "5etools-tce", "items-base.json"))["baseitem"]; len(base) != 1 {
 		t.Errorf("items-base must stay whole: %v", base)
 	}
+	// A variant belongs to the book named in inherits.source.
+	if mv := readDoc(t, filepath.Join(dir, "5etools-xphb", "magicvariants.json"))["magicvariant"]; len(mv) != 1 || mv[0]["name"] != "+1 Weapon" {
+		t.Errorf("variants not filtered on inherits.source: %v", mv)
+	}
 	// Subclass-only book keeps the parent class.
 	wiz := readDoc(t, filepath.Join(dir, "5etools-tce", "class-wizard.json"))
 	if len(wiz["class"]) != 1 || len(wiz["subclass"]) != 1 || len(wiz["subclassFeature"]) != 1 {
@@ -167,6 +173,7 @@ func TestDownloadFiveTools(t *testing.T) {
 	}{
 		{"bestiary.json", "monster", []string{"Wolf", "Pup"}},
 		{"items.json", "item", []string{"Cloak"}},
+		{"races.json", "race", []string{"Half-Elf"}}, // a subrace's race
 	} {
 		data, err := os.ReadFile(filepath.Join(dir, "5etools-xphb", tc.file))
 		if err != nil {
@@ -227,6 +234,55 @@ func TestDownloadFiveTools(t *testing.T) {
 	}
 }
 
+// A subclass shipped for both the 2014 and the 2024 class keeps the 2024 copy
+// in either order, and a feature referenced from another book comes bundled.
+func TestDownloadFiveToolsSubclassTwinsAndForeignFeatures(t *testing.T) {
+	phb := `{"name":"Forge Domain","shortName":"Forge","className":"Cleric","classSource":"PHB","source":"XGE","subclassFeatures":["Forge Rite|Cleric|PHB|Forge|XGE|1"]}`
+	xphb := `{"name":"Forge Domain","shortName":"Forge","className":"Cleric","classSource":"XPHB","source":"XGE","subclassFeatures":["Forge Rite|Cleric|XPHB|Forge|XGE|3","Blessed Strikes|Cleric|XPHB|Forge|XGE|8|TCE"]}`
+	features := `"subclassFeature":[
+		{"name":"Forge Rite","className":"Cleric","classSource":"PHB","subclassShortName":"Forge","subclassSource":"XGE","level":1,"source":"XGE","entries":["Early rite."]},
+		{"name":"Forge Rite","className":"Cleric","classSource":"XPHB","subclassShortName":"Forge","subclassSource":"XGE","level":3,"source":"XGE","entries":["Late rite."]},
+		{"name":"Blessed Strikes","className":"Cleric","classSource":"XPHB","subclassShortName":"Forge","subclassSource":"XGE","level":8,"source":"TCE","entries":["Strikes deal extra damage."]}]`
+	for _, order := range [][]string{{phb, xphb}, {xphb, phb}} {
+		files := maps.Clone(fakeMirror)
+		files["class/index.json"] = `{"cleric":"class-cleric.json"}`
+		files["class/class-cleric.json"] = `{"class":[{"name":"Cleric","source":"PHB"}],"subclass":[` + strings.Join(order, ",") + `],` + features + `}`
+		serveMirror(t, files, false)
+		dir := t.TempDir()
+		if err := DownloadFiveTools(context.Background(), dir, []Book{{ID: "XGE", Name: "Xanathar", Group: GroupSupplement}}, nil); err != nil {
+			t.Fatal(err)
+		}
+		doc := readDoc(t, filepath.Join(dir, "5etools-xge", "class-cleric.json"))
+		if len(doc["subclassFeature"]) != 3 {
+			t.Fatalf("bundled features: %v", doc["subclassFeature"])
+		}
+		_, entries, err := parseFiveToolsBook("5etools-xge", readBook(t, filepath.Join(dir, "5etools-xge")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var subclasses []ClassData
+		for _, e := range entries {
+			if e.Kind == KindSubclass {
+				subclasses = append(subclasses, e.Data.(ClassData))
+			}
+			if e.Slug == "blessed-strikes" || e.Kind == KindClass {
+				t.Errorf("bundled record became an entry: %s/%s", e.Kind, e.Slug)
+			}
+		}
+		if len(subclasses) != 1 {
+			t.Fatalf("%d subclasses, want 1", len(subclasses))
+		}
+		rite, _ := feature(subclasses[0], "Forge Rite")
+		strikes, _ := feature(subclasses[0], "Blessed Strikes")
+		if !slices.Equal(rite.Levels, []int{3}) || !strings.Contains(rite.Desc, "Late rite.") {
+			t.Errorf("Forge Rite: %+v, want the level 3 copy", rite)
+		}
+		if !strings.Contains(strikes.Desc, "extra damage") {
+			t.Errorf("Blessed Strikes has no text: %+v", strikes)
+		}
+	}
+}
+
 func TestDownloadFiveToolsFailureLeavesNothing(t *testing.T) {
 	files := map[string]string{}
 	for k, v := range fakeMirror {
@@ -248,6 +304,32 @@ func TestRemoveFiveToolsRejectsBadIDs(t *testing.T) {
 	for _, id := range []string{"", "..", "../x", "a/b", `a\b`, "a b"} {
 		if err := RemoveFiveTools(dir, id); err == nil {
 			t.Errorf("%q accepted", id)
+		}
+	}
+}
+
+// TestDownloadLinksReprints: a tag to a 2014 record with a reprint points at
+// the reprint, keeping its words; other tags are left alone.
+func TestDownloadLinksReprints(t *testing.T) {
+	files := maps.Clone(fakeMirror)
+	files["bestiary/bestiary-mm.json"] = `{"monster":[{"name":"Goblin","source":"MM","reprintedAs":["Goblin Warrior|XMM"]},{"name":"Bear","source":"MM"}]}`
+	files["bestiary/bestiary-xphb.json"] = `{"monster":[{"name":"Goblin Warrior","source":"XPHB","entries":["{@creature goblin|mm} {@creature Goblin|MM|goblins} {@creature bear|mm} {@creature ghost|zzz}"]}]}`
+	files["spells/spells-xphb.json"] = `{"spell":[{"name":"Fireball","source":"XPHB","entries":["{@spell branding smite} {@spell fireball|xphb}"]}]}`
+	files["items.json"] = `{"item":[{"name":"Abacus","source":"PHB","reprintedAs":[{"uid":"Abacus|XPHB"}]},{"name":"Wand","source":"XPHB","entries":["{@item abacus|phb}"]}]}`
+	serveMirror(t, files, false)
+	dir := t.TempDir()
+	if err := DownloadFiveTools(context.Background(), dir, []Book{{ID: "XPHB", Name: "PHB", Group: GroupCore}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ file, list, want string }{
+		{"bestiary.json", "monster", "{@creature Goblin Warrior|XMM|goblin} {@creature Goblin Warrior|XMM|goblins} {@creature bear|mm} {@creature ghost|zzz}"},
+		{"spells.json", "spell", "{@spell branding smite} {@spell fireball|xphb}"},
+		{"items.json", "item", "{@item Abacus|XPHB|abacus}"},
+	} {
+		recs := readDoc(t, filepath.Join(dir, "5etools-xphb", tc.file))[tc.list]
+		got, _ := recs[len(recs)-1]["entries"].([]any)
+		if len(got) != 1 || got[0] != tc.want {
+			t.Errorf("%s: got %v, want %q", tc.file, got, tc.want)
 		}
 	}
 }

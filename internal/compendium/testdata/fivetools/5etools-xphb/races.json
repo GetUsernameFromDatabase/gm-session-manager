@@ -1,4 +1,11 @@
-{"race":[
+{"_copyTargets":{"race":[
+{"name":"Half-Elf","source":"PHB","size":["M"],"speed":30,"reprintedAs":["Khoravar|EFA"],"ability":[{"cha":2,"choose":{"from":["str","dex","con","int","wis"],"count":2}}],
+ "entries":[{"type":"entries","name":"Fey Ancestry","entries":["You resist charm."]},
+  {"type":"entries","name":"Skill Versatility","entries":["You gain two skills."]}]},
+{"name":"Elf","source":"PHB","size":["M"],"speed":30,"ability":[{"dex":2}],"reprintedAs":["Elf|XPHB"],
+ "entries":[{"type":"entries","name":"Size","entries":["Your size is Medium."]},{"type":"entries","name":"Keen Senses","entries":["You have Perception."]}]},
+{"name":"Gnome","source":"PHB","size":["S"],"speed":25,"entries":[]}
+]},"race":[
 {"name":"Elf","source":"XPHB","page":187,"size":["M"],"speed":30,"darkvision":60,
  "entries":[{"type":"entries","name":"Darkvision","entries":["You have {@sense Darkvision|XPHB} with a range of 60 feet."]},
   {"type":"entries","name":"Trance","entries":["You don't need to sleep."]}],
@@ -15,5 +22,12 @@
 "subrace":[
 {"name":"Drow","source":"XPHB","raceName":"Elf","raceSource":"XPHB",
  "entries":[{"type":"entries","name":"Drow Lineage","entries":["You know the {@spell Dancing Lights|XPHB} cantrip."]}]},
-{"source":"XPHB","raceName":"Elf","raceSource":"XPHB","entries":[]}
+{"source":"XPHB","raceName":"Elf","raceSource":"XPHB","entries":[]},
+{"name":"Variant; Drow Descent","source":"XPHB","raceName":"Half-Elf","raceSource":"PHB",
+ "entries":[{"type":"entries","name":"Skill Versatility","entries":["You know Dancing Lights."],"data":{"overwrite":"Skill Versatility"}}]},
+{"name":"Variant; Aquatic Elf Descent","source":"XPHB","raceName":"Half-Elf","raceSource":"PHB","speed":{"walk":30,"swim":30},
+ "ability":[{"wis":1}],"overwrite":{"ability":true},
+ "entries":[{"type":"entries","name":"Swim","entries":["You swim."]}]},
+{"name":"High","source":"XPHB","raceName":"Elf","raceSource":"PHB","ability":[{"int":1}],
+ "entries":[{"type":"entries","name":"Cantrip","entries":["You know one wizard cantrip."]}]}
 ]}

@@ -160,6 +160,8 @@ func FiveToolsBooks(ctx context.Context, dir string) ([]Book, error) {
 type mirror struct {
 	ctx   context.Context
 	files map[string]json.RawMessage
+	// reprinted caches reprints(rel).
+	reprinted map[string]map[string]string
 }
 
 // get returns nil, nil for a file the mirror does not have.
@@ -194,11 +196,18 @@ func (m *mirror) index(rel string) (map[string]string, error) {
 
 // sourceOf decodes only the source of an entry.
 type sourceOf struct {
-	Source string `json:"source"`
+	Source   string `json:"source"`
+	Inherits struct {
+		Source string `json:"source"`
+	} `json:"inherits"`
 }
 
+// inheritsSourceKeys are the lists whose records carry their source in
+// inherits (magic variants), not at the top.
+var inheritsSourceKeys = []string{"magicvariant"}
+
 // filterSource keeps the entries of a JSON array whose source is id.
-func filterSource(arr json.RawMessage, id string) ([]json.RawMessage, error) {
+func filterSource(arr json.RawMessage, id string, inherits bool) ([]json.RawMessage, error) {
 	var items []json.RawMessage
 	if err := json.Unmarshal(arr, &items); err != nil {
 		return nil, err
@@ -206,7 +215,13 @@ func filterSource(arr json.RawMessage, id string) ([]json.RawMessage, error) {
 	var kept []json.RawMessage
 	for _, it := range items {
 		var s sourceOf
-		if json.Unmarshal(it, &s) == nil && s.Source == id {
+		if json.Unmarshal(it, &s) != nil {
+			continue
+		}
+		if inherits {
+			s.Source = s.Inherits.Source
+		}
+		if s.Source == id {
 			kept = append(kept, it)
 		}
 	}
@@ -228,7 +243,7 @@ func filterDoc(raw json.RawMessage, id string, keys ...string) (map[string][]jso
 		if len(keys) > 0 && !slices.Contains(keys, k) {
 			continue
 		}
-		kept, err := filterSource(v, id)
+		kept, err := filterSource(v, id, slices.Contains(inheritsSourceKeys, k))
 		if err != nil {
 			continue // _meta and other non-array keys
 		}
@@ -242,15 +257,117 @@ func filterDoc(raw json.RawMessage, id string, keys ...string) (map[string][]jso
 	return out, nil
 }
 
+// reLinkTag is a creature, spell or item tag whose arguments hold no nested tag.
+var reLinkTag = regexp.MustCompile(`\{@(creature|spell|item) ([^{}|"\\]*)((?:\|[^{}|"\\]*)*)\}`)
+
+// tagDefaultSources are the sources 5etools assumes when a tag names none.
+var tagDefaultSources = map[string]string{"creature": "MM", "spell": "PHB", "item": "DMG"}
+
+// reprints returns, per name|source key of a mirror file, the uid its record
+// was reprinted as. A missing or unreadable file gives an empty map.
+func (m *mirror) reprints(rel string) map[string]string {
+	if got, ok := m.reprinted[rel]; ok {
+		return got
+	}
+	out := map[string]string{}
+	if m.reprinted == nil {
+		m.reprinted = map[string]map[string]string{}
+	}
+	m.reprinted[rel] = out
+	raw, err := m.get(rel)
+	if err != nil || raw == nil {
+		return out // a failed lookup only leaves its tags as they were
+	}
+	var doc map[string]json.RawMessage
+	if json.Unmarshal(raw, &doc) != nil {
+		return out
+	}
+	for _, list := range doc {
+		var recs []struct {
+			ftNamed
+			ReprintedAs []json.RawMessage `json:"reprintedAs"`
+		}
+		if json.Unmarshal(list, &recs) != nil {
+			continue // _meta and other non-array keys
+		}
+		for _, r := range recs {
+			if len(r.ReprintedAs) == 0 {
+				continue
+			}
+			var uid string
+			var obj struct {
+				UID string `json:"uid"`
+			}
+			if json.Unmarshal(r.ReprintedAs[0], &uid) != nil && json.Unmarshal(r.ReprintedAs[0], &obj) == nil {
+				uid = obj.UID
+			}
+			if uid != "" {
+				out[r.key()] = uid
+			}
+		}
+	}
+	return out
+}
+
+// reprintOf finds the reprint of a tagged record, "" when there is none.
+func (m *mirror) reprintOf(tag, name, source string) string {
+	var files []string
+	switch tag {
+	case "item":
+		files = []string{"items.json", "items-base.json"}
+	default:
+		rel := map[string]string{"creature": "bestiary/index.json", "spell": "spells/index.json"}[tag]
+		idx, err := m.index(rel)
+		if err != nil {
+			return ""
+		}
+		for id, file := range idx {
+			if strings.EqualFold(id, source) {
+				files = []string{filepath.ToSlash(filepath.Join(filepath.Dir(rel), file))}
+			}
+		}
+	}
+	for _, f := range files {
+		if uid := m.reprints(f)[ftNamed{Name: name, Source: source}.key()]; uid != "" {
+			return uid
+		}
+	}
+	return ""
+}
+
+// linkReprints points {@creature goblin|mm} at its reprint, keeping the shown words.
+func (m *mirror) linkReprints(data []byte) []byte {
+	return reLinkTag.ReplaceAllFunc(data, func(tag []byte) []byte {
+		sub := reLinkTag.FindSubmatch(tag)
+		kind, name := string(sub[1]), string(sub[2])
+		parts := strings.Split(string(sub[3]), "|") // "" before the first "|"
+		source, display := tagDefaultSources[kind], name
+		if len(parts) > 1 && parts[1] != "" {
+			source = parts[1]
+		}
+		if len(parts) > 2 && parts[2] != "" {
+			display = parts[2]
+		}
+		uid := m.reprintOf(kind, name, source)
+		if uid == "" {
+			return tag
+		}
+		return []byte("{@" + kind + " " + uid + "|" + display + "}")
+	})
+}
+
 // bookWriter collects a book's files in a temp folder.
-type bookWriter struct{ dir string }
+type bookWriter struct {
+	dir string
+	m   *mirror
+}
 
 func (w bookWriter) write(name string, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(w.dir, name), data, 0o600)
+	return os.WriteFile(filepath.Join(w.dir, name), w.m.linkReprints(data), 0o600)
 }
 
 // writeDoc writes the filtered rel file as name, unless nothing is left.
@@ -374,6 +491,29 @@ func copyTargets(doc map[string][]json.RawMessage, raw json.RawMessage, other fu
 			queue = next
 		}
 	}
+	// A subrace's race comes along too: its entries build on the race's.
+	have := copyIndex(append(slices.Clone(doc["race"]), out["race"]...))
+	for _, r := range doc["subrace"] {
+		var s struct {
+			RaceName   string `json:"raceName"`
+			RaceSource string `json:"raceSource"`
+		}
+		key := ""
+		if json.Unmarshal(r, &s) == nil && s.RaceName != "" {
+			key = ftNamed{Name: s.RaceName, Source: s.RaceSource}.key()
+		}
+		if key == "" || have[key] != nil {
+			continue
+		}
+		p, err := pool("", "race")
+		if err != nil {
+			return nil, err
+		}
+		if t, ok := p[key]; ok {
+			have[key] = t
+			out["race"] = append(out["race"], t)
+		}
+	}
 	return out, nil
 }
 
@@ -396,6 +536,7 @@ var (
 		{"conditionsdiseases.json", "conditionsdiseases.json"},
 		{"variantrules.json", "variantrules.json"},
 		{"fluff-items.json", "fluff-items.json"},
+		{"magicvariants.json", "magicvariants.json"},
 	}
 	classKeys = []string{"class", "subclass", "classFeature", "subclassFeature"}
 )
@@ -481,6 +622,9 @@ func (m *mirror) writeClasses(w bookWriter, b Book) error {
 		if err := m.keepClassParents(raw, doc); err != nil {
 			return err
 		}
+		if err := keepReferencedFeatures(raw, doc); err != nil {
+			return err
+		}
 		if err := w.writeWithCopies("class-"+name+".json", doc, raw, nil); err != nil {
 			return err
 		}
@@ -530,6 +674,57 @@ func (m *mirror) keepClassParents(raw json.RawMessage, doc map[string][]json.Raw
 	return nil
 }
 
+// featureRefPattern finds JSON strings shaped like a subclass feature
+// reference (six or more pipes' worth of fields).
+var featureRefPattern = regexp.MustCompile(`"([^"|]*(?:\|[^"|]*){5,})"`)
+
+// keepReferencedFeatures adds the subclassFeature records the kept records
+// point at, whatever their own source; the parser looks them up by key, so
+// they never become entries.
+func keepReferencedFeatures(raw json.RawMessage, doc map[string][]json.RawMessage) error {
+	var all struct {
+		SubclassFeature []json.RawMessage `json:"subclassFeature"`
+	}
+	if err := json.Unmarshal(raw, &all); err != nil {
+		return err
+	}
+	byKey := map[string]json.RawMessage{}
+	for _, e := range all.SubclassFeature {
+		var f ftClassFeature
+		if json.Unmarshal(e, &f) == nil {
+			byKey[f.key()] = e
+		}
+	}
+	kept := map[string]bool{}
+	for _, e := range doc["subclassFeature"] {
+		var f ftClassFeature
+		if json.Unmarshal(e, &f) == nil {
+			kept[f.key()] = true
+		}
+	}
+	// A bundled feature may reference further ones, so scan until none is new.
+	for scanned := 0; ; {
+		var todo []json.RawMessage
+		for _, k := range []string{"subclass", "classFeature", "subclassFeature"} {
+			todo = append(todo, doc[k]...)
+		}
+		if scanned == len(todo) {
+			return nil
+		}
+		fresh := todo[scanned:]
+		scanned = len(todo)
+		for _, e := range fresh {
+			for _, m := range featureRefPattern.FindAllSubmatch(e, -1) {
+				key, _ := ftFeatureKey(string(m[1]), true)
+				if f, ok := byKey[key]; ok && !kept[key] {
+					kept[key] = true
+					doc["subclassFeature"] = append(doc["subclassFeature"], f)
+				}
+			}
+		}
+	}
+}
+
 func bookFolder(id string) string { return FiveToolsPrefix + strings.ToLower(id) }
 
 // DownloadFiveTools writes a folder under dir for each book. A failed book
@@ -559,7 +754,7 @@ func downloadBook(m *mirror, dir string, b Book) error {
 		return err
 	}
 	defer func() { _ = os.RemoveAll(tmp) }() //nolint:gosec // a temp dir under DATA_DIR; no-op after the rename
-	w := bookWriter{tmp}
+	w := bookWriter{tmp, m}
 	if err := w.write(bookFile, b); err != nil {
 		return err
 	}

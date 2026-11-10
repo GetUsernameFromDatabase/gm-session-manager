@@ -1221,3 +1221,62 @@ func TestFeatRaiseText(t *testing.T) {
 		}
 	}
 }
+
+// TestWizardSpeciesVariant: a species' subraces from any source are offered
+// as variants, the preview follows the variant, and saving one stores it.
+func TestWizardSpeciesVariant(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	for _, entry := range []sqlc.UpsertCompendiumEntryParams{
+		{Kind: "species", Slug: "half-elf", Name: "Half-Elf", SourceKey: "book-a", DataJson: `{"desc":"","parts":[{"name":"Speed","desc":"30 feet","type":"speed"},{"name":"Skill Versatility","desc":"You gain two skills."}]}`},
+		{Kind: "species", Slug: "half-elf-drow-descent", Name: "Half-Elf (Drow Descent)", SourceKey: "book-a", DataJson: `{"desc":"","subrace_of":"half-elf","parts":[{"name":"Speed","desc":"30 feet","type":"speed"},{"name":"Drow Magic","desc":"You know Dancing Lights."}]}`},
+		{Kind: "species", Slug: "half-elf-aquatic-elf-descent", Name: "Half-Elf (Aquatic Elf Descent)", SourceKey: "book-b", DataJson: `{"desc":"","subrace_of":"half-elf","parts":[{"name":"Speed","desc":"35 feet","type":"speed"},{"name":"Swim","desc":"You swim."}]}`},
+	} {
+		entry.ContentHash = "x"
+		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.allowEntrySources(t)
+	player := e.token(t, auth.RolePlayer)
+	base := fmt.Sprintf("/characters/%d/create/species", e.characterID)
+	page := e.do(t, http.MethodGet, base, player, nil, false).Body.String()
+	if strings.Contains(page, "Drow Descent") {
+		t.Error("a subrace is offered as a species of its own")
+	}
+	for _, tt := range []struct {
+		query string
+		want  []string
+		not   []string
+	}{
+		{"?pick=half-elf", []string{"Standard", "Half-Elf (Drow Descent) · book-a", "Half-Elf (Aquatic Elf Descent) · book-b", "Skill Versatility"}, []string{"You swim."}},
+		{"?pick=half-elf&variant=half-elf-aquatic-elf-descent", []string{"You swim.", `name="pick" value="half-elf-aquatic-elf-descent"`}, []string{"Skill Versatility"}},
+		// A variant of another species is ignored.
+		{"?pick=half-elf&variant=elf-high", []string{"Skill Versatility", `name="pick" value="half-elf"`}, nil},
+	} {
+		body := html.UnescapeString(e.do(t, http.MethodGet, base+tt.query, player, nil, false).Body.String())
+		for _, s := range tt.want {
+			if !strings.Contains(body, s) {
+				t.Errorf("%s: no %q", tt.query, s)
+			}
+		}
+		for _, s := range tt.not {
+			if strings.Contains(body, s) {
+				t.Errorf("%s: shows %q", tt.query, s)
+			}
+		}
+	}
+	e.do(t, http.MethodPost, base, player, url.Values{"pick": {"half-elf-aquatic-elf-descent"}}, false)
+	row, err := e.q().GetCharacter(ctx, e.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh, err := dnd5e.ParseSheet(row.SheetJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sh.Species != "Half-Elf (Aquatic Elf Descent)" || sh.SpeciesSource != "book-b" || sh.Speed != 35 ||
+		!slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Swim" }) {
+		t.Errorf("saved species %q from %q, speed %d, features %v", sh.Species, sh.SpeciesSource, sh.Speed, sh.Features)
+	}
+}

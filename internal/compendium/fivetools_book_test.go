@@ -30,6 +30,38 @@ func TestFiveToolsItemMastery(t *testing.T) {
 	}
 }
 
+func TestFiveToolsMagicVariants(t *testing.T) {
+	files := map[string][]byte{
+		"book.json":  []byte(`{"id":"DMG","name":"DMG"}`),
+		"items.json": []byte(`{"item":[{"name":"Vorpal Sword","source":"DMG","rarity":"legendary","entries":["Real."]}]}`),
+		"magicvariants.json": []byte(`{"magicvariant":[
+			{"name":"+1 Weapon","requires":[{"weapon":true}],"inherits":{"source":"DMG","rarity":"uncommon","bonusWeapon":"+1","entries":["You have a {=bonusWeapon} bonus to attack rolls."]}},
+			{"name":"Flame Tongue","requires":[{"sword":true}],"inherits":{"source":"DMG","rarity":"rare","reqAttune":true,"entries":["Aflame."]}},
+			{"name":"Vorpal Sword","requires":[{"sword":true}],"inherits":{"source":"DMG","entries":["Generic."]}}]}`),
+	}
+	_, entries, _, err := parseFiveToolsBookReport("k", files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]ItemData{}
+	for _, e := range entries {
+		got[e.Slug] = e.Data.(ItemData)
+	}
+	for _, tc := range []struct {
+		slug, rarity, desc string
+		attune             bool
+	}{
+		{"1-weapon", "Uncommon", "Applies to: weapon\n\nYou have a +1 bonus to attack rolls.", false},
+		{"flame-tongue", "Rare", "Applies to: sword\n\nAflame.", true},
+		{"vorpal-sword", "Legendary", "Real.", false}, // the book's own item wins
+	} {
+		d := got[tc.slug]
+		if d.Rarity != tc.rarity || d.Desc != tc.desc || d.Attunement != tc.attune || d.Category != "other" {
+			t.Errorf("%s = %+v, want rarity %q, desc %q, attunement %v", tc.slug, d, tc.rarity, tc.desc, tc.attune)
+		}
+	}
+}
+
 // fiveToolsFixture sits below its own folder so the web tests' import of
 // testdata does not pick it up.
 const fiveToolsFixture = "testdata/fivetools/5etools-xphb"
@@ -73,7 +105,7 @@ func TestImportFiveToolsBook(t *testing.T) {
 	if got := habitats(); !reflect.DeepEqual(got, []string{"Planar"}) {
 		t.Errorf("cat habitats after re-import %v", got)
 	}
-	// Pickers offer base species and subraces, never versions.
+	// Pickers offer base species, never versions or subraces.
 	names, err := store.ListCompendiumNames(t.Context(), sqlc.ListCompendiumNamesParams{Kind: string(KindSpecies)})
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +114,7 @@ func TestImportFiveToolsBook(t *testing.T) {
 	for _, n := range names {
 		slugs = append(slugs, n.Slug)
 	}
-	if want := []string{"dragonborn", "elf", "elf-drow"}; !reflect.DeepEqual(slugs, want) {
+	if want := []string{"dragonborn", "elf", "elf-2014", "half-elf"}; !reflect.DeepEqual(slugs, want) {
 		t.Errorf("species picks %v, want %v", slugs, want)
 	}
 }
@@ -192,6 +224,7 @@ func TestParseFiveToolsBook(t *testing.T) {
 		"monster/cat", "monster/mountain-cat", "spell/fireball", "spell/detect-magic", "spell/shield",
 		"item/longsword", "item/dagger", "item/plate-armor", "item/dwarven-plate", "item/bag-of-holding",
 		"item/flame-tongue-longsword", "item/absorbing-tattoo", "species/elf", "species/elf-drow",
+		"species/half-elf", "species/elf-2014", "species/half-elf-drow-descent", "species/half-elf-aquatic-elf-descent", "species/elf-high",
 		"species/elf-wood-elf-lineage", "species/dragonborn", "species/dragonborn-black", "species/dragonborn-red",
 		"background/acolyte", "feat/alert", "feat/grappler", "condition/prone", "condition/concentration",
 		"rule/sewer-plague", "rule/advantage", "rule/sap", "class/fighter", "class/wizard", "subclass/champion", "subclass/evoker",
@@ -269,7 +302,33 @@ func TestParseFiveToolsBook(t *testing.T) {
 			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
 			{Name: "Darkvision", Desc: "You have Darkvision with a range of 60 feet."}, {Name: "Trance", Desc: "You don't need to sleep."},
 			{Name: "Drow Lineage", Desc: "You know the [[compendium:spell/dancing-lights|Dancing Lights]] cantrip."},
+		}, SubraceOf: "elf"}},
+		// Parents from another book come bundled; a reprinted one is "(2014)".
+		{"species/half-elf", TextData{Parts: []NameDesc{
+			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Ability Score Increase", Desc: "Charisma +2, +1 to 2 of Strength, Dexterity, Constitution, Intelligence, Wisdom"},
+			{Name: "Fey Ancestry", Desc: "You resist charm."}, {Name: "Skill Versatility", Desc: "You gain two skills."},
 		}}},
+		{"species/elf-2014", TextData{Parts: []NameDesc{
+			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Ability Score Increase", Desc: "Dexterity +2"}, {Name: "Keen Senses", Desc: "You have Perception."},
+		}}},
+		// A subrace is complete: an overwritten trait is replaced in place.
+		{"species/half-elf-drow-descent", TextData{Parts: []NameDesc{
+			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Ability Score Increase", Desc: "Charisma +2, +1 to 2 of Strength, Dexterity, Constitution, Intelligence, Wisdom"},
+			{Name: "Fey Ancestry", Desc: "You resist charm."}, {Name: "Skill Versatility", Desc: "You know Dancing Lights."},
+		}, SubraceOf: "half-elf"}},
+		{"species/half-elf-aquatic-elf-descent", TextData{Parts: []NameDesc{
+			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Ability Score Increase", Desc: "Wisdom +1"},
+			{Name: "Fey Ancestry", Desc: "You resist charm."}, {Name: "Skill Versatility", Desc: "You gain two skills."}, {Name: "Swim", Desc: "You swim."},
+		}, SubraceOf: "half-elf"}},
+		{"species/elf-high", TextData{Parts: []NameDesc{
+			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Ability Score Increase", Desc: "Dexterity +2, Intelligence +1"},
+			{Name: "Keen Senses", Desc: "You have Perception."}, {Name: "Cantrip", Desc: "You know one wizard cantrip."},
+		}, SubraceOf: "elf-2014"}},
 		{"background/acolyte", TextData{Desc: "You devoted yourself to service in a temple.", Parts: []NameDesc{
 			{Name: "Ability Scores", Desc: "Intelligence, Wisdom, Charisma", Type: partAbilities},
 			{Name: "Feat", Desc: "Magic Initiate (Cleric)", Type: partFeat},

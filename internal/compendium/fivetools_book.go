@@ -437,7 +437,56 @@ func (p *ftBook) items() error {
 			norm(it)
 		}
 	}
-	return nil
+	return p.magicVariants()
+}
+
+// ftPlaceholder is a {=field} reference to another field of the same record.
+var ftPlaceholder = regexp.MustCompile(`\{=(\w+)\}`)
+
+// magicVariants adds one item per generic variant ("+1 Weapon"), after the
+// book's own items so a real item of the same name wins.
+// shortcut: no per-base expansion ("+1 Longsword"), upgrade when players need the variant as a concrete base item.
+func (p *ftBook) magicVariants() error {
+	return each(p, "magicvariants.json", "magicvariant", func(v struct {
+		ftNamed
+		Requires []map[string]json.RawMessage `json:"requires"`
+		Inherits ftRec                        `json:"inherits"`
+	}) {
+		rec := ftRec{}
+		maps.Copy(rec, v.Inherits)
+		// Fill from inherits' own values, as JSON text so quotes stay escaped.
+		raw, _ := json.Marshal(rec["entries"])
+		filled := ftPlaceholder.ReplaceAllStringFunc(string(raw), func(m string) string {
+			var s string
+			if json.Unmarshal(v.Inherits[m[2:len(m)-1]], &s) != nil {
+				return m
+			}
+			q, _ := json.Marshal(s)
+			return string(q[1 : len(q)-1])
+		})
+		rec["entries"] = json.RawMessage(filled)
+		var applies []string
+		for _, req := range v.Requires {
+			for _, k := range slices.Sorted(maps.Keys(req)) {
+				var s string
+				if string(req[k]) == "true" {
+					applies = append(applies, k)
+				} else if json.Unmarshal(req[k], &s) == nil && s != "" {
+					applies = append(applies, s)
+				}
+			}
+		}
+		it, err := ftDecode[ftItem](rec)
+		if err != nil {
+			p.skipped++
+			return
+		}
+		d := ftItemData(it)
+		if len(applies) > 0 {
+			d.Desc = joinNonEmpty("\n\n", "Applies to: "+strings.Join(applies, ", "), d.Desc)
+		}
+		p.add(KindItem, v.Name, d, joinText(d.Category, d.Rarity, d.Desc))
+	})
 }
 
 // ftCode is a code without its "|source" suffix ("M|XPHB" → "M").
@@ -533,10 +582,15 @@ func ftArmor(typ string, it ftItem) *ArmorData {
 
 type ftRace struct {
 	ftNamed
-	Size       []string        `json:"size"`
-	Speed      json.RawMessage `json:"speed"`
-	RaceName   string          `json:"raceName"`
-	RaceSource string          `json:"raceSource"`
+	Size        []string                     `json:"size"`
+	Speed       json.RawMessage              `json:"speed"`
+	RaceName    string                       `json:"raceName"`
+	RaceSource  string                       `json:"raceSource"`
+	Ability     []map[string]json.RawMessage `json:"ability"`
+	ReprintedAs json.RawMessage              `json:"reprintedAs"`
+	Overwrite   struct {
+		Ability bool `json:"ability"`
+	} `json:"overwrite"`
 }
 
 func (p *ftBook) species() error {
@@ -546,7 +600,11 @@ func (p *ftBook) species() error {
 	}
 	races := map[string]ftRace{}
 	// A subrace without fluff of its own ("Elf (Drow)") shows its race's.
-	norm := func(r ftRace, name string, parts []NameDesc, desc, fluffKey, versionOf string) {
+	norm := func(r ftRace, name string, parts []NameDesc, desc, fluffKey string, link TextData) {
+		const asi = "Ability Score Increase"
+		if inc := ftRaceAbility(r.Ability); inc != "" && !strings.Contains(joinText(desc, partsText(parts)), asi) {
+			parts = append([]NameDesc{{Name: asi, Desc: inc}}, parts...)
+		}
 		var sizes []string
 		for _, s := range r.Size {
 			sizes = append(sizes, ftSizes[s])
@@ -564,12 +622,47 @@ func (p *ftBook) species() error {
 				typed = append(typed, NameDesc{Name: "Speed", Desc: fmt.Sprintf("%d feet", walk), Type: partSpeed})
 			}
 		}
-		d := TextData{Desc: joinNonEmpty("\n\n", desc, cmp.Or(fluff[strings.ToLower(name+"|"+r.Source)], fluff[fluffKey])), Parts: append(typed, parts...), VersionOf: versionOf}
+		// 2014 races also tell their size in a trait; the typed fact says it.
+		if len(sizes) > 0 {
+			parts = slices.DeleteFunc(parts, func(p NameDesc) bool { return p.Name == "Size" && p.Type == "" })
+		}
+		d := link
+		d.Desc, d.Parts = joinNonEmpty("\n\n", desc, cmp.Or(fluff[strings.ToLower(name+"|"+r.Source)], fluff[fluffKey])), append(typed, parts...)
 		p.add(KindSpecies, name, d, joinText(d.Desc, partsText(d.Parts)))
 	}
 	recs, err := p.records("races.json", "race")
 	if err != nil {
 		return err
+	}
+	subs, err := p.records("races.json", "subrace")
+	if err != nil {
+		return err
+	}
+	// The races of other books our subraces build on come bundled; a race
+	// reprinted in 2024 is named "Elf (2014)" beside the reprint.
+	used := map[string]bool{}
+	for _, rec := range subs {
+		if s, err := ftDecode[ftRace](rec); err == nil && s.Name != "" {
+			used[strings.ToLower(s.RaceName+"|"+s.RaceSource)] = true
+		}
+	}
+	names := map[string]string{} // race key → species name
+	bundled, err := ftCopyTargets(p.files, "races.json", "race")
+	if err != nil {
+		return err
+	}
+	for _, rec := range bundled {
+		r, err := ftDecode[ftRace](rec)
+		if err != nil || !used[r.key()] {
+			continue
+		}
+		races[r.key()] = r
+		names[r.key()] = r.Name
+		if ftReprintedSameName(r.Name, r.ReprintedAs) {
+			names[r.key()] += " (2014)"
+		}
+		desc, parts := ftParts(r.Entries)
+		norm(r, names[r.key()], parts, desc, r.key(), TextData{})
 	}
 	// A race's versions (2024 lineages) follow it and show its fluff.
 	for _, rec := range recs {
@@ -588,30 +681,153 @@ func (p *ftBook) species() error {
 				continue
 			}
 			desc, parts := ftParts(r.Entries)
-			versionOf := ""
+			var link TextData
 			if i > 0 {
-				versionOf = base.Name
+				link.VersionOf = base.Name
 			}
-			norm(r, r.Name, parts, desc, base.key(), versionOf)
+			norm(r, r.Name, parts, desc, base.key(), link)
 		}
 	}
-	// 5etools shows a subrace as "Race (Subrace)", with the race's traits
-	// before its own; a subrace without a name is the race itself.
-	return each(p, "races.json", "subrace", func(s ftRace) {
+	// 5etools shows a subrace as "Race (Subrace)", complete: the race's
+	// traits, those the subrace overwrites replaced in place, then its own.
+	// A subrace without a name is the race itself.
+	for _, rec := range subs {
+		s, err := ftDecode[ftRace](rec)
+		if err != nil {
+			p.skipped++
+			continue
+		}
 		if s.Name == "" {
-			return
+			continue
 		}
 		parent := races[strings.ToLower(s.RaceName+"|"+s.RaceSource)]
-		pdesc, pparts := ftParts(parent.Entries)
-		desc, parts := ftParts(s.Entries)
 		if s.Size == nil {
 			s.Size = parent.Size
 		}
 		if s.Speed == nil {
 			s.Speed = parent.Speed
 		}
-		norm(s, s.RaceName+" ("+s.Name+")", append(pparts, parts...), joinNonEmpty("\n\n", pdesc, desc), parent.key(), "")
-	})
+		if !s.Overwrite.Ability {
+			s.Ability = ftMergeAbility(parent.Ability, s.Ability)
+		}
+		desc, parts := ftParts(ftOverwrite(parent.Entries, s.Entries))
+		// "Elf (High)", not "Elf (2014) (High)"; the link names the bundled base.
+		base := cmp.Or(names[parent.key()], s.RaceName)
+		norm(s, s.RaceName+" ("+strings.TrimPrefix(s.Name, "Variant; ")+")", parts, desc, parent.key(), TextData{SubraceOf: Slugify(base)})
+	}
+	return nil
+}
+
+// ftReprintedSameName reports whether a record was reprinted under its own
+// name (Elf), which would share its slug; Half-Elf became Khoravar.
+func ftReprintedSameName(name string, raw json.RawMessage) bool {
+	var uids []json.RawMessage
+	_ = json.Unmarshal(raw, &uids)
+	for _, u := range uids {
+		var s string
+		var o struct {
+			UID string `json:"uid"`
+		}
+		if json.Unmarshal(u, &s) != nil && json.Unmarshal(u, &o) == nil {
+			s = o.UID
+		}
+		if before, _, _ := strings.Cut(s, "|"); strings.EqualFold(before, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// ftOverwrite is a race's entries with a subrace's: an entry whose
+// data.overwrite names one of the race's takes its place, the rest follow.
+func ftOverwrite(race, sub []json.RawMessage) []json.RawMessage {
+	out := slices.Clone(race)
+	for _, e := range sub {
+		var o struct {
+			Data struct {
+				Overwrite string `json:"overwrite"`
+			} `json:"data"`
+		}
+		_ = json.Unmarshal(e, &o)
+		i := -1
+		if o.Data.Overwrite != "" {
+			i = slices.IndexFunc(out, func(r json.RawMessage) bool {
+				var n ftNamed
+				return json.Unmarshal(r, &n) == nil && n.Name == o.Data.Overwrite
+			})
+		}
+		if i >= 0 {
+			out[i] = e
+		} else {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// ftMergeAbility adds a subrace's fixed increases to each of its race's
+// options (Elf's Dexterity +2 and High Elf's Intelligence +1).
+func ftMergeAbility(race, sub []map[string]json.RawMessage) []map[string]json.RawMessage {
+	if len(race) == 0 || len(sub) == 0 {
+		return append(slices.Clone(race), sub...)
+	}
+	out := make([]map[string]json.RawMessage, len(race))
+	for i, r := range race {
+		out[i] = maps.Clone(r)
+		maps.Copy(out[i], sub[0])
+	}
+	return out
+}
+
+// ftRaceAbility is a 2014 race's ability field as display text: fixed
+// increases and choices, the options joined by "or"; "" if it has none.
+func ftRaceAbility(opts []map[string]json.RawMessage) string {
+	names := func(from []string) string {
+		if len(from) == 0 || len(from) == len(ftAbilityNames) {
+			return "any ability"
+		}
+		out := make([]string, len(from))
+		for i, k := range from {
+			out[i] = cmp.Or(ftAbilityNames[k], k)
+		}
+		return strings.Join(out, ", ")
+	}
+	var alts []string
+	for _, o := range opts {
+		var parts []string
+		for _, k := range []string{"str", "dex", "con", "int", "wis", "cha"} {
+			var by int
+			if json.Unmarshal(o[k], &by) == nil && by != 0 {
+				parts = append(parts, fmt.Sprintf("%s %+d", ftAbilityNames[k], by))
+			}
+		}
+		var c struct {
+			From     []string `json:"from"`
+			Count    int      `json:"count"`
+			Amount   int      `json:"amount"`
+			Weighted *struct {
+				From    []string `json:"from"`
+				Weights []int    `json:"weights"`
+			} `json:"weighted"`
+		}
+		if json.Unmarshal(o["choose"], &c) == nil {
+			switch {
+			case c.Weighted != nil && len(c.Weighted.Weights) > 0:
+				var ws []string
+				for _, w := range c.Weighted.Weights {
+					ws = append(ws, fmt.Sprintf("%+d", w))
+				}
+				parts = append(parts, fmt.Sprintf("%s to different scores among %s", strings.Join(ws, " and "), names(c.Weighted.From)))
+			case len(c.From) > 0:
+				n := cmp.Or(c.Count, 1)
+				parts = append(parts, fmt.Sprintf("%+d to %d of %s", cmp.Or(c.Amount, 1), n, names(c.From)))
+			}
+		}
+		if len(parts) > 0 {
+			alts = append(alts, strings.Join(parts, ", "))
+		}
+	}
+	return strings.Join(alts, "; or ")
 }
 
 func (p *ftBook) backgrounds() error {
@@ -948,6 +1164,21 @@ func ftRecords(files map[string][]byte, file, key string) ([]ftRec, int, error) 
 		}
 	}
 	return out, skipped, nil
+}
+
+// ftCopyTargets are the records of another book a file carries for one list.
+func ftCopyTargets(files map[string][]byte, file, key string) ([]ftRec, error) {
+	body, ok := files[file]
+	if !ok {
+		return nil, nil
+	}
+	var top struct {
+		Targets map[string][]ftRec `json:"_copyTargets"`
+	}
+	if err := json.Unmarshal(body, &top); err != nil {
+		return nil, fmt.Errorf("5etools %s %s: %w", file, copyTargetsKey, err)
+	}
+	return top.Targets[key], nil
 }
 
 func ftDecode[T any](r ftRec) (T, error) {

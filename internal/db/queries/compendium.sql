@@ -347,6 +347,16 @@ SELECT id, slug, name, source_key, data_json FROM compendium_entries
 WHERE kind = 'subclass' AND id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)) AND json_extract(data_json, '$.subclass_of') = CAST(sqlc.arg(class_slug) AS TEXT)
 ORDER BY name;
 
+-- ListSubracesOf is what the wizard offers as variants of a species in
+-- campaign_id (0: all).
+-- name: ListSubracesOf :many
+SELECT e.id, e.slug, e.name, e.source_key FROM compendium_entries AS e
+WHERE e.kind = 'species' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
+  AND json_extract(e.data_json, '$.subrace_of') = CAST(sqlc.arg(species_slug) AS TEXT)
+  AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
+ORDER BY e.name;
+
 -- ListCompendiumBySlugs reads the entries a sheet links to, in one query: the
 -- copy campaign_top would pick for campaign 0, found through the (kind, slug) index
 -- instead of ranking the whole compendium on every sheet render.
@@ -364,12 +374,14 @@ WHERE e.kind = sqlc.arg(kind) AND e.slug IN (sqlc.slice(slugs))
 ORDER BY e.slug;
 
 -- ListCompendiumNames is what pickers offer: species versions are left out,
--- since picking the base and then its lineage grants more. Only entries a
--- player in campaign_id may see (0: all).
+-- since picking the base and then its lineage grants more, and so are
+-- subraces, offered as variants of their base. Only entries a player in
+-- campaign_id may see (0: all).
 -- name: ListCompendiumNames :many
 SELECT e.id, e.kind, e.slug, e.name FROM compendium_entries AS e
 WHERE e.kind = sqlc.arg(kind) AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND json_extract(e.data_json, '$.version_of') IS NULL
+  AND json_extract(e.data_json, '$.subrace_of') IS NULL
   AND (e.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
 ORDER BY e.name;

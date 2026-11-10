@@ -832,6 +832,7 @@ const listCompendiumNames = `-- name: ListCompendiumNames :many
 SELECT e.id, e.kind, e.slug, e.name FROM compendium_entries AS e
 WHERE e.kind = ?1 AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?2 AS INTEGER))
   AND json_extract(e.data_json, '$.version_of') IS NULL
+  AND json_extract(e.data_json, '$.subrace_of') IS NULL
   AND (e.scoped = 0 OR CAST(?2 AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?2 AS INTEGER)))
 ORDER BY e.name
@@ -850,8 +851,9 @@ type ListCompendiumNamesRow struct {
 }
 
 // ListCompendiumNames is what pickers offer: species versions are left out,
-// since picking the base and then its lineage grants more. Only entries a
-// player in campaign_id may see (0: all).
+// since picking the base and then its lineage grants more, and so are
+// subraces, offered as variants of their base. Only entries a player in
+// campaign_id may see (0: all).
 func (q *Queries) ListCompendiumNames(ctx context.Context, arg ListCompendiumNamesParams) ([]ListCompendiumNamesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listCompendiumNames, arg.Kind, arg.CampaignID)
 	if err != nil {
@@ -1694,6 +1696,57 @@ func (q *Queries) ListSubclassesOf(ctx context.Context, arg ListSubclassesOfPara
 			&i.Name,
 			&i.SourceKey,
 			&i.DataJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSubracesOf = `-- name: ListSubracesOf :many
+SELECT e.id, e.slug, e.name, e.source_key FROM compendium_entries AS e
+WHERE e.kind = 'species' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
+  AND json_extract(e.data_json, '$.subrace_of') = CAST(?2 AS TEXT)
+  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
+       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
+ORDER BY e.name
+`
+
+type ListSubracesOfParams struct {
+	CampaignID  int64
+	SpeciesSlug string
+}
+
+type ListSubracesOfRow struct {
+	ID        int64
+	Slug      string
+	Name      string
+	SourceKey string
+}
+
+// ListSubracesOf is what the wizard offers as variants of a species in
+// campaign_id (0: all).
+func (q *Queries) ListSubracesOf(ctx context.Context, arg ListSubracesOfParams) ([]ListSubracesOfRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSubracesOf, arg.CampaignID, arg.SpeciesSlug)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSubracesOfRow{}
+	for rows.Next() {
+		var i ListSubracesOfRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.SourceKey,
 		); err != nil {
 			return nil, err
 		}

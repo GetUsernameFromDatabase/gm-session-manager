@@ -236,6 +236,9 @@ type TextData struct {
 	// VersionOf names the species a version (a lineage filled in) copies;
 	// pickers offer only the base, whose lineage choice grants more.
 	VersionOf string `json:"version_of,omitempty"`
+	// SubraceOf is the slug of the species a subrace (a complete entry of
+	// its own) belongs to; the wizard offers it as a variant of that base.
+	SubraceOf string `json:"subrace_of,omitempty"`
 }
 
 // dataFor returns an empty Data value of the right type for kind.
