@@ -10,6 +10,7 @@ import { Step } from "/assets/vendor/pm-transform.js";
 import { KEEP_IMAGES, KeepImages, LINK_PATHS, WikiLink, keepCaretBeside, linkClick, mentionActions, mentionMenu, pickFile, showMenu, touchDrag } from "/assets/js/wikilink.js";
 
 const SNAPSHOT_EVERY_MS = 10000;
+const SETTLE_MS = 300; // after compositionend, before a peer's steps may redraw the text
 const editors = new Map(); // block id -> BlockEditor
 
 function randomID() {
@@ -87,6 +88,12 @@ class BlockEditor {
       onUpdate: () => this.send(),
       onSelectionUpdate: keepCaretBeside,
     });
+    this.settled = 0;
+    this.waiting = false;
+    this.editor.view.dom.addEventListener("compositionend", () => {
+      this.settled = performance.now() + SETTLE_MS;
+      if (this.waiting) this.hold();
+    });
     this.lastSnapshot = data.docVersion;
     this.receive({ version: data.docVersion, steps: data.steps, clientIDs: data.clientIDs });
     if (unsent?.length) this.replay(unsent);
@@ -118,21 +125,27 @@ class BlockEditor {
   // applied and fetching any gap first.
   receive(p) {
     if (!this.editor || !p.steps) return;
-    // Changing the DOM under an IME composition (phone keyboards compose whole words) duplicates text; apply after it.
-    if (this.editor.view.composing) return this.retryLater();
     const have = this.version();
-    if (p.version > have) {
-      this.catchUp();
-      return;
-    }
+    // A gap ahead means a peer's steps, which wait out a composition anyway.
+    if (p.version > have) return this.composing() ? this.hold() : this.catchUp();
     const skip = have - p.version;
     const steps = p.steps.slice(skip);
     if (!steps.length) return;
+    const clientIDs = p.clientIDs.slice(skip);
+    // A peer's steps change the DOM, which under an IME composition (phone keyboards compose whole words)
+    // duplicates text: hold them until it has settled. Confirmations of our own steps leave the doc alone.
+    const peer = this.composing() ? clientIDs.findIndex((id) => String(id) !== this.clientID) : -1;
+    this.waiting = peer >= 0;
+    if (this.waiting) {
+      this.hold();
+      steps.length = clientIDs.length = peer;
+      if (!peer) return;
+    }
     const schema = this.editor.schema;
     const tr = receiveTransaction(
       this.editor.state,
       steps.map((s) => Step.fromJSON(schema, s)),
-      p.clientIDs.slice(skip),
+      clientIDs,
     );
     this.editor.view.dispatch(tr);
     this.send();
@@ -140,20 +153,31 @@ class BlockEditor {
 
   async catchUp() {
     if (!this.editor) return;
-    if (this.editor.view.composing) return this.retryLater();
-    const res = await fetch(`/blocks/${this.id}/steps?since=${this.version()}`);
-    if (res.status === 410) return this.start(); // trimmed behind a snapshot
-    if (res.ok) this.receive(await res.json());
+    const res = await fetch(`/blocks/${this.id}/steps?since=${this.version()}`).catch(() => null);
+    if (res?.status === 410) return this.start(); // trimmed behind a snapshot
+    if (res?.ok) return this.receive(await res.json());
+    // While held, sending waits on this fetch: keep trying.
+    if (this.waiting) this.retry = setTimeout(() => this.catchUp(), 2000);
   }
 
-  // retryLater catches up shortly, once an IME composition has ended.
-  retryLater() {
+  // composing is true during an IME composition and briefly after it, while
+  // ProseMirror still reads the composed text from the DOM.
+  composing() {
+    return this.editor.view.composing || performance.now() < this.settled;
+  }
+
+  // hold catches up once an IME composition has settled; compositionend
+  // calls it again, so a long composition is checked only now and then.
+  // Until then send() waits: the server would refuse steps this far behind.
+  hold() {
+    this.waiting = true;
     clearTimeout(this.retry);
-    this.retry = setTimeout(() => this.catchUp(), 100);
+    const wait = this.editor.view.composing ? 1000 : this.settled - performance.now();
+    this.retry = setTimeout(() => this.catchUp(), Math.max(wait, 0));
   }
 
   async send() {
-    if (this.destroyed || this.inflight || !this.editor || !this.editor.isEditable) return;
+    if (this.destroyed || this.inflight || this.waiting || !this.editor || !this.editor.isEditable) return;
     const s = sendableSteps(this.editor.state);
     if (!s) return;
     this.inflight = true;
@@ -172,6 +196,8 @@ class BlockEditor {
         // Confirmation normally arrives over the websocket; fetch it too in
         // case the socket is down.
         await this.catchUp();
+        // Edits made while this POST was out: a confirmation that arrived meanwhile could not send them.
+        this.send();
       } else if (res.status !== 403 && res.status !== 404) {
         // Not after 403/404 (gone or no longer editable): the refetch that follows redraws the block.
         setTimeout(() => this.send(), 2000);
