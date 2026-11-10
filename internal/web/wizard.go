@@ -235,7 +235,9 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 		return v, err
 	}
 	for _, n := range names {
-		v.Options = append(v.Options, views.Option{Slug: n.Slug, Name: n.Name})
+		if n.SubraceOf == "" { // subraces are the variant select's
+			v.Options = append(v.Options, views.Option{Slug: n.Slug, Name: n.Name})
+		}
 	}
 	if pick == "" {
 		return v, nil

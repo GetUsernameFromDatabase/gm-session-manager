@@ -829,10 +829,10 @@ func (q *Queries) ListCompendiumKeysBySource(ctx context.Context, sourceKey stri
 }
 
 const listCompendiumNames = `-- name: ListCompendiumNames :many
-SELECT e.id, e.kind, e.slug, e.name FROM compendium_entries AS e
+SELECT e.id, e.kind, e.slug, e.name, CAST(COALESCE(json_extract(e.data_json, '$.subrace_of'), '') AS TEXT) AS subrace_of
+FROM compendium_entries AS e
 WHERE e.kind = ?1 AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?2 AS INTEGER))
   AND json_extract(e.data_json, '$.version_of') IS NULL
-  AND json_extract(e.data_json, '$.subrace_of') IS NULL
   AND (e.scoped = 0 OR CAST(?2 AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?2 AS INTEGER)))
 ORDER BY e.name
@@ -844,16 +844,17 @@ type ListCompendiumNamesParams struct {
 }
 
 type ListCompendiumNamesRow struct {
-	ID   int64
-	Kind string
-	Slug string
-	Name string
+	ID        int64
+	Kind      string
+	Slug      string
+	Name      string
+	SubraceOf string
 }
 
 // ListCompendiumNames is what pickers offer: species versions are left out,
-// since picking the base and then its lineage grants more, and so are
-// subraces, offered as variants of their base. Only entries a player in
-// campaign_id may see (0: all).
+// since picking the base and then its lineage grants more. subrace_of names
+// a subrace's base: the wizard offers those as variants, free-text pickers
+// suggest them. Only entries a player in campaign_id may see (0: all).
 func (q *Queries) ListCompendiumNames(ctx context.Context, arg ListCompendiumNamesParams) ([]ListCompendiumNamesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listCompendiumNames, arg.Kind, arg.CampaignID)
 	if err != nil {
@@ -868,6 +869,7 @@ func (q *Queries) ListCompendiumNames(ctx context.Context, arg ListCompendiumNam
 			&i.Kind,
 			&i.Slug,
 			&i.Name,
+			&i.SubraceOf,
 		); err != nil {
 			return nil, err
 		}

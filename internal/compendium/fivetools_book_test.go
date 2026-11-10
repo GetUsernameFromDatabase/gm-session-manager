@@ -62,6 +62,29 @@ func TestFiveToolsMagicVariants(t *testing.T) {
 	}
 }
 
+// TestFiveToolsRequires: what a variant applies to reads as words, never
+// as 5etools codes or sources.
+func TestFiveToolsRequires(t *testing.T) {
+	for _, tt := range []struct{ json, want string }{
+		{`[{"weapon":true}]`, "weapon"},
+		{`[{"type":"LA|XPHB"},{"type":"MA|XPHB"},{"type":"HA|XPHB"}]`, "light armor, medium armor, heavy armor"},
+		{`[{"type":"A"},{"type":"AF|DMG"},{"type":"A|XPHB"}]`, "ammunition"},
+		{`[{"name":"Glaive","source":"XPHB"},{"name":"Longsword","source":"XPHB"}]`, "Glaive, Longsword"},
+		{`[{"type":"SCF","scfType":"arcane"},{"type":"SCF|XPHB","scfType":"arcane"}]`, "arcane focus"},
+		{`[{"weaponCategory":"simple"},{"weaponCategory":"martial"}]`, "simple weapon, martial weapon"},
+		{`[{"type":"S|XPHB"}]`, "shield"},
+		{`[]`, ""},
+	} {
+		var reqs []map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(tt.json), &reqs); err != nil {
+			t.Fatal(err)
+		}
+		if got := ftRequires(reqs); got != tt.want {
+			t.Errorf("%s: %q, want %q", tt.json, got, tt.want)
+		}
+	}
+}
+
 // fiveToolsFixture sits below its own folder so the web tests' import of
 // testdata does not pick it up.
 const fiveToolsFixture = "testdata/fivetools/5etools-xphb"
@@ -105,16 +128,17 @@ func TestImportFiveToolsBook(t *testing.T) {
 	if got := habitats(); !reflect.DeepEqual(got, []string{"Planar"}) {
 		t.Errorf("cat habitats after re-import %v", got)
 	}
-	// Pickers offer base species, never versions or subraces.
+	// Pickers offer species and subraces (marked with their base), never versions.
 	names, err := store.ListCompendiumNames(t.Context(), sqlc.ListCompendiumNamesParams{Kind: string(KindSpecies)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var slugs []string
 	for _, n := range names {
-		slugs = append(slugs, n.Slug)
+		slugs = append(slugs, strings.TrimSuffix(n.Slug+"<"+n.SubraceOf, "<"))
 	}
-	if want := []string{"dragonborn", "elf", "elf-2014", "half-elf"}; !reflect.DeepEqual(slugs, want) {
+	if want := []string{"dragonborn", "elf", "elf-2014", "elf-drow<elf", "elf-high<elf-2014", "half-elf",
+		"half-elf-aquatic-elf-descent<half-elf", "half-elf-drow-descent<half-elf"}; !reflect.DeepEqual(slugs, want) {
 		t.Errorf("species picks %v, want %v", slugs, want)
 	}
 }

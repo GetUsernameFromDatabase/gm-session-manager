@@ -359,6 +359,45 @@ type ftItem struct {
 	Mastery        []json.RawMessage `json:"mastery"` // "Vex|XPHB" or {"uid": "Vex|XPHB", "note": …}
 }
 
+// ftArmorWeights names the armor type codes a variant may require.
+var ftArmorWeights = map[string]string{"LA": "light armor", "MA": "medium armor", "HA": "heavy armor"}
+
+// ftRequires is what a magic variant applies to, in words: each requirement
+// ({"type":"HA|XPHB"}, {"name":"Longsword","source":"XPHB"}, {"weapon":true},
+// {"scfType":"arcane"}, {"weaponCategory":"simple"}) once, in order.
+func ftRequires(reqs []map[string]json.RawMessage) string {
+	var out []string
+	for _, req := range reqs {
+		str := func(k string) string {
+			var s string
+			_ = json.Unmarshal(req[k], &s)
+			return s
+		}
+		code, _, _ := strings.Cut(str("type"), "|")
+		var w string
+		switch {
+		case str("name") != "":
+			w = str("name")
+		case str("scfType") != "":
+			w = str("scfType") + " focus"
+		case str("weaponCategory") != "":
+			w = str("weaponCategory") + " weapon"
+		case code != "":
+			w = cmp.Or(ftArmorWeights[code], strings.ReplaceAll(ftItemTypes[code], "-", " "))
+		default:
+			for _, k := range slices.Sorted(maps.Keys(req)) {
+				if string(req[k]) == "true" {
+					w = k // weapon, sword, armor
+				}
+			}
+		}
+		if w != "" && !slices.Contains(out, w) {
+			out = append(out, w)
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
 // ftItemTypes maps 5etools item type codes to our categories (Open5e's).
 var ftItemTypes = map[string]string{
 	"M": "weapon", "R": "weapon", "LA": "armor", "MA": "armor", "HA": "armor", "S": "shield",
@@ -465,25 +504,14 @@ func (p *ftBook) magicVariants() error {
 			return string(q[1 : len(q)-1])
 		})
 		rec["entries"] = json.RawMessage(filled)
-		var applies []string
-		for _, req := range v.Requires {
-			for _, k := range slices.Sorted(maps.Keys(req)) {
-				var s string
-				if string(req[k]) == "true" {
-					applies = append(applies, k)
-				} else if json.Unmarshal(req[k], &s) == nil && s != "" {
-					applies = append(applies, s)
-				}
-			}
-		}
 		it, err := ftDecode[ftItem](rec)
 		if err != nil {
 			p.skipped++
 			return
 		}
 		d := ftItemData(it)
-		if len(applies) > 0 {
-			d.Desc = joinNonEmpty("\n\n", "Applies to: "+strings.Join(applies, ", "), d.Desc)
+		if applies := ftRequires(v.Requires); applies != "" {
+			d.Desc = joinNonEmpty("\n\n", "Applies to: "+applies, d.Desc)
 		}
 		p.add(KindItem, v.Name, d, joinText(d.Category, d.Rarity, d.Desc))
 	})
