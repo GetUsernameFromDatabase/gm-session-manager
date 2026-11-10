@@ -1202,8 +1202,11 @@ type EntryView struct {
 	Source  sqlc.CompendiumSource
 	Data    any
 	IsGM    bool
-	// Habitats are a monster's, typed in by the GM.
+	// Habitats are a monster's, seeded from its source and edited by the GM.
 	Habitats []string
+	// HabitatCopies are the copies the GM may take habitats from while the
+	// monster has none.
+	HabitatCopies []HabitatCopy
 	// Copies are the entry's other sources the viewer may see.
 	Copies []sqlc.ListEntryCopiesRow
 	// Back links to the compendium list the entry was opened from, filters
@@ -1239,7 +1242,7 @@ templ EntryPage(l Layout, v EntryView) {
 			<article class="statblock min-w-0">
 				@entryHead(v.Entry, false)
 				@entryBody(v.Data)
-				@monsterHabitats(v.Entry, v.Habitats, v.IsGM)
+				@MonsterHabitats(v.Entry, v.Habitats, v.IsGM, v.HabitatCopies)
 			</article>
 			if !pictured && v.IsGM && v.Entry.Kind == string(compendium.KindMonster) {
 				<div class="mt-4">
@@ -1340,20 +1343,43 @@ templ EntryPreview(e sqlc.CompendiumEntry, data any, habitats []string) {
 	<div class="statblock min-h-0 flex-1 overflow-y-auto rounded-none border-0 pt-2 text-sm sm:p-4 sm:pt-2">
 		@monsterPicture(e, false, "max-h-48")
 		@entryBody(data)
-		@monsterHabitats(e, habitats, false)
+		@MonsterHabitats(e, habitats, false, nil)
 	</div>
 }
 
-// monsterHabitats lists a monster's habitats; the GM gets a link to the grid.
-templ monsterHabitats(e sqlc.CompendiumEntry, habitats []string, gm bool) {
+// HabitatCopy is another source's copy of a monster and its habitats.
+type HabitatCopy struct {
+	Copy     sqlc.ListEntryCopiesRow
+	Habitats []string
+}
+
+// MonsterHabitats is a monster's habitat line; for the GM, while it has none,
+// a button per copy that has some takes them over (redrawing this line).
+templ MonsterHabitats(e sqlc.CompendiumEntry, habitats []string, gm bool, copies []HabitatCopy) {
 	if e.Kind == string(compendium.KindMonster) && (len(habitats) > 0 || gm) {
-		@rule()
-		<p>
-			<strong>Habitat</strong> { utils.IfElse(len(habitats) > 0, inHabitatOrder(habitats), "none set") }
-			if gm {
-				<a class="ml-2 font-sans text-xs text-muted-foreground underline underline-offset-4" href={ habitatsURL(ctx, e.Name) }>Edit habitats</a>
+		<div id="monster-habitats">
+			@rule()
+			<p>
+				<strong>Habitat</strong> { utils.IfElse(len(habitats) > 0, inHabitatOrder(habitats), "none set") }
+				if gm {
+					<a class="ml-2 font-sans text-xs text-muted-foreground underline underline-offset-4" href={ habitatsURL(ctx, e.Name) }>Edit habitats</a>
+				}
+			</p>
+			if gm && len(habitats) == 0 && len(copies) > 0 {
+				<div class="mt-1 flex flex-wrap gap-1 font-sans">
+					for _, c := range copies {
+						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "h-auto min-w-0 py-1 text-left whitespace-normal", Attributes: templ.Attributes{
+							"type": "button", "hx-post": "/compendium/habitats/copy",
+							"hx-vals":   toJSON(map[string]any{"entry_id": e.ID, "from_id": c.Copy.ID}),
+							"hx-target": "#monster-habitats", "hx-swap": "outerHTML",
+						}}) {
+							@icon.Copy()
+							{ "Copy from " + copyLabel(c.Copy) + " (" + inHabitatOrder(c.Habitats) + ")" }
+						}
+					}
+				</div>
 			}
-		</p>
+		</div>
 	}
 }
 
@@ -1802,6 +1828,13 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 					@inlineField("Initiative", "initiative", fmt.Sprint(v.Input.Initiative), "w-16", templ.Attributes{"type": "number"})
 					@inlineField("CR", "cr", v.Input.CR, "w-16", nil)
 				</div>
+				// A link import's habitats, set on save; edit them on the Habitats page after.
+				if len(v.Input.Habitats) > 0 {
+					<p class="text-muted-foreground">Habitat: { inHabitatOrder(v.Input.Habitats) }</p>
+					for _, h := range v.Input.Habitats {
+						<input type="hidden" name="habitats" value={ h }/>
+					}
+				}
 				// Laid out like the stat block's ability row.
 				<div class="grid max-w-md grid-cols-6 gap-2">
 					for _, a := range []struct {

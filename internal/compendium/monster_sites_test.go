@@ -64,7 +64,7 @@ func TestParseFiveTools(t *testing.T) {
  "action":[{"name":"Rending Bite","entries":["{@atk mw} {@hit 6} to hit, reach 5 ft. {@h}13 ({@damage 2d8 + 4}) piercing damage."]},
   {"name":"Howl {@recharge 4}","entries":["{@actSave wis} {@dc 16}.",{"type":"list","items":["One.","Two."]}]}],
  "legendary":[{"name":"Lunge","entries":["Moves."]}],
- "hasFluffImages":true},
+ "hasFluffImages":true,"environment":["planar, abyss"]},
 {"name":"Copycat","source":"MTF","_copy":{"name":"Howler","source":"MTF"}}
 ]}`)
 	book, image, e, err := ParseFiveTools(file, "howler")
@@ -93,6 +93,9 @@ func TestParseFiveTools(t *testing.T) {
 	}
 	if image != fiveToolsImages+"MTF/Howler.webp" {
 		t.Errorf("image %q", image)
+	}
+	if in := InputForEntry(e); !reflect.DeepEqual(in.Habitats, []string{"Planar"}) {
+		t.Errorf("form habitats %v", in.Habitats)
 	}
 	for _, slug := range []string{"copycat", "nobody"} {
 		if _, _, _, err := ParseFiveTools(file, slug); err == nil {

@@ -355,6 +355,130 @@ func TestMonsterHabitats(t *testing.T) {
 	}
 }
 
+// TestHabitatCopies: a monster with no habitats takes those of its copy in
+// another source, in bulk from the grid or one by one from its page; one with
+// habitats keeps its own. A link import's habitats seed the new homebrew.
+func TestHabitatCopies(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
+		t.Fatal(err)
+	}
+	gm := e.token(t, auth.RoleAdmin)
+	player := e.token(t, auth.RolePlayer)
+	srd, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
+	// A lower-ranked copy, made first so that ordering by id alone would pick it.
+	if err := e.q().UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: "old-book", Edition: "2014"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "goblin-warrior", Name: "Goblin Warrior", SourceKey: "old-book", DataJson: "{}", ContentHash: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	old, err := e.q().ListEntryCopies(ctx, sqlc.ListEntryCopiesParams{Kind: "monster", Slug: "goblin-warrior"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range old {
+		if c.SourceKey == "old-book" {
+			if _, err := e.q().AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: c.ID, Habitat: "Arctic"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	brew, err := e.q().CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: "monster", Slug: "goblin-warrior", Name: "Goblin Warrior", DataJson: "{}", ContentHash: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	giant, err := e.q().CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: "monster", Slug: "hill-giant", Name: "Hill Giant", DataJson: "{}", ContentHash: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.q().AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: brew.ID, Habitat: "Swamp"}); err != nil {
+		t.Fatal(err)
+	}
+	habitats := func(id int64) string {
+		h, _ := e.q().ListEntryHabitats(ctx, id)
+		slices.Sort(h)
+		return strings.Join(h, ",")
+	}
+	fill := func(q string) url.Values { return url.Values{"q": {q}} }
+	copyForm := func(to, from int64) url.Values {
+		return url.Values{"entry_id": {fmt.Sprint(to)}, "from_id": {fmt.Sprint(from)}}
+	}
+	clearSwamp := func(id int64) {
+		if err := e.q().RemoveMonsterHabitat(ctx, sqlc.RemoveMonsterHabitatParams{EntryID: id, Habitat: "Swamp"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cases := []struct {
+		name   string
+		cookie string
+		path   string
+		form   url.Values
+		ok     bool
+		srd    string // habitats afterwards
+		giant  string
+	}{
+		{"player fill refused", player, "/compendium/habitats/fill", fill(""), false, "", ""},
+		{"fill outside the filter", gm, "/compendium/habitats/fill", fill("giant"), true, "", ""},
+		{"fill takes the copy's", gm, "/compendium/habitats/fill", fill("goblin"), true, "Swamp", ""},
+		{"fill again changes nothing", gm, "/compendium/habitats/fill", fill(""), true, "Swamp", ""},
+		{"player copy refused", player, "/compendium/habitats/copy", copyForm(giant.ID, brew.ID), false, "Swamp", ""},
+		{"copy from any monster", gm, "/compendium/habitats/copy", copyForm(giant.ID, brew.ID), true, "Swamp", "Swamp"},
+		{"copy needs both ids", gm, "/compendium/habitats/copy", url.Values{"entry_id": {fmt.Sprint(srd.ID)}}, false, "Swamp", "Swamp"},
+	}
+	for _, c := range cases {
+		w := e.do(t, http.MethodPost, c.path, c.cookie, c.form, true)
+		if ok := w.Code == http.StatusOK; ok != c.ok {
+			t.Errorf("%s: status %d", c.name, w.Code)
+		}
+		if got := habitats(srd.ID); got != c.srd {
+			t.Errorf("%s: srd %q, want %q", c.name, got, c.srd)
+		}
+		if got := habitats(giant.ID); got != c.giant {
+			t.Errorf("%s: giant %q, want %q", c.name, got, c.giant)
+		}
+	}
+
+	// A copy onto a monster that has habitats changes nothing.
+	if _, err := e.q().AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: brew.ID, Habitat: "Hill"}); err != nil {
+		t.Fatal(err)
+	}
+	e.do(t, http.MethodPost, "/compendium/habitats/copy", gm, copyForm(srd.ID, brew.ID), true)
+	if got := habitats(srd.ID); got != "Swamp" {
+		t.Errorf("copy over habitats: srd %q", got)
+	}
+
+	// The page offers the copy to the GM only, while the monster has none.
+	clearSwamp(srd.ID)
+	page := fmt.Sprintf("/campaigns/%d/compendium/entries/%d", e.campaignID, srd.ID)
+	if body := e.do(t, http.MethodGet, page, gm, nil, false).Body.String(); !strings.Contains(body, "/compendium/habitats/copy") || !strings.Contains(body, "Hill, Swamp") {
+		t.Error("gm page lacks the copy button")
+	}
+	if body := e.do(t, http.MethodGet, page, player, nil, false).Body.String(); strings.Contains(body, "/compendium/habitats/copy") {
+		t.Error("player page has the copy button")
+	}
+
+	// A new homebrew monster takes the habitats its form carries.
+	form := url.Values{"kind": {"monster"}, "name": {"Howler"}, "habitats": {"Planar", "Urban"}}
+	if w := e.do(t, http.MethodPost, "/compendium/homebrew", gm, form, false); w.Code != http.StatusSeeOther {
+		t.Fatalf("homebrew create: status %d", w.Code)
+	}
+	howler, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "howler"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := habitats(howler.ID); got != "Planar,Urban" {
+		t.Errorf("homebrew habitats %q", got)
+	}
+	form.Set("name", "Moonling")
+	form["habitats"] = []string{"Moon"}
+	if w := e.do(t, http.MethodPost, "/compendium/homebrew", gm, form, false); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("unknown habitat: status %d", w.Code)
+	}
+}
+
 func TestCompendiumHabitatFilter(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
@@ -452,5 +576,8 @@ func TestHabitatsMatchSchema(t *testing.T) {
 		if !strings.Contains(f.Tag.Get("validate"), want) {
 			t.Errorf("%T: validate %q, want %s", form, f.Tag.Get("validate"), want)
 		}
+	}
+	if f, _ := reflect.TypeOf(compendium.HomebrewInput{}).FieldByName("Habitats"); !strings.Contains(f.Tag.Get("validate"), want) {
+		t.Errorf("HomebrewInput: validate %q, want %s", f.Tag.Get("validate"), want)
 	}
 }

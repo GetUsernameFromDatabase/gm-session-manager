@@ -117,6 +117,7 @@ type ftMonster struct {
 	HasFluffImages  bool                       `json:"hasFluffImages"`
 	HasToken        bool                       `json:"hasToken"`
 	Initiative      json.RawMessage            `json:"initiative"`
+	Environment     []string                   `json:"environment"`
 }
 
 // crProficiency is a creature's proficiency bonus by challenge rating;
@@ -176,7 +177,7 @@ func ParseFiveTools(body []byte, slug string) (book, image string, e Entry, err 
 	if m.Page > 0 {
 		book += fmt.Sprintf(" p. %d", m.Page)
 	}
-	return book, m.image(), Entry{Kind: KindMonster, Slug: slug, Name: m.Name, Data: d, Text: plainText(d.searchText())}, nil
+	return book, m.image(), Entry{Kind: KindMonster, Slug: slug, Name: m.Name, Data: d, Text: plainText(d.searchText()), Habitats: habitatsFrom(m.Environment)}, nil
 }
 
 // image is the monster's picture link, or "" when 5etools has none.

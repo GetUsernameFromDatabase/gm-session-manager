@@ -427,6 +427,31 @@ ON CONFLICT DO UPDATE SET habitat = excluded.habitat;
 DELETE FROM monster_habitats
 WHERE entry_id = ? AND habitat = ?;
 
+-- SeedMonsterHabitats gives a monster habitats (a JSON array) only when it
+-- has none, so the GM's own choices always win over a source's.
+-- name: SeedMonsterHabitats :exec
+INSERT INTO monster_habitats (entry_id, habitat)
+SELECT e.id, j.value FROM compendium_entries AS e, json_each(CAST(sqlc.arg(habitats) AS TEXT)) AS j
+WHERE e.id = sqlc.arg(entry_id) AND e.kind = 'monster'
+  AND NOT EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id)
+ON CONFLICT DO NOTHING;
+
+-- FillHabitatsFromCopies gives every monster whose name contains filter and
+-- that has no habitats those of its best copy (ListEntryCopies' order) that has some.
+-- name: FillHabitatsFromCopies :execrows
+INSERT INTO monster_habitats (entry_id, habitat)
+SELECT e.id, h.habitat FROM compendium_entries AS e
+JOIN monster_habitats AS h ON h.entry_id = (
+    SELECT o.id FROM compendium_entries AS o
+    JOIN compendium_sources AS s ON s.source_key = o.source_key
+    WHERE o.kind = e.kind AND o.slug = e.slug AND o.id <> e.id
+      AND EXISTS (SELECT 1 FROM monster_habitats AS x WHERE x.entry_id = o.id)
+    ORDER BY o.scoped, s.priority, s.published DESC, o.id
+    LIMIT 1)
+WHERE e.kind = 'monster' AND instr(lower(e.name), lower(CAST(sqlc.arg(filter) AS TEXT))) > 0
+  AND NOT EXISTS (SELECT 1 FROM monster_habitats AS y WHERE y.entry_id = e.id)
+ON CONFLICT DO NOTHING;
+
 -- name: AddHabitatByName :execrows
 INSERT INTO monster_habitats (entry_id, habitat)
 SELECT id, CAST(sqlc.arg(habitat) AS TEXT) FROM compendium_entries

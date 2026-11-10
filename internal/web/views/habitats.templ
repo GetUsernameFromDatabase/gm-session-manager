@@ -39,7 +39,7 @@ templ HabitatsPage(l Layout, v HabitatView) {
 		@PageHeader("Monster habitats", "A click saves. Filter by name, then use + or − under a habitat to change every monster that matches.")
 		<form
 			method="get"
-			class="mb-4"
+			class="mb-4 flex flex-wrap items-center gap-2"
 			hx-get={ CompendiumPath(ctx, "/habitats") }
 			hx-trigger="submit, input[target.id==='habitat-q'] delay:200ms"
 			hx-target={ "#" + HabitatGridID }
@@ -51,6 +51,15 @@ templ HabitatsPage(l Layout, v HabitatView) {
 					@icon.Search()
 				}
 				@inputgroup.Input(inputgroup.InputProps{ID: "habitat-q", Name: "q", Type: "search", Value: v.Filter, Placeholder: "Filter monsters by name (e.g. hill, dragon)…", Attributes: templ.Attributes{"autocomplete": "off", "aria-label": "Filter monsters by name"}})
+			}
+			// Monsters with no habitats take those of the same monster in another source.
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{
+				"type": "button", "title": "Every matching monster with no habitats takes those of its copy in another source",
+				"hx-post": "/compendium/habitats/fill", "hx-include": "#habitat-q",
+				"hx-target": "#" + HabitatGridID, "hx-swap": "outerHTML", "hx-push-url": "false",
+			}}) {
+				@icon.Copy()
+				Fill empty from copies
 			}
 		</form>
 		@HabitatGrid(v)

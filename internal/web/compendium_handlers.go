@@ -47,6 +47,8 @@ func (a *App) compendiumRoutes(g *gin.RouterGroup, gm gin.HandlerFunc) {
 	g.POST("/habitats/cell", gm, a.habitatCell)
 	g.POST("/habitats/any", gm, a.habitatAny)
 	g.POST("/habitats/batch", gm, a.habitatBatch)
+	g.POST("/habitats/fill", gm, a.habitatFill)
+	g.POST("/habitats/copy", gm, a.habitatCopy)
 	g.GET("/homebrew/new", a.homebrewNew)
 	g.POST("/homebrew", a.homebrewCreate)
 	g.POST("/import", gm, a.compendiumImport)
@@ -503,6 +505,18 @@ func (a *App) compendiumEntry(c *gin.Context) {
 		return
 	}
 	v := views.EntryView{Entry: e, Source: src, Data: data, IsGM: w.isGM(), Habitats: habitats, Copies: copies, CanEdit: e.IsHomebrew && perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64)}
+	if v.IsGM && e.Kind == string(compendium.KindMonster) && len(habitats) == 0 {
+		for _, cp := range copies {
+			h, err := a.Store.ListEntryHabitats(c.Request.Context(), cp.ID)
+			if err != nil {
+				a.serverError(c, err)
+				return
+			}
+			if len(h) > 0 {
+				v.HabitatCopies = append(v.HabitatCopies, views.HabitatCopy{Copy: cp, Habitats: h})
+			}
+		}
+	}
 	// Set after a page import: back to the list, page tab open for the next page.
 	if back, ok := c.GetQuery("back"); ok {
 		q, _ := url.ParseQuery(compendiumBack(back))

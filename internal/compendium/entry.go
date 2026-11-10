@@ -69,6 +69,25 @@ type Entry struct {
 	Data any
 	// Text is the plain text indexed for search.
 	Text string
+	// Habitats are a monster's source habitats; they seed monster_habitats
+	// only while it has none (SeedMonsterHabitats).
+	Habitats []string
+}
+
+// habitatsFrom maps source habitat names ("forest", "planar, feywild",
+// "any") onto Habitats, in display order; unknown names are dropped.
+func habitatsFrom(names []string) []string {
+	var out []string
+	for _, h := range Habitats {
+		for _, n := range names {
+			n, _, _ = strings.Cut(strings.TrimSpace(n), ",")
+			if strings.EqualFold(n, "any") || strings.EqualFold(n, h) {
+				out = append(out, h)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // Source describes where a set of entries came from.

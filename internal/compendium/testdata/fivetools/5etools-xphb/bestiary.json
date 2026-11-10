@@ -16,6 +16,7 @@
 			"senses": ["{@sense darkvision|XPHB} 60 ft."],
 			"passive": 13,
 			"cr": "0",
+			"environment": ["urban", "planar, feywild", "moon"],
 			"trait": [{"name": "Jumper", "entries": ["The cat's jump distance is determined using its Dexterity."]}],
 			"action": [{"name": "Scratch", "entries": ["{@atkr m} {@hit 4}, reach 5 ft. {@h}1 slashing damage. The target is {@condition grappled|XPHB} by the cat."]}],
 			"hasToken": true,

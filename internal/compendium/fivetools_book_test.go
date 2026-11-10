@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,6 +50,28 @@ func TestImportFiveToolsBook(t *testing.T) {
 	src, err := store.GetCompendiumSource(t.Context(), cat.SourceKey)
 	if err != nil || src.Edition != "2024" || src.Published != "2024-09-17" || !strings.Contains(src.Attribution, "Wizards of the Coast") {
 		t.Errorf("source %+v %v", src, err)
+	}
+	// The cat's environment seeds its habitats; a GM change survives re-import.
+	habitats := func() []string {
+		h, _ := store.ListEntryHabitats(t.Context(), cat.ID)
+		slices.Sort(h)
+		return h
+	}
+	if got := habitats(); !reflect.DeepEqual(got, []string{"Planar", "Urban"}) {
+		t.Errorf("cat habitats %v", got)
+	}
+	if err := store.RemoveMonsterHabitat(t.Context(), sqlc.RemoveMonsterHabitatParams{EntryID: cat.ID, Habitat: "Urban"}); err != nil {
+		t.Fatal(err)
+	}
+	// A changed hash forces the re-import.
+	if err := store.UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: src.SourceKey, Path: src.Path, Edition: src.Edition}); err != nil {
+		t.Fatal(err)
+	}
+	if r := importOnce(t, store, filepath.Dir(fiveToolsFixture)); r.Unchanged {
+		t.Fatal("re-import skipped")
+	}
+	if got := habitats(); !reflect.DeepEqual(got, []string{"Planar"}) {
+		t.Errorf("cat habitats after re-import %v", got)
 	}
 	// Pickers offer base species and subraces, never versions.
 	names, err := store.ListCompendiumNames(t.Context(), sqlc.ListCompendiumNamesParams{Kind: string(KindSpecies)})
@@ -105,6 +128,23 @@ func TestStripTagsTokens(t *testing.T) {
 		got := stripTags(tt.in)
 		if got != tt.want || plainText(got) != tt.plain {
 			t.Errorf("%s: %q / %q, want %q / %q", tt.in, got, plainText(got), tt.want, tt.plain)
+		}
+	}
+}
+
+func TestHabitatsFrom(t *testing.T) {
+	for _, tt := range []struct {
+		in   []string
+		want []string
+	}{
+		{nil, nil},
+		{[]string{"urban", "forest"}, []string{"Forest", "Urban"}},
+		{[]string{"planar, nine hells", "planar, feywild"}, []string{"Planar"}},
+		{[]string{"Underdark", "moon"}, []string{"Underdark"}},
+		{[]string{"any"}, Habitats},
+	} {
+		if got := habitatsFrom(tt.in); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%v: %v, want %v", tt.in, got, tt.want)
 		}
 	}
 }

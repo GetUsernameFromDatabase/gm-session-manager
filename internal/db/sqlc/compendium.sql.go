@@ -404,6 +404,31 @@ func (q *Queries) DisallowCampaignSource(ctx context.Context, arg DisallowCampai
 	return err
 }
 
+const fillHabitatsFromCopies = `-- name: FillHabitatsFromCopies :execrows
+INSERT INTO monster_habitats (entry_id, habitat)
+SELECT e.id, h.habitat FROM compendium_entries AS e
+JOIN monster_habitats AS h ON h.entry_id = (
+    SELECT o.id FROM compendium_entries AS o
+    JOIN compendium_sources AS s ON s.source_key = o.source_key
+    WHERE o.kind = e.kind AND o.slug = e.slug AND o.id <> e.id
+      AND EXISTS (SELECT 1 FROM monster_habitats AS x WHERE x.entry_id = o.id)
+    ORDER BY o.scoped, s.priority, s.published DESC, o.id
+    LIMIT 1)
+WHERE e.kind = 'monster' AND instr(lower(e.name), lower(CAST(?1 AS TEXT))) > 0
+  AND NOT EXISTS (SELECT 1 FROM monster_habitats AS y WHERE y.entry_id = e.id)
+ON CONFLICT DO NOTHING
+`
+
+// FillHabitatsFromCopies gives every monster whose name contains filter and
+// that has no habitats those of its best copy (ListEntryCopies' order) that has some.
+func (q *Queries) FillHabitatsFromCopies(ctx context.Context, filter string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, fillHabitatsFromCopies, filter)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getCompendiumEntry = `-- name: GetCompendiumEntry :one
 SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, is_homebrew, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries
 WHERE id = ?
@@ -1824,6 +1849,26 @@ func (q *Queries) SearchCompendium(ctx context.Context, arg SearchCompendiumPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const seedMonsterHabitats = `-- name: SeedMonsterHabitats :exec
+INSERT INTO monster_habitats (entry_id, habitat)
+SELECT e.id, j.value FROM compendium_entries AS e, json_each(CAST(?1 AS TEXT)) AS j
+WHERE e.id = ?2 AND e.kind = 'monster'
+  AND NOT EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id)
+ON CONFLICT DO NOTHING
+`
+
+type SeedMonsterHabitatsParams struct {
+	Habitats string
+	EntryID  int64
+}
+
+// SeedMonsterHabitats gives a monster habitats (a JSON array) only when it
+// has none, so the GM's own choices always win over a source's.
+func (q *Queries) SeedMonsterHabitats(ctx context.Context, arg SeedMonsterHabitatsParams) error {
+	_, err := q.db.ExecContext(ctx, seedMonsterHabitats, arg.Habitats, arg.EntryID)
+	return err
 }
 
 const setCompendiumImage = `-- name: SetCompendiumImage :execrows

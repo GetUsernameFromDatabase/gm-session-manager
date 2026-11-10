@@ -132,19 +132,23 @@ func bindFiveToolsImages(ctx context.Context, store *db.Store, key string, files
 func storeSource(ctx context.Context, store *db.Store, src Source, path, hash string, entries []Entry) (int, error) {
 	removed := 0
 	err := store.InTx(ctx, func(q *sqlc.Queries) error {
-		seen := map[string]bool{}
-		for _, e := range entries {
+		seen := map[string]*Entry{}
+		for i, e := range entries {
 			if err := upsert(ctx, q, src, e); err != nil {
 				return err
 			}
-			seen[string(e.Kind)+"/"+e.Slug] = true
+			seen[string(e.Kind)+"/"+e.Slug] = &entries[i]
 		}
 		existing, err := q.ListCompendiumKeysBySource(ctx, src.Key)
 		if err != nil {
 			return err
 		}
 		for _, row := range existing {
-			if !seen[row.Kind+"/"+row.Slug] {
+			if e := seen[row.Kind+"/"+row.Slug]; e != nil {
+				if err := SeedHabitats(ctx, q, row.ID, e.Habitats); err != nil {
+					return fmt.Errorf("habitats of %s: %w", e.Slug, err)
+				}
+			} else {
 				if err := q.DeleteCompendiumEntry(ctx, row.ID); err != nil {
 					return err
 				}
@@ -158,6 +162,18 @@ func storeSource(ctx context.Context, store *db.Store, src Source, path, hash st
 		})
 	})
 	return removed, err
+}
+
+// SeedHabitats gives monster id the habitats unless it already has some.
+func SeedHabitats(ctx context.Context, q *sqlc.Queries, id int64, habitats []string) error {
+	if len(habitats) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(habitats)
+	if err != nil {
+		return err
+	}
+	return q.SeedMonsterHabitats(ctx, sqlc.SeedMonsterHabitatsParams{EntryID: id, Habitats: string(b)})
 }
 
 func upsert(ctx context.Context, q *sqlc.Queries, src Source, e Entry) error {
@@ -178,7 +194,7 @@ func upsert(ctx context.Context, q *sqlc.Queries, src Source, e Entry) error {
 // normalizeVersion salts the source hash. Bump it only when the parser
 // changes (the normalized shape gains data), so unchanged source files are
 // imported again once. Edits to the files are caught by the hash itself.
-const normalizeVersion = "10"
+const normalizeVersion = "11"
 
 // readSource reads the .json files of a source directory and hashes their
 // names and contents, so re-importing unchanged files is a no-op.
@@ -276,6 +292,8 @@ type HomebrewInput struct {
 	BonusActions  string `form:"bonus_actions"     validate:"max=50000"`
 	Reactions     string `form:"reactions"         validate:"max=50000"`
 	Legendary     string `form:"legendary_actions" validate:"max=50000"`
+	// Habitats come from a link import and seed a new monster's habitats.
+	Habitats []string `form:"habitats" validate:"dive,oneof=Arctic Coastal Desert Forest Grassland Hill Mountain Planar Swamp Underdark Underwater Urban"`
 
 	School        string `form:"school"         validate:"max=50"`
 	CastingTime   string `form:"casting_time"   validate:"max=100"`
@@ -383,7 +401,9 @@ func InputForEntry(e Entry) HomebrewInput {
 	if err != nil {
 		data = e.Data
 	}
-	return HomebrewInputFor(string(e.Kind), e.Name, e.Text, data)
+	in := HomebrewInputFor(string(e.Kind), e.Name, e.Text, data)
+	in.Habitats = e.Habitats
+	return in
 }
 
 // Typed part names (NameDesc.Type) the character wizard applies.
@@ -522,9 +542,11 @@ func SaveHomebrew(ctx context.Context, q *sqlc.Queries, id int64, in HomebrewInp
 		return 0, fmt.Errorf("a homebrew %s named like %q may already exist: %w", e.Kind, e.Name, err)
 	}
 	if owner.CampaignID != 0 {
-		err = q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: row.ID, CampaignID: owner.CampaignID})
+		if err := q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: row.ID, CampaignID: owner.CampaignID}); err != nil {
+			return row.ID, err
+		}
 	}
-	return row.ID, err
+	return row.ID, SeedHabitats(ctx, q, row.ID, in.Habitats)
 }
 
 // RemoveSourceDir deletes the data folder dir/key, so the next import does

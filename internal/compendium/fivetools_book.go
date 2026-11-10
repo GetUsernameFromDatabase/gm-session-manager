@@ -107,14 +107,16 @@ func (p *ftBook) fluff(file, key string) (map[string]string, error) {
 }
 
 // add stores an entry unless its kind and slug came first; text is the
-// search body before tokens become labels.
-func (p *ftBook) add(kind Kind, name string, data any, text string) {
+// search body before tokens become labels. It returns the stored entry, or
+// nil when skipped.
+func (p *ftBook) add(kind Kind, name string, data any, text string) *Entry {
 	slug := Slugify(name)
 	if slug == "" || p.seen[string(kind)+"/"+slug] {
-		return
+		return nil
 	}
 	p.seen[string(kind)+"/"+slug] = true
 	p.out = append(p.out, Entry{Kind: kind, Slug: slug, Name: name, Data: data, Text: plainText(text)})
+	return &p.out[len(p.out)-1]
 }
 
 // each decodes every record of a list into T and calls fn.
@@ -151,7 +153,9 @@ func (p *ftBook) monsters() error {
 	return each(p, "bestiary.json", "monster", func(m ftMonster) {
 		d := m.data()
 		d.Desc = fluff[strings.ToLower(m.Name+"|"+m.Source)]
-		p.add(KindMonster, m.Name, d, joinText(d.searchText(), d.Desc))
+		if e := p.add(KindMonster, m.Name, d, joinText(d.searchText(), d.Desc)); e != nil {
+			e.Habitats = habitatsFrom(m.Environment)
+		}
 	})
 }
 
