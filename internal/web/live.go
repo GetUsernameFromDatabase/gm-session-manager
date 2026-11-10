@@ -146,6 +146,13 @@ func (a *App) liveHTML(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 		return
 	}
+	// Compendium links follow the page's campaign: the GM's names it, a
+	// player's is always their own.
+	campaign := vc.campaignID
+	if w.isGM() {
+		campaign, _ = strconv.ParseInt(c.Query("campaign"), 10, 64)
+	}
+	c.Request = c.Request.WithContext(views.WithCampaign(c.Request.Context(), campaign))
 	a.render(c, http.StatusOK, lv.html)
 }
 

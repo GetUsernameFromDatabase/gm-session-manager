@@ -104,6 +104,7 @@ func TestPagesRender(t *testing.T) {
 		t.Fatalf("next: %d %s", w.Code, w.Body)
 	}
 
+	cb := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID) // the campaign's compendium
 	pages := []struct {
 		path      string
 		gm, other bool // who may load it
@@ -119,30 +120,30 @@ func TestPagesRender(t *testing.T) {
 		{fmt.Sprintf("/campaigns/%d/entities", e.campaignID), true, true, "Mira"},
 		{fmt.Sprintf("/entities/%d", ent.ID), true, true, "Mira"},
 		{fmt.Sprintf("/campaigns/%d/switcher?q=mi", e.campaignID), true, true, "Mira"},
-		{"/compendium?q=fire", true, true, "Fire Bolt"},
-		{"/compendium", true, true, "Goblin Warrior"}, // first batch of every kind
-		{fmt.Sprintf("/compendium/entries/%d", goblin.ID), true, true, "Scimitar"},
-		{fmt.Sprintf("/compendium/entries/%d?preview=1", goblin.ID), true, true, "Scimitar"},
-		{"/compendium?kind=spell", true, true, "Fire Bolt"},
-		{"/compendium?kind=spell", true, true, ">sorcerer</span>"},                        // class badges on spell rows
-		{"/compendium", true, true, `href="/compendium?kind=spell"`},                      // kind counts link to their list
-		{"/compendium?kind=spell&q=fire", true, true, `href="/compendium?q=fire"`},        // the active kind links back to all
-		{"/compendium?kind=spell", true, true, `href="/compendium?kind=monster%2Cspell"`}, // inactive kinds join the filter
-		{"/compendium?kind=monster,spell", true, true, "Goblin Warrior"},
-		{"/compendium?kind=monster,spell", true, true, "Fire Bolt"},
-		{"/compendium?after_name=Fire+Bolt&after_id=0", true, true, "Fire Bolt"},           // cursor is (name, id): same name, later id
-		{"/compendium?after_name=Fire+Bolt&after_id=999999", true, true, "Goblin Warrior"}, // next batch after the cursor
-		{"/compendium/search?q=gob", true, true, "Goblin Warrior"},
-		{"/compendium/search?kind=monster&q=gob&encounter=1", true, true, "Goblin Warrior"},
-		{"/compendium/homebrew/new", true, true, "New homebrew"}, // players write their own spells and items
+		{cb + "?q=fire", true, true, "Fire Bolt"},
+		{cb, true, true, "Goblin Warrior"}, // first batch of every kind
+		{fmt.Sprintf("%s/entries/%d", cb, goblin.ID), true, true, "Scimitar"},
+		{fmt.Sprintf("%s/entries/%d?preview=1", cb, goblin.ID), true, true, "Scimitar"},
+		{cb + "?kind=spell", true, true, "Fire Bolt"},
+		{cb + "?kind=spell", true, true, ">sorcerer</span>"},                       // class badges on spell rows
+		{cb, true, true, `href="` + cb + `?kind=spell"`},                           // kind counts link to their list
+		{cb + "?kind=spell&q=fire", true, true, `href="` + cb + `?q=fire"`},        // the active kind links back to all
+		{cb + "?kind=spell", true, true, `href="` + cb + `?kind=monster%2Cspell"`}, // inactive kinds join the filter
+		{cb + "?kind=monster,spell", true, true, "Goblin Warrior"},
+		{cb + "?kind=monster,spell", true, true, "Fire Bolt"},
+		{cb + "?after_name=Fire+Bolt&after_id=0", true, true, "Fire Bolt"},           // cursor is (name, id): same name, later id
+		{cb + "?after_name=Fire+Bolt&after_id=999999", true, true, "Goblin Warrior"}, // next batch after the cursor
+		{cb + "/search?q=gob", true, true, "Goblin Warrior"},
+		{cb + "/search?kind=monster&q=gob&encounter=1", true, true, "Goblin Warrior"},
+		{cb + "/homebrew/new", true, true, "New homebrew"}, // players write their own spells and items
 	}
-	if w := e.do(t, http.MethodGet, "/compendium/random?kind=monster", player, nil, false); w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), "/compendium/entries/") {
+	if w := e.do(t, http.MethodGet, cb+"/random?kind=monster", player, nil, false); w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), cb+"/entries/") {
 		t.Errorf("random: %d %q", w.Code, w.Header().Get("Location"))
 	}
-	if w := e.do(t, http.MethodGet, "/compendium/random?kind=monster", player, nil, true); !strings.HasPrefix(w.Header().Get("HX-Redirect"), "/compendium/entries/") {
+	if w := e.do(t, http.MethodGet, cb+"/random?kind=monster", player, nil, true); !strings.HasPrefix(w.Header().Get("HX-Redirect"), cb+"/entries/") {
 		t.Errorf("htmx random: %d %q", w.Code, w.Header().Get("HX-Redirect"))
 	}
-	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/compendium?kind=spell", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, cb+"?kind=spell", nil)
 	req.Header.Set("HX-Request", "true")
 	req.Header.Set("HX-Target", views.CompendiumResultsID)
 	req.RemoteAddr = lanAddr
@@ -150,7 +151,7 @@ func TestPagesRender(t *testing.T) {
 	w := httptest.NewRecorder()
 	e.router.ServeHTTP(w, req)
 	if body := w.Body.String(); w.Code != http.StatusOK || !strings.Contains(body, "Fire Bolt") || strings.Contains(body, "<html") ||
-		!strings.Contains(body, `href="/compendium?kind=monster%2Cspell"`) { // badges re-rendered without a stale query
+		!strings.Contains(body, `href="`+cb+`?kind=monster%2Cspell"`) { // badges re-rendered without a stale query
 		t.Errorf("results fragment: %d %s", w.Code, body)
 	}
 	for _, p := range pages {
@@ -192,7 +193,7 @@ func TestMonsterImageLink(t *testing.T) {
 	player := e.token(t, auth.RolePlayer)
 	goblin, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
 	spell, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "spell", Slug: "fire-bolt"})
-	page := fmt.Sprintf("/compendium/entries/%d", goblin.ID)
+	page := fmt.Sprintf("/campaigns/%d/compendium/entries/%d", e.campaignID, goblin.ID)
 	if w := e.do(t, http.MethodGet, page, player, nil, false); !strings.Contains(w.Body.String(), compendium.MonsterImagePrefix+"goblin-warrior.png") {
 		t.Errorf("player page lacks the bound picture: %s", w.Body)
 	}
@@ -325,7 +326,7 @@ func TestMonsterHabitats(t *testing.T) {
 
 	// Every habitat reads as the Monster Manual's "Any".
 	e.do(t, http.MethodPost, "/compendium/habitats/any", gm, anyForm(goblin.ID), true)
-	if body := e.do(t, http.MethodGet, fmt.Sprintf("/compendium/entries/%d", goblin.ID), player, nil, false).Body.String(); !strings.Contains(body, "</strong> Any") {
+	if body := e.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d/compendium/entries/%d", e.campaignID, goblin.ID), player, nil, false).Body.String(); !strings.Contains(body, "</strong> Any") {
 		t.Error("entry page with every habitat does not read Any")
 	}
 	e.do(t, http.MethodPost, "/compendium/habitats/any", gm, anyForm(goblin.ID), true)
@@ -339,7 +340,7 @@ func TestMonsterHabitats(t *testing.T) {
 		t.Errorf("after re-import: goblin %q", got)
 	}
 
-	page := fmt.Sprintf("/compendium/entries/%d", giant.ID)
+	page := fmt.Sprintf("/campaigns/%d/compendium/entries/%d", e.campaignID, giant.ID)
 	if body := e.do(t, http.MethodGet, page, player, nil, false).Body.String(); !strings.Contains(body, "Hill, Mountain") || strings.Contains(body, "/compendium/habitats") {
 		t.Errorf("player page: want habitats, no grid link: %s", body)
 	}

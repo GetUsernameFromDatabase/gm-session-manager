@@ -2003,9 +2003,9 @@ func entityForm(v EntityView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var81 string
-			templ_7745c5c3_Var81, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", v.Compendium.ID))).ResolveURL(ctx)
+			templ_7745c5c3_Var81, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(entryHref(ctx, v.Compendium.ID))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 405, Col: 121}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 405, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 			if templ_7745c5c3_Err != nil {
@@ -2018,7 +2018,7 @@ func entityForm(v EntityView) templ.Component {
 			var templ_7745c5c3_Var82 string
 			templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(v.Compendium.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 405, Col: 143}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 405, Col: 120}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 			if templ_7745c5c3_Err != nil {

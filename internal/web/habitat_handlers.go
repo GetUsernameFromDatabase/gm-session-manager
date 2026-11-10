@@ -72,7 +72,12 @@ func (a *App) habitatsPage(c *gin.Context) {
 		a.render(c, http.StatusOK, views.HabitatGrid(v))
 		return
 	}
-	a.render(c, http.StatusOK, views.HabitatsPage(a.layout(w, "Habitats", views.NavCompendium, nil, false), v))
+	l, err := a.compendiumLayout(c, w, "Habitats", pathCampaign(c))
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.render(c, http.StatusOK, views.HabitatsPage(l, v))
 }
 
 // habitatCell saves one box of the grid.

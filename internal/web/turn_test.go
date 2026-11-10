@@ -71,12 +71,12 @@ func TestPlayerCombatantLink(t *testing.T) {
 		{"revealed NPC", sqlc.ListCombatantsRow{EntityID: nullID(3), EntityRevealed: sql.NullBool{Bool: true, Valid: true}}, false, "/entities/3"},
 		{"hidden NPC", sqlc.ListCombatantsRow{EntityID: nullID(3), EntityRevealed: sql.NullBool{Valid: true}}, true, ""},
 		{"statted NPC never links its monster", sqlc.ListCombatantsRow{EntityID: nullID(3), MonsterRef: nullID(4)}, true, ""},
-		{"monster with shown HP", sqlc.ListCombatantsRow{MonsterRef: nullID(4)}, true, "/compendium/entries/4"},
+		{"monster with shown HP", sqlc.ListCombatantsRow{MonsterRef: nullID(4)}, true, "/campaigns/9/compendium/entries/4"},
 		{"monster with hidden HP", sqlc.ListCombatantsRow{MonsterRef: nullID(4)}, false, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := playerCombatantLink(player, tt.row, tt.showHP); got != tt.want {
+			if got := playerCombatantLink(player, tt.row, 9, tt.showHP); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})

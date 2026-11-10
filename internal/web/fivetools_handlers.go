@@ -68,7 +68,7 @@ func (a *App) renderFiveTools(c *gin.Context, msg string, failed bool) {
 // visit (a reload after an import posted here) gets the whole page.
 func (a *App) fiveToolsList(c *gin.Context) {
 	if !isHTMX(c) {
-		c.Redirect(http.StatusSeeOther, "/compendium?import="+views.ImportTabFiveTools)
+		c.Redirect(http.StatusSeeOther, compendiumPath(c, "?import="+views.ImportTabFiveTools))
 		return
 	}
 	a.renderFiveTools(c, "", false)
@@ -115,7 +115,7 @@ func (a *App) fiveToolsImport(c *gin.Context) {
 	}
 	// The import outlives the request.
 	go a.runFiveTools(context.WithoutCancel(ctx), dir, picked)
-	c.Redirect(http.StatusSeeOther, "/compendium?import="+views.ImportTabFiveTools)
+	c.Redirect(http.StatusSeeOther, compendiumPath(c, "?import="+views.ImportTabFiveTools))
 }
 
 // errImportRunning refuses a second import, or a removal under the running one.
@@ -280,5 +280,5 @@ func (a *App) resolveCompendiumLinks(ctx context.Context, dataJSON string, campa
 			ids[fmt.Sprintf("%s:%s/%s", views.LinkCompendium, kind, r.Slug)] = r.ID
 		}
 	}
-	return views.ReplaceCompendiumLinks(dataJSON, ids), nil
+	return views.ReplaceCompendiumLinks(dataJSON, ids, views.CompendiumBase(campaignID)), nil
 }

@@ -62,7 +62,7 @@ func TestPlayerHomebrew(t *testing.T) {
 	if !sees(player) || !sees(gm) || sees(other) {
 		t.Errorf("before linking: author %v gm %v other %v", sees(player), sees(gm), sees(other))
 	}
-	if w := e.do(t, http.MethodGet, entryPath, other, nil, false); w.Code != http.StatusNotFound {
+	if w := e.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d/compendium/entries/%d", camp2.ID, entry.ID), other, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("other campaign opened the entry: %d", w.Code)
 	}
 	// By slug too: neither the lookup nor a command reaches it.

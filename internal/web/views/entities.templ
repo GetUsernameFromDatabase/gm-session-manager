@@ -402,7 +402,7 @@ templ entityForm(v EntityView) {
 			<p class="flex items-center gap-1">
 				if v.Compendium != nil {
 					@icon.BookOpen(icon.Props{Size: 16, Class: "text-muted-foreground"})
-					<a class="underline underline-offset-4" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", v.Compendium.ID)) }>{ v.Compendium.Name }</a>
+					<a class="underline underline-offset-4" href={ templ.SafeURL(entryHref(ctx, v.Compendium.ID)) }>{ v.Compendium.Name }</a>
 					@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeXs, Class: "text-muted-foreground", Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", v.E.ID), "hx-vals": `{"entry":"0"}`}}) {
 						Unlink
 					}

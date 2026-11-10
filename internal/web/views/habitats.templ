@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
@@ -28,15 +29,18 @@ type HabitatView struct {
 
 templ HabitatsPage(l Layout, v HabitatView) {
 	@Page(l) {
-		@button.Button(button.Props{Href: "/compendium?tab=" + CompendiumTabHomebrew, Variant: button.VariantGhost, Size: button.SizeSm, Class: "mb-2 -ml-2.5 self-start"}) {
-			@icon.ArrowLeft()
-			Compendium
-		}
+		<div class="mb-2 flex items-center gap-2">
+			@button.Button(button.Props{Href: CompendiumPath(ctx, "?tab="+CompendiumTabHomebrew), Variant: button.VariantGhost, Size: button.SizeSm, Class: "-ml-2.5"}) {
+				@icon.ArrowLeft()
+				Compendium
+			}
+			@compendiumSwitcher(l)
+		</div>
 		@PageHeader("Monster habitats", "A click saves. Filter by name, then use + or − under a habitat to change every monster that matches.")
 		<form
 			method="get"
 			class="mb-4"
-			hx-get="/compendium/habitats"
+			hx-get={ CompendiumPath(ctx, "/habitats") }
 			hx-trigger="submit, input[target.id==='habitat-q'] delay:200ms"
 			hx-target={ "#" + HabitatGridID }
 			hx-swap="outerHTML"
@@ -118,7 +122,7 @@ templ HabitatRow(m sqlc.ListMonstersByNameRow, has map[string]bool) {
 		// takes the row's muted/50 tint, mixed solid.
 		@table.Cell(table.CellProps{Class: "sticky left-0 z-10 bg-background group-hover/row:bg-[color-mix(in_oklab,var(--color-muted)_50%,var(--color-background))]"}) {
 			<span class="flex items-center justify-between gap-2">
-				<a class="hover:underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", m.ID)) }>{ m.Name }</a>
+				<a class="hover:underline" href={ templ.SafeURL(entryHref(ctx, m.ID)) }>{ m.Name }</a>
 				{{ what := utils.IfElse(every, "Clear every habitat for ", "Set every habitat for ") + m.Name }}
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Class: anyPressed, Attributes: templ.Attributes{
 					"type": "button", "aria-pressed": fmt.Sprint(every), "title": what, "aria-label": what,
@@ -166,6 +170,6 @@ func everyHabitat(has map[string]bool) bool {
 }
 
 // habitatsURL opens the grid filtered to name.
-func habitatsURL(name string) templ.SafeURL {
-	return templ.SafeURL("/compendium/habitats?" + url.Values{"q": {name}}.Encode())
+func habitatsURL(ctx context.Context, name string) templ.SafeURL {
+	return templ.SafeURL(CompendiumPath(ctx, "/habitats?"+url.Values{"q": {name}}.Encode()))
 }

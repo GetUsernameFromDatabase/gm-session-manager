@@ -190,15 +190,16 @@ func TestCompendiumFind(t *testing.T) {
 	seedMastery(t, e)
 	player := e.token(t, auth.RolePlayer)
 	rule, _ := e.q().GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "rule", Slug: "sap"})
-	w := e.do(t, http.MethodGet, "/compendium/find/rule/sap", player, nil, false)
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != fmt.Sprintf("/compendium/entries/%d", rule.ID) {
+	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
+	w := e.do(t, http.MethodGet, base+"/find/rule/sap", player, nil, false)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != fmt.Sprintf("%s/entries/%d", base, rule.ID) {
 		t.Errorf("find: %d %s", w.Code, w.Header().Get("Location"))
 	}
-	if w := e.do(t, http.MethodGet, "/compendium/find/rule/vex", player, nil, false); w.Code != http.StatusNotFound {
+	if w := e.do(t, http.MethodGet, base+"/find/rule/vex", player, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("missing rule: %d", w.Code)
 	}
 	sword, _ := e.q().GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "item", Slug: "longsword"})
-	if page := e.do(t, http.MethodGet, fmt.Sprintf("/compendium/entries/%d", sword.ID), player, nil, false).Body.String(); !strings.Contains(page, `href="/compendium/find/rule/sap"`) {
+	if page := e.do(t, http.MethodGet, fmt.Sprintf("%s/entries/%d", base, sword.ID), player, nil, false).Body.String(); !strings.Contains(page, `href="`+base+`/find/rule/sap"`) {
 		t.Error("item page does not link its mastery")
 	}
 }

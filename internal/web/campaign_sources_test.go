@@ -116,17 +116,18 @@ func TestCampaignSourceVisibility(t *testing.T) {
 		})
 	}
 
-	// The compendium page: the player's campaign, or the one the GM names.
+	// The compendium page: the campaign in the path, or every source.
 	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
 	pages := []struct {
 		name, cookie, path string
 		want, hidden       []string
 	}{
-		{"player compendium", player, "/compendium?kind=subclass", []string{"Brew School", "Shared School"}, []string{"Off School"}},
-		{"gm compendium in the campaign", gm, fmt.Sprintf("/compendium?kind=subclass&campaign=%d", e.campaignID), []string{"Brew School", "Shared School", "campaign=" + fmt.Sprint(e.campaignID)}, []string{"Off School"}},
+		{"player compendium", player, base + "?kind=subclass", []string{"Brew School", "Shared School"}, []string{"Off School"}},
+		{"gm compendium in the campaign", gm, base + "?kind=subclass", []string{"Brew School", "Shared School", base + "/entries/"}, []string{"Off School"}},
 		{"gm compendium, every campaign", gm, "/compendium?kind=subclass", []string{"Off School", "Brew School"}, nil},
-		{"player search", player, "/compendium?q=school", []string{"Shared School"}, []string{"Off School"}},
-		{"gm search in the campaign", gm, fmt.Sprintf("/compendium?q=school&campaign=%d", e.campaignID), []string{"Shared School"}, []string{"Off School"}},
+		{"player search", player, base + "?q=school", []string{"Shared School"}, []string{"Off School"}},
+		{"gm search in the campaign", gm, base + "?q=school", []string{"Shared School"}, []string{"Off School"}},
 	}
 	for _, tt := range pages {
 		t.Run(tt.name, func(t *testing.T) {
@@ -142,6 +143,70 @@ func TestCampaignSourceVisibility(t *testing.T) {
 			for _, s := range tt.hidden {
 				if strings.Contains(w.Body.String(), s) {
 					t.Errorf("page shows %q", s)
+				}
+			}
+		})
+	}
+}
+
+// TestCompendiumAddresses: the campaign is in the compendium's path, so an
+// address shows the same view to whoever opens it.
+func TestCompendiumAddresses(t *testing.T) {
+	e := sourcesEnv(t)
+	other, err := e.q().CreateCampaign(t.Context(), sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
+	tests := []struct {
+		name, cookie, path string
+		htmx               bool
+		code               int
+		location           string
+	}{
+		{"player sent to their campaign", player, "/compendium?kind=subclass", false, http.StatusSeeOther, base + "?kind=subclass"},
+		{"player entry sent to their campaign", player, "/compendium/entries/1", false, http.StatusSeeOther, base + "/entries/1"},
+		{"player background request stays", player, "/compendium/lookup?kind=spell&slug=nothing", true, http.StatusOK, ""},
+		{"gm old campaign key moves to the path", gm, "/compendium?q=school&campaign=" + fmt.Sprint(e.campaignID), false, http.StatusSeeOther, base + "?q=school"},
+		{"gm whole compendium stays", gm, "/compendium?kind=subclass", false, http.StatusOK, ""},
+		{"player in another campaign", player, fmt.Sprintf("/campaigns/%d/compendium", other.ID), false, http.StatusForbidden, ""},
+		{"gm in a missing campaign", gm, "/campaigns/999/compendium", false, http.StatusNotFound, ""},
+		{"gm in another campaign", gm, fmt.Sprintf("/campaigns/%d/compendium", other.ID), false, http.StatusOK, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := e.do(t, http.MethodGet, tt.path, tt.cookie, nil, tt.htmx)
+			if w.Code != tt.code || w.Header().Get("Location") != tt.location {
+				t.Errorf("got %d %q, want %d %q", w.Code, w.Header().Get("Location"), tt.code, tt.location)
+			}
+		})
+	}
+
+	// Links on a campaign's compendium stay in it; the GM's switcher opens
+	// the same page elsewhere.
+	links := []struct {
+		name, cookie, path string
+		want, hidden       []string
+	}{
+		{"gm list", gm, base + "?tab=homebrew", []string{
+			`href="` + base + `/entries/`, `href="` + base + `/habitats"`, `href="` + base + `/homebrew/new"`,
+			fmt.Sprintf(`href="/campaigns/%d/compendium?tab=homebrew"`, other.ID), `href="/compendium?tab=homebrew"`,
+		}, []string{`href="/compendium/entries/`}},
+		{"player list has no switcher", player, base, []string{`href="` + base + `/entries/`}, []string{`href="/compendium?`, "compendium-switch"}},
+		{"gm whole compendium", gm, "/compendium", []string{`href="/compendium/entries/`, `href="` + base + `"`}, nil},
+	}
+	for _, tt := range links {
+		t.Run(tt.name, func(t *testing.T) {
+			body := e.do(t, http.MethodGet, tt.path, tt.cookie, nil, false).Body.String()
+			for _, s := range tt.want {
+				if !strings.Contains(body, s) {
+					t.Errorf("page lacks %q", s)
+				}
+			}
+			for _, s := range tt.hidden {
+				if strings.Contains(body, s) {
+					t.Errorf("page has %q", s)
 				}
 			}
 		})

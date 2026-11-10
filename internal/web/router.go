@@ -181,36 +181,10 @@ func (a *App) Router() *gin.Engine {
 	r.POST("/images/:image/npc", gm, a.imageToEntity)
 	r.GET("/images/:image/file", a.imageFile)
 
-	// Compendium.
-	r.GET("/compendium", a.compendiumPage)
-	r.GET("/compendium/search", a.compendiumSearch)
-	r.GET("/compendium/random", a.compendiumRandom)
-	r.GET("/compendium/lookup", a.compendiumLookup)
-	r.GET("/compendium/find/:kind/:slug", a.compendiumFind)
-	r.GET("/compendium/entries/:entry", a.compendiumEntry)
-	// Homebrew: the handlers check who may write (perm.CanEditHomebrew).
-	r.GET("/compendium/entries/:entry/edit", a.homebrewEdit)
-	r.POST("/compendium/entries/:entry", a.homebrewUpdate)
-	r.POST("/compendium/entries/:entry/delete", a.homebrewDelete)
-	r.POST("/compendium/entries/:entry/campaigns", gm, a.homebrewLink)
-	r.POST("/compendium/entries/:entry/campaigns/:campaign/delete", gm, a.homebrewUnlink)
-	r.POST("/compendium/entries/:entry/image", gm, a.compendiumImage)
-	r.GET("/compendium/habitats", gm, a.habitatsPage)
-	r.POST("/compendium/habitats/cell", gm, a.habitatCell)
-	r.POST("/compendium/habitats/any", gm, a.habitatAny)
-	r.POST("/compendium/habitats/batch", gm, a.habitatBatch)
-	r.GET("/compendium/homebrew/new", a.homebrewNew)
-	r.POST("/compendium/homebrew", a.homebrewCreate)
-	r.POST("/compendium/import", gm, a.compendiumImport)
-	r.POST("/compendium/folder", gm, a.compendiumFolder)
-	r.GET("/compendium/5etools", gm, a.fiveToolsList)
-	r.POST("/compendium/5etools", gm, a.fiveToolsImport)
-	r.POST("/compendium/5etools/:book/delete", gm, a.fiveToolsRemove)
-	r.POST("/compendium/sources/:key/move", gm, a.sourceMove)
-	r.POST("/compendium/sources/:key/delete", gm, a.sourceDelete)
-	r.POST(views.SourceOrderPath, gm, a.sourceOrder)
-	r.POST("/compendium/page/preview", gm, a.compendiumPagePreview)
-	r.POST("/compendium/page", gm, a.compendiumPageSave)
+	// Compendium: the whole one, and each campaign's (its sources and
+	// homebrew), with the same pages under both.
+	a.compendiumRoutes(r.Group("/compendium", a.compendiumWhole), gm)
+	a.compendiumRoutes(r.Group("/campaigns/:campaign/compendium", a.compendiumCampaign), gm)
 
 	r.NoRoute(func(c *gin.Context) { a.fail(c, http.StatusNotFound, "There is no page at this address.") })
 	return r

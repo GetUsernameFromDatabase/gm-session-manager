@@ -103,9 +103,9 @@ func CompendiumRefs(s string) map[string][]string {
 }
 
 // ReplaceCompendiumLinks turns each compendium link in s into a Markdown
-// link to its entry (ids is keyed like WikiLink.Key), or into its bare label
-// when the entry is missing or hidden from the viewer.
-func ReplaceCompendiumLinks(s string, ids map[string]int64) string {
+// link to its entry under base (ids is keyed like WikiLink.Key), or into its
+// bare label when the entry is missing or hidden from the viewer.
+func ReplaceCompendiumLinks(s string, ids map[string]int64, base string) string {
 	var b strings.Builder
 	for _, p := range ParseWiki(s) {
 		switch l := p.Link; {
@@ -114,7 +114,7 @@ func ReplaceCompendiumLinks(s string, ids map[string]int64) string {
 		case l.Kind != LinkCompendium:
 			b.WriteString(l.raw())
 		case ids[l.Key()] != 0:
-			fmt.Fprintf(&b, "[%s](/compendium/entries/%d)", l.Label, ids[l.Key()])
+			fmt.Fprintf(&b, "[%s](%s/entries/%d)", l.Label, base, ids[l.Key()])
 		default:
 			b.WriteString(l.Label)
 		}

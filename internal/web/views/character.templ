@@ -1044,7 +1044,7 @@ templ spellPicker(s SheetView, id, placeholder string, autofocus bool) {
 			}
 		}
 		<ul class="mt-1 max-h-72 overflow-y-auto text-sm"></ul>
-		<a class="text-xs text-muted-foreground underline" href="/compendium/homebrew/new?kind=spell&add=1">Not in the compendium? Create a custom spell</a>
+		<a class="text-xs text-muted-foreground underline" href={ templ.SafeURL(CompendiumPath(ctx, "/homebrew/new?kind=spell&add=1")) }>Not in the compendium? Create a custom spell</a>
 	</div>
 }
 

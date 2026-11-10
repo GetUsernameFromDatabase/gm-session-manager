@@ -74,7 +74,9 @@
       return;
     }
     inflight.set(view, false);
-    htmx.ajax("GET", "/live?v=" + encodeURIComponent(view), { source: document.body, swap: "none" }).finally(() => {
+    // The page's campaign keeps the view's compendium links in it.
+    const q = new URLSearchParams({ v: view, campaign: document.body.dataset.campaign ?? "" });
+    htmx.ajax("GET", "/live?" + q, { source: document.body, swap: "none" }).finally(() => {
       const again = inflight.get(view);
       inflight.delete(view);
       if (again) gsm.refetch(view);

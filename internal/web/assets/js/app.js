@@ -1039,6 +1039,18 @@
     history.replaceState(history.state, "", url);
   });
 
+  // The compendium's campaign switcher opens the page as the address shows
+  // it now: the search and tabs update the address without a reload.
+  for (const type of ["click", "auxclick"]) {
+    document.addEventListener(type, (e) => {
+      const a = e.target.closest?.("a[data-compendium-base]");
+      if (!a) return;
+      const path = location.pathname;
+      const rest = path.slice(path.indexOf("/compendium") + "/compendium".length);
+      a.href = a.dataset.compendiumBase + rest + location.search;
+    });
+  }
+
   // Create-as-you-type comboboxes (image category, NPC field keys) take new
   // names: a create button shows while the text names no item and adds it as
   // an item, which it selects. Closing the list reverts the text to the

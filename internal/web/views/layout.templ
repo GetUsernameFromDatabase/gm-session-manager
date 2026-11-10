@@ -1,7 +1,9 @@
 package views
 
 import (
+	"context"
 	"fmt"
+	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/web/components"
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/button"
@@ -13,7 +15,7 @@ import (
 	"gm-session-manager/internal/web/components/spinner"
 	"gm-session-manager/internal/web/components/toast"
 	"gm-session-manager/internal/web/utils"
-	"net/url"
+	"io"
 	"time"
 )
 
@@ -48,6 +50,15 @@ type Layout struct {
 	Modules []string
 	// Requests are the join requests waiting for the GM, in every campaign.
 	Requests []PendingGroup
+	// Switch is the GM's compendium campaign switcher; nil elsewhere.
+	Switch *CompendiumSwitch
+}
+
+// CompendiumSwitch opens the same compendium page in another campaign.
+type CompendiumSwitch struct {
+	Campaigns []sqlc.Campaign
+	// Here is the page's path after its compendium base, with its query.
+	Here string
 }
 
 // WS is the websocket endpoint and the hub position the page was read at.
@@ -64,7 +75,17 @@ func (l Layout) title() string {
 	return l.Title + " · GM Session Manager"
 }
 
-templ Page(l Layout) {
+// Page renders its body inside l's campaign, so compendium links stay in it.
+func Page(l Layout) templ.Component {
+	return templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
+		if l.CampaignID != 0 {
+			ctx = WithCampaign(ctx, l.CampaignID)
+		}
+		return page(l).Render(ctx, w)
+	})
+}
+
+templ page(l Layout) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -198,37 +219,45 @@ templ navLinks(l Layout) {
 		}
 	}
 	if l.IsGM || l.CharacterID != 0 {
-		// Inside a campaign, set apart the links that leave it in a new tab.
+		// Inside a campaign, set apart the links outside it.
 		if l.CampaignID != 0 {
 			@separator.Separator(separator.Props{Class: "my-1 sm:hidden"})
 			@separator.Separator(separator.Props{Orientation: separator.OrientationVertical, Class: "mx-2 my-1 hidden sm:block"})
 		}
-		@navLink(compendiumNavHref(l), "Compendium", l.Active == NavCompendium, compendiumLinkAttrs(l.CampaignID)) {
-			if l.CampaignID != 0 {
-				@icon.ExternalLink(icon.Props{Class: "size-3.5 text-muted-foreground"})
-			}
-		}
+		@navLink(CompendiumBase(l.CampaignID), "Compendium", l.Active == NavCompendium, nil)
 	}
 	if l.IsGM {
 		@navLink(PathFiles, "Files", l.Active == NavFiles, nil)
 	}
 }
 
-// compendiumNavHref is the compendium as the campaign sees it: the GM names
-// the campaign, a player's is always their own.
-func compendiumNavHref(l Layout) string {
-	if !l.IsGM {
-		return "/compendium"
+// compendiumSwitcher lets the GM open the same compendium page in another
+// campaign, or with every source.
+templ compendiumSwitcher(l Layout) {
+	if s := l.Switch; s != nil {
+		@popover.Popover(popover.Props{ID: "compendium-switch"}) {
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: popover.Trigger(ctx)}) {
+				{ utils.IfElse(l.CampaignID != 0, l.CampaignName, "All sources") }
+				@icon.ChevronDown()
+			}
+			@popover.Content(popover.ContentProps{Align: popover.AlignStart, Class: "w-auto"}) {
+				<div class="flex flex-col gap-1">
+					for _, c := range s.Campaigns {
+						@switchItem(CompendiumBase(c.ID), s.Here, c.Name, c.ID == l.CampaignID)
+					}
+					@switchItem(CompendiumBase(0), s.Here, "All sources", l.CampaignID == 0)
+				</div>
+			}
+		}
 	}
-	return CompendiumURL(url.Values{}, l.CampaignID)
 }
 
-// compendiumLinkAttrs opens the compendium in a new tab inside a campaign, since the compendium page has no campaign navbar.
-func compendiumLinkAttrs(campaignID int64) templ.Attributes {
-	if campaignID == 0 {
-		return nil
+// switchItem links base+here; app.js swaps here for the address as it is
+// when clicked, since the search and tabs change it in place.
+templ switchItem(base, here, label string, current bool) {
+	@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start aria-[current=page]:bg-accent", Href: base + here, Attributes: templ.Attributes{"data-compendium-base": base, "aria-current": utils.IfElse(current, "page", "false")}}) {
+		{ label }
 	}
-	return templ.Attributes{"target": "_blank"}
 }
 
 templ navLink(href, label string, active bool, attrs templ.Attributes) {

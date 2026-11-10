@@ -635,7 +635,7 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 				@itemPicker("builder-subject", "subject", "Search or type a name", true)
 				@field.Description() {
 					Suggestions come from the compendium; any name works.
-					<a class="underline" href="/compendium/homebrew/new?kind=item&add=1">Create a custom item</a> to give it a description.
+					<a class="underline" href={ templ.SafeURL(CompendiumPath(ctx, "/homebrew/new?kind=item&add=1")) }>Create a custom item</a> to give it a description.
 				}
 			}
 			@numberField("Quantity", 1, 0, 1, false)
@@ -1080,7 +1080,7 @@ templ BuilderPicks(characterID int64, pick string, picks []BuilderPick) {
 		<li class="py-0.5 text-muted-foreground">
 			No matches. You can still fill in your own below
 			if pick == "weapon" {
-				, or <a class="underline" href="/compendium/homebrew/new?kind=item&add=1">create a custom weapon</a>
+				, or <a class="underline" href={ templ.SafeURL(CompendiumPath(ctx, "/homebrew/new?kind=item&add=1")) }>create a custom weapon</a>
 			}
 			.
 		</li>

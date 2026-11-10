@@ -27,10 +27,108 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
+// compendiumRoutes are the compendium's pages under one base (g).
+func (a *App) compendiumRoutes(g *gin.RouterGroup, gm gin.HandlerFunc) {
+	g.GET("", a.compendiumPage)
+	g.GET("/search", a.compendiumSearch)
+	g.GET("/random", a.compendiumRandom)
+	g.GET("/lookup", a.compendiumLookup)
+	g.GET("/find/:kind/:slug", a.compendiumFind)
+	g.GET("/entries/:entry", a.compendiumEntry)
+	// Homebrew: the handlers check who may write (perm.CanEditHomebrew).
+	g.GET("/entries/:entry/edit", a.homebrewEdit)
+	g.POST("/entries/:entry", a.homebrewUpdate)
+	g.POST("/entries/:entry/delete", a.homebrewDelete)
+	g.POST("/entries/:entry/campaigns", gm, a.homebrewLink)
+	g.POST("/entries/:entry/campaigns/:linked/delete", gm, a.homebrewUnlink)
+	g.POST("/entries/:entry/image", gm, a.compendiumImage)
+	g.GET("/habitats", gm, a.habitatsPage)
+	g.POST("/habitats/cell", gm, a.habitatCell)
+	g.POST("/habitats/any", gm, a.habitatAny)
+	g.POST("/habitats/batch", gm, a.habitatBatch)
+	g.GET("/homebrew/new", a.homebrewNew)
+	g.POST("/homebrew", a.homebrewCreate)
+	g.POST("/import", gm, a.compendiumImport)
+	g.POST("/folder", gm, a.compendiumFolder)
+	g.GET("/5etools", gm, a.fiveToolsList)
+	g.POST("/5etools", gm, a.fiveToolsImport)
+	g.POST("/5etools/:book/delete", gm, a.fiveToolsRemove)
+	g.POST("/sources/:key/move", gm, a.sourceMove)
+	g.POST("/sources/:key/delete", gm, a.sourceDelete)
+	g.POST(views.CompendiumRest(views.SourceOrderPath), gm, a.sourceOrder)
+	g.POST("/page/preview", gm, a.compendiumPagePreview)
+	g.POST("/page", gm, a.compendiumPageSave)
+}
+
+// Keys for what compendiumCampaign resolved: the path's campaign and the
+// requester, so the handler does not look them up again.
+const (
+	compendiumCampKey = "compendium-campaign"
+	compendiumWhoKey  = "compendium-who"
+)
+
+// compendiumCampaign opens the compendium as one campaign sees it: any
+// campaign for the GM, only their own for a player.
+func (a *App) compendiumCampaign(c *gin.Context) {
+	id, ok := a.idParam(c, "campaign")
+	if !ok {
+		c.Abort()
+		return
+	}
+	w, camp, ok := a.campaignAccess(c, id)
+	if !ok {
+		c.Abort()
+		return
+	}
+	c.Set(compendiumCampKey, &camp)
+	c.Set(compendiumWhoKey, w)
+	c.Request = c.Request.WithContext(views.WithCampaign(c.Request.Context(), camp.ID))
+}
+
+// compendiumWhole sends page loads of the unscoped compendium to the
+// campaign they show, so the address names it: a player's own campaign, and
+// the GM's old ?campaign= links. Background requests (htmx) stay put.
+func (a *App) compendiumWhole(c *gin.Context) {
+	if c.Request.Method != http.MethodGet || isHTMX(c) {
+		return
+	}
+	q := c.Request.URL.Query()
+	id, _ := strconv.ParseInt(q.Get(oldCampaignKey), 10, 64)
+	q.Del(oldCampaignKey)
+	if id == 0 {
+		w, err := a.whoami(c)
+		if err != nil {
+			a.serverError(c, err)
+			c.Abort()
+			return
+		}
+		if w.isGM() {
+			return
+		}
+		id = w.campaignID()
+	}
+	if id == 0 {
+		return // a visitor: compendiumReader refuses them
+	}
+	target := views.CompendiumBase(id) + views.CompendiumRest(c.Request.URL.Path)
+	if len(q) > 0 {
+		target += "?" + q.Encode()
+	}
+	c.Redirect(http.StatusSeeOther, target)
+	c.Abort()
+}
+
+// oldCampaignKey is the query key that named the GM's campaign before the
+// campaign moved into the path.
+const oldCampaignKey = "campaign"
+
 // compendiumReader allows the GM and any player: the compendium is rules
-// text, shared by every campaign. The campaign is the player's, or the one
-// the GM names with ?campaign= (nil: everything).
+// text, shared by every campaign. The campaign is the one in the path, or
+// the player's (nil: everything, for the GM).
 func (a *App) compendiumReader(c *gin.Context) (who, *sqlc.Campaign, bool) {
+	if camp := pathCampaign(c); camp != nil {
+		return c.MustGet(compendiumWhoKey).(who), camp, true // compendiumCampaign checked access
+	}
 	w, err := a.whoami(c)
 	if err != nil {
 		a.serverError(c, err)
@@ -40,19 +138,45 @@ func (a *App) compendiumReader(c *gin.Context) (who, *sqlc.Campaign, bool) {
 		a.fail(c, http.StatusForbidden, "Join a campaign first.")
 		return w, nil, false
 	}
-	id := w.campaignID()
 	if w.isGM() {
-		// The GM browses everything, or one campaign's sources and homebrew.
-		id, _ = strconv.ParseInt(c.Query(views.CompendiumCampaignKey), 10, 64)
-	}
-	if id == 0 {
 		return w, nil, true
 	}
-	camp, err := a.Store.GetCampaign(c.Request.Context(), id)
+	camp, err := a.Store.GetCampaign(c.Request.Context(), w.campaignID())
 	if !a.found(c, err) {
 		return w, nil, false
 	}
 	return w, &camp, true
+}
+
+// pathCampaign is the campaign in the request's path (nil for the whole
+// compendium).
+func pathCampaign(c *gin.Context) *sqlc.Campaign {
+	camp, _ := c.Get(compendiumCampKey)
+	p, _ := camp.(*sqlc.Campaign)
+	return p
+}
+
+// compendiumPath is rest under the request's compendium base.
+func compendiumPath(c *gin.Context, rest string) string {
+	return views.CompendiumPath(c.Request.Context(), rest)
+}
+
+// compendiumLayout is the frame of a compendium page: the campaign's, with
+// the GM's switcher to the same page elsewhere.
+func (a *App) compendiumLayout(c *gin.Context, w who, title string, camp *sqlc.Campaign) (views.Layout, error) {
+	l := a.layout(w, title, views.NavCompendium, camp, false)
+	if !w.isGM() {
+		return l, nil
+	}
+	campaigns, err := a.Store.ListCampaigns(c.Request.Context())
+	here := views.CompendiumRest(c.Request.URL.Path)
+	if c.Request.Method != http.MethodGet {
+		here = "" // a form's answer: the switcher opens the list
+	} else if c.Request.URL.RawQuery != "" {
+		here += "?" + c.Request.URL.RawQuery
+	}
+	l.Switch = &views.CompendiumSwitch{Campaigns: campaigns, Here: here}
+	return l, err
 }
 
 // viewerCampaign is the campaign whose sources and player homebrew the
@@ -115,11 +239,8 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 		return
 	}
 	ctx := c.Request.Context()
-	v := views.CompendiumView{Query: strings.TrimSpace(c.Query("q")), Kind: c.Query("kind"), IsGM: w.isGM(), Import: notice, Tab: c.Query("tab")}
+	v := views.CompendiumView{Query: strings.TrimSpace(c.Query("q")), Kind: c.Query("kind"), IsGM: w.isGM(), Import: notice, Tab: c.Query("tab"), Campaign: viewerCampaign(camp)}
 	v.Import.Dir, v.Import.OnHost, v.Import.Job = a.compendiumDir(), w.id.Loopback, a.fiveTools.get()
-	if w.isGM() {
-		v.Campaign = viewerCampaign(camp)
-	}
 	// Only monsters have habitats, so the filter applies to them alone.
 	if v.Kind == string(compendium.KindMonster) {
 		v.Habitat = c.Query("habitat")
@@ -173,7 +294,15 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 			return
 		}
 	}
-	a.render(c, http.StatusOK, views.CompendiumPage(a.layout(w, "Compendium", views.NavCompendium, camp, false), v))
+	l, err := a.compendiumLayout(c, w, "Compendium", camp)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	if l.Switch != nil {
+		v.Campaigns = l.Switch.Campaigns // the homebrew links pick from the same list
+	}
+	a.render(c, http.StatusOK, views.CompendiumPage(l, v))
 }
 
 // homebrewLists fills the page's homebrew: all of it with its campaign
@@ -191,9 +320,6 @@ func (a *App) homebrewLists(ctx context.Context, w who, v *views.CompendiumView)
 	v.HomebrewLinks = map[int64][]sqlc.ListHomebrewLinksRow{}
 	for _, l := range links {
 		v.HomebrewLinks[l.EntryID] = append(v.HomebrewLinks[l.EntryID], l)
-	}
-	if err == nil {
-		v.Campaigns, err = a.Store.ListCampaigns(ctx)
 	}
 	return err
 }
@@ -231,6 +357,8 @@ func (a *App) compendiumSearch(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
+	// The picker's entry links open that campaign's compendium.
+	c.Request = c.Request.WithContext(views.WithCampaign(c.Request.Context(), campaignID))
 	if c.Query("format") == "combobox" {
 		all := append(names, text...)
 		a.render(c, http.StatusOK, views.SearchComboItems(all[:min(len(all), maxSuggestions)]))
@@ -279,7 +407,7 @@ func (a *App) compendiumFind(c *gin.Context) {
 	if !a.found(c, err) {
 		return
 	}
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/compendium/entries/%d", e.ID))
+	c.Redirect(http.StatusSeeOther, compendiumPath(c, fmt.Sprintf("/entries/%d", e.ID)))
 }
 
 func (a *App) compendiumEntry(c *gin.Context) {
@@ -324,13 +452,18 @@ func (a *App) compendiumEntry(c *gin.Context) {
 	if back, ok := c.GetQuery("back"); ok {
 		q, _ := url.ParseQuery(compendiumBack(back))
 		q.Set("import", views.ImportTabPage)
-		v.Back = "/compendium?" + q.Encode() + "#compendium-import"
-	} else if ref, err := url.Parse(c.Request.Referer()); err == nil && ref.Path == "/compendium" {
+		v.Back = views.CompendiumURL(q, viewerCampaign(camp)) + "#compendium-import"
+	} else if ref, err := url.Parse(c.Request.Referer()); err == nil && ref.Path == compendiumPath(c, "") {
 		// Back to the list as it was: the search keeps its filters in the URL.
 		// Only the path and query are kept, so the link never leaves the app.
 		v.Back = ref.RequestURI()
 	}
-	a.render(c, http.StatusOK, views.EntryPage(a.layout(w, e.Name, views.NavCompendium, camp, false), v))
+	l, err := a.compendiumLayout(c, w, e.Name, camp)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.render(c, http.StatusOK, views.EntryPage(l, v))
 }
 
 // compendiumLookup is one entry's body found by kind and slug, as a
@@ -386,7 +519,7 @@ func (a *App) compendiumRandom(c *gin.Context) {
 	if !a.found(c, err) {
 		return
 	}
-	redirect(c, fmt.Sprintf("/compendium/entries/%d", id))
+	redirect(c, compendiumPath(c, fmt.Sprintf("/entries/%d", id)))
 }
 
 // monsterImageForm sets a monster's picture link; empty clears it for good.
@@ -422,7 +555,7 @@ func (a *App) compendiumImage(c *gin.Context) {
 	for _, enc := range encounters {
 		a.Hub.Publish(enc.CampaignID, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
 	}
-	redirect(c, fmt.Sprintf("/compendium/entries/%d", e.ID))
+	redirect(c, compendiumPath(c, fmt.Sprintf("/entries/%d", e.ID)))
 }
 
 // homebrewWriter is who may write homebrew: the GM, or a player (spells
@@ -466,7 +599,8 @@ func (a *App) homebrewEntry(c *gin.Context) (who, sqlc.CompendiumEntry, bool) {
 
 func (a *App) renderHomebrew(c *gin.Context, status int, w who, v views.HomebrewView) {
 	v.IsGM = w.isGM()
-	a.render(c, status, views.HomebrewPage(a.layout(w, "Homebrew", views.NavCompendium, nil, false), v))
+	// No switcher: homebrew is the same in every campaign.
+	a.render(c, status, views.HomebrewPage(a.layout(w, "Homebrew", views.NavCompendium, pathCampaign(c), false), v))
 }
 
 // homebrewNew is the empty editor. From a character sheet (?add=1 with a
@@ -545,7 +679,7 @@ func (a *App) saveHomebrew(c *gin.Context, w who, id int64) {
 		c.Redirect(http.StatusSeeOther, fmt.Sprintf("/characters/%d", w.character.ID))
 		return
 	}
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/compendium/entries/%d", id))
+	c.Redirect(http.StatusSeeOther, compendiumPath(c, fmt.Sprintf("/entries/%d", id)))
 }
 
 // addHomebrewToSheet puts a new homebrew spell or item on the character.
@@ -575,11 +709,13 @@ func (a *App) homebrewDelete(c *gin.Context) {
 		return
 	}
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
-	c.Redirect(http.StatusSeeOther, homebrewTabURL)
+	c.Redirect(http.StatusSeeOther, homebrewTabURL(c))
 }
 
-// homebrewTabURL is the compendium with its Homebrew tab open.
-const homebrewTabURL = "/compendium?tab=" + views.CompendiumTabHomebrew
+// homebrewTabURL is the request's compendium with its Homebrew tab open.
+func homebrewTabURL(c *gin.Context) string {
+	return compendiumPath(c, "?tab="+views.CompendiumTabHomebrew)
+}
 
 // homebrewLink shows a player's entry in another campaign too.
 func (a *App) homebrewLink(c *gin.Context) {
@@ -596,7 +732,7 @@ func (a *App) homebrewLink(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	redirect(c, homebrewTabURL)
+	redirect(c, homebrewTabURL(c))
 }
 
 // homebrewUnlink hides a player's entry from one campaign.
@@ -605,7 +741,7 @@ func (a *App) homebrewUnlink(c *gin.Context) {
 	if !ok {
 		return
 	}
-	campaignID, ok := a.idParam(c, "campaign")
+	campaignID, ok := a.idParam(c, "linked")
 	if !ok {
 		return
 	}
@@ -613,7 +749,7 @@ func (a *App) homebrewUnlink(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	redirect(c, homebrewTabURL)
+	redirect(c, homebrewTabURL(c))
 }
 
 // compendiumDir is the absolute DATA_DIR/compendium, shown to the GM.
@@ -681,7 +817,7 @@ func (a *App) compendiumPagePreview(c *gin.Context) {
 	// The search keeps the page URL in step, so the referrer is the list
 	// as filtered now; after an error the page carries it in a field.
 	back := c.PostForm("back")
-	if ref, err := url.Parse(c.Request.Referer()); err == nil && ref.Path == "/compendium" {
+	if ref, err := url.Parse(c.Request.Referer()); err == nil && ref.Path == compendiumPath(c, "") {
 		back = ref.RawQuery
 	}
 	back = compendiumBack(back)
@@ -756,7 +892,7 @@ func (a *App) compendiumPageSave(c *gin.Context) {
 		a.serverError(c, cmp.Or(err, errors.New("imported page has no entry")))
 		return
 	}
-	redirect(c, fmt.Sprintf("/compendium/entries/%d?", rows[0].ID)+url.Values{"back": {back}}.Encode())
+	redirect(c, compendiumPath(c, fmt.Sprintf("/entries/%d?", rows[0].ID))+url.Values{"back": {back}}.Encode())
 }
 
 // ImportSummary describes import results, one line per source, and

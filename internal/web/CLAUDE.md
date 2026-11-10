@@ -22,6 +22,7 @@ Each note block is its own collaborative document (TipTap, `assets/js/notes.js`)
 - shadcn-templ (shadcn-templ.com, github.com/axadrn/shadcn-templ), not templUI. Use its components for every control, never native `<select>`/`<dialog>`/hand-styled inputs; add missing ones with `go tool shadcn-templ add <name>`. Its Select and popovers portal to `<body>`, so they fail inside a native `<dialog>`: use the shadcn Dialog.
 - Reuse the helpers: `formSelect`/`selectItems` (combat.templ), `checkField` (notes.templ), `inlineField` (compendium.templ), `removeButton`.
 - Dates: `@localTime(t)` (layout.templ), never `Format` in a template (UTC in SQLite, app.js localizes).
+- Addresses: every view state lives in the URL, so a copied address shows the same view to whoever opens it. The compendium's campaign is in the path (`/campaigns/:campaign/compendium/...`; `/compendium` is the whole one): build links with `CompendiumPath(ctx, …)`/`entryHref` in templates (`Page` and the route put the campaign on ctx) and `compendiumPath(c, …)` in handlers, never a literal `/compendium`.
 - Toggled states: `aria-pressed:` or `data-[…]:` variants, so a live update flips one attribute.
 - Slow forms: `data-busy` + class `group/busy` + `@busyIndicator("…")` inside; app.js sets `aria-busy` and disables submit buttons.
 - Previews fetch nothing while hidden: check `checkVisibility()` first; image lists use `loading="lazy"`.

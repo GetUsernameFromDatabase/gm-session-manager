@@ -252,9 +252,9 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 		// One without max HP has no stats, so is never down.
 		cv.Marker, cv.Down = r.Marker, r.Hp <= 0 && r.MaxHp > 0
 		if v.IsGM {
-			cv.Link, cv.InitMod = combatantLink(r), initiativeMod(r)
+			cv.Link, cv.InitMod = combatantLink(r, enc.CampaignID), initiativeMod(r)
 		} else {
-			cv.AC, cv.Link = 0, playerCombatantLink(v, r, cv.ShowHP)
+			cv.AC, cv.Link = 0, playerCombatantLink(v, r, enc.CampaignID, cv.ShowHP)
 		}
 		// The compendium is open to everyone; a visible look below overrides it.
 		cv.Portrait = r.MonsterImage.String
@@ -301,33 +301,33 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 }
 
 // combatantLink is the GM's page for a combatant's source: the character
-// sheet, the NPC, or the compendium monster.
-func combatantLink(r sqlc.ListCombatantsRow) string {
+// sheet, the NPC, or the monster in the campaign's compendium.
+func combatantLink(r sqlc.ListCombatantsRow, campaignID int64) string {
 	switch {
 	case r.CharacterID.Valid:
 		return fmt.Sprintf("/characters/%d", r.CharacterID.Int64)
 	case r.EntityID.Valid:
 		return fmt.Sprintf("/entities/%d", r.EntityID.Int64)
 	case r.MonsterRef.Valid:
-		return fmt.Sprintf("/compendium/entries/%d", r.MonsterRef.Int64)
+		return fmt.Sprintf("%s/entries/%d", views.CompendiumBase(campaignID), r.MonsterRef.Int64)
 	}
 	return ""
 }
 
 // playerCombatantLink is the page a player may open for a combatant: a sheet
 // they may view, a revealed NPC, or a monster whose HP the GM shows.
-func playerCombatantLink(v perm.Viewer, r sqlc.ListCombatantsRow, showHP bool) string {
+func playerCombatantLink(v perm.Viewer, r sqlc.ListCombatantsRow, campaignID int64, showHP bool) string {
 	switch {
 	case r.CharacterID.Valid:
 		if perm.CanCharacter(v, r.CharacterID.Int64, perm.ScopeView) {
-			return combatantLink(r)
+			return combatantLink(r, campaignID)
 		}
 	case r.EntityID.Valid:
 		if r.EntityRevealed.Bool {
-			return combatantLink(r)
+			return combatantLink(r, campaignID)
 		}
 	case showHP:
-		return combatantLink(r)
+		return combatantLink(r, campaignID)
 	}
 	return ""
 }

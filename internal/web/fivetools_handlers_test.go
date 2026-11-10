@@ -59,11 +59,14 @@ func TestFiveToolsGMOnly(t *testing.T) {
 		{http.MethodPost, views.SourceOrderPath},
 	}
 	for _, tt := range tests {
-		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
-			if w := e.do(t, tt.method, tt.path, player, url.Values{"dir": {"up"}}, false); w.Code != http.StatusForbidden {
-				t.Errorf("player: %d", w.Code)
-			}
-		})
+		// The same under the whole compendium and the player's campaign's.
+		for _, base := range []string{"", fmt.Sprintf("/campaigns/%d", e.campaignID)} {
+			t.Run(tt.method+" "+base+tt.path, func(t *testing.T) {
+				if w := e.do(t, tt.method, base+tt.path, player, url.Values{"dir": {"up"}}, true); w.Code != http.StatusForbidden {
+					t.Errorf("player: %d", w.Code)
+				}
+			})
+		}
 	}
 	// Reloading the picker's URL (where an import posts) opens the whole page.
 	if w := e.do(t, http.MethodGet, "/compendium/5etools", gm, nil, false); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/compendium?import=fivetools" {
@@ -284,8 +287,10 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 	if err := e.q().LinkEntryCampaign(t.Context(), sqlc.LinkEntryCampaignParams{EntryID: scoped["shared"], CampaignID: e.campaignID}); err != nil {
 		t.Fatal(err)
 	}
-	link := func(slug, label string) string {
-		return fmt.Sprintf(`<a href="/compendium/entries/%d">%s</a>`, scoped[slug], label)
+	// The GM reads the whole compendium, the player their campaign's.
+	mine := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
+	link := func(base, slug, label string) string {
+		return fmt.Sprintf(`<a href="%s/entries/%d">%s</a>`, base, scoped[slug], label)
 	}
 
 	tests := []struct {
@@ -293,10 +298,10 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 		want, notWant      []string
 	}{
 		{"older names the newer", gm, fmt.Sprintf("/compendium/entries/%d", older), []string{"Also in", fmt.Sprintf(`href="/compendium/entries/%d"`, newer), "book-new, 2024"}, nil},
-		{"newer names the older", player, fmt.Sprintf("/compendium/entries/%d", newer), []string{"Also in", fmt.Sprintf(`href="/compendium/entries/%d"`, older)}, nil},
-		{"token links the winner, missing is plain", player, fmt.Sprintf("/compendium/entries/%d", pointer),
-			[]string{fmt.Sprintf(`<a href="/compendium/entries/%d">Alert</a>`, newer), "Ghost", "Secret", link("shared", "Shared")}, []string{"Also in", "[[compendium", "/compendium/entries/" + fmt.Sprint(older), link("secret", "Secret")}},
-		{"the GM sees every homebrew link", gm, fmt.Sprintf("/compendium/entries/%d", pointer), []string{link("secret", "Secret"), link("shared", "Shared")}, nil},
+		{"newer names the older", player, fmt.Sprintf("%s/entries/%d", mine, newer), []string{"Also in", fmt.Sprintf(`href="%s/entries/%d"`, mine, older)}, nil},
+		{"token links the winner, missing is plain", player, fmt.Sprintf("%s/entries/%d", mine, pointer),
+			[]string{fmt.Sprintf(`<a href="%s/entries/%d">Alert</a>`, mine, newer), "Ghost", "Secret", link(mine, "shared", "Shared")}, []string{"Also in", "[[compendium", "/entries/" + fmt.Sprint(older), link(mine, "secret", "Secret")}},
+		{"the GM sees every homebrew link", gm, fmt.Sprintf("/compendium/entries/%d", pointer), []string{link("/compendium", "secret", "Secret"), link("/compendium", "shared", "Shared")}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

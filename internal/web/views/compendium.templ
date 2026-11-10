@@ -2,6 +2,7 @@ package views
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
@@ -52,8 +53,8 @@ type CompendiumView struct {
 	More    string // URL of the next batch when browsing; "" at the end
 	// Tab is the page tab to open (CompendiumTab*); "" is Browse.
 	Tab string
-	// Campaign is the campaign the GM browses with (?campaign=); 0 for
-	// everything, and for players, who always see their own.
+	// Campaign is the campaign in the page's path (a player's is always
+	// their own); 0 for the GM's whole compendium.
 	Campaign int64
 }
 
@@ -102,8 +103,11 @@ type ImportNotice struct {
 templ CompendiumPage(l Layout, v CompendiumView) {
 	@Page(l) {
 		<div class="mb-4 flex flex-wrap items-center gap-2">
-			<h1 class="mr-auto text-2xl font-semibold">Compendium</h1>
-			@button.Button(button.Props{Href: utils.IfElse(v.IsGM, "/compendium/homebrew/new", "/compendium/homebrew/new?kind=spell")}) {
+			<h1 class="text-2xl font-semibold">Compendium</h1>
+			<div class="mr-auto">
+				@compendiumSwitcher(l)
+			</div>
+			@button.Button(button.Props{Href: CompendiumPath(ctx, utils.IfElse(v.IsGM, "/homebrew/new", "/homebrew/new?kind=spell"))}) {
 				@icon.Plus()
 				New homebrew
 			}
@@ -162,7 +166,7 @@ templ compendiumSearchForm(v CompendiumView) {
 	<form
 		method="get"
 		class="mb-3 flex gap-2"
-		hx-get="/compendium"
+		hx-get={ CompendiumPath(ctx, "") }
 		hx-trigger="submit, input[target.id==='compendium-q'] delay:500ms"
 		hx-sync="this:replace"
 		hx-target={ "#" + CompendiumResultsID }
@@ -177,11 +181,9 @@ templ compendiumSearchForm(v CompendiumView) {
 		}
 		<input type="hidden" name="kind" value={ v.Kind }/>
 		<input type="hidden" name="habitat" value={ v.Habitat }/>
-		if v.Campaign != 0 {
-			<input type="hidden" name={ CompendiumCampaignKey } value={ fmt.Sprint(v.Campaign) }/>
-		}
 		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{
-			"onclick": templ.JSUnsafeFuncCall("window.open('/compendium/random?' + new URLSearchParams(new FormData(this.form)), '_blank')"), "title": "Random entry of the chosen kind and habitat (new tab)",
+			"data-href": CompendiumPath(ctx, "/random"),
+			"onclick":   templ.JSUnsafeFuncCall("window.open(this.dataset.href + '?' + new URLSearchParams(new FormData(this.form)), '_blank')"), "title": "Random entry of the chosen kind and habitat (new tab)",
 		}}) {
 			@icon.Dices()
 			<span class="max-sm:sr-only">Random</span>
@@ -209,7 +211,7 @@ templ compendiumEmpty(isGM bool) {
 		}
 		if isGM {
 			@empty.Content() {
-				@button.Button(button.Props{Href: "/compendium?tab=" + CompendiumTabImport}) {
+				@button.Button(button.Props{Href: CompendiumPath(ctx, "?tab="+CompendiumTabImport)}) {
 					@icon.Download()
 					Import
 				}
@@ -267,7 +269,7 @@ templ homebrewTab(v CompendiumView) {
 	if v.IsGM {
 		<p class="mt-3 text-xs text-muted-foreground">
 			Your homebrew is in every campaign. A player's is in the campaigns it is linked to.
-			<a class="ml-2 underline underline-offset-4" href="/compendium/habitats">Monster habitats</a>
+			<a class="ml-2 underline underline-offset-4" href={ templ.SafeURL(CompendiumPath(ctx, "/habitats")) }>Monster habitats</a>
 		</p>
 	}
 }
@@ -276,7 +278,7 @@ templ homebrewName(id int64, kind, name string) {
 	<span class="flex min-w-0 items-center gap-2">
 		@kindIcon(kind, "")
 		<span class="sr-only">{ kind }</span>
-		<a class="truncate font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", id)) }>{ name }</a>
+		<a class="truncate font-medium hover:underline" href={ templ.SafeURL(entryHref(ctx, id)) }>{ name }</a>
 	</span>
 }
 
@@ -286,7 +288,7 @@ templ FiveToolsPicker(v FiveToolsView) {
 	<form
 		id={ FiveToolsID }
 		method="post"
-		action="/compendium/5etools"
+		action={ templ.SafeURL(CompendiumPath(ctx, "/5etools")) }
 		class="group/busy space-y-4"
 		data-busy
 		hx-target={ "#" + FiveToolsID }
@@ -490,7 +492,7 @@ templ importTabs(n ImportNotice) {
 				<li>Folders that have not changed since the last import are skipped; entries removed from a folder are removed from the compendium.</li>
 				<li>The import also runs every time the app starts.</li>
 			</ul>
-			<form method="post" action="/compendium/import" class="group/busy" data-busy>
+			<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, "/import")) } class="group/busy" data-busy>
 				@button.Button(button.Props{Type: button.TypeSubmit}) {
 					Import now
 				}
@@ -501,7 +503,7 @@ templ importTabs(n ImportNotice) {
 			}
 		}
 		@tabs.Content(tabs.ContentProps{Value: ImportTabPage, Class: "max-w-2xl space-y-3 text-sm"}) {
-			<form method="post" action="/compendium/page/preview" class="group/busy flex flex-wrap items-center gap-2" data-busy>
+			<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, "/page/preview")) } class="group/busy flex flex-wrap items-center gap-2" data-busy>
 				<input type="hidden" name="back" value={ n.Back }/>
 				// Focused when coming back from an import, ready for the next page.
 				@input.Input(input.Props{Name: "page", Value: n.Page, Placeholder: "Paste a page link", Class: "max-w-md", Attributes: templ.Attributes{"required": true, "aria-label": "Page link", "autocomplete": "off", "autofocus": n.Tab == ImportTabPage}})
@@ -543,7 +545,7 @@ templ homebrewLinks(v CompendiumView, entryID int64) {
 			<span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5">
 				{ l.CampaignName }
 				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-4", Attributes: templ.Attributes{
-					"hx-post": fmt.Sprintf("/compendium/entries/%d/campaigns/%d/delete", entryID, l.CampaignID), "aria-label": "Remove from " + l.CampaignName,
+					"hx-post": CompendiumPath(ctx, fmt.Sprintf("/entries/%d/campaigns/%d/delete", entryID, l.CampaignID)), "aria-label": "Remove from " + l.CampaignName,
 				}}) {
 					@icon.X(icon.Props{Size: 12})
 				}
@@ -558,7 +560,7 @@ templ homebrewLinks(v CompendiumView, entryID int64) {
 			})
 		}}
 		if len(others) > 0 {
-			<form class="flex items-center gap-1" hx-post={ fmt.Sprintf("/compendium/entries/%d/campaigns", entryID) }>
+			<form class="flex items-center gap-1" hx-post={ CompendiumPath(ctx, fmt.Sprintf("/entries/%d/campaigns", entryID)) }>
 				@formSelect("", "campaign_id", selectItems(others, func(c sqlc.Campaign) string { return fmt.Sprint(c.ID) }, func(c sqlc.Campaign) string { return c.Name }), "", "h-6 text-xs", "")
 				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs, Variant: button.VariantOutline}) {
 					Add to campaign
@@ -619,10 +621,10 @@ templ CompendiumRows(v CompendiumView) {
 templ compendiumRow(r sqlc.SearchCompendiumRow) {
 	// Relative, so the sr-only kind stays inside the scrolling list instead
 	// of stretching the page.
-	<li class="relative flex items-center gap-2 px-2 py-1.5 hover:bg-muted" hx-get={ fmt.Sprintf("/compendium/entries/%d?preview=1", r.ID) } hx-trigger="mouseenter[document.getElementById('entry-preview').checkVisibility()] delay:150ms" hx-target="#entry-preview" hx-swap="innerHTML">
+	<li class="relative flex items-center gap-2 px-2 py-1.5 hover:bg-muted" hx-get={ entryHref(ctx, r.ID) + "?preview=1" } hx-trigger="mouseenter[document.getElementById('entry-preview').checkVisibility()] delay:150ms" hx-target="#entry-preview" hx-swap="innerHTML">
 		@kindIcon(r.Kind, "")
 		<span class="sr-only">{ r.Kind }</span>
-		<a class="truncate hover:underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", r.ID)) }>{ r.Name }</a>
+		<a class="truncate hover:underline" href={ templ.SafeURL(entryHref(ctx, r.ID)) }>{ r.Name }</a>
 		if r.IsHomebrew {
 			@homebrewBadge()
 		}
@@ -745,7 +747,7 @@ templ habitatCounts(v CompendiumView) {
 		<p class="mt-2 text-xs text-muted-foreground">
 			No monster has a habitat yet.
 			if v.IsGM {
-				<a class="underline" href="/compendium/habitats">Set habitats</a>
+				<a class="underline" href={ templ.SafeURL(CompendiumPath(ctx, "/habitats")) }>Set habitats</a>
 			}
 		</p>
 	} else {
@@ -772,16 +774,48 @@ func habitatCountMap(rows []sqlc.CountHabitatsRow) map[string]int64 {
 	return m
 }
 
-// CompendiumCampaignKey is the query key naming the campaign whose sources
-// the GM browses the compendium with.
-const CompendiumCampaignKey = "campaign"
-
-// CompendiumURL is /compendium with q, keeping the GM's campaign (0: none).
-func CompendiumURL(q url.Values, campaign int64) string {
-	if campaign != 0 {
-		q.Set(CompendiumCampaignKey, fmt.Sprint(campaign))
+// CompendiumBase is the compendium as campaign sees it (its sources and
+// homebrew), or the whole compendium for 0. The campaign is in the path, so
+// an address shows the same view to whoever opens it.
+func CompendiumBase(campaign int64) string {
+	if campaign == 0 {
+		return "/compendium"
 	}
-	return "/compendium?" + q.Encode()
+	return fmt.Sprintf("/campaigns/%d/compendium", campaign)
+}
+
+// CompendiumURL is the compendium list of campaign with query q.
+func CompendiumURL(q url.Values, campaign int64) string {
+	return CompendiumBase(campaign) + "?" + q.Encode()
+}
+
+type campaignCtxKey struct{}
+
+// WithCampaign marks ctx as rendering inside campaign, so compendium links
+// stay in it.
+func WithCampaign(ctx context.Context, campaign int64) context.Context {
+	return context.WithValue(ctx, campaignCtxKey{}, campaign)
+}
+
+// CompendiumPath is rest (e.g. "/entries/7") under the compendium of the
+// campaign ctx renders in.
+func CompendiumPath(ctx context.Context, rest string) string {
+	id, _ := ctx.Value(campaignCtxKey{}).(int64)
+	return CompendiumBase(id) + rest
+}
+
+// entryHref is an entry's page in the campaign ctx renders in.
+func entryHref(ctx context.Context, id int64) string {
+	return CompendiumPath(ctx, fmt.Sprintf("/entries/%d", id))
+}
+
+// CompendiumRest is path without its compendium base ("" for the list), so
+// the GM's switcher can open the same page in another campaign.
+func CompendiumRest(path string) string {
+	if _, rest, ok := strings.Cut(path, "/compendium"); ok {
+		return rest
+	}
+	return ""
 }
 
 // habitatHref toggles habitat in the monster filter, in Habitats order.
@@ -1012,7 +1046,7 @@ templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
 		}
 	} else {
 		<li class="flex items-center justify-between gap-2 py-0.5">
-			<a class="truncate hover:underline" { pickerLinkAttrs(t)... } href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", r.ID)) }>{ r.Name }</a>
+			<a class="truncate hover:underline" { pickerLinkAttrs(t)... } href={ templ.SafeURL(entryHref(ctx, r.ID)) }>{ r.Name }</a>
 			switch  {
 				case t.EntityID != 0:
 					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", t.EntityID), "hx-vals": fmt.Sprintf(`{"entry":"%d"}`, r.ID)}}) {
@@ -1036,7 +1070,7 @@ templ pickRow(entryID int64, attrs templ.Attributes) {
 				{ children... }
 			}
 			@tooltip.Content(tooltip.ContentProps{Class: "flex max-h-80 max-w-sm flex-col overflow-hidden border bg-popover p-0 text-left text-popover-foreground [&>[aria-hidden]]:hidden"}) {
-				<div class="p-2" hx-get={ fmt.Sprintf("/compendium/entries/%d?preview=1", entryID) } hx-trigger="intersect once" hx-swap="outerHTML">Loading…</div>
+				<div class="p-2" hx-get={ entryHref(ctx, entryID) + "?preview=1" } hx-trigger="intersect once" hx-swap="outerHTML">Loading…</div>
 			}
 		}
 	</li>
@@ -1072,12 +1106,15 @@ templ EntryPage(l Layout, v EntryView) {
 	@Page(l) {
 		{{ pictured := v.Entry.Kind == string(compendium.KindMonster) && v.Entry.ImageUrl.String != "" }}
 		<div class="mb-4 flex flex-wrap items-center gap-2">
-			@button.Button(button.Props{Href: cmp.Or(v.Back, "/compendium"), Variant: button.VariantGhost, Size: button.SizeSm, Class: "-ml-2.5 mr-auto"}) {
+			@button.Button(button.Props{Href: cmp.Or(v.Back, CompendiumPath(ctx, "")), Variant: button.VariantGhost, Size: button.SizeSm, Class: "-ml-2.5"}) {
 				@icon.ArrowLeft()
 				Compendium
 			}
+			<div class="mr-auto">
+				@compendiumSwitcher(l)
+			</div>
 			if v.CanEdit {
-				@button.Button(button.Props{Href: fmt.Sprintf("/compendium/entries/%d/edit", v.Entry.ID), Variant: button.VariantOutline, Size: button.SizeSm}) {
+				@button.Button(button.Props{Href: entryHref(ctx, v.Entry.ID) + "/edit", Variant: button.VariantOutline, Size: button.SizeSm}) {
 					@icon.Pencil()
 					Edit
 				}
@@ -1114,7 +1151,7 @@ templ EntryPage(l Layout, v EntryView) {
 							if i > 0 {
 								{ ", " }
 							}
-							<a class="underline underline-offset-4" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", c.ID)) } title={ c.Attribution }>{ copyLabel(c) }</a>
+							<a class="underline underline-offset-4" href={ templ.SafeURL(entryHref(ctx, c.ID)) } title={ c.Attribution }>{ copyLabel(c) }</a>
 						}
 					</dd>
 				}
@@ -1131,7 +1168,7 @@ templ EntryPage(l Layout, v EntryView) {
 templ entryHead(e sqlc.CompendiumEntry, preview bool) {
 	<header class="flex items-start justify-between gap-3">
 		if preview {
-			<a class="text-xl leading-tight font-semibold text-statblock-ink hover:underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", e.ID)) }>{ e.Name }</a>
+			<a class="text-xl leading-tight font-semibold text-statblock-ink hover:underline" href={ templ.SafeURL(entryHref(ctx, e.ID)) }>{ e.Name }</a>
 		} else {
 			<h1 class="text-3xl leading-tight font-semibold text-statblock-ink">{ e.Name }</h1>
 		}
@@ -1162,7 +1199,7 @@ templ monsterHabitats(e sqlc.CompendiumEntry, habitats []string, gm bool) {
 		<p>
 			<strong>Habitat</strong> { utils.IfElse(len(habitats) > 0, inHabitatOrder(habitats), "none set") }
 			if gm {
-				<a class="ml-2 font-sans text-xs text-muted-foreground underline underline-offset-4" href={ habitatsURL(e.Name) }>Edit habitats</a>
+				<a class="ml-2 font-sans text-xs text-muted-foreground underline underline-offset-4" href={ habitatsURL(ctx, e.Name) }>Edit habitats</a>
 			}
 		</p>
 	}
@@ -1202,7 +1239,7 @@ templ monsterPicture(e sqlc.CompendiumEntry, editable bool, class string) {
 						<img src={ e.ImageUrl.String } alt={ e.Name } loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('[data-pic]').toggleAttribute('data-broken', true)" class={ imgClass }/>
 					}
 				}
-				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d/image", e.ID)) } class={ "flex-wrap items-center gap-2", templ.KV("hidden group-data-[broken]/pic:flex group-data-[editing]/pic:flex", e.ImageUrl.String != ""), templ.KV("flex", e.ImageUrl.String == "") }>
+				<form method="post" action={ templ.SafeURL(entryHref(ctx, e.ID) + "/image") } class={ "flex-wrap items-center gap-2", templ.KV("hidden group-data-[broken]/pic:flex group-data-[editing]/pic:flex", e.ImageUrl.String != ""), templ.KV("flex", e.ImageUrl.String == "") }>
 					@inlineField("Picture link", "image_url", e.ImageUrl.String, "w-96 max-w-full", templ.Attributes{"type": "url", "pattern": "https://.*", "placeholder": "https://… (empty: no picture)"})
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
 						Save
@@ -1443,13 +1480,13 @@ templ MasteryLinks(mastery string) {
 		if i > 0 {
 			{ ", " }
 		}
-		<a class="underline" href={ templ.SafeURL(CompendiumFindURL(compendium.KindRule, compendium.Slugify(m))) }>{ m }</a>
+		<a class="underline" href={ templ.SafeURL(compendiumFindURL(ctx, compendium.KindRule, compendium.Slugify(m))) }>{ m }</a>
 	}
 }
 
-// CompendiumFindURL opens the entry of kind and slug the viewer would see.
-func CompendiumFindURL(kind compendium.Kind, slug string) string {
-	return fmt.Sprintf("/compendium/find/%s/%s", kind, url.PathEscape(slug))
+// compendiumFindURL opens the entry of kind and slug the viewer would see.
+func compendiumFindURL(ctx context.Context, kind compendium.Kind, slug string) string {
+	return CompendiumPath(ctx, fmt.Sprintf("/find/%s/%s", kind, url.PathEscape(slug)))
 }
 
 templ classBody(d *compendium.ClassData) {
@@ -1545,7 +1582,7 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 			</div>
 			if v.ID != 0 {
 				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Class: quietDestructive, Attributes: templ.Attributes{
-					"form": homebrewFormID, "formaction": fmt.Sprintf("/compendium/entries/%d/delete", v.ID), "formnovalidate": true, "type": "submit",
+					"form": homebrewFormID, "formaction": entryHref(ctx, v.ID) + "/delete", "formnovalidate": true, "type": "submit",
 					"onclick": templ.JSUnsafeFuncCall("return confirm('Delete this homebrew entry?')"), "aria-label": "Delete", "title": "Delete",
 				}}) {
 					@icon.Trash2()
@@ -1565,12 +1602,12 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 				}
 				if v.Replaces != 0 {
 					<p>
-						Saving replaces the <a class="underline" href={ templ.SafeURL(fmt.Sprintf("/compendium/entries/%d", v.Replaces)) }>entry imported from this page before</a>.
+						Saving replaces the <a class="underline" href={ templ.SafeURL(entryHref(ctx, v.Replaces)) }>entry imported from this page before</a>.
 					</p>
 				}
 			</div>
 		}
-		<form id={ homebrewFormID } method="post" action={ templ.SafeURL(utils.IfElse(v.Page.ID != "", "/compendium/page", homebrewAction(v.ID))) } class="group/busy max-w-2xl space-y-6" data-homebrew data-busy>
+		<form id={ homebrewFormID } method="post" action={ templ.SafeURL(CompendiumPath(ctx, utils.IfElse(v.Page.ID != "", "/page", homebrewAction(v.ID)))) } class="group/busy max-w-2xl space-y-6" data-homebrew data-busy>
 			if v.AddToSheet {
 				<input type="hidden" name="add" value="1"/>
 			}
@@ -1783,7 +1820,7 @@ const homebrewFormID = "homebrew-form"
 
 func homebrewAction(id int64) string {
 	if id == 0 {
-		return "/compendium/homebrew"
+		return "/homebrew"
 	}
-	return fmt.Sprintf("/compendium/entries/%d", id)
+	return fmt.Sprintf("/entries/%d", id)
 }
