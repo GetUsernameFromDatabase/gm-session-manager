@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -9,6 +10,8 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/hub"
+
+	"github.com/a-h/templ"
 )
 
 // ImportTabFiveTools is the import tab that picks 5etools books.
@@ -121,5 +124,54 @@ func NewFiveToolsView(books []compendium.Book, downloaded map[string]time.Time) 
 // copyLabel names an entry's copy in a source for the "Also in" line.
 func copyLabel(c sqlc.ListEntryCopiesRow) string { return SourceLabel(c.SourceKey, c.Edition) }
 
-// sourceMoveURL is where a source's priority arrows post.
-func sourceMoveURL(key string) string { return "/compendium/sources/" + url.PathEscape(key) + "/move" }
+// sourceURL is a source's priority action (move, delete) in the campaign ctx
+// renders in, whose overlap counts the answer shows.
+func sourceURL(ctx context.Context, key, action string) string {
+	return CompendiumPath(ctx, "/sources/"+url.PathEscape(key)+"/"+action)
+}
+
+// SharedKey is the browse filter to one source's entries another source
+// also holds (CompendiumView.Shared); SharedWithKey narrows it to one other
+// source (CompendiumView.With).
+const (
+	SharedKey     = "shared"
+	SharedWithKey = "with"
+)
+
+// sharedHref browses source's shared entries in the campaign ctx renders in.
+func sharedHref(ctx context.Context, source string) templ.SafeURL {
+	return templ.SafeURL(CompendiumPath(ctx, "?"+url.Values{SharedKey: {source}}.Encode()))
+}
+
+// sharedWithHref narrows the shared list to entries with also holds ("" for
+// any); the kind filter stays.
+func sharedWithHref(v CompendiumView, with string) templ.SafeURL {
+	q := url.Values{SharedKey: {v.Shared}}
+	if with != "" {
+		q.Set(SharedWithKey, with)
+	}
+	if v.Kind != "" {
+		q.Set("kind", v.Kind)
+	}
+	return templ.SafeURL(CompendiumURL(q, v.Campaign))
+}
+
+// CopyKey keys CompendiumView.CopyOrder by an entry's kind and slug.
+func CopyKey(kind, slug string) string { return kind + "/" + slug }
+
+// compareHref sets every copy of a kind and slug side by side.
+func compareHref(ctx context.Context, kind, slug string) string {
+	return CompendiumPath(ctx, "/compare/"+url.PathEscape(kind)+"/"+url.PathEscape(slug))
+}
+
+// CompareView is every copy of one entry the campaign sees, best first.
+type CompareView struct {
+	Copies []CompareCopy
+}
+
+// CompareCopy is one source's copy, decoded for its stat block.
+type CompareCopy struct {
+	Entry  sqlc.CompendiumEntry
+	Source sqlc.ListEntryCopiesRow
+	Data   any
+}

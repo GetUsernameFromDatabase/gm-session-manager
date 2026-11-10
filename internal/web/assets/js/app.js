@@ -816,12 +816,12 @@
   document.addEventListener("input", (e) => e.target.matches?.("[data-source-filter]") && filterSources(e.target));
   htmx.onLoad((root) => root.querySelectorAll?.("[data-source-filter]").forEach(filterSources));
 
-  // Source priority: drag a row from anywhere; the new order of every key is
-  // posted and the answer replaces the card.
+  // Source priority: drag a row from anywhere but its text, which selects for
+  // copying; the new order of every key is posted and the answer replaces the card.
   htmx.onLoad((root) => {
     root.querySelectorAll?.("[data-sortable]").forEach((list) => {
       Sortable.create(list, {
-        filter: "button, a, input",
+        filter: "button, a, input, [data-no-drag]",
         preventOnFilter: false,
         delayOnTouchOnly: true, // touch still scrolls the list
         delay: 150,

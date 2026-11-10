@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -134,6 +135,78 @@ func TestCampaignSourceVisibility(t *testing.T) {
 			w := e.do(t, http.MethodGet, tt.path, tt.cookie, nil, false)
 			if w.Code != http.StatusOK {
 				t.Fatalf("status %d", w.Code)
+			}
+			for _, s := range tt.want {
+				if !strings.Contains(w.Body.String(), s) {
+					t.Errorf("page lacks %q", s)
+				}
+			}
+			for _, s := range tt.hidden {
+				if strings.Contains(w.Body.String(), s) {
+					t.Errorf("page shows %q", s)
+				}
+			}
+		})
+	}
+}
+
+// TestSourceOverlap: the priority card counts entries another allowed source
+// also holds, the shared filter lists them, and the comparison sets the
+// copies a campaign sees side by side, for the GM only.
+func TestSourceOverlap(t *testing.T) {
+	e := sourcesEnv(t)
+	counts := []struct {
+		name     string
+		campaign int64
+		want     map[string]sqlc.CountSharedBySourceRow
+	}{
+		{"every source", 0, map[string]sqlc.CountSharedBySourceRow{
+			offBook: {SourceKey: offBook, Shared: 1, Shown: 1},
+			onBook:  {SourceKey: onBook, Shared: 1, Shown: 0},
+		}},
+		// on-book's copy is the only one the campaign sees: off-book's shared
+		// entry is never shown there, and on-book shares with nothing it allows.
+		{"campaign counts only copies it allows", e.campaignID, map[string]sqlc.CountSharedBySourceRow{
+			offBook: {SourceKey: offBook, Shared: 1, Shown: 0},
+		}},
+	}
+	for _, tt := range counts {
+		t.Run(tt.name, func(t *testing.T) {
+			_, got, err := e.app.sourcePriority(t.Context(), tt.campaign)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !maps.Equal(got, tt.want) {
+				t.Errorf("counts %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
+	pages := []struct {
+		name, cookie, path string
+		code               int
+		want, hidden       []string
+	}{
+		{"card counts", gm, "/compendium?tab=import", http.StatusOK, []string{"1 shared, 1 shown", "1 shared, 0 shown", "?shared=on-book"}, nil},
+		{"shared filter opens comparisons", gm, "/compendium?shared=on-book", http.StatusOK, []string{"1 shared, 0 shown", "/compendium/compare/subclass/shared-school", `title="off-book › on-book"`}, []string{"Off School"}},
+		{"kind chips stay in the shared list", gm, "/compendium?shared=on-book", http.StatusOK, []string{"kind=subclass&amp;shared=on-book", "with=off-book"}, nil},
+		{"with narrows to one other source", gm, "/compendium?shared=on-book&with=off-book", http.StatusOK, []string{"/compendium/compare/subclass/shared-school"}, nil},
+		{"unticked source is never first in its rows", gm, base + "?shared=off-book", http.StatusOK, []string{"1 shared, 0 shown", `title="on-book"`}, []string{`title="off-book › on-book"`}},
+		{"with a source sharing nothing", gm, "/compendium?shared=on-book&with=srd-mini", http.StatusOK, []string{"Nothing found"}, []string{"/compendium/compare/"}},
+		{"player ignores the shared filter", player, base + "?shared=on-book", http.StatusOK, []string{"Brew School"}, []string{"/compare/"}},
+		{"comparison of every source", gm, "/compendium/compare/subclass/shared-school", http.StatusOK, []string{"2 copies", "off-book, 2024", "on-book, 2014", "Shown"}, nil},
+		{"comparison in the campaign", gm, base + "/compare/subclass/shared-school", http.StatusOK, []string{"1 copy,", "on-book, 2014"}, []string{"off-book, 2024"}},
+		{"unticked-only entry", gm, base + "/compare/subclass/off-school", http.StatusNotFound, nil, nil},
+		{"unknown kind", gm, "/compendium/compare/nope/shared-school", http.StatusNotFound, nil, nil},
+		{"player may not compare", player, base + "/compare/subclass/shared-school", http.StatusForbidden, nil, nil},
+	}
+	for _, tt := range pages {
+		t.Run(tt.name, func(t *testing.T) {
+			w := e.do(t, http.MethodGet, tt.path, tt.cookie, nil, false)
+			if w.Code != tt.code {
+				t.Fatalf("status %d, want %d", w.Code, tt.code)
 			}
 			for _, s := range tt.want {
 				if !strings.Contains(w.Body.String(), s) {

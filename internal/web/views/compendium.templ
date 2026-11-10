@@ -48,9 +48,18 @@ type CompendiumView struct {
 	// MyHomebrew is a player's own entries.
 	MyHomebrew []sqlc.ListHomebrewByOwnerRow
 	Import     ImportNotice
-	// Sources are the imported sources in priority order (GM).
-	Sources []sqlc.CompendiumSource
-	More    string // URL of the next batch when browsing; "" at the end
+	// Sources are the imported sources in priority order (GM), with their
+	// overlap counts by key.
+	Sources      []sqlc.CompendiumSource
+	SharedCounts map[string]sqlc.CountSharedBySourceRow
+	// Shared browses one source's entries another source also holds (GM),
+	// SharedWith those other sources, With narrows to one of them; rows show
+	// their CopyOrder (by CopyKey) and open the comparison.
+	Shared     string
+	SharedWith []sqlc.ListSharedWithRow
+	With       string
+	CopyOrder  map[string][]string
+	More       string // URL of the next batch when browsing; "" at the end
 	// Tab is the page tab to open (CompendiumTab*); "" is Browse.
 	Tab string
 	// Campaign is the campaign in the page's path (a player's is always
@@ -134,7 +143,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 			}
 			// Browse fits the window on desktop (data-fit-screen, globals.css).
 			@tabs.Content(tabs.ContentProps{Value: CompendiumTabBrowse, Attributes: templ.Attributes{"data-fit-screen": true}}) {
-				if len(v.Counts) == 0 {
+				if len(v.Counts) == 0 && v.Shared == "" {
 					@compendiumEmpty(v.IsGM)
 				} else {
 					// On phones the list scrolls with the page, so the search and
@@ -150,9 +159,14 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 				@homebrewTab(v)
 			}
 			if v.IsGM {
+				// Ways to add on the left, the sources they fill on the right.
 				@tabs.Content(tabs.ContentProps{Value: CompendiumTabImport}) {
-					@importTabs(v.Import)
-					@SourcePriority(v.Sources)
+					<div class="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_20rem] md:items-start">
+						<div class="min-w-0">
+							@importTabs(v.Import)
+						</div>
+						@SourcePriority(v.Sources, v.SharedCounts)
+					</div>
 				}
 			}
 		}
@@ -379,28 +393,35 @@ templ FiveToolsProgress(j FiveToolsJob, reload bool) {
 
 // SourcePriority orders the sources: the first holding an entry wins its
 // lookups and shows alone in lists.
-templ SourcePriority(sources []sqlc.CompendiumSource) {
-	<div id={ SourcesID } class="mt-6 max-w-2xl">
+templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.CountSharedBySourceRow) {
+	<div id={ SourcesID } class="min-w-0 md:sticky md:top-16">
 		@card.Card() {
 			@card.Header() {
 				@card.Title() {
 					Source priority
 				}
 				@card.Description() {
-					When several sources hold the same entry, the one higher up is shown and used. Drag a source, or use the arrows.
+					The higher source wins when two hold the same entry. Drag or use the arrows.
+					Shared: entries another source also holds; shown: those this source wins.
 				}
 			}
 			@card.Content() {
 				// app.js makes the list sortable (SortableJS) and posts the new order.
-				<ol class={ "divide-y rounded-lg border text-sm", scrollBox } data-sortable={ SourceOrderPath } data-sort-target={ "#" + SourcesID }>
+				<ol class={ "divide-y rounded-lg border text-sm", scrollBox } data-sortable={ CompendiumPath(ctx, CompendiumRest(SourceOrderPath)) } data-sort-target={ "#" + SourcesID }>
 					for i, s := range sources {
 						<li class="flex flex-wrap items-center gap-x-3 gap-y-1 cursor-grab bg-card px-3 py-1.5 active:cursor-grabbing" data-source-key={ s.SourceKey }>
 							<span class="text-muted-foreground" aria-hidden="true">
 								@icon.GripVertical(icon.Props{Size: 16})
 							</span>
+							// The text itself selects for copying (data-no-drag); the space after it drags.
 							<span class="min-w-0 grow basis-48" title={ s.Attribution }>
-								<span class="font-medium">{ s.SourceKey }</span>
-								<span class="text-xs text-muted-foreground">{ s.Edition }</span>
+								<span class="cursor-text font-medium" data-no-drag>{ s.SourceKey }</span>
+								<span class="cursor-text text-xs text-muted-foreground" data-no-drag>{ s.Edition }</span>
+								if n, ok := shared[s.SourceKey]; ok {
+									<a class="block w-fit py-1 text-xs text-muted-foreground tabular-nums underline underline-offset-4" href={ sharedHref(ctx, s.SourceKey) }>
+										{ fmt.Sprintf("%d shared, %d shown", n.Shared, n.Shown) }
+									</a>
+								}
 							</span>
 							<span class="flex gap-1" hx-target={ "#" + SourcesID } hx-swap="outerHTML">
 								@sourceMoveButton(s.SourceKey, SourceUp, "Move "+s.SourceKey+" up", i == 0)
@@ -419,7 +440,7 @@ templ SourcePriority(sources []sqlc.CompendiumSource) {
 
 templ sourceDeleteButton(key string) {
 	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Class: quietDestructive, Attributes: templ.Attributes{
-		"aria-label": "Delete " + key, "title": "Delete " + key, "hx-post": "/compendium/sources/" + url.PathEscape(key) + "/delete",
+		"aria-label": "Delete " + key, "title": "Delete " + key, "hx-post": sourceURL(ctx, key, "delete"),
 		"hx-confirm": "Delete " + key + " and all its entries?",
 	}}) {
 		@icon.Trash2()
@@ -428,7 +449,7 @@ templ sourceDeleteButton(key string) {
 
 templ sourceMoveButton(key, dir, label string, disabled bool) {
 	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Disabled: disabled, Attributes: templ.Attributes{
-		"aria-label": label, "title": label, "hx-post": sourceMoveURL(key), "hx-vals": toJSON(map[string]string{SourceDirField: dir}),
+		"aria-label": label, "title": label, "hx-post": sourceURL(ctx, key, "move"), "hx-vals": toJSON(map[string]string{SourceDirField: dir}),
 	}}) {
 		if dir == SourceUp {
 			@icon.ArrowUp()
@@ -443,10 +464,6 @@ templ sourceMoveButton(key, dir, label string, disabled bool) {
 templ importTabs(n ImportNotice) {
 	@tabs.Tabs(tabs.Props{ID: "compendium-import", DefaultValue: utils.IfElse(n.Tab == ImportTabFolder || n.Tab == ImportTabFiveTools, n.Tab, ImportTabPage)}) {
 		@tabs.List(tabs.ListProps{Class: "w-fit"}) {
-			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabFolder}) {
-				@icon.FolderOpen()
-				Data folder
-			}
 			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabPage}) {
 				@icon.Globe()
 				Web page
@@ -455,54 +472,14 @@ templ importTabs(n ImportNotice) {
 				@icon.Library()
 				5etools
 			}
-		}
-		@tabs.Content(tabs.ContentProps{Value: ImportTabFiveTools, Class: "max-w-2xl space-y-3 text-sm"}) {
-			<p class="text-muted-foreground">
-				Pick the books to download from the 5etools GitHub mirror. They are cached in <code>{ n.Dir }</code> and imported like any data folder.
-				For private use at your own table; the books stay the property of their publishers.
-			</p>
-			if n.Msg != "" && n.Tab == ImportTabFiveTools {
-				@Notice(n.Msg, n.Failed, scrollBox)
-			}
-			@FiveToolsProgress(n.Job, false)
-			// The list comes from the network: it loads when the tab is first shown.
-			<div id={ FiveToolsID } class="text-muted-foreground" hx-get="/compendium/5etools" hx-trigger="intersect once" hx-swap="outerHTML">Loading books…</div>
-		}
-		@tabs.Content(tabs.ContentProps{Value: ImportTabFolder, Class: "max-w-2xl space-y-3 text-sm"}) {
-			<div class="flex flex-wrap items-center gap-2">
-				<code class="rounded bg-muted px-2 py-1 font-mono text-xs break-all">{ n.Dir }</code>
-				@button.Button(button.Props{Size: button.SizeIconSm, Variant: button.VariantGhost, Class: "group", Attributes: templ.Attributes{"data-copy": n.Dir, "aria-label": "Copy folder path", "title": "Copy folder path"}}) {
-					@icon.Copy(icon.Props{Size: 16, Class: "group-data-[copied]:hidden"})
-					@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-[copied]:block"})
-				}
-				if n.OnHost {
-					@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": "/compendium/folder", "hx-swap": "none"}}) {
-						@icon.FolderOpen()
-						Open folder
-					}
-				}
-			</div>
-			<ul class="list-disc space-y-1 pl-5 text-muted-foreground">
-				<li>Each folder in it is one source; its name is the source's key (for example <code>srd-2024</code>; <code>homebrew</code> is reserved).</li>
-				<li>
-					A source folder holds the Open5e v2 JSON files of one document: <code>Document.json</code>, <code>Spell.json</code>, <code>Creature.json</code>, <code>CharacterClass.json</code>, <code>ClassFeature.json</code> and the rest, as in
-					<a class="underline" href="https://github.com/open5e/open5e-api/tree/staging/data/v2/wizards-of-the-coast/srd-2024" target="_blank" rel="noopener">open5e-api data/v2</a>.
-				</li>
-				<li>Every entry keeps the license and attribution of its folder's <code>Document.json</code>.</li>
-				<li>Folders that have not changed since the last import are skipped; entries removed from a folder are removed from the compendium.</li>
-				<li>The import also runs every time the app starts.</li>
-			</ul>
-			<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, "/import")) } class="group/busy" data-busy>
-				@button.Button(button.Props{Type: button.TypeSubmit}) {
-					Import now
-				}
-				@busyIndicator("Importing…")
-			</form>
-			if n.Msg != "" && n.Tab == ImportTabFolder {
-				@Notice(n.Msg, n.Failed, scrollBox)
+			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabFolder}) {
+				@icon.FolderOpen()
+				Data folder
 			}
 		}
-		@tabs.Content(tabs.ContentProps{Value: ImportTabPage, Class: "max-w-2xl space-y-3 text-sm"}) {
+		// Each panel: what it does, the action, its result, then the fine print.
+		@tabs.Content(tabs.ContentProps{Value: ImportTabPage, Class: "space-y-3 text-sm"}) {
+			<p class="text-muted-foreground">Import one entry from a page of the sites below: open one, find the page and paste its link.</p>
 			<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, "/page/preview")) } class="group/busy flex flex-wrap items-center gap-2" data-busy>
 				<input type="hidden" name="back" value={ n.Back }/>
 				// Focused when coming back from an import, ready for the next page.
@@ -515,7 +492,6 @@ templ importTabs(n ImportNotice) {
 			if n.Msg != "" && n.Tab == ImportTabPage {
 				@Notice(n.Msg, n.Failed, scrollBox)
 			}
-			<p class="text-muted-foreground">Pages can come from these sites only; open one, find the page and paste its link.</p>
 			<ul class="list-disc space-y-1 pl-5 text-muted-foreground">
 				for _, s := range compendium.Sites {
 					<li>
@@ -527,13 +503,72 @@ templ importTabs(n ImportNotice) {
 					</li>
 				}
 			</ul>
-			<p class="text-muted-foreground">
-				Other pages of these sites are tried too, as plain text whose kind you pick.
-				You review and edit it before it is saved; saving the same page again replaces it.
-				Entries are attributed to the book and the page they came from.
-			</p>
+			@importDetails("How it works") {
+				<p>
+					Other pages of these sites are tried too, as plain text whose kind you pick.
+					You review and edit it before it is saved; saving the same page again replaces it.
+					Entries are attributed to the book and the page they came from.
+				</p>
+			}
+		}
+		@tabs.Content(tabs.ContentProps{Value: ImportTabFiveTools, Class: "space-y-3 text-sm"}) {
+			<p class="text-muted-foreground">Download whole books from the 5etools GitHub mirror. They are cached in <code>{ n.Dir }</code> and imported like any data folder.</p>
+			<p class="text-xs text-muted-foreground">For private use at your own table; the books stay the property of their publishers.</p>
+			if n.Msg != "" && n.Tab == ImportTabFiveTools {
+				@Notice(n.Msg, n.Failed, scrollBox)
+			}
+			@FiveToolsProgress(n.Job, false)
+			// The list comes from the network: it loads when the tab is first shown.
+			<div id={ FiveToolsID } class="text-muted-foreground" hx-get="/compendium/5etools" hx-trigger="intersect once" hx-swap="outerHTML">Loading books…</div>
+		}
+		@tabs.Content(tabs.ContentProps{Value: ImportTabFolder, Class: "space-y-3 text-sm"}) {
+			<p class="text-muted-foreground">Each folder in this one is a source. They are read again every time the app starts.</p>
+			<div class="flex flex-wrap items-center gap-2">
+				<code class="min-w-0 rounded bg-muted px-2 py-1 font-mono text-xs break-all">{ n.Dir }</code>
+				@button.Button(button.Props{Size: button.SizeIconSm, Variant: button.VariantGhost, Class: "group", Attributes: templ.Attributes{"data-copy": n.Dir, "aria-label": "Copy folder path", "title": "Copy folder path"}}) {
+					@icon.Copy(icon.Props{Size: 16, Class: "group-data-[copied]:hidden"})
+					@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-[copied]:block"})
+				}
+				if n.OnHost {
+					@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": "/compendium/folder", "hx-swap": "none"}}) {
+						@icon.FolderOpen()
+						Open folder
+					}
+				}
+				<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, "/import")) } class="group/busy" data-busy>
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+						@icon.Download()
+						Import now
+					}
+					@busyIndicator("Importing…")
+				</form>
+			</div>
+			if n.Msg != "" && n.Tab == ImportTabFolder {
+				@Notice(n.Msg, n.Failed, scrollBox)
+			}
+			@importDetails("How folders are read") {
+				<ul class="list-disc space-y-1 pl-5">
+					<li>A folder's name is the source's key (for example <code>srd-2024</code>; <code>homebrew</code> is reserved).</li>
+					<li>
+						A source folder holds the Open5e v2 JSON files of one document: <code>Document.json</code>, <code>Spell.json</code>, <code>Creature.json</code>, <code>CharacterClass.json</code>, <code>ClassFeature.json</code> and the rest, as in
+						<a class="underline" href="https://github.com/open5e/open5e-api/tree/staging/data/v2/wizards-of-the-coast/srd-2024" target="_blank" rel="noopener">open5e-api data/v2</a>.
+					</li>
+					<li>Every entry keeps the license and attribution of its folder's <code>Document.json</code>.</li>
+					<li>Folders that have not changed since the last import are skipped; entries removed from a folder are removed from the compendium.</li>
+				</ul>
+			}
 		}
 	}
+}
+
+// importDetails folds an import panel's fine print away from its action.
+templ importDetails(summary string) {
+	<details class="text-muted-foreground">
+		<summary class="cursor-pointer">{ summary }</summary>
+		<div class="mt-2">
+			{ children... }
+		</div>
+	</details>
 }
 
 // homebrewLinks are a player entry's campaigns, each removable, and a
@@ -576,7 +611,7 @@ const CompendiumResultsID = "compendium-results"
 // CompendiumResults is the result list, rendered alone for htmx.
 templ CompendiumResults(v CompendiumView) {
 	<div id={ CompendiumResultsID } data-fit>
-		if v.Query != "" || len(v.Results) > 0 || len(v.TextResults) > 0 {
+		if v.Query != "" || v.Shared != "" || len(v.Results) > 0 || len(v.TextResults) > 0 {
 			// On desktop the list scrolls on its own, filling the window below the
 			// filters, so the hover preview lives in a side pane rather than a
 			// popover the scroll box would clip. On phones the page scrolls.
@@ -603,12 +638,16 @@ templ CompendiumResults(v CompendiumView) {
 // its place once scrolled into view (intersect, since the list scrolls itself).
 templ CompendiumRows(v CompendiumView) {
 	for _, r := range v.Results {
-		@compendiumRow(r)
+		if v.Shared != "" {
+			@compendiumRow(r, compareHref(ctx, r.Kind, r.Slug), v.CopyOrder[CopyKey(r.Kind, r.Slug)])
+		} else {
+			@compendiumRow(r, entryHref(ctx, r.ID), nil)
+		}
 	}
 	if len(v.TextResults) > 0 {
 		@textMatchesHeader()
 		for _, r := range v.TextResults {
-			@compendiumRow(r)
+			@compendiumRow(r, entryHref(ctx, r.ID), nil)
 		}
 	}
 	if v.More != "" {
@@ -618,34 +657,64 @@ templ CompendiumRows(v CompendiumView) {
 	}
 }
 
-templ compendiumRow(r sqlc.SearchCompendiumRow) {
+// sharedHeader heads the shared list: the source, its counts, and a chip per
+// other source it shares entries with, to narrow the list to one of them.
+templ sharedHeader(v CompendiumView) {
+	{{ n := v.SharedCounts[v.Shared] }}
+	<div class="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+		<span class="font-medium">{ v.Shared }</span>
+		<span class="text-muted-foreground tabular-nums">{ fmt.Sprintf("%d shared, %d shown. Rows list every copy, the shown one first; open one to compare.", n.Shared, n.Shown) }</span>
+		<a class="ml-auto text-muted-foreground underline underline-offset-4" href={ templ.SafeURL(CompendiumPath(ctx, "")) }>Show all entries</a>
+	</div>
+	if len(v.SharedWith) == 0 {
+		<p class="mb-2 text-sm text-muted-foreground">No other source this campaign allows holds its entries.</p>
+	} else {
+		<div class={ chipRow, "mb-2" }>
+			@sharedChip(sharedWithHref(v, ""), "All", n.Shared, v.With == "")
+			for _, s := range v.SharedWith {
+				@sharedChip(sharedWithHref(v, s.SourceKey), s.SourceKey, s.N, v.With == s.SourceKey)
+			}
+		</div>
+	}
+}
+
+templ sharedChip(href templ.SafeURL, label string, n int64, on bool) {
+	@badge.Badge(badge.Props{Href: string(href), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "h-7 gap-1.5 px-2.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on)}}) {
+		{ label }
+		<span class="tabular-nums opacity-60">{ fmt.Sprint(n) }</span>
+	}
+}
+
+// copyOrder is the sources holding an entry, best first: the shown one in
+// full colour, the listed source in bold. When space runs out the other
+// sources shorten and the listed one stays whole.
+templ copyOrder(order []string, listed string) {
+	<span class="flex min-w-0 grow basis-0 justify-end gap-1 overflow-hidden text-xs whitespace-nowrap text-muted-foreground" title={ strings.Join(order, " › ") }>
+		for i, s := range order {
+			if i > 0 {
+				<span class="shrink-0" aria-hidden="true">›</span>
+			}
+			<span class={ utils.IfElse(s == listed, "shrink-0 font-semibold", "min-w-0 truncate"), templ.KV("text-foreground", i == 0) }>{ s }</span>
+		}
+	</span>
+}
+
+templ compendiumRow(r sqlc.SearchCompendiumRow, href string, order []string) {
 	// Relative, so the sr-only kind stays inside the scrolling list instead
 	// of stretching the page.
 	<li class="relative flex items-center gap-2 px-2 py-1.5 hover:bg-muted" hx-get={ entryHref(ctx, r.ID) + "?preview=1" } hx-trigger="mouseenter[document.getElementById('entry-preview').checkVisibility()] delay:150ms" hx-target="#entry-preview" hx-swap="innerHTML">
 		@kindIcon(r.Kind, "")
 		<span class="sr-only">{ r.Kind }</span>
-		<a class="truncate hover:underline" href={ templ.SafeURL(entryHref(ctx, r.ID)) }>{ r.Name }</a>
+		<a class="truncate hover:underline" href={ templ.SafeURL(href) }>{ r.Name }</a>
 		if r.IsHomebrew {
 			@homebrewBadge()
 		}
-		// Zero basis: classes get only the space left beside the name; badges
-		// that wrap fall below the one-badge-high box and are clipped whole.
-		<span class="flex h-5 min-w-0 grow basis-0 flex-wrap justify-end gap-1 overflow-hidden">
-			// A subclass's class is its figure, on the right.
-			if r.Kind != string(compendium.KindSubclass) {
-				@classBadges(strings.Fields(r.Classes))
-			}
-			if r.Size != "" {
-				@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "capitalize " + sizeColors[strings.ToLower(r.Size)]}) {
-					{ r.Size }
-				}
-			}
-			if r.Alignment != "" {
-				@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: alignmentColor(r.Alignment)}) {
-					{ r.Alignment }
-				}
-			}
-		</span>
+		if order != nil {
+			// The shared list: which copy wins matters more than the badges.
+			@copyOrder(order, r.SourceKey)
+		} else {
+			@rowBadges(r)
+		}
 		{{ text, color := rowFigure(r) }}
 		{{ rarity := utils.IfElse(r.Kind == string(compendium.KindItem), r.Figure, "") }}
 		<span class="w-24 shrink-0 truncate text-right text-xs text-muted-foreground tabular-nums first-letter:uppercase" title={ strings.TrimPrefix(text+commaPrefixed(rarity), ", ") }>
@@ -655,6 +724,28 @@ templ compendiumRow(r sqlc.SearchCompendiumRow) {
 			}
 		</span>
 	</li>
+}
+
+// rowBadges are a row's classes, size and alignment. Zero basis: they get
+// only the space left beside the name; badges that wrap fall below the
+// one-badge-high box and are clipped whole.
+templ rowBadges(r sqlc.SearchCompendiumRow) {
+	<span class="flex h-5 min-w-0 grow basis-0 flex-wrap justify-end gap-1 overflow-hidden">
+		// A subclass's class is its figure, on the right.
+		if r.Kind != string(compendium.KindSubclass) {
+			@classBadges(strings.Fields(r.Classes))
+		}
+		if r.Size != "" {
+			@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "capitalize " + sizeColors[strings.ToLower(r.Size)]}) {
+				{ r.Size }
+			}
+		}
+		if r.Alignment != "" {
+			@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: alignmentColor(r.Alignment)}) {
+				{ r.Alignment }
+			}
+		}
+	</span>
 }
 
 // rowFigure is a result row's right-hand text and its colour: a monster's
@@ -719,18 +810,23 @@ templ CompendiumSearch(v CompendiumView) {
 
 // kindCounts toggles each kind in or out of the filter; several may be active.
 templ kindCounts(v CompendiumView) {
+	// The shared list's header lives here too, so a search swaps it away.
 	<div id="compendium-kinds" class="mb-4" hx-swap-oob="true">
+		if v.Shared != "" {
+			@sharedHeader(v)
+		}
 		<div class={ chipRow }>
 			for _, c := range v.Counts {
 				{{ on := slices.Contains(kindSet(v.Kind), c.Kind) }}
-				@badge.Badge(badge.Props{Href: kindHref(v.Query, c.Kind, v.Kind, v.Campaign), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "h-7 gap-1.5 px-2.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on)}}) {
+				@badge.Badge(badge.Props{Href: kindHref(v.kindBase(), c.Kind, v.Kind, v.Campaign), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "h-7 gap-1.5 px-2.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on)}}) {
 					@kindIcon(c.Kind, utils.IfElse(on, "text-current", ""))
 					@kindName(c.Kind)
 					<span class="tabular-nums opacity-60">{ fmt.Sprint(c.N) }</span>
 				}
 			}
 		</div>
-		if v.Kind == string(compendium.KindMonster) {
+		// The shared list has no habitat filter.
+		if v.Kind == string(compendium.KindMonster) && v.Shared == "" {
 			@habitatCounts(v)
 		}
 	</div>
@@ -809,6 +905,22 @@ func entryHref(ctx context.Context, id int64) string {
 	return CompendiumPath(ctx, fmt.Sprintf("/entries/%d", id))
 }
 
+// kindBase is what the kind chips keep: the search, or the shared list and
+// its other source. New on each call, since kindHref adds to it.
+func (v CompendiumView) kindBase() url.Values {
+	q := url.Values{}
+	if v.Query != "" {
+		q.Set("q", v.Query)
+	}
+	if v.Shared != "" {
+		q.Set(SharedKey, v.Shared)
+	}
+	if v.With != "" {
+		q.Set(SharedWithKey, v.With)
+	}
+	return q
+}
+
 // CompendiumRest is path without its compendium base ("" for the list), so
 // the GM's switcher can open the same page in another campaign.
 func CompendiumRest(path string) string {
@@ -837,11 +949,8 @@ func habitatHref(query, habitat, current string, campaign int64) string {
 	return CompendiumURL(q, campaign)
 }
 
-func kindHref(query, kind, current string, campaign int64) string {
-	q := url.Values{}
-	if query != "" {
-		q.Set("q", query)
-	}
+// kindHref toggles kind in the filter, on top of q (a fresh copy, see kindBase).
+func kindHref(q url.Values, kind, current string, campaign int64) string {
 	set := kindSet(current)
 	var next []string
 	for _, k := range compendium.Kinds {
@@ -1153,6 +1262,9 @@ templ EntryPage(l Layout, v EntryView) {
 							}
 							<a class="underline underline-offset-4" href={ templ.SafeURL(entryHref(ctx, c.ID)) } title={ c.Attribution }>{ copyLabel(c) }</a>
 						}
+						if v.IsGM {
+							<a class="ml-2 underline underline-offset-4" href={ templ.SafeURL(compareHref(ctx, v.Entry.Kind, v.Entry.Slug)) }>Compare</a>
+						}
 					</dd>
 				}
 				if v.Source.Attribution != "" {
@@ -1161,6 +1273,46 @@ templ EntryPage(l Layout, v EntryView) {
 				}
 			</dl>
 		</footer>
+	}
+}
+
+// ComparePage sets an entry's copies side by side, best first: the first is
+// the one lists show, and the priority card changes which.
+templ ComparePage(l Layout, v CompareView) {
+	@Page(l) {
+		<div class="mb-4 flex flex-wrap items-center gap-2">
+			@button.Button(button.Props{Href: CompendiumPath(ctx, "?tab="+CompendiumTabImport), Variant: button.VariantGhost, Size: button.SizeSm, Class: "-ml-2.5"}) {
+				@icon.ArrowLeft()
+				Source priority
+			}
+			<div class="mr-auto">
+				@compendiumSwitcher(l)
+			</div>
+		</div>
+		<h1 class="mb-1 text-2xl font-semibold">{ v.Copies[0].Entry.Name }</h1>
+		<p class="mb-4 text-sm text-muted-foreground">
+			{ fmt.Sprintf("%d %s, in priority order. Lists show the first.", len(v.Copies), utils.IfElse(len(v.Copies) == 1, "copy", "copies")) }
+		</p>
+		// Columns fill the width whatever the number of copies; phones stack them.
+		<div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-4">
+			for i, c := range v.Copies {
+				<section class="min-w-0">
+					<div class="mb-2 flex flex-wrap items-center gap-2 text-sm">
+						<span class="font-medium" title={ c.Source.Attribution }>{ copyLabel(c.Source) }</span>
+						if i == 0 {
+							@badge.Badge(badge.Props{}) {
+								Shown
+							}
+						}
+						<a class="ml-auto text-muted-foreground underline underline-offset-4" href={ templ.SafeURL(entryHref(ctx, c.Entry.ID)) }>Open entry</a>
+					</div>
+					<article class="statblock">
+						@entryHead(c.Entry, true)
+						@entryBody(c.Data)
+					</article>
+				</section>
+			}
+		</div>
 	}
 }
 

@@ -105,8 +105,11 @@ The GM can also fill the compendium from the 5etools data: the Import >
 third party), downloads the checked ones from the 5etools GitHub mirror into
 `DATA_DIR/compendium/5etools-<id>/` (that folder is the cache) and imports
 them; "Remove" deletes a book and its entries. Where several sources hold the
-same entry, the Source priority list under the import tabs decides which copy
+same entry, the Source priority list beside the import tabs decides which copy
 is shown and linked; the others are listed as "Also in" on the entry page.
+Each source in that list counts its entries another source also holds
+("shared") and how many of those it wins ("shown"), among the sources the
+campaign allows; the count lists them, and each opens every copy side by side.
 This content is for private use at your own table and is not redistributed
 with the app.
 

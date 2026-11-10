@@ -35,6 +35,7 @@ func (a *App) compendiumRoutes(g *gin.RouterGroup, gm gin.HandlerFunc) {
 	g.GET("/lookup", a.compendiumLookup)
 	g.GET("/find/:kind/:slug", a.compendiumFind)
 	g.GET("/entries/:entry", a.compendiumEntry)
+	g.GET("/compare/:kind/:slug", gm, a.compendiumCompare)
 	// Homebrew: the handlers check who may write (perm.CanEditHomebrew).
 	g.GET("/entries/:entry/edit", a.homebrewEdit)
 	g.POST("/entries/:entry", a.homebrewUpdate)
@@ -246,7 +247,16 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 		v.Habitat = c.Query("habitat")
 	}
 	var err error
-	if v.Query != "" {
+	// A source's shared entries, from the GM's priority card; a search leaves them.
+	if w.isGM() && v.Query == "" {
+		v.Shared = c.Query(views.SharedKey)
+	}
+	if v.Shared != "" {
+		if err := a.sharedEntries(c, &v); err != nil {
+			a.serverError(c, err)
+			return
+		}
+	} else if v.Query != "" {
 		if v.Results, v.TextResults, err = compendium.Search(ctx, a.Store.Queries, v.Query, v.Kind, v.Habitat, viewerCampaign(camp), compendiumBatch); err != nil {
 			a.serverError(c, err)
 			return
@@ -272,9 +282,11 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 		a.render(c, http.StatusOK, views.CompendiumRows(v))
 		return
 	}
-	if v.Counts, err = a.Store.CountCompendium(ctx, viewerCampaign(camp)); err != nil {
-		a.serverError(c, err)
-		return
+	if v.Shared == "" { // the shared list counted its own kinds
+		if v.Counts, err = a.Store.CountCompendium(ctx, viewerCampaign(camp)); err != nil {
+			a.serverError(c, err)
+			return
+		}
 	}
 	if v.HabitatCounts, err = a.Store.CountHabitats(ctx, viewerCampaign(camp)); err != nil {
 		a.serverError(c, err)
@@ -289,7 +301,7 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 		return
 	}
 	if w.isGM() {
-		if v.Sources, err = a.Store.ListCompendiumSources(ctx); err != nil {
+		if v.Sources, v.SharedCounts, err = a.sourcePriority(ctx, viewerCampaign(camp)); err != nil {
 			a.serverError(c, err)
 			return
 		}
@@ -303,6 +315,49 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 		v.Campaigns = l.Switch.Campaigns // the homebrew links pick from the same list
 	}
 	a.render(c, http.StatusOK, views.CompendiumPage(l, v))
+}
+
+// sharedEntries fills v with a batch of v.Shared's entries that another
+// source of v.Campaign (v.With, if set) also holds, each with its copy
+// order, and the counts for the source and kind chips.
+func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
+	ctx := c.Request.Context()
+	v.With = c.Query(views.SharedWithKey)
+	afterID, _ := strconv.ParseInt(c.Query(compendiumAfterID), 10, 64)
+	rows, err := a.Store.ListSharedEntries(ctx, sqlc.ListSharedEntriesParams{SourceKey: v.Shared, With: v.With, Kind: v.Kind, AfterName: c.Query(compendiumAfterName), AfterID: afterID, CampaignID: v.Campaign, PageSize: compendiumBatch})
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		v.Results = append(v.Results, sqlc.SearchCompendiumRow(r))
+	}
+	if len(rows) == compendiumBatch {
+		last := rows[len(rows)-1]
+		v.More = views.CompendiumURL(url.Values{views.SharedKey: {v.Shared}, views.SharedWithKey: {v.With}, "kind": {v.Kind}, compendiumAfterName: {last.Name}, compendiumAfterID: {strconv.FormatInt(last.ID, 10)}}, v.Campaign)
+	}
+	if len(rows) > 0 {
+		order, err := a.Store.ListSharedOrder(ctx, sqlc.ListSharedOrderParams{SourceKey: v.Shared, CampaignID: v.Campaign})
+		if err != nil {
+			return err
+		}
+		v.CopyOrder = map[string][]string{}
+		for _, o := range order {
+			k := views.CopyKey(o.Kind, o.Slug)
+			v.CopyOrder[k] = append(v.CopyOrder[k], o.SourceKey)
+		}
+	}
+	if c.Query(compendiumAfterID) != "" {
+		return nil // a later batch: the chips are already on the page
+	}
+	kinds, err := a.Store.CountSharedByKind(ctx, sqlc.CountSharedByKindParams{SourceKey: v.Shared, With: v.With, CampaignID: v.Campaign})
+	for _, k := range kinds {
+		v.Counts = append(v.Counts, sqlc.CountCompendiumRow(k))
+	}
+	if err != nil {
+		return err
+	}
+	v.SharedWith, err = a.Store.ListSharedWith(ctx, sqlc.ListSharedWithParams{SourceKey: v.Shared, CampaignID: v.Campaign})
+	return err
 }
 
 // homebrewLists fills the page's homebrew: all of it with its campaign
@@ -464,6 +519,67 @@ func (a *App) compendiumEntry(c *gin.Context) {
 		return
 	}
 	a.render(c, http.StatusOK, views.EntryPage(l, v))
+}
+
+// compendiumCompare sets every copy of a kind and slug side by side, in
+// priority order, for the GM to choose between sources: only the sources the
+// campaign allows, and player homebrew it may see. The first is the one shown.
+func (a *App) compendiumCompare(c *gin.Context) {
+	w, camp, ok := a.compendiumReader(c)
+	if !ok {
+		return
+	}
+	ctx := c.Request.Context()
+	kind, slug := c.Param("kind"), c.Param("slug")
+	if !compendium.ValidKind(kind) {
+		a.found(c, sql.ErrNoRows)
+		return
+	}
+	rows, err := a.Store.ListEntryCopies(ctx, sqlc.ListEntryCopiesParams{Kind: kind, Slug: slug})
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	var v views.CompareView
+	for _, r := range rows {
+		allowed, err := sourceAllowed(ctx, a.Store.Queries, viewerCampaign(camp), r.SourceKey)
+		if err != nil {
+			a.serverError(c, err)
+			return
+		}
+		if !allowed {
+			continue
+		}
+		e, err := a.Store.GetCompendiumEntry(ctx, r.ID)
+		if err != nil {
+			a.serverError(c, err)
+			return
+		}
+		visible, err := a.entryVisible(ctx, e, viewerCampaign(camp))
+		if err != nil {
+			a.serverError(c, err)
+			return
+		}
+		if !visible {
+			continue
+		}
+		data, err := a.decodeLinked(ctx, e, viewerCampaign(camp))
+		if err != nil {
+			a.serverError(c, err)
+			return
+		}
+		v.Copies = append(v.Copies, views.CompareCopy{Entry: e, Source: r, Data: data})
+	}
+	if len(v.Copies) == 0 {
+		a.found(c, sql.ErrNoRows)
+		return
+	}
+	l, err := a.compendiumLayout(c, w, v.Copies[0].Entry.Name, camp)
+	if err != nil {
+		a.serverError(c, err)
+		return
+	}
+	a.render(c, http.StatusOK, views.ComparePage(l, v))
 }
 
 // compendiumLookup is one entry's body found by kind and slug, as a

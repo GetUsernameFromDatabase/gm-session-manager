@@ -88,6 +88,90 @@ JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND e.slug = ?
 ORDER BY e.scoped, s.priority, s.published DESC, e.id;
 
+-- Overlaps between sources, for deciding their priority: an entry is shared
+-- when another source the campaign allows (all of them for campaign 0) holds
+-- its kind and slug. Player homebrew (scoped) never counts: it always ranks last.
+
+-- CountSharedBySource is each source's shared entries, and how many of them
+-- lists show (campaign_top) rather than another source's copy. A source the
+-- campaign leaves out still counts (none shown), as its shared list does.
+-- name: CountSharedBySource :many
+SELECT e.source_key, count(*) AS shared,
+    CAST(COALESCE(sum(e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))), 0) AS INTEGER) AS shown
+FROM compendium_entries AS e
+WHERE e.scoped = 0
+  AND EXISTS (SELECT 1 FROM compendium_entries AS o
+      WHERE o.kind = e.kind AND o.slug = e.slug AND o.source_key <> e.source_key AND o.scoped = 0
+        AND (CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR o.source_key = 'homebrew'
+             OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = o.source_key)))
+GROUP BY e.source_key;
+
+-- ListSharedWith is the other sources a source shares entries with, most first.
+-- name: ListSharedWith :many
+SELECT o.source_key, count(*) AS n
+FROM compendium_entries AS e
+JOIN compendium_entries AS o ON o.kind = e.kind AND o.slug = e.slug AND o.source_key <> e.source_key
+WHERE e.source_key = CAST(sqlc.arg(source_key) AS TEXT) AND e.scoped = 0 AND o.scoped = 0
+  AND (CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR o.source_key = 'homebrew'
+       OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = o.source_key))
+GROUP BY o.source_key
+ORDER BY n DESC, o.source_key;
+
+-- ListSharedEntries browses a source's shared entries like
+-- ListCompendiumByKind, whose columns it repeats so its rows convert; with
+-- narrows them to those one other source holds ('' for any).
+-- name: ListSharedEntries :many
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
+    CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
+    CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
+    CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
+    CAST(COALESCE(json_extract(e.data_json, '$.alignment'), '') AS TEXT) AS alignment,
+    CAST(COALESCE(CASE e.kind WHEN 'monster' THEN json_extract(e.data_json, '$.cr')
+        WHEN 'spell' THEN json_extract(e.data_json, '$.level')
+        WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
+FROM compendium_entries AS e
+WHERE e.source_key = CAST(sqlc.arg(source_key) AS TEXT) AND e.scoped = 0
+  AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
+  AND (e.name > CAST(sqlc.arg(after_name) AS TEXT) OR (e.name = CAST(sqlc.arg(after_name) AS TEXT) AND e.id > sqlc.arg(after_id)))
+  AND EXISTS (SELECT 1 FROM compendium_entries AS o
+      WHERE o.kind = e.kind AND o.slug = e.slug AND o.source_key <> e.source_key AND o.scoped = 0
+        AND (CAST(sqlc.arg(with) AS TEXT) = '' OR o.source_key = CAST(sqlc.arg(with) AS TEXT))
+        AND (CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR o.source_key = 'homebrew'
+             OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = o.source_key)))
+ORDER BY e.name, e.id
+LIMIT sqlc.arg(page_size);
+
+-- CountSharedByKind counts ListSharedEntries' rows by kind, for its chips.
+-- name: CountSharedByKind :many
+SELECT e.kind, count(*) AS n
+FROM compendium_entries AS e
+WHERE e.source_key = CAST(sqlc.arg(source_key) AS TEXT) AND e.scoped = 0
+  AND EXISTS (SELECT 1 FROM compendium_entries AS o
+      WHERE o.kind = e.kind AND o.slug = e.slug AND o.source_key <> e.source_key AND o.scoped = 0
+        AND (CAST(sqlc.arg(with) AS TEXT) = '' OR o.source_key = CAST(sqlc.arg(with) AS TEXT))
+        AND (CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR o.source_key = 'homebrew'
+             OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = o.source_key)))
+GROUP BY e.kind
+ORDER BY e.kind;
+
+-- ListSharedOrder is every copy the campaign sees of a source's shared
+-- entries, in campaign_top's order: the first of a (kind, slug) is the one
+-- lists show. The source's own copy is left out where the campaign does not
+-- allow it, since it is never shown there.
+-- name: ListSharedOrder :many
+SELECT e.kind, e.slug, o.source_key
+FROM compendium_entries AS e
+JOIN compendium_entries AS o ON o.kind = e.kind AND o.slug = e.slug AND o.scoped = 0
+JOIN compendium_sources AS s ON s.source_key = o.source_key
+WHERE e.source_key = CAST(sqlc.arg(source_key) AS TEXT) AND e.scoped = 0
+  AND (CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR o.source_key = 'homebrew'
+       OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = o.source_key))
+  AND EXISTS (SELECT 1 FROM compendium_entries AS x
+      WHERE x.kind = e.kind AND x.slug = e.slug AND x.source_key <> e.source_key AND x.scoped = 0
+        AND (CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR x.source_key = 'homebrew'
+             OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = x.source_key)))
+ORDER BY e.kind, e.slug, s.priority, s.published DESC, o.id;
+
 -- name: ListCompendiumSources :many
 SELECT * FROM compendium_sources
 ORDER BY priority, published DESC, source_key;

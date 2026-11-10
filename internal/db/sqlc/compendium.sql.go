@@ -200,6 +200,102 @@ func (q *Queries) CountHabitats(ctx context.Context, campaignID int64) ([]CountH
 	return items, nil
 }
 
+const countSharedByKind = `-- name: CountSharedByKind :many
+SELECT e.kind, count(*) AS n
+FROM compendium_entries AS e
+WHERE e.source_key = CAST(?1 AS TEXT) AND e.scoped = 0
+  AND EXISTS (SELECT 1 FROM compendium_entries AS o
+      WHERE o.kind = e.kind AND o.slug = e.slug AND o.source_key <> e.source_key AND o.scoped = 0
+        AND (CAST(?2 AS TEXT) = '' OR o.source_key = CAST(?2 AS TEXT))
+        AND (CAST(?3 AS INTEGER) = 0 OR o.source_key = 'homebrew'
+             OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?3 AS INTEGER) AND cs.source_key = o.source_key)))
+GROUP BY e.kind
+ORDER BY e.kind
+`
+
+type CountSharedByKindParams struct {
+	SourceKey  string
+	With       string
+	CampaignID int64
+}
+
+type CountSharedByKindRow struct {
+	Kind string
+	N    int64
+}
+
+// CountSharedByKind counts ListSharedEntries' rows by kind, for its chips.
+func (q *Queries) CountSharedByKind(ctx context.Context, arg CountSharedByKindParams) ([]CountSharedByKindRow, error) {
+	rows, err := q.db.QueryContext(ctx, countSharedByKind, arg.SourceKey, arg.With, arg.CampaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountSharedByKindRow{}
+	for rows.Next() {
+		var i CountSharedByKindRow
+		if err := rows.Scan(&i.Kind, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countSharedBySource = `-- name: CountSharedBySource :many
+
+SELECT e.source_key, count(*) AS shared,
+    CAST(COALESCE(sum(e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))), 0) AS INTEGER) AS shown
+FROM compendium_entries AS e
+WHERE e.scoped = 0
+  AND EXISTS (SELECT 1 FROM compendium_entries AS o
+      WHERE o.kind = e.kind AND o.slug = e.slug AND o.source_key <> e.source_key AND o.scoped = 0
+        AND (CAST(?1 AS INTEGER) = 0 OR o.source_key = 'homebrew'
+             OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?1 AS INTEGER) AND cs.source_key = o.source_key)))
+GROUP BY e.source_key
+`
+
+type CountSharedBySourceRow struct {
+	SourceKey string
+	Shared    int64
+	Shown     int64
+}
+
+// Overlaps between sources, for deciding their priority: an entry is shared
+// when another source the campaign allows (all of them for campaign 0) holds
+// its kind and slug. Player homebrew (scoped) never counts: it always ranks last.
+// CountSharedBySource is each source's shared entries, and how many of them
+// lists show (campaign_top) rather than another source's copy. A source the
+// campaign leaves out still counts (none shown), as its shared list does.
+func (q *Queries) CountSharedBySource(ctx context.Context, campaignID int64) ([]CountSharedBySourceRow, error) {
+	rows, err := q.db.QueryContext(ctx, countSharedBySource, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountSharedBySourceRow{}
+	for rows.Next() {
+		var i CountSharedBySourceRow
+		if err := rows.Scan(&i.SourceKey, &i.Shared, &i.Shown); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createHomebrew = `-- name: CreateHomebrew :one
 INSERT INTO compendium_entries (
     kind, slug, name, source_key, data_json, body_text, is_homebrew, content_hash, owner_character_id, scoped
@@ -1237,6 +1333,196 @@ func (q *Queries) ListMonstersByName(ctx context.Context, filter string) ([]List
 	for rows.Next() {
 		var i ListMonstersByNameRow
 		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSharedEntries = `-- name: ListSharedEntries :many
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
+    CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
+    CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
+    CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
+    CAST(COALESCE(json_extract(e.data_json, '$.alignment'), '') AS TEXT) AS alignment,
+    CAST(COALESCE(CASE e.kind WHEN 'monster' THEN json_extract(e.data_json, '$.cr')
+        WHEN 'spell' THEN json_extract(e.data_json, '$.level')
+        WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
+FROM compendium_entries AS e
+WHERE e.source_key = CAST(?1 AS TEXT) AND e.scoped = 0
+  AND (CAST(?2 AS TEXT) = '' OR instr(',' || CAST(?2 AS TEXT) || ',', ',' || e.kind || ',') > 0)
+  AND (e.name > CAST(?3 AS TEXT) OR (e.name = CAST(?3 AS TEXT) AND e.id > ?4))
+  AND EXISTS (SELECT 1 FROM compendium_entries AS o
+      WHERE o.kind = e.kind AND o.slug = e.slug AND o.source_key <> e.source_key AND o.scoped = 0
+        AND (CAST(?5 AS TEXT) = '' OR o.source_key = CAST(?5 AS TEXT))
+        AND (CAST(?6 AS INTEGER) = 0 OR o.source_key = 'homebrew'
+             OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?6 AS INTEGER) AND cs.source_key = o.source_key)))
+ORDER BY e.name, e.id
+LIMIT ?7
+`
+
+type ListSharedEntriesParams struct {
+	SourceKey  string
+	Kind       string
+	AfterName  string
+	AfterID    int64
+	With       string
+	CampaignID int64
+	PageSize   int64
+}
+
+type ListSharedEntriesRow struct {
+	ID         int64
+	Kind       string
+	Slug       string
+	Name       string
+	SourceKey  string
+	IsHomebrew bool
+	Classes    string
+	Category   string
+	Size       string
+	Alignment  string
+	Figure     string
+}
+
+// ListSharedEntries browses a source's shared entries like
+// ListCompendiumByKind, whose columns it repeats so its rows convert; with
+// narrows them to those one other source holds (” for any).
+func (q *Queries) ListSharedEntries(ctx context.Context, arg ListSharedEntriesParams) ([]ListSharedEntriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSharedEntries,
+		arg.SourceKey,
+		arg.Kind,
+		arg.AfterName,
+		arg.AfterID,
+		arg.With,
+		arg.CampaignID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSharedEntriesRow{}
+	for rows.Next() {
+		var i ListSharedEntriesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Slug,
+			&i.Name,
+			&i.SourceKey,
+			&i.IsHomebrew,
+			&i.Classes,
+			&i.Category,
+			&i.Size,
+			&i.Alignment,
+			&i.Figure,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSharedOrder = `-- name: ListSharedOrder :many
+SELECT e.kind, e.slug, o.source_key
+FROM compendium_entries AS e
+JOIN compendium_entries AS o ON o.kind = e.kind AND o.slug = e.slug AND o.scoped = 0
+JOIN compendium_sources AS s ON s.source_key = o.source_key
+WHERE e.source_key = CAST(?1 AS TEXT) AND e.scoped = 0
+  AND (CAST(?2 AS INTEGER) = 0 OR o.source_key = 'homebrew'
+       OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?2 AS INTEGER) AND cs.source_key = o.source_key))
+  AND EXISTS (SELECT 1 FROM compendium_entries AS x
+      WHERE x.kind = e.kind AND x.slug = e.slug AND x.source_key <> e.source_key AND x.scoped = 0
+        AND (CAST(?2 AS INTEGER) = 0 OR x.source_key = 'homebrew'
+             OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?2 AS INTEGER) AND cs.source_key = x.source_key)))
+ORDER BY e.kind, e.slug, s.priority, s.published DESC, o.id
+`
+
+type ListSharedOrderParams struct {
+	SourceKey  string
+	CampaignID int64
+}
+
+type ListSharedOrderRow struct {
+	Kind      string
+	Slug      string
+	SourceKey string
+}
+
+// ListSharedOrder is every copy the campaign sees of a source's shared
+// entries, in campaign_top's order: the first of a (kind, slug) is the one
+// lists show. The source's own copy is left out where the campaign does not
+// allow it, since it is never shown there.
+func (q *Queries) ListSharedOrder(ctx context.Context, arg ListSharedOrderParams) ([]ListSharedOrderRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSharedOrder, arg.SourceKey, arg.CampaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSharedOrderRow{}
+	for rows.Next() {
+		var i ListSharedOrderRow
+		if err := rows.Scan(&i.Kind, &i.Slug, &i.SourceKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSharedWith = `-- name: ListSharedWith :many
+SELECT o.source_key, count(*) AS n
+FROM compendium_entries AS e
+JOIN compendium_entries AS o ON o.kind = e.kind AND o.slug = e.slug AND o.source_key <> e.source_key
+WHERE e.source_key = CAST(?1 AS TEXT) AND e.scoped = 0 AND o.scoped = 0
+  AND (CAST(?2 AS INTEGER) = 0 OR o.source_key = 'homebrew'
+       OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?2 AS INTEGER) AND cs.source_key = o.source_key))
+GROUP BY o.source_key
+ORDER BY n DESC, o.source_key
+`
+
+type ListSharedWithParams struct {
+	SourceKey  string
+	CampaignID int64
+}
+
+type ListSharedWithRow struct {
+	SourceKey string
+	N         int64
+}
+
+// ListSharedWith is the other sources a source shares entries with, most first.
+func (q *Queries) ListSharedWith(ctx context.Context, arg ListSharedWithParams) ([]ListSharedWithRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSharedWith, arg.SourceKey, arg.CampaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSharedWithRow{}
+	for rows.Next() {
+		var i ListSharedWithRow
+		if err := rows.Scan(&i.SourceKey, &i.N); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

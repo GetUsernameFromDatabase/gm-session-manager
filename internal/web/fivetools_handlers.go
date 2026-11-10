@@ -211,12 +211,27 @@ func (a *App) sourceOrder(c *gin.Context) {
 // sourcesChanged tells every page and answers with the priority card.
 func (a *App) sourcesChanged(c *gin.Context) {
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
-	sources, err := a.Store.ListCompendiumSources(c.Request.Context())
+	sources, shared, err := a.sourcePriority(c.Request.Context(), viewerCampaign(pathCampaign(c)))
 	if err != nil {
 		a.serverError(c, err)
 		return
 	}
-	a.render(c, http.StatusOK, views.SourcePriority(sources))
+	a.render(c, http.StatusOK, views.SourcePriority(sources, shared))
+}
+
+// sourcePriority is the priority card's sources and, by source key, how many
+// of each one's entries another source campaignID allows also holds.
+func (a *App) sourcePriority(ctx context.Context, campaignID int64) ([]sqlc.CompendiumSource, map[string]sqlc.CountSharedBySourceRow, error) {
+	sources, err := a.Store.ListCompendiumSources(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows, err := a.Store.CountSharedBySource(ctx, campaignID)
+	shared := map[string]sqlc.CountSharedBySourceRow{}
+	for _, r := range rows {
+		shared[r.SourceKey] = r
+	}
+	return sources, shared, err
 }
 
 // entryCopies are the other sources holding e's kind and slug, without
