@@ -102,6 +102,47 @@ func TestFilesCleanup(t *testing.T) {
 	}
 }
 
+// TestCampaignFiles: a campaign's Files page lists and cleans up only that
+// campaign's files; /files lists every campaign's.
+func TestCampaignFiles(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	other, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine := e.attachFile(t, 0, "mine.png")
+	theirs, err := e.app.storeFile(ctx, other.ID, nullID(0), "theirs.png", strings.NewReader(pngHead))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	base := views.FilesBase(e.campaignID)
+
+	page := e.do(t, http.MethodGet, base, gm, nil, false).Body.String()
+	if !strings.Contains(page, "mine.png") || strings.Contains(page, "theirs.png") {
+		t.Error("a campaign's Files page should list its own files only")
+	}
+	if page := e.do(t, http.MethodGet, views.PathFiles, gm, nil, false).Body.String(); !strings.Contains(page, "mine.png") || !strings.Contains(page, "theirs.png") {
+		t.Error("/files should list every campaign's files")
+	}
+	if w := e.do(t, http.MethodGet, base, player, nil, false); w.Code == http.StatusOK {
+		t.Error("a player may not open a campaign's Files page")
+	}
+	if w := e.do(t, http.MethodGet, views.FilesBase(other.ID+100), gm, nil, false); w.Code != http.StatusNotFound {
+		t.Errorf("unknown campaign: status %d, want 404", w.Code)
+	}
+
+	e.do(t, http.MethodPost, fmt.Sprintf("%s/%d/delete", base, theirs.ID), gm, nil, true)
+	e.do(t, http.MethodPost, base+"/delete-unused", gm, nil, true)
+	if _, err := e.q().GetAttachment(ctx, mine.ID); err == nil {
+		t.Error("the campaign's unused file is still there")
+	}
+	if _, err := e.q().GetAttachment(ctx, theirs.ID); err != nil {
+		t.Error("another campaign's file was deleted from this campaign's page")
+	}
+}
+
 func TestAttachmentToImage(t *testing.T) {
 	e := newTestEnv(t)
 	att := e.attachFile(t, e.playersBlock(t), "Harbour map.png")

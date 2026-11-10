@@ -16,13 +16,22 @@ import (
 // PathFiles is the admin page of every attachment and where it is used.
 const PathFiles = "/files"
 
+// FilesBase is the Files page of campaign (0: every campaign).
+func FilesBase(campaign int64) string {
+	if campaign == 0 {
+		return PathFiles
+	}
+	return fmt.Sprintf("/campaigns/%d/files", campaign)
+}
+
 // Tabs of the Files page.
 const (
 	FilesTabAll    = "all"
 	FilesTabUnused = "unused"
 )
 
-// FilesView is the admin's list of attachments, newest first.
+// FilesView is the admin's list of attachments, newest first: the layout's
+// campaign's, or every campaign's.
 type FilesView struct {
 	Files []FileRow
 	// Tab is the tab to open (FilesTab*); "" is All.
@@ -60,9 +69,16 @@ type FileUse struct {
 
 templ FilesPage(l Layout, v FilesView) {
 	@Page(l) {
-		@PageHeader("Files", "Everything uploaded to notes and images, and where it is used. Removing a file from a note keeps it here until you delete it.")
+		{{ base := FilesBase(l.CampaignID) }}
+		<div class="mb-6">
+			<div class="flex flex-wrap items-center gap-2">
+				<h1 class="text-2xl font-semibold">Files</h1>
+				@campaignSwitcher(l)
+			</div>
+			<p class="text-sm text-muted-foreground">Everything uploaded to notes and images, and where it is used. Removing a file from a note keeps it here until you delete it.</p>
+		</div>
 		if len(v.Files) == 0 {
-			@filesEmpty(icon.Paperclip, "No files yet", "Pictures and files added to notes and images show here.")
+			@filesEmpty(icon.Paperclip, utils.IfElse(l.CampaignID != 0, "No files in this campaign yet", "No files yet"), "Pictures and files added to notes and images show here.")
 		} else {
 			{{ idle := unusedFiles(v.Files) }}
 			@tabs.Tabs(tabs.Props{ID: "files-tabs", DefaultValue: utils.IfElse(v.Tab == FilesTabUnused, FilesTabUnused, FilesTabAll), Attributes: templ.Attributes{"data-url-param": "tab"}}) {
@@ -81,7 +97,7 @@ templ FilesPage(l Layout, v FilesView) {
 					}
 				}
 				@tabs.Content(tabs.ContentProps{Value: FilesTabAll}) {
-					@filesGrid(v.Files, FilesTabAll)
+					@filesGrid(v.Files, base, FilesTabAll, l.CampaignID == 0)
 				}
 				@tabs.Content(tabs.ContentProps{Value: FilesTabUnused}) {
 					if len(idle) == 0 {
@@ -90,13 +106,13 @@ templ FilesPage(l Layout, v FilesView) {
 						<div class="mb-6 flex flex-wrap items-center justify-between gap-2">
 							<p class="text-sm text-muted-foreground">No note or image uses these. Delete them to free { fileSize(totalSize(idle)) }.</p>
 							@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Attributes: templ.Attributes{
-								"hx-post": PathFiles + "/delete-unused", "hx-confirm": "Delete every unused file from this computer?",
+								"hx-post": base + "/delete-unused", "hx-confirm": "Delete every unused file " + utils.IfElse(l.CampaignID != 0, "in this campaign ", "") + "from this computer?",
 							}}) {
 								@icon.Trash2()
 								Delete unused
 							}
 						</div>
-						@filesGrid(idle, FilesTabUnused)
+						@filesGrid(idle, base, FilesTabUnused, l.CampaignID == 0)
 					}
 				}
 			}
@@ -120,19 +136,23 @@ templ filesEmpty(ic func(...icon.Props) templ.Component, title, description stri
 	}
 }
 
-// filesGrid shows the files in a grid per campaign, in tab (FilesTab*).
-templ filesGrid(files []FileRow, tab string) {
+// filesGrid shows the files on the page at base in a grid per campaign, in
+// tab (FilesTab*). One campaign's page leaves out the heading the switcher
+// already names.
+templ filesGrid(files []FileRow, base, tab string, headings bool) {
 	for _, g := range filesByCampaign(files) {
 		<section class="mb-8">
-			<div class="mb-3 flex items-baseline gap-3 border-b pb-2">
-				<h2 class="min-w-0 truncate text-lg font-semibold">{ g[0].Campaign }</h2>
-				<span class="ml-auto shrink-0 text-sm text-muted-foreground tabular-nums">
-					{ fmt.Sprintf("%d %s, %s", len(g), utils.IfElse(len(g) == 1, "file", "files"), fileSize(totalSize(g))) }
-				</span>
-			</div>
+			if headings {
+				<div class="mb-3 flex items-baseline gap-3 border-b pb-2">
+					<h2 class="min-w-0 truncate text-lg font-semibold">{ g[0].Campaign }</h2>
+					<span class="ml-auto shrink-0 text-sm text-muted-foreground tabular-nums">
+						{ fmt.Sprintf("%d %s, %s", len(g), utils.IfElse(len(g) == 1, "file", "files"), fileSize(totalSize(g))) }
+					</span>
+				</div>
+			}
 			<ul class="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
 				for _, f := range g {
-					@fileTile(f, tab)
+					@fileTile(f, base, tab)
 				}
 			</ul>
 		</section>
@@ -141,8 +161,8 @@ templ filesGrid(files []FileRow, tab string) {
 
 // fileTile shows a file as what it is: a picture on the display's black box,
 // any other file as its type. An unused one can be deleted from its corner,
-// which returns to tab.
-templ fileTile(f FileRow, tab string) {
+// which returns to tab of the page at base.
+templ fileTile(f FileRow, base, tab string) {
 	{{ src := fmt.Sprintf("/attachments/%d", f.ID) }}
 	<li class="relative min-w-0">
 		if f.Private {
@@ -171,7 +191,7 @@ templ fileTile(f FileRow, tab string) {
 				}
 			</span>
 			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: "absolute top-1.5 right-1.5 bg-background/85 " + quietDestructive, Attributes: templ.Attributes{
-				"hx-post": fmt.Sprintf("%s/%d/delete", PathFiles, f.ID), "hx-vals": toJSON(map[string]string{"tab": tab}), "hx-confirm": "Delete this file from this computer?", "aria-label": "Delete " + utils.IfElse(f.Private, "this file", f.Name),
+				"hx-post": fmt.Sprintf("%s/%d/delete", base, f.ID), "hx-vals": toJSON(map[string]string{"tab": tab}), "hx-confirm": "Delete this file from this computer?", "aria-label": "Delete " + utils.IfElse(f.Private, "this file", f.Name),
 			}}) {
 				@icon.Trash2()
 			}

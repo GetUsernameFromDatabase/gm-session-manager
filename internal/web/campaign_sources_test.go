@@ -266,7 +266,7 @@ func TestCompendiumAddresses(t *testing.T) {
 			`href="` + base + `/entries/`, `href="` + base + `/habitats"`, `href="` + base + `/homebrew/new"`,
 			fmt.Sprintf(`href="/campaigns/%d/compendium?tab=homebrew"`, other.ID), `href="/compendium?tab=homebrew"`,
 		}, []string{`href="/compendium/entries/`}},
-		{"player list has no switcher", player, base, []string{`href="` + base + `/entries/`}, []string{`href="/compendium?`, "compendium-switch"}},
+		{"player list has no switcher", player, base, []string{`href="` + base + `/entries/`}, []string{`href="/compendium?`, "campaign-switch"}},
 		{"gm whole compendium", gm, "/compendium", []string{`href="/compendium/entries/`, `href="` + base + `"`}, nil},
 	}
 	for _, tt := range links {

@@ -114,7 +114,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 		<div class="mb-4 flex flex-wrap items-center gap-2">
 			<h1 class="text-2xl font-semibold">Compendium</h1>
 			<div class="mr-auto">
-				@compendiumSwitcher(l)
+				@campaignSwitcher(l)
 			</div>
 			@button.Button(button.Props{Href: CompendiumPath(ctx, utils.IfElse(v.IsGM, "/homebrew/new", "/homebrew/new?kind=spell"))}) {
 				@icon.Plus()
@@ -1220,7 +1220,7 @@ templ EntryPage(l Layout, v EntryView) {
 				Compendium
 			}
 			<div class="mr-auto">
-				@compendiumSwitcher(l)
+				@campaignSwitcher(l)
 			</div>
 			if v.CanEdit {
 				@button.Button(button.Props{Href: entryHref(ctx, v.Entry.ID) + "/edit", Variant: button.VariantOutline, Size: button.SizeSm}) {
@@ -1286,7 +1286,7 @@ templ ComparePage(l Layout, v CompareView) {
 				Source priority
 			}
 			<div class="mr-auto">
-				@compendiumSwitcher(l)
+				@campaignSwitcher(l)
 			</div>
 		</div>
 		<h1 class="mb-1 text-2xl font-semibold">{ v.Copies[0].Entry.Name }</h1>

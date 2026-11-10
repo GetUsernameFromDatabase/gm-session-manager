@@ -1039,15 +1039,17 @@
     history.replaceState(history.state, "", url);
   });
 
-  // The compendium's campaign switcher opens the page as the address shows
-  // it now: the search and tabs update the address without a reload.
+  // The campaign switcher (compendium, files) opens the page as the address
+  // shows it now: the search and tabs update the address without a reload.
+  // Only the compendium has pages under its base.
   for (const type of ["click", "auxclick"]) {
     document.addEventListener(type, (e) => {
-      const a = e.target.closest?.("a[data-compendium-base]");
+      const a = e.target.closest?.("a[data-switch-base]");
       if (!a) return;
       const path = location.pathname;
-      const rest = path.slice(path.indexOf("/compendium") + "/compendium".length);
-      a.href = a.dataset.compendiumBase + rest + location.search;
+      const i = path.indexOf("/compendium");
+      const rest = i < 0 ? "" : path.slice(i + "/compendium".length);
+      a.href = a.dataset.switchBase + rest + location.search;
     });
   }
 

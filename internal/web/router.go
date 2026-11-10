@@ -105,9 +105,12 @@ func (a *App) Router() *gin.Engine {
 	r.GET("/characters/:character/download", gm, a.downloadCharacter)
 	r.POST("/characters/:character/remove", a.removeCharacter)
 	r.POST("/campaigns/:campaign/characters/import", gm, a.importCharacter)
-	r.GET(views.PathFiles, gm, a.filesPage)
-	r.POST(views.PathFiles+"/delete-unused", gm, a.deleteUnusedFiles)
-	r.POST(views.PathFiles+"/:attachment/delete", gm, a.deleteFile)
+	// Files: every campaign's, and each campaign's alone.
+	for _, base := range []string{views.PathFiles, "/campaigns/:campaign/files"} {
+		r.GET(base, gm, a.filesPage)
+		r.POST(base+"/delete-unused", gm, a.deleteUnusedFiles)
+		r.POST(base+"/:attachment/delete", gm, a.deleteFile)
+	}
 	r.POST("/attachments/:attachment/to-image", gm, a.attachmentToImage)
 
 	// Characters.

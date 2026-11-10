@@ -95,7 +95,7 @@ func HabitatsPage(l Layout, v HabitatView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = compendiumSwitcher(l).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = campaignSwitcher(l).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

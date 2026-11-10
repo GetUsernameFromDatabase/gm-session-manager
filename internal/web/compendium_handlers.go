@@ -176,7 +176,7 @@ func (a *App) compendiumLayout(c *gin.Context, w who, title string, camp *sqlc.C
 	} else if c.Request.URL.RawQuery != "" {
 		here += "?" + c.Request.URL.RawQuery
 	}
-	l.Switch = &views.CompendiumSwitch{Campaigns: campaigns, Here: here}
+	l.Switch = &views.CampaignSwitch{Campaigns: campaigns, Base: views.CompendiumBase, All: "All sources", Here: here}
 	return l, err
 }
 

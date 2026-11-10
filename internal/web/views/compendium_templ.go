@@ -151,7 +151,7 @@ func CompendiumPage(l Layout, v CompendiumView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = compendiumSwitcher(l).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = campaignSwitcher(l).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -4947,7 +4947,7 @@ func EntryPage(l Layout, v EntryView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = compendiumSwitcher(l).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = campaignSwitcher(l).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -5297,7 +5297,7 @@ func ComparePage(l Layout, v CompareView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = compendiumSwitcher(l).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = campaignSwitcher(l).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

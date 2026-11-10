@@ -50,14 +50,18 @@ type Layout struct {
 	Modules []string
 	// Requests are the join requests waiting for the GM, in every campaign.
 	Requests []PendingGroup
-	// Switch is the GM's compendium campaign switcher; nil elsewhere.
-	Switch *CompendiumSwitch
+	// Switch is the GM's campaign switcher (compendium, files); nil elsewhere.
+	Switch *CampaignSwitch
 }
 
-// CompendiumSwitch opens the same compendium page in another campaign.
-type CompendiumSwitch struct {
+// CampaignSwitch opens the same page in another campaign, or in all of them.
+type CampaignSwitch struct {
 	Campaigns []sqlc.Campaign
-	// Here is the page's path after its compendium base, with its query.
+	// Base is the page's base address in a campaign (0: all of them).
+	Base func(campaign int64) string
+	// All names the page of every campaign.
+	All string
+	// Here is the page's path after its base, with its query.
 	Here string
 }
 
@@ -227,25 +231,25 @@ templ navLinks(l Layout) {
 		@navLink(CompendiumBase(l.CampaignID), "Compendium", l.Active == NavCompendium, nil)
 	}
 	if l.IsGM {
-		@navLink(PathFiles, "Files", l.Active == NavFiles, nil)
+		@navLink(FilesBase(l.CampaignID), "Files", l.Active == NavFiles, nil)
 	}
 }
 
-// compendiumSwitcher lets the GM open the same compendium page in another
-// campaign, or with every source.
-templ compendiumSwitcher(l Layout) {
+// campaignSwitcher lets the GM open the same page in another campaign, or
+// in all of them.
+templ campaignSwitcher(l Layout) {
 	if s := l.Switch; s != nil {
-		@popover.Popover(popover.Props{ID: "compendium-switch"}) {
+		@popover.Popover(popover.Props{ID: "campaign-switch"}) {
 			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: popover.Trigger(ctx)}) {
-				{ utils.IfElse(l.CampaignID != 0, l.CampaignName, "All sources") }
+				{ utils.IfElse(l.CampaignID != 0, l.CampaignName, s.All) }
 				@icon.ChevronDown()
 			}
 			@popover.Content(popover.ContentProps{Align: popover.AlignStart, Class: "w-auto"}) {
 				<div class="flex flex-col gap-1">
 					for _, c := range s.Campaigns {
-						@switchItem(CompendiumBase(c.ID), s.Here, c.Name, c.ID == l.CampaignID)
+						@switchItem(s.Base(c.ID), s.Here, c.Name, c.ID == l.CampaignID)
 					}
-					@switchItem(CompendiumBase(0), s.Here, "All sources", l.CampaignID == 0)
+					@switchItem(s.Base(0), s.Here, s.All, l.CampaignID == 0)
 				</div>
 			}
 		}
@@ -255,7 +259,7 @@ templ compendiumSwitcher(l Layout) {
 // switchItem links base+here; app.js swaps here for the address as it is
 // when clicked, since the search and tabs change it in place.
 templ switchItem(base, here, label string, current bool) {
-	@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start aria-[current=page]:bg-accent", Href: base + here, Attributes: templ.Attributes{"data-compendium-base": base, "aria-current": utils.IfElse(current, "page", "false")}}) {
+	@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start aria-[current=page]:bg-accent", Href: base + here, Attributes: templ.Attributes{"data-switch-base": base, "aria-current": utils.IfElse(current, "page", "false")}}) {
 		{ label }
 	}
 }
