@@ -7,6 +7,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
@@ -19,6 +20,7 @@ import (
 	"gm-session-manager/internal/web/components/label"
 	selectcomp "gm-session-manager/internal/web/components/select"
 	"gm-session-manager/internal/web/components/spinner"
+	switchcomp "gm-session-manager/internal/web/components/switch"
 	"gm-session-manager/internal/web/components/tabs"
 	"gm-session-manager/internal/web/components/textarea"
 	"gm-session-manager/internal/web/components/tooltip"
@@ -389,6 +391,47 @@ templ FiveToolsProgress(j FiveToolsJob, reload bool) {
 			}
 		}
 	</div>
+}
+
+// StaleBooksBanner asks the GM to download again the 5etools books written
+// by an older download (compendium.DownloadVersion), or to let the server
+// do it at each start.
+templ StaleBooksBanner(books []compendium.Book, auto bool) {
+	@alert.Alert(alert.Props{Class: "mb-4 border-amber-500/50 bg-amber-500/10 text-amber-800 *:data-[slot=alert-description]:text-amber-800/90 dark:text-amber-300 dark:*:data-[slot=alert-description]:text-amber-300/90"}) {
+		@icon.TriangleAlert()
+		@alert.Title() {
+			{ Plural(len(books), "5etools book") } { utils.IfElse(len(books) == 1, "needs", "need") } downloading again
+		}
+		@alert.Description() {
+			<p>{ bookIDs(books) }: the app now prepares them differently.</p>
+			<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+				<form method="post" action={ templ.SafeURL(FiveToolsPath) }>
+					for _, b := range books {
+						<input type="hidden" name={ FiveToolsField } value={ b.ID }/>
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+						@icon.Download()
+						Download again
+					}
+				</form>
+				<form hx-post={ FiveToolsPath + "/auto" } hx-trigger="change" hx-swap="none">
+					@label.Label(label.Props{For: "fivetools-auto", Class: "font-normal"}) {
+						@switchcomp.Switch(switchcomp.Props{ID: "fivetools-auto", Name: "on", Value: "true", DefaultChecked: auto, Size: switchcomp.SizeSm})
+						Do this automatically from now on
+					}
+				</form>
+			</div>
+		}
+	}
+}
+
+// bookIDs is the books' ids, upper case as 5etools writes them.
+func bookIDs(books []compendium.Book) string {
+	ids := make([]string, len(books))
+	for i, b := range books {
+		ids[i] = strings.ToUpper(b.ID)
+	}
+	return strings.Join(ids, ", ")
 }
 
 // SourcePriority orders the sources: the first holding an entry wins its

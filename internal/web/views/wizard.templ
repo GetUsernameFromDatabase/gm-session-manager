@@ -289,7 +289,7 @@ templ wizardPick(v WizardView) {
 						<div class="space-y-4 text-sm">
 							@wizardFacts(c)
 							if p := c.SkillPick; p != nil {
-								<fieldset { v.fieldErr().describedBy(FieldSkill)... }>
+								<fieldset { v.fieldErr().describedBy(FieldSkill)... } data-max-checked={ fmt.Sprint(p.Count) }>
 									<legend class="font-medium">
 										{ utils.IfElse(v.Step == "class", "Skills", "Class skills") }
 										<span class="font-normal text-muted-foreground">({ Choose(p.Count-len(p.Picked), len(p.Picked)+len(p.Known) > 0) })</span>
@@ -581,7 +581,13 @@ templ choiceFieldset(g ChoiceGroup, form url.Values, fe FieldErrors) {
 }
 
 templ choiceOptions(g ChoiceGroup, form url.Values, fe FieldErrors) {
-	<fieldset class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe[g.Key] != "") } { fe.describedBy(g.Key)... }>
+	<fieldset
+		class={ "space-y-2 rounded-md border p-3", templ.KV("border-destructive", fe[g.Key] != "") }
+		{ fe.describedBy(g.Key)... }
+		if g.Count > 1 {
+			data-max-checked={ fmt.Sprint(g.Count) }
+		}
+	>
 		<legend class="px-1 font-medium">
 			{ g.Title }
 			if g.Count > 0 {

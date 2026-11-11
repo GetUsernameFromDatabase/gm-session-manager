@@ -519,7 +519,9 @@ var noteKindItems = []selectcomp.ItemData{{Value: KindGeneric, Label: "Note"}, {
 
 // checkField is a shadcn checkbox with its label.
 templ checkField(name, value string, checked bool) {
-	@label.Label(label.Props{Class: "font-normal"}) {
+	// Dims while a capped group (data-max-checked, app.js) greys the box out;
+	// no clicks, as the label would pass one on to the box's enabled input.
+	@label.Label(label.Props{Class: "font-normal has-[[data-disabled]]:pointer-events-none has-[[data-disabled]]:opacity-50"}) {
 		@checkbox.Checkbox(checkbox.Props{Name: name, Value: value, DefaultChecked: checked})
 		{ children... }
 	}

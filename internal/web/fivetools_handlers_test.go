@@ -55,6 +55,7 @@ func TestFiveToolsGMOnly(t *testing.T) {
 		{http.MethodGet, "/compendium/5etools"},
 		{http.MethodPost, "/compendium/5etools"},
 		{http.MethodPost, "/compendium/5etools/phb/delete"},
+		{http.MethodPost, "/compendium/5etools/auto"},
 		{http.MethodPost, "/compendium/sources/5etools-phb/move"},
 		{http.MethodPost, views.SourceOrderPath},
 	}

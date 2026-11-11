@@ -44,7 +44,14 @@ type Book struct {
 	Group     string `json:"group"`
 	Published string `json:"published"`
 	Publisher string `json:"publisher"`
+	// Version is the DownloadVersion the book was downloaded with.
+	Version int `json:"version,omitempty"`
 }
+
+// DownloadVersion stamps each downloaded book. Bump it when what the
+// download writes changes (bundled records, rewritten links), so the GM is
+// asked to download the books again; parser changes bump normalizeVersion.
+const DownloadVersion = 1
 
 type rawBook struct {
 	ID        string `json:"id"`
@@ -755,6 +762,7 @@ func downloadBook(m *mirror, dir string, b Book) error {
 	}
 	defer func() { _ = os.RemoveAll(tmp) }() //nolint:gosec // a temp dir under DATA_DIR; no-op after the rename
 	w := bookWriter{tmp, m}
+	b.Version = DownloadVersion
 	if err := w.write(bookFile, b); err != nil {
 		return err
 	}
@@ -797,4 +805,10 @@ func ImportedFiveTools(dir string) ([]Book, error) {
 	}
 	sortBooks(books)
 	return books, nil
+}
+
+// StaleFiveTools lists the books in dir downloaded before DownloadVersion.
+func StaleFiveTools(dir string) ([]Book, error) {
+	books, err := ImportedFiveTools(dir)
+	return slices.DeleteFunc(books, func(b Book) bool { return b.Version >= DownloadVersion }), err
 }

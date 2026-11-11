@@ -447,26 +447,70 @@ templ spellChecklist(spells []Option, cols map[string]string, need SpellNeed, fo
 			if counts := spellCounts(cols); counts != "" {
 				<p class="text-xs text-muted-foreground">Class table at this level: { counts } (totals, counting spells you already have).</p>
 			}
+			{{ cantrips, leveled := splitCantrips(spells) }}
+			{{ showC, showS := need.Cantrips >= 0 && len(cantrips) > 0, need.Spells >= 0 && len(leveled) > 0 }}
+			if showC || showS {
+				// app.js fills in the counts.
+				<p class="text-sm" aria-live="polite">
+					if showC {
+						{ "Cantrips " }<span id="spell-cantrips-count">0</span>{ fmt.Sprintf(" of %d", need.Cantrips) }
+					}
+					if showC && showS {
+						{ " · " }
+					}
+					if showS {
+						{ "Spells " }<span id="spell-leveled-count">0</span>{ fmt.Sprintf(" of %d", need.Spells) }
+					}
+				</p>
+			}
 			<div class="mt-1 grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2">
-				for _, sp := range spells {
-					// A taught spell is left unticked, not disabled: the checkbox's
-					// aria-disabled would outlive app.js showing it again.
-					<div data-hide-for={ taughtRules(sp.TaughtBy) } hidden?={ taughtPicked(sp.TaughtBy, form) }>
-						@checkField("spell", sp.Slug, slices.Contains(form["spell"], sp.Slug) && !taughtPicked(sp.TaughtBy, form)) {
-							{ sp.Name }
-							<span class="text-xs text-muted-foreground">
-								if sp.Level == 0 {
-									cantrip
-								} else {
-									L{ fmt.Sprint(sp.Level) }
-								}
-							</span>
-						}
-					</div>
-				}
+				@spellBoxes("spell-cantrips", need.Cantrips, cantrips, form)
+				@spellBoxes("spell-leveled", need.Spells, leveled, form)
 			</div>
 		</div>
 	}
+}
+
+// spellBoxes ticks spells under one cap (limit; -1 for none), app.js greying
+// the rest at it. contents keeps the boxes in the checklist's grid.
+templ spellBoxes(id string, limit int, spells []Option, form url.Values) {
+	<div
+		class="contents"
+		id={ id }
+		if limit >= 0 {
+			data-max-checked={ fmt.Sprint(limit) }
+		}
+	>
+		for _, sp := range spells {
+			// A taught spell is left unticked, not disabled: the checkbox's
+			// aria-disabled would outlive app.js showing it again.
+			<div data-hide-for={ taughtRules(sp.TaughtBy) } hidden?={ taughtPicked(sp.TaughtBy, form) }>
+				@checkField("spell", sp.Slug, slices.Contains(form["spell"], sp.Slug) && !taughtPicked(sp.TaughtBy, form)) {
+					{ sp.Name }
+					<span class="text-xs text-muted-foreground">
+						if sp.Level == 0 {
+							cantrip
+						} else {
+							L{ fmt.Sprint(sp.Level) }
+						}
+					</span>
+				}
+			</div>
+		}
+	</div>
+}
+
+// splitCantrips splits spells into cantrips and level 1+ spells, which the
+// class table caps separately, keeping their order.
+func splitCantrips(spells []Option) (cantrips, leveled []Option) {
+	for _, sp := range spells {
+		if sp.Level == 0 {
+			cantrips = append(cantrips, sp)
+		} else {
+			leveled = append(leveled, sp)
+		}
+	}
+	return cantrips, leveled
 }
 
 // taughtPicked reports whether a lineage picked on the form teaches the spell

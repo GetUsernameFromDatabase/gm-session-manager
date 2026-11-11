@@ -1162,6 +1162,28 @@
     });
   });
 
+  // Capped checkbox groups (data-max-checked): at the limit the unticked
+  // boxes grey out through the checkbox root's aria-disabled, apart from the
+  // hidden input's disabled that data-hide-for owns. Known (unnamed) and
+  // taught (disabled) boxes don't count. #<id>-count shows the live count.
+  // Registered after data-hide-for, so it counts what that just hid.
+  const capChecked = (group) => {
+    const boxes = [...group.querySelectorAll("input[type=checkbox][name]")];
+    const n = boxes.filter((b) => b.checked && !b.disabled).length;
+    const full = n >= Number(group.dataset.maxChecked);
+    boxes.forEach((b) => {
+      const root = b.previousElementSibling;
+      const off = full && !b.checked;
+      root.toggleAttribute("data-disabled", off);
+      if (off) root.setAttribute("aria-disabled", "true");
+      else root.removeAttribute("aria-disabled");
+    });
+    const count = group.id && document.getElementById(`${group.id}-count`);
+    if (count) count.textContent = n;
+  };
+  document.addEventListener("change", (e) => e.target.form?.querySelectorAll("[data-max-checked]").forEach(capChecked));
+  htmx.onLoad(() => document.querySelectorAll("[data-max-checked]").forEach(capChecked));
+
   // NPC fields: picking a key in the add-field combobox adds a row for it
   // (or goes to the existing one); the picked item leaves the list. Rows are
   // numbered from the form's count, which Save reads.

@@ -43,6 +43,7 @@ type App struct {
 	imports   csvImports
 	reqs      reqLog
 	fiveTools fiveToolsJob
+	state     appState
 }
 
 // New builds the app. The hub renders fragments through the app.

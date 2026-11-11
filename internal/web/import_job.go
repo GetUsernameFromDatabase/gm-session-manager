@@ -61,6 +61,9 @@ func (a *App) runFiveTools(ctx context.Context, dir string, books []compendium.B
 	err := compendium.DownloadFiveTools(ctx, dir, books, func(done int, b compendium.Book) {
 		tell(func(j *views.FiveToolsJob) { j.Done, j.Current = done, b.Name })
 	})
+	if serr := a.refreshStale(); serr != nil {
+		slog.Warn("listing stale 5etools books", "err", serr)
+	}
 	if err != nil {
 		msg = "Download failed: " + err.Error()
 		return

@@ -1,6 +1,6 @@
 # gm-session-manager
 
-A LAN-hosted helper for tabletop RPG game masters and their players. The GM's PC runs a single Go binary; players on the same network join by address or QR code. All data lives on the host in SQLite.
+A LAN-hosted helper for tabletop RPG game masters and their players. The GM's PC runs a single Go binary; players on the same network join by address or QR code. All data lives on the host in SQLite; app-wide settings live in `DATA_DIR/settings.json` (no migration for a switch).
 
 Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote play, in-app dice rolling (physical dice only; the one exception is the GM's initiative roll in combat), maps beyond image attachments, device blocklists, offline mode. Ask before adding any of these.
 

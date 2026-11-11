@@ -56,6 +56,7 @@ func (a *App) compendiumRoutes(g *gin.RouterGroup, gm gin.HandlerFunc) {
 	g.GET("/5etools", gm, a.fiveToolsList)
 	g.POST("/5etools", gm, a.fiveToolsImport)
 	g.POST("/5etools/:book/delete", gm, a.fiveToolsRemove)
+	g.POST("/5etools/auto", gm, a.fiveToolsAuto)
 	g.POST("/sources/:key/move", gm, a.sourceMove)
 	g.POST("/sources/:key/delete", gm, a.sourceDelete)
 	g.POST(views.CompendiumRest(views.SourceOrderPath), gm, a.sourceOrder)

@@ -151,6 +151,10 @@ func TestDownloadFiveTools(t *testing.T) {
 			t.Errorf("%s: got %v want %v", tc.id, got, tc.want)
 		}
 	}
+	// Each book is stamped with DownloadVersion, so none is stale.
+	if stale, err := StaleFiveTools(dir); err != nil || len(stale) != 0 {
+		t.Errorf("stale after download: %v %v", stale, err)
+	}
 	if items := readDoc(t, filepath.Join(dir, "5etools-tce", "items.json"))["item"]; len(items) != 1 || items[0]["name"] != "Cloak" {
 		t.Errorf("items not filtered: %v", items)
 	}
@@ -236,6 +240,41 @@ func TestDownloadFiveTools(t *testing.T) {
 
 // A subclass shipped for both the 2014 and the 2024 class keeps the 2024 copy
 // in either order, and a feature referenced from another book comes bundled.
+// TestStaleFiveTools: books written before DownloadVersion (or unstamped,
+// from before the stamp) are listed, current ones are not.
+func TestStaleFiveTools(t *testing.T) {
+	dir := t.TempDir()
+	var want []string
+	for _, tc := range []struct {
+		id    string
+		ver   int
+		stale bool
+	}{{"xge", 0, true}, {"tce", DownloadVersion - 1, true}, {"xphb", DownloadVersion, false}} {
+		if tc.stale {
+			want = append(want, tc.id)
+		}
+		body, _ := json.Marshal(Book{ID: tc.id, Version: tc.ver})
+		if err := os.MkdirAll(filepath.Join(dir, FiveToolsPrefix+tc.id), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, FiveToolsPrefix+tc.id, bookFile), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stale, err := StaleFiveTools(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, b := range stale {
+		ids = append(ids, b.ID)
+	}
+	slices.Sort(ids)
+	if slices.Sort(want); !slices.Equal(ids, want) {
+		t.Errorf("stale: %v, want %v", ids, want)
+	}
+}
+
 func TestDownloadFiveToolsSubclassTwinsAndForeignFeatures(t *testing.T) {
 	phb := `{"name":"Forge Domain","shortName":"Forge","className":"Cleric","classSource":"PHB","source":"XGE","subclassFeatures":["Forge Rite|Cleric|PHB|Forge|XGE|1"]}`
 	xphb := `{"name":"Forge Domain","shortName":"Forge","className":"Cleric","classSource":"XPHB","source":"XGE","subclassFeatures":["Forge Rite|Cleric|XPHB|Forge|XGE|3","Blessed Strikes|Cleric|XPHB|Forge|XGE|8|TCE"]}`

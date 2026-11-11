@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"fmt"
+	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/web/components"
 	"gm-session-manager/internal/web/components/alert"
@@ -52,6 +53,10 @@ type Layout struct {
 	Requests []PendingGroup
 	// Switch is the GM's campaign switcher (compendium, files); nil elsewhere.
 	Switch *CampaignSwitch
+	// StaleBooks are the GM's 5etools books to download again (banner);
+	// AutoRedownload is the banner's switch.
+	StaleBooks     []compendium.Book
+	AutoRedownload bool
 }
 
 // CampaignSwitch opens the same page in another campaign, or in all of them.
@@ -125,6 +130,9 @@ templ page(l Layout) {
 			@navbar(l)
 			<main class="mx-auto max-w-5xl px-4 py-6">
 				<div id="flash"></div>
+				if l.IsGM && len(l.StaleBooks) > 0 {
+					@StaleBooksBanner(l.StaleBooks, l.AutoRedownload)
+				}
 				{ children... }
 			</main>
 			@toast.Toaster()

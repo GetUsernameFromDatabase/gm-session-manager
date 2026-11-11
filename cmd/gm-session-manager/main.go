@@ -125,6 +125,9 @@ func run() error {
 	if err := app.WriteFeedbackIndex(); err != nil {
 		slog.Warn("listing unread feedback", "err", err)
 	}
+	if err := app.StartUp(ctx); err != nil {
+		slog.Warn("settings or stale 5etools books", "err", err)
+	}
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),

@@ -118,6 +118,25 @@ func (a *App) fiveToolsImport(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, compendiumPath(c, "?import="+views.ImportTabFiveTools))
 }
 
+// autoRedownloadForm is the GM's "download again automatically" switch.
+type autoRedownloadForm struct {
+	On bool `form:"on"`
+}
+
+// fiveToolsAuto stores whether stale books download again at startup.
+func (a *App) fiveToolsAuto(c *gin.Context) {
+	var f autoRedownloadForm
+	if c.ShouldBind(&f) != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	if err := a.setAutoRedownload(f.On); err != nil {
+		a.serverError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 // errImportRunning refuses a second import, or a removal under the running one.
 const errImportRunning = "An import is running; wait for it to finish."
 
@@ -150,6 +169,9 @@ func (a *App) fiveToolsRemove(c *gin.Context) {
 	}
 	if err == nil {
 		err = compendium.RemoveFiveTools(a.compendiumDir(), id)
+	}
+	if err == nil {
+		err = a.refreshStale()
 	}
 	if err != nil {
 		a.renderFiveTools(c, "Could not remove "+id+": "+err.Error(), true)
