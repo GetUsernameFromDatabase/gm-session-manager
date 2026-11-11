@@ -140,6 +140,10 @@ cp .env.example .env    # then set ADMIN_USERNAME and ADMIN_PASSWORD
 ./run.sh                # or: go run ./cmd/gm-session-manager
 ```
 
+`./run.sh` rebuilds and restarts when sources change (a failed build keeps the
+old server). A changed migration pauses reloading until `touch build/restart`;
+`touch build/stop` quits. `./run.sh help` lists the other modes.
+
 ### Project layout
 
 ```md

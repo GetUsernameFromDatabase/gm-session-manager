@@ -10,7 +10,7 @@ pkg=./cmd/$app
 targets="windows/amd64 linux/amd64" # other systems build from source
 extras="README.md .env.example" # shipped next to the binary in each archive
 out=dist                        # binaries and release archives (release.yml, .gitignore)
-stage=build                     # scratch folders packed into the archives
+stage=build/stage               # scratch folders packed into the archives; build/ also holds run.sh's binaries
 
 VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}
 export CGO_ENABLED=0

@@ -1,6 +1,6 @@
 # internal/web
 
-Changes to `.templ`, CSS or JS can be checked with the `browser-check` skill (`check: <pages and controls>`; before/after screenshots: `pair Cnn: …`). Ask with AskUserQuestion before running it, unless the prompt already says to run checks (e.g. a batch of HANDOFF items). When implementing a list of UI changes, give each an ID (Cnn, continuing from `data-test/changes/CHANGES.md` or the ID HANDOFF.md names) and tag its HANDOFF item. Don't drive the browser from the main session.
+Changes to `.templ`, CSS or JS can be checked with the `browser-check` skill (`check: <pages and controls>`; before/after screenshots: `pair Cnn: …`). Ask with AskUserQuestion before running it, unless the prompt already says to run checks (e.g. a batch of HANDOFF items). Before editing for a UI change, run `./run.sh before` so before shots show the code as it was. When implementing a list of UI changes, give each an ID (Cnn, continuing from `data-test/screenshots/README.md` or the ID HANDOFF.md names) and tag its HANDOFF item. Don't drive the browser from the main session.
 
 ## Websocket and live views
 

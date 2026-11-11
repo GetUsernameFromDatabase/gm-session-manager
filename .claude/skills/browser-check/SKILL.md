@@ -21,9 +21,9 @@ You are the only agent using the browser and the test instances. Any tab, browse
 
 ## The test instance
 
-- Start it once, as a background Bash job: `./run.sh browser`. It builds `build/gm-session-manager-test.exe`, serves `https://localhost:8443` from `data-test/` (never `data/`), and keeps `data-test/playwright` between runs, so screenshots a handoff refers to survive; `./run.sh browser --clean-playwright` empties it on start. Wait for the `listening` line in the job output. A second start takes over from a running one (it stops the old loop and server), and stopping the job ends its server too.
+- Start it once, as a background Bash job: `./run.sh browser`. It builds `build/gm-session-manager-test.exe`, serves `https://localhost:8443` from `data-test/` (never `data/`), and keeps `data-test/playwright` (MCP logs and snapshots) between runs; `./run.sh browser --clean-playwright` empties it on start. Wait for the `listening` line in the job output. A second start takes over from a running one (it stops the old loop and server), and stopping the job ends its server too.
 - After changing sources: run the generate step the change needs (`go generate ./internal/web` for templates and classes), then `touch data-test/restart`. The script rebuilds and restarts; wait for the next `listening` line. A failed build prints `run.sh: build failed`; fix it and touch `restart` again.
-- Stop it when done: `touch data-test/stop`. Fallback if a server outlives its loop anyway: `taskkill //IM gm-session-manager-test.exe //F`. Never kill `gm-session-manager.exe`: that is the user's real instance.
+- Stop it when done: `touch data-test/stop`. Fallback if a server outlives its loop anyway: `taskkill //IM gm-session-manager-test.exe //F`. Never kill `gm-session-manager-dev.exe` or `gm-session-manager.exe`: those are the user's real instance.
 - The binary reads `.env` from the folder it starts in: start every instance from the repo root. Never read, print, source or copy `.env`. For the SRD, copy `data/compendium` into `data-test/`.
 
 ## Roles
@@ -63,5 +63,5 @@ You are the only agent using the browser and the test instances. Any tab, browse
 - The MCP takes over `confirm()` dialogs: click the control, then answer with `browser_handle_dialog` (dismiss destructive ones unless told otherwise).
 - Report back in 15 lines or fewer: what you checked, what was wrong, console errors, and the screenshot names.
 - **Sample, don't crawl.** When exploring, open one page of each kind, not every entry. No scripted crawls. `browser_run_code_unsafe` only to reach another context's page (`page.context().browser().contexts()`).
-- Read screenshots yourself and report what you saw. Save them with a `filename` under `data-test/playwright/` (the MCP output dir), never elsewhere in the repo. Give them descriptive names (`<page>-<width>.png`) and cite them by name in a handoff.
+- Read screenshots yourself and report what you saw. Save them in one run folder per task, `data-test/screenshots/<date>-<topic>/` (`filename: ../screenshots/<date>-<topic>/<page>-<width>.png`, relative to the MCP output dir `data-test/playwright`), never elsewhere in the repo. In that folder write a `README.md`: one line on what was checked and the files changed, then each image as a Markdown link (`![<page> 390px](<page>-390.png)`). Add a line at the top of `data-test/screenshots/README.md` (newest first): `- [<date> <topic>](<date>-<topic>/README.md)`. Cite screenshots by path in a handoff.
 - Test data in `data-test` is shared between sessions: don't delete campaigns or characters you did not create.
