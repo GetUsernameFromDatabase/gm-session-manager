@@ -27,6 +27,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 
 - DRY, a few well-named helpers; match the surrounding naming and comment density (one-line *why* comments).
 - Constants for cookie, context, header and event keys. Validate structs with `go-playground/validator` tags.
+- Values a SQL CHECK lists are typed in `internal/enum` and wired through sqlc `overrides`; goconst guards other repeated strings. A family of values (one list, map or switch domain, numbers too) is all constants or none.
 - Table-driven tests for all permission and visibility logic. Positional test-table rows break when a field is added; add a separate loop instead.
 - `golangci-lint run` stays clean. Formatters always win: keep what `templ fmt` and `golangci-lint fmt` change, even in untouched files.
 - Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
