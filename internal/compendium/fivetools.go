@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 )
 
@@ -23,6 +24,173 @@ const (
 	fiveToolsMirror  = "https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/bestiary/bestiary-"
 	fiveToolsImages  = "https://raw.githubusercontent.com/5etools-mirror-3/5etools-img/main/bestiary/"
 	fiveToolsMaxBody = 16 << 20
+)
+
+// 5etools JSON keys, entry types and tags shared by the importers.
+const (
+	keyName            = "name"
+	keyType            = "type"
+	keyTable           = "table"
+	keyCreature        = "creature"
+	keyItem            = "item"
+	keyRace            = "race"
+	keyBackground      = "background"
+	keyClassFeature    = "classFeature"
+	keyArmor           = "armor"
+	keyWeapon          = "weapon"
+	keySpell           = "spell"
+	keySubclass        = "subclass"
+	keySubclassFeature = "subclassFeature"
+
+	keyEntries         = "entries"
+	keySource          = "source"
+	keyCondition       = "condition"
+	keyFeat            = "feat"
+	keyItemMastery     = "itemMastery"
+	keyStatus          = "status"
+	keyDisease         = "disease"
+	keyClass           = "class"
+	keyItemGroup       = "itemGroup"
+	keyItemProperty    = "itemProperty"
+	keyTrap            = "trap"
+	keyVariantRule     = "variantrule"
+	keySubrace         = "subrace"
+	keyMonster         = "monster"
+	keyBaseItem        = "baseitem"
+	keyMagicVariant    = "magicvariant"
+	keyMonsterFluff    = "monsterFluff"
+	keySpellFluff      = "spellFluff"
+	keyItemFluff       = "itemFluff"
+	keyRaceFluff       = "raceFluff"
+	keyBackgroundFluff = "backgroundFluff"
+
+	keyList               = "list"
+	keyRefClassFeature    = "refClassFeature"
+	keyRefSubclassFeature = "refSubclassFeature"
+	keyRefOptFeature      = "refOptionalfeature"
+	keyOptionalFeature    = "optionalfeature"
+	keyBonus              = "bonus"
+	keyBonusSpeed         = "bonusSpeed"
+	keyDice               = "dice"
+
+	keySpecial = "special"
+	keyPreNote = "preNote"
+	keyNote    = "note"
+
+	keyWeaponCategory = "weaponCategory"
+	keyScfType        = "scfType"
+	keyDmg1           = "dmg1"
+	keyDmg2           = "dmg2"
+	keyDmgType        = "dmgType"
+	keyProperty       = "property"
+	keyRange          = "range"
+	keyAC             = "ac"
+	keyStrength       = "strength"
+	keyStealth        = "stealth"
+	keyWeight         = "weight"
+	keyMastery        = "mastery"
+
+	keyHidden           = "hidden"
+	keyMax              = "max"
+	keyChoose           = "choose"
+	keyLevel            = "level"
+	keyAbility          = "ability"
+	keyProficiency      = "proficiency"
+	keyOther            = "other"
+	keySpellcasting     = "spellcasting"
+	keySpellcasting2020 = "spellcasting2020"
+	keySpellcastingFeat = "spellcastingFeature"
+	keySpellcastingPrep = "spellcastingPrepared"
+
+	keyCopy            = "_copy"
+	keyMod             = "_mod"
+	keyVersions        = "_versions"
+	keyAbstract        = "_abstract"
+	keyImplementations = "_implementations"
+	keyVariables       = "_variables"
+	keyModAll          = "*"
+	keyRemove          = "remove"
+
+	keyPage           = "page"
+	keyHasFluff       = "hasFluff"
+	keyHasFluffImages = "hasFluffImages"
+	keyHasToken       = "hasToken"
+	keySrd            = "srd"
+	keySrd52          = "srd52"
+	keyBasicRules     = "basicRules"
+	keyBasicRules2024 = "basicRules2024"
+	keyReprintedAs    = "reprintedAs"
+	keyOtherSources   = "otherSources"
+
+	keyMartial = "martial"
+	keyNone    = "none"
+
+	// _mod operations.
+	modReplaceTxt = "replaceTxt"
+	modAppendArr  = "appendArr"
+	modPrependArr = "prependArr"
+	modInsertArr  = "insertArr"
+	modRemoveArr  = "removeArr"
+	modReplaceArr = "replaceArr"
+
+	// Reference and statblock tags ({@atk mw}), read by stripTags.
+	keyAction               = "action"
+	keySense                = "sense"
+	keySkill                = "skill"
+	keyDeity                = "deity"
+	keyHazard               = "hazard"
+	keyObject               = "object"
+	keyLanguage             = "language"
+	keyOptFeature           = "optfeature"
+	keyScaleDice            = "scaledice"
+	keyScaleDamage          = "scaledamage"
+	keyAtk                  = "atk"
+	keyAtkr                 = "atkr"
+	keyH                    = "h"
+	keyHom                  = "hom"
+	keyHit                  = "hit"
+	keyD20                  = "d20"
+	keyDC                   = "dc"
+	keyRecharge             = "recharge"
+	keyActSave              = "actSave"
+	keyActSaveFail          = "actSaveFail"
+	keyActSaveSuccess       = "actSaveSuccess"
+	keyActSaveSuccessOrFail = "actSaveSuccessOrFail"
+	keyActTrigger           = "actTrigger"
+	keyActResponse          = "actResponse"
+	keyChance               = "chance"
+
+	// Monster fields that name damage and condition lists.
+	keyResist          = "resist"
+	keyVulnerable      = "vulnerable"
+	keyImmune          = "immune"
+	keyConditionImmune = "conditionImmune"
+)
+
+// 5etools range and duration types, and the distance units and duration
+// endings they carry.
+const (
+	rangeSpecial      = "special"
+	rangePoint        = "point"
+	distFeet          = "feet"
+	distMiles         = "miles"
+	durationInstant   = "instant"
+	durationTimed     = "timed"
+	durationPermanent = "permanent"
+	endsDispel        = "dispel"
+	endsTrigger       = "trigger"
+	endsDischarge     = "discharge"
+)
+
+// Alignment words of ftAlignments.
+const (
+	alignNeutral   = "neutral"
+	alignLawful    = "lawful"
+	alignChaotic   = "chaotic"
+	alignGood      = "good"
+	alignEvil      = "evil"
+	alignUnaligned = "unaligned"
+	alignAny       = "any alignment"
 )
 
 var fiveToolsSite = Site{
@@ -147,8 +315,8 @@ type ftSpellcasting struct {
 var ftSizes = map[string]string{"T": "Tiny", "S": "Small", "M": "Medium", "L": "Large", "H": "Huge", "G": "Gargantuan"}
 
 var ftAlignments = map[string]string{
-	"L": "lawful", "N": "neutral", "C": "chaotic", "G": "good", "E": "evil",
-	"U": "unaligned", "A": "any alignment", "NX": "neutral", "NY": "neutral",
+	"L": alignLawful, "N": alignNeutral, "C": alignChaotic, "G": alignGood, "E": alignEvil,
+	"U": alignUnaligned, "A": alignAny, "NX": alignNeutral, "NY": alignNeutral,
 }
 
 // ParseFiveTools normalizes the monster named like slug in a bestiary
@@ -198,10 +366,10 @@ func (m *ftMonster) data() MonsterData {
 	d := MonsterData{
 		Type: ftType(m.Type), HP: m.HP.Average, HitDice: m.HP.Formula,
 		Speed: map[string]int{}, Saves: map[string]int{}, Skills: map[string]int{},
-		Abilities: map[string]int{"str": m.Str, "dex": m.Dex, "con": m.Con, "int": m.Int, "wis": m.Wis, "cha": m.Cha},
+		Abilities: map[string]int{dnd5e.Str: m.Str, dnd5e.Dex: m.Dex, dnd5e.Con: m.Con, dnd5e.Int: m.Int, dnd5e.Wis: m.Wis, dnd5e.Cha: m.Cha},
 		Senses:    plainTags(strings.Join(m.Senses, ", ")), Languages: plainTags(strings.Join(m.Languages, ", ")),
-		Resistance: ftList(m.Resist, "resist"), Vulnerability: ftList(m.Vulnerable, "vulnerable"),
-		Immunity:   joinNonEmpty("; ", ftList(m.Immune, "immune"), ftList(m.ConditionImmune, "conditionImmune")),
+		Resistance: ftList(m.Resist, keyResist), Vulnerability: ftList(m.Vulnerable, keyVulnerable),
+		Immunity:   joinNonEmpty("; ", ftList(m.Immune, keyImmune), ftList(m.ConditionImmune, keyConditionImmune)),
 		Initiative: abilityMod(m.Dex),
 	}
 	var sizes []string
@@ -269,8 +437,8 @@ func (m *ftMonster) data() MonsterData {
 	}
 	for _, s := range m.Spellcasting {
 		desc := ftSpells(s)
-		if s.DisplayAs == "action" {
-			d.Actions = append(d.Actions, MonsterAction{Name: s.Name, Desc: desc, Type: "action"})
+		if s.DisplayAs == monsterAction {
+			d.Actions = append(d.Actions, MonsterAction{Name: s.Name, Desc: desc, Type: monsterAction})
 		} else {
 			d.Traits = append(d.Traits, NameDesc{Name: s.Name, Desc: desc})
 		}
@@ -332,9 +500,9 @@ func ftList(raws []json.RawMessage, key string) string {
 			continue
 		}
 		var special, pre, note string
-		_ = json.Unmarshal(g["special"], &special)
-		_ = json.Unmarshal(g["preNote"], &pre)
-		_ = json.Unmarshal(g["note"], &note)
+		_ = json.Unmarshal(g[keySpecial], &special)
+		_ = json.Unmarshal(g[keyPreNote], &pre)
+		_ = json.Unmarshal(g[keyNote], &note)
 		var inner []json.RawMessage
 		_ = json.Unmarshal(g[key], &inner)
 		groups = append(groups, strings.Join(strings.Fields(strings.Join([]string{pre, special, ftList(inner, key), note}, " ")), " "))
@@ -372,14 +540,14 @@ func ftEntry1(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &o) != nil {
 		return ""
 	}
-	if o.Type == "table" {
+	if o.Type == keyTable {
 		return ftTable(o.Caption, o.Labels, o.Rows)
 	}
 	body := ftEntries(o.Entries)
 	if o.Entry != nil {
 		body = ftEntry1(o.Entry)
 	}
-	if o.Type == "list" {
+	if o.Type == keyList {
 		var items []string
 		for _, it := range o.Items {
 			items = append(items, "- "+ftEntry1(it))
@@ -436,22 +604,22 @@ var ftAttacks = map[string]string{
 }
 
 var ftAbilityNames = map[string]string{
-	"str": "Strength", "dex": "Dexterity", "con": "Constitution", "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma",
+	dnd5e.Str: "Strength", dnd5e.Dex: "Dexterity", dnd5e.Con: "Constitution", dnd5e.Int: "Intelligence", dnd5e.Wis: "Wisdom", dnd5e.Cha: "Charisma",
 }
 
 // ftLinkKinds are the tags that name a compendium entry, by our kind.
 var ftLinkKinds = map[string]enum.CompendiumKind{
-	"spell": enum.KindSpell, "item": enum.KindItem, "creature": enum.KindMonster, "condition": enum.KindCondition,
-	"feat": enum.KindFeat, "background": enum.KindBackground, "race": enum.KindSpecies, "itemMastery": enum.KindRule,
+	keySpell: enum.KindSpell, keyItem: enum.KindItem, keyCreature: enum.KindMonster, keyCondition: enum.KindCondition,
+	keyFeat: enum.KindFeat, keyBackground: enum.KindBackground, keyRace: enum.KindSpecies, keyItemMastery: enum.KindRule,
 }
 
 // ftDisplayTags are reference tags whose third argument is the text shown
 // ({@variantrule Sphere [Area of Effect]|XPHB|Sphere}); scaledice and
 // scaledamage show the per-level step.
 var ftDisplayTags = map[string]bool{
-	"variantrule": true, "action": true, "sense": true, "skill": true, "status": true, "class": true,
-	"deity": true, "hazard": true, "object": true, "language": true, "disease": true, "optfeature": true,
-	"trap": true, "table": true, "itemProperty": true, "scaledice": true, "scaledamage": true,
+	keyVariantRule: true, keyAction: true, keySense: true, keySkill: true, keyStatus: true, keyClass: true,
+	keyDeity: true, keyHazard: true, keyObject: true, keyLanguage: true, keyDisease: true, keyOptFeature: true,
+	keyTrap: true, keyTable: true, keyItemProperty: true, keyScaleDice: true, keyScaleDamage: true,
 }
 
 // tokenSep stands in for a token's "|" while tags are still being replaced.
@@ -488,37 +656,37 @@ func stripTags(s string) string {
 				return display
 			}
 			switch tag {
-			case "atk", "atkr":
+			case keyAtk, keyAtkr:
 				return ftAttacks[arg]
-			case "h":
+			case keyH:
 				return "Hit: "
-			case "hom":
+			case keyHom:
 				return "Hit or Miss: "
-			case "hit", "d20":
+			case keyHit, keyD20:
 				if strings.HasPrefix(text, "-") {
 					return text
 				}
 				return "+" + text
-			case "dc":
+			case keyDC:
 				return "DC " + text
-			case "recharge":
+			case keyRecharge:
 				if text == "" {
 					return "(Recharge 6)"
 				}
 				return "(Recharge " + text + "–6)"
-			case "actSave":
+			case keyActSave:
 				return ftAbilityNames[text] + " Saving Throw:"
-			case "actSaveFail":
+			case keyActSaveFail:
 				return "Failure:"
-			case "actSaveSuccess":
+			case keyActSaveSuccess:
 				return "Success:"
-			case "actSaveSuccessOrFail":
+			case keyActSaveSuccessOrFail:
 				return "Failure or Success:"
-			case "actTrigger":
+			case keyActTrigger:
 				return "Trigger:"
-			case "actResponse":
+			case keyActResponse:
 				return "Response:"
-			case "chance":
+			case keyChance:
 				return text + " percent"
 			}
 			return text

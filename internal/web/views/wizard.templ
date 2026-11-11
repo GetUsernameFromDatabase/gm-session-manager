@@ -27,6 +27,18 @@ type WizardStep struct {
 	Key, Title string
 }
 
+// Wizard step keys, in order. Each also marks the step done in Sheet.SetUp.
+const (
+	StepClass      = "class"
+	StepBackground = "background"
+	StepSpecies    = "species"
+	StepAbilities  = "abilities"
+	StepChoices    = "choices"
+	StepEquipment  = "equipment"
+	StepDetails    = "details"
+	StepReview     = "review"
+)
+
 // WizardView is one page of the creation wizard.
 type WizardView struct {
 	CharacterID int64
@@ -134,7 +146,7 @@ func (v WizardView) skipped() []WizardStep {
 		if st.Key == v.Step {
 			break
 		}
-		if st.Key != "details" && !v.done(st.Key) {
+		if st.Key != StepDetails && !v.done(st.Key) {
 			out = append(out, st)
 		}
 	}
@@ -169,17 +181,17 @@ templ WizardPage(l Layout, v WizardView) {
 			@Notice(v.Error, true, "mb-4")
 		}
 		switch v.Step {
-			case "class", "species", "background":
+			case StepClass, StepSpecies, StepBackground:
 				@wizardPick(v)
-			case "abilities":
+			case StepAbilities:
 				@wizardAbilities(v)
-			case "choices":
+			case StepChoices:
 				@wizardChoices(v)
-			case "equipment":
+			case StepEquipment:
 				@wizardEquipment(v)
-			case "details":
+			case StepDetails:
 				@wizardDetails(v)
-			case "review":
+			case StepReview:
 				@wizardReview(v)
 		}
 	}
@@ -254,11 +266,11 @@ templ wizardDone(v WizardView, msg string) {
 templ wizardPick(v WizardView) {
 	if v.done(v.Step) {
 		{{ s := v.Sheet.C.Sheet }}
-		@wizardDone(v, "Already chosen: "+map[string]string{"class": s.ClassSummary() + " (level up for more classes)", "species": s.Species, "background": s.Background}[v.Step]+".")
+		@wizardDone(v, "Already chosen: "+map[string]string{StepClass: s.ClassSummary() + " (level up for more classes)", StepSpecies: s.Species, StepBackground: s.Background}[v.Step]+".")
 	} else {
 		<form method="get" class="mb-6 flex flex-wrap items-center gap-2" onchange="this.submit()">
 			@label.Label(label.Props{For: "pick-trigger"}) {
-				{ map[string]string{"class": "Class", "species": "Species", "background": "Background"}[v.Step] }
+				{ map[string]string{StepClass: "Class", StepSpecies: "Species", StepBackground: "Background"}[v.Step] }
 			}
 			@formSelect("pick", "pick", optionItems("Choose…", v.Options, func(o Option) string { return o.Slug }), v.Picked, "", "")
 			if len(v.Variants) > 0 {
@@ -291,10 +303,10 @@ templ wizardPick(v WizardView) {
 							if p := c.SkillPick; p != nil {
 								<fieldset { v.fieldErr().describedBy(FieldSkill)... } data-max-checked={ fmt.Sprint(p.Count) }>
 									<legend class="font-medium">
-										{ utils.IfElse(v.Step == "class", "Skills", "Class skills") }
+										{ utils.IfElse(v.Step == StepClass, "Skills", "Class skills") }
 										<span class="font-normal text-muted-foreground">({ Choose(p.Count-len(p.Picked), len(p.Picked)+len(p.Known) > 0) })</span>
 									</legend>
-									if v.Step == "background" {
+									if v.Step == StepBackground {
 										<p class="text-muted-foreground">This background gives a skill you picked with your class: pick another class skill.</p>
 									}
 									@v.fieldErr().at(FieldSkill)
@@ -360,7 +372,7 @@ func skillName(key string) string {
 // tagged parts.
 templ wizardFacts(c *WizardChoice) {
 	<dl class="grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr]">
-		for _, k := range []string{"Primary Ability", "Hit Point Die", "Saving Throw Proficiencies", "Weapon Proficiencies", "Armor Training", "Tool Proficiencies"} {
+		for _, k := range []string{compendium.TraitPrimaryAbility, compendium.TraitHitPointDie, compendium.TraitSavingThrows, compendium.TraitWeaponProficiencies, compendium.TraitArmorTraining, compendium.TraitToolProficiencies} {
 			if t := c.Traits[k]; t != "" {
 				<dt class="text-muted-foreground">{ k }</dt>
 				<dd>{ t }</dd>
@@ -407,7 +419,7 @@ templ backgroundAbilities(c *WizardChoice, form url.Values, fe FieldErrors) {
 templ wizardAbilities(v WizardView) {
 	if v.LegacyBackground {
 		@wizardDone(v, "Your background's increases are already added to your scores.")
-	} else if v.done("abilities") {
+	} else if v.done(StepAbilities) {
 		@wizardDone(v, "Your ability scores are on the sheet already.")
 	} else if len(v.Missing) > 0 {
 		@wizardMissing(v)
@@ -450,7 +462,7 @@ templ abilityForm(v WizardView) {
 // wizardChoices asks what the class and species leave open: lineage,
 // skills, languages, invocations and spells.
 templ wizardChoices(v WizardView) {
-	if v.done("choices") {
+	if v.done(StepChoices) {
 		@wizardDone(v, "Your choices are on the sheet already.")
 	} else if len(v.Missing) > 0 {
 		@wizardMissing(v)
@@ -504,13 +516,13 @@ func (v WizardView) fieldErr() FieldErrors { return v.Errors }
 func (v WizardView) DrawsField(key string) bool {
 	switch key {
 	case FieldName, FieldSize, FieldVision, FieldBackstory:
-		return v.Step == "details"
-	case "str", "dex", "con", "int", "wis", "cha":
-		return v.Step == "abilities"
+		return v.Step == StepDetails
+	case dnd5e.Str, dnd5e.Dex, dnd5e.Con, dnd5e.Int, dnd5e.Wis, dnd5e.Cha:
+		return v.Step == StepAbilities
 	case FieldMode:
-		return v.Step == "abilities" && v.Choice != nil && len(v.Choice.Abilities) == 3
+		return v.Step == StepAbilities && v.Choice != nil && len(v.Choice.Abilities) == 3
 	case FieldSkill:
-		return v.Choice != nil && (v.Step == "class" && v.Choice.SkillCount > 0 || v.Step == "background" && v.Choice.SkillPick != nil)
+		return v.Choice != nil && (v.Step == StepClass && v.Choice.SkillCount > 0 || v.Step == StepBackground && v.Choice.SkillPick != nil)
 	case FieldSpell:
 		return v.Choices != nil && len(v.Choices.Spells) > 0
 	}
@@ -656,7 +668,7 @@ templ optionDesc(desc string) {
 // wizardEquipment picks one starting equipment option from the class and
 // one from the background.
 templ wizardEquipment(v WizardView) {
-	if v.done("equipment") {
+	if v.done(StepEquipment) {
 		@wizardDone(v, "Starting equipment is on the sheet already.")
 	} else if len(v.Missing) > 0 {
 		@wizardMissing(v)
@@ -753,7 +765,7 @@ templ wizardDetails(v WizardView) {
 // wizardReview is the finished character, read-only, with the breakdowns.
 templ wizardReview(v WizardView) {
 	<div class="space-y-4">
-		if skipped := v.skipped(); len(skipped) > 0 && !v.done("review") {
+		if skipped := v.skipped(); len(skipped) > 0 && !v.done(StepReview) {
 			@alert.Alert() {
 				@icon.CircleDashed()
 				@alert.Title() {

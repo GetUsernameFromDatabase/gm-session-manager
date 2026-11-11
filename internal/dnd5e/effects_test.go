@@ -15,27 +15,27 @@ func TestParseEffects(t *testing.T) {
 		want       FeatureEffects
 	}{
 		{"Bardic Inspiration", "You can supernaturally inspire others. **Using Bardic Inspiration.** As a Bonus Action, you can inspire another creature within 60 feet of yourself. **Number of Uses.** You can confer a Bardic Inspiration die a number of times equal to your Charisma modifier (minimum of once), and you regain all expended uses when you finish a Long Rest.",
-			FeatureEffects{Action: "bonus", Uses: Uses{Ability: "cha", Reset: "long"}}},
+			FeatureEffects{Action: ActionBonus, Uses: Uses{Ability: Cha, Reset: ResetLong}}},
 		{"Rage", "You can enter it as a Bonus Action if you aren't wearing Heavy armor. You can enter your Rage the number of times shown for your Barbarian level in the Rages column of the Barbarian Features table. You regain one expended use when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest.",
-			FeatureEffects{Action: "bonus", Uses: Uses{ByLevel: map[int]int{1: 2, 3: 3, 6: 4}, Class: "Barbarian", Reset: "short-one"}}},
+			FeatureEffects{Action: ActionBonus, Uses: Uses{ByLevel: map[int]int{1: 2, 3: 3, 6: 4}, Class: "Barbarian", Reset: ResetShortOne}}},
 		{"Second Wind", "As a Bonus Action, you can use it to regain Hit Points equal to 1d10 plus your Fighter level. You can use this feature twice. You regain one expended use when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest.",
-			FeatureEffects{Action: "bonus", Uses: Uses{Fixed: 2, Reset: "short-one"}}},
+			FeatureEffects{Action: ActionBonus, Uses: Uses{Fixed: 2, Reset: ResetShortOne}}},
 		{"Action Surge", "On your turn, you can take one additional action. Once you use this feature, you can't do so again until you finish a Short or Long Rest.",
-			FeatureEffects{Uses: Uses{Fixed: 1, Reset: "short"}}},
+			FeatureEffects{Uses: Uses{Fixed: 1, Reset: ResetShort}}},
 		{"Stonecunning", "As a Bonus Action, you gain Tremorsense. You can use this Bonus Action a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest.",
-			FeatureEffects{Action: "bonus", Uses: Uses{Prof: true, Reset: "long"}}},
+			FeatureEffects{Action: ActionBonus, Uses: Uses{Prof: true, Reset: ResetLong}}},
 		{"Fast Movement", "Your speed increases by 10 feet while you aren't wearing Heavy armor.",
 			FeatureEffects{Mods: []CustomMod{{Target: ModSpeed, Value: 10, Note: "Fast Movement", Source: "Fast Movement", When: "no-heavy-armor"}}}},
 		{"Unarmored Defense", "While you aren't wearing any armor, your base Armor Class equals 10 plus your Dexterity and Constitution modifiers. You can use a Shield and still gain this benefit.",
-			FeatureEffects{Unarmored: "con"}},
+			FeatureEffects{Unarmored: Con}},
 		{"Unarmored Defense", "While you aren't wearing armor or wielding a Shield, your base Armor Class equals 10 plus your Dexterity and Wisdom modifiers.",
-			FeatureEffects{Unarmored: "wis", NoShield: true}},
-		{"Divine Spark", "As a Magic action, you point your Holy Symbol at another creature.", FeatureEffects{Action: "magic"}},
+			FeatureEffects{Unarmored: Wis, NoShield: true}},
+		{"Divine Spark", "As a Magic action, you point your Holy Symbol at another creature.", FeatureEffects{Action: ActionMagic}},
 		{"Darkvision", "You have Darkvision with a range of 60 feet.", FeatureEffects{}},
 		{"Monk's Focus", "This energy is represented by Focus Points. Your Monk level determines the number of points you have, as shown in the Focus Points column of the Monk Features table. When you expend a Focus Point, it is unavailable until you finish a Short or Long Rest, at the end of which you regain all your expended points.",
-			FeatureEffects{Uses: func() Uses { u := byLevel(map[int]int{2: 2, 3: 3}); u.Reset = "short"; return u }()}},
+			FeatureEffects{Uses: func() Uses { u := byLevel(map[int]int{2: 2, 3: 3}); u.Reset = ResetShort; return u }()}},
 		{"Channel Divinity", "You can use this class's Channel Divinity twice. You regain one of its expended uses when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest. You gain additional uses when you reach certain Cleric levels, as shown in the Channel Divinity column of the Cleric Features table.",
-			FeatureEffects{Uses: func() Uses { u := byLevel(map[int]int{2: 2, 6: 3}); u.Reset = "short-one"; return u }()}},
+			FeatureEffects{Uses: func() Uses { u := byLevel(map[int]int{2: 2, 6: 3}); u.Reset = ResetShortOne; return u }()}},
 		{"Martial Arts", "You can roll 1d6 in place of the normal damage of your Unarmed Strike. This die changes as you gain Monk levels, as shown in the Martial Arts column of the Monk Features table.", FeatureEffects{}},
 		{"Rage Damage", "You gain a bonus to the damage that increases as you gain levels as a Barbarian, as shown in the Rage Damage column of the Barbarian Features table.", FeatureEffects{}},
 	}
@@ -51,12 +51,12 @@ func TestParseEffects(t *testing.T) {
 // TestExplainSums checks each stat equals its breakdown and armor rules.
 func TestExplainSums(t *testing.T) {
 	base := NewSheet()
-	base.Scores["dex"], base.Scores["con"], base.Scores["wis"], base.Scores["str"] = 16, 14, 12, 10
+	base.Scores[Dex], base.Scores[Con], base.Scores[Wis], base.Scores[Str] = 16, 14, 12, 10
 	chain := &WornArmor{Name: "Chain Mail", Type: "heavy", Base: 16, StrReq: 13, Stealth: true}
 	studded := &WornArmor{Name: "Studded Leather", Type: "light", Base: 12, AddDex: true}
 	breast := &WornArmor{Name: "Breastplate", Type: "medium", Base: 14, AddDex: true, DexCap: 2}
-	barb := Feature{Name: "Unarmored Defense", Unarmored: "con"}
-	monk := Feature{Name: "Unarmored Defense", Unarmored: "wis", NoShield: true}
+	barb := Feature{Name: "Unarmored Defense", Unarmored: Con}
+	monk := Feature{Name: "Unarmored Defense", Unarmored: Wis, NoShield: true}
 	fast := CustomMod{Target: ModSpeed, Value: 10, Note: "Fast Movement", Source: "Fast Movement", When: "no-heavy-armor"}
 	tests := []struct {
 		name         string
@@ -93,7 +93,7 @@ func TestExplainSums(t *testing.T) {
 		})
 	}
 	s := base
-	s.SkillProfs, s.Expertise, s.SaveProfs = []string{"perception"}, []string{"stealth"}, []string{"dex"}
+	s.SkillProfs, s.Expertise, s.SaveProfs = []string{"perception"}, []string{"stealth"}, []string{Dex}
 	s.Weapons = []Weapon{{Name: "Rapier", Ability: "finesse", Proficient: true}}
 	s.Modifiers = []CustomMod{{Target: "skill.stealth", Value: 1, Note: "Cloak"}, {Target: ModPassive, Value: 5, Note: "Observant"}}
 	for target, want := range map[string]int{
@@ -119,8 +119,8 @@ func TestExplainSums(t *testing.T) {
 
 func TestArmorAndFeatureUses(t *testing.T) {
 	c := Character{Name: "Tess", MaxHP: 10, HP: 10, Sheet: NewSheet()}
-	c.Sheet.Scores["cha"] = 14
-	c.Sheet.Features = []Feature{{Name: "Bardic Inspiration"}, {Name: "Second Wind", Uses: Uses{Fixed: 2, Reset: "short-one"}}}
+	c.Sheet.Scores[Cha] = 14
+	c.Sheet.Features = []Feature{{Name: "Bardic Inspiration"}, {Name: "Second Wind", Uses: Uses{Fixed: 2, Reset: ResetShortOne}}}
 	c.Sheet.Modifiers = []CustomMod{{Target: ModSpeed, Value: 10, Note: "Bardic Inspiration", Source: "Bardic Inspiration"}}
 	run := func(line string, env Env) error {
 		t.Helper()
@@ -153,7 +153,7 @@ func TestArmorAndFeatureUses(t *testing.T) {
 		}
 	}
 	bi, sw := c.Sheet.Features[0], c.Sheet.Features[1]
-	if c.Sheet.ArmorClass() != 18 || bi.Action != "bonus" || bi.Uses.Used != 2 || bi.Uses.Reset != "long" || sw.Uses.Used != 1 {
+	if c.Sheet.ArmorClass() != 18 || bi.Action != ActionBonus || bi.Uses.Used != 2 || bi.Uses.Reset != ResetLong || sw.Uses.Used != 1 {
 		t.Errorf("after short rest: AC %d %+v %+v", c.Sheet.ArmorClass(), bi, sw)
 	}
 	// Restore gives back one use and never goes below zero.

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 
 	"golang.org/x/net/html"
@@ -123,9 +124,9 @@ func ParseWikidot(page string, body []byte) (string, Entry, error) {
 		if _, after, ok := strings.Cut(title, ":"); ok {
 			e.Name = strings.TrimSpace(after) // "Monk: Way of Mercy"
 		}
-		d := ClassData{Caster: "none", SubclassOf: prefix}
+		d := ClassData{Caster: dnd5e.CasterNone, SubclassOf: prefix}
 		for _, b := range blocks {
-			if b.Rows != nil && d.Caster == "none" {
+			if b.Rows != nil && d.Caster == dnd5e.CasterNone {
 				d.Caster = slotCaster(b.Rows) // Eldritch Knight, Arcane Trickster
 			}
 		}
@@ -336,8 +337,8 @@ func sourceLine(blocks []block) (string, []block) {
 
 // textTypes map 2014 trait and background labels to typed parts.
 var textTypes = map[string]string{
-	"size": partSize, "speed": partSpeed, "languages": partLanguages,
-	"skill proficiencies": partSkills, "tool proficiencies": partTools,
+	"size": PartSize, "speed": PartSpeed, "languages": PartLanguages,
+	"skill proficiencies": PartSkills, "tool proficiencies": PartTools,
 }
 
 // wikidotText reads a species, background or feat: labeled paragraphs are
@@ -448,7 +449,7 @@ func tableText(rows [][]string) string {
 // wikidotClass reads a class page: the labeled Hit Points and Proficiencies
 // lines, the class table and the features.
 func wikidotClass(page string, blocks []block) ClassData {
-	d := ClassData{Caster: "none", Table: map[string]map[int]string{}}
+	d := ClassData{Caster: dnd5e.CasterNone, Table: map[string]map[int]string{}}
 	traits := map[string]string{}
 	levels := map[string][]int{}
 	table := false
@@ -458,9 +459,9 @@ func wikidotClass(page string, blocks []block) ClassData {
 			if m := reHitDie.FindStringSubmatch(b.Text); m != nil {
 				d.HitDie, _ = strconv.Atoi(m[1])
 			}
-		case b.Label == "Saving Throws":
+		case b.Label == LabelSavingThrows:
 			for _, s := range SplitList(b.Text) {
-				for _, a := range []string{"str", "dex", "con", "int", "wis", "cha"} {
+				for _, a := range dnd5e.Abilities {
 					if strings.HasPrefix(strings.ToLower(s), a) {
 						d.Saves = append(d.Saves, a)
 					}
@@ -472,7 +473,7 @@ func wikidotClass(page string, blocks []block) ClassData {
 			traits[classTraits[2]] = b.Text
 		case b.Label == "Tools":
 			traits[classTraits[3]] = b.Text
-		case b.Label == "Skills":
+		case b.Label == LabelSkills:
 			traits[classTraits[0]] = b.Text
 			if m := reChoose.FindStringSubmatch(b.Text); m != nil {
 				traits[classTraits[0]] = "Choose " + cmp.Or(CountWords[strings.ToLower(m[1])], m[1]) + ": " + m[2]
@@ -515,7 +516,7 @@ func classTable(d *ClassData, levels map[string][]int, rows [][]string) bool {
 				}
 			case reOrdinal.MatchString(col): // spell slots, read by slotCaster
 			case col == "Slot Level":
-				d.Caster = "pact"
+				d.Caster = dnd5e.CasterPact
 			case !empty:
 				if d.Table[col] == nil {
 					d.Table[col] = map[int]string{}
@@ -524,7 +525,7 @@ func classTable(d *ClassData, levels map[string][]int, rows [][]string) bool {
 			}
 		}
 	}
-	if d.Caster != "pact" {
+	if d.Caster != dnd5e.CasterPact {
 		d.Caster = slotCaster(rows[head:])
 	}
 	return true
@@ -555,13 +556,13 @@ func slotCaster(rows [][]string) string {
 	}
 	switch maxSlot {
 	case 9:
-		return "full"
+		return dnd5e.CasterFull
 	case 5:
-		return "half"
+		return dnd5e.CasterHalf
 	case 4:
-		return "third"
+		return dnd5e.CasterThird
 	}
-	return "none"
+	return dnd5e.CasterNone
 }
 
 func cellAt(r []string, i int) string {

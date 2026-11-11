@@ -95,10 +95,10 @@ func TestParseWikidotSpecies(t *testing.T) {
 	}
 	d := e.Data.(TextData)
 	want := []NameDesc{
-		{Name: "Size", Desc: "You are Medium.", Type: partSize},
-		{Name: "Speed", Desc: "Your walking speed is 30 feet.", Type: partSpeed},
+		{Name: "Size", Desc: "You are Medium.", Type: PartSize},
+		{Name: "Speed", Desc: "Your walking speed is 30 feet.", Type: PartSpeed},
 		{Name: "Hippo Build", Desc: "You are strong."},
-		{Name: "Languages", Desc: "Common and one more.", Type: partLanguages},
+		{Name: "Languages", Desc: "Common and one more.", Type: PartLanguages},
 	}
 	if e.Kind != enum.KindSpecies || e.Slug != "giff" || e.Name != "Giff" || d.Desc != "Flavor about the folk." || !reflect.DeepEqual(d.Parts, want) {
 		t.Errorf("%+v %+v", e, d)
@@ -150,8 +150,8 @@ func TestParseWikidotFeatAndBackground(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []NameDesc{
-		{Name: "Skill Proficiencies", Desc: "Athletics, Survival", Type: partSkills},
-		{Name: "Tool Proficiencies", Desc: "One type of musical instrument", Type: partTools},
+		{Name: "Skill Proficiencies", Desc: "Athletics, Survival", Type: PartSkills},
+		{Name: "Tool Proficiencies", Desc: "One type of musical instrument", Type: PartTools},
 		{Name: "Equipment", Desc: "A staff"},
 		{Name: "Wanderer", Desc: "You remember maps."},
 	}
@@ -303,7 +303,7 @@ func TestHomebrewTextRoundTrip(t *testing.T) {
 	}
 	td := e.Data.(TextData)
 	want := []NameDesc{
-		{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+		{Name: "Size", Desc: "Medium", Type: PartSize}, {Name: "Speed", Desc: "30 feet", Type: PartSpeed},
 		{Name: "Hippo Build", Desc: "You are strong."}, {Name: "Astral Spark", Desc: "Extra damage.\nMore lines."},
 	}
 	if !reflect.DeepEqual(td.Parts, want) {

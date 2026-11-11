@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 
 	"golang.org/x/net/html"
@@ -87,7 +88,7 @@ var (
 
 // aideddSections name the action sections, as action types.
 var aideddSections = map[string]string{
-	"actions": "action", "bonus actions": "bonus_action", "reactions": "reaction", "legendary actions": "legendary_action",
+	"actions": monsterAction, "bonus actions": monsterBonusAction, "reactions": monsterReaction, "legendary actions": monsterLegendaryAction,
 }
 
 // ParseAidedd normalizes a monster page into an entry and its picture link.
@@ -116,7 +117,7 @@ func ParseAidedd(body []byte) (Entry, string, error) {
 			if m := reTypeLine.FindStringSubmatch(line); m != nil {
 				d.Size, d.Type, d.Alignment = m[1], m[2], m[3]
 			}
-		case slices.Contains(abilityOrder, strings.ToLower(line)) && i+1 < len(lines):
+		case slices.Contains(dnd5e.Abilities, strings.ToLower(line)) && i+1 < len(lines):
 			d.Abilities[strings.ToLower(line)] = firstInt(lines[i+1])
 			i++
 		case aideddSections[strings.ToLower(line)] != "":
@@ -127,7 +128,7 @@ func ParseAidedd(body []byte) (Entry, string, error) {
 			addEntry(&d, section, line)
 		}
 	}
-	d.Initiative = abilityMod(d.Abilities["dex"])
+	d.Initiative = abilityMod(d.Abilities[dnd5e.Dex])
 	img := find(doc, func(n *html.Node) bool { return n.Data == "img" && strings.Contains(attr(n, "src"), "/dnd/images/") })
 	image := ""
 	if img != nil {
@@ -140,10 +141,27 @@ func ParseAidedd(body []byte) (Entry, string, error) {
 	return Entry{Kind: enum.KindMonster, Slug: Slugify(name), Name: name, Data: d, Text: d.searchText()}, image, nil
 }
 
+// Statblock labels the importers read and write (NameDesc.Name).
+const (
+	LabelArmorClass          = "Armor Class"
+	LabelHitPoints           = "Hit Points"
+	LabelSpeed               = "Speed"
+	LabelSavingThrows        = "Saving Throws"
+	LabelSkills              = "Skills"
+	LabelDamageVulnerability = "Damage Vulnerabilities"
+	LabelDamageResistance    = "Damage Resistances"
+	LabelDamageImmunity      = "Damage Immunities"
+	LabelConditionImmunity   = "Condition Immunities"
+	LabelSenses              = "Senses"
+	LabelLanguages           = "Languages"
+	LabelChallenge           = "Challenge"
+	LabelProficiencyBonus    = "Proficiency Bonus"
+)
+
 // aideddLabels are the statblock lines a monster has before its traits.
 var aideddLabels = []string{
-	"Armor Class", "Hit Points", "Speed", "Saving Throws", "Skills", "Damage Vulnerabilities", "Damage Resistances",
-	"Damage Immunities", "Condition Immunities", "Senses", "Languages", "Challenge", "Proficiency Bonus",
+	LabelArmorClass, LabelHitPoints, LabelSpeed, LabelSavingThrows, LabelSkills, LabelDamageVulnerability, LabelDamageResistance,
+	LabelDamageImmunity, LabelConditionImmunity, LabelSenses, LabelLanguages, LabelChallenge, LabelProficiencyBonus,
 }
 
 func statLabel(line string) (string, string) {
@@ -157,34 +175,34 @@ func statLabel(line string) (string, string) {
 
 func setStat(d *MonsterData, label, v string) {
 	switch label {
-	case "Armor Class", "Hit Points":
+	case LabelArmorClass, LabelHitPoints:
 		m := reStatNum.FindStringSubmatch(v)
 		if m == nil {
 			return
 		}
 		n, _ := strconv.Atoi(m[1])
-		if label == "Armor Class" {
+		if label == LabelArmorClass {
 			d.AC, d.ACDetail = n, m[2]
 		} else {
 			d.HP, d.HitDice = n, m[2]
 		}
-	case "Speed":
+	case LabelSpeed:
 		d.Speed = parseSpeed(v)
-	case "Saving Throws":
+	case LabelSavingThrows:
 		d.Saves = parseBonuses(v, true)
-	case "Skills":
+	case LabelSkills:
 		d.Skills = parseBonuses(v, false)
-	case "Damage Resistances":
+	case LabelDamageResistance:
 		d.Resistance = v
-	case "Damage Immunities", "Condition Immunities":
+	case LabelDamageImmunity, LabelConditionImmunity:
 		d.Immunity = joinNonEmpty("; ", d.Immunity, v)
-	case "Damage Vulnerabilities":
+	case LabelDamageVulnerability:
 		d.Vulnerability = v
-	case "Senses":
+	case LabelSenses:
 		d.Senses = v
-	case "Languages":
+	case LabelLanguages:
 		d.Languages = v
-	case "Challenge":
+	case LabelChallenge:
 		d.CR, _, _ = strings.Cut(v, " ")
 	}
 }

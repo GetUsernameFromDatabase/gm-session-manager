@@ -306,12 +306,12 @@ func TestParseFiveToolsBook(t *testing.T) {
 		// _versions: the base's traits with the version's _mod, its fluff, and
 		// a template filled per implementation.
 		{"species/elf-wood-elf-lineage", TextData{Desc: "Elves live long lives.", Parts: []NameDesc{
-			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "35 feet", Type: partSpeed},
+			{Name: "Size", Desc: "Medium", Type: PartSize}, {Name: "Speed", Desc: "35 feet", Type: PartSpeed},
 			{Name: "Darkvision", Desc: "You have Darkvision with a range of 60 feet."},
 			{Name: "Elven Lineage (Wood Elf)", Desc: "You know the [[compendium:spell/druidcraft|Druidcraft]] cantrip."},
 		}, VersionOf: "Elf"}},
 		{"species/dragonborn-red", TextData{Parts: []NameDesc{
-			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Size", Desc: "Medium", Type: PartSize}, {Name: "Speed", Desc: "30 feet", Type: PartSpeed},
 			{Name: "Damage Resistance", Desc: "You have Resistance to Fire damage."},
 		}, VersionOf: "Dragonborn"}},
 		{"item/dwarven-plate", ItemData{
@@ -324,41 +324,41 @@ func TestParseFiveToolsBook(t *testing.T) {
 			Desc: "This bag has an interior space larger than its outside, like [[compendium:spell/rope-trick|Rope Trick]].",
 		}},
 		{"species/elf-drow", TextData{Desc: "Elves live long lives.", Parts: []NameDesc{
-			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Size", Desc: "Medium", Type: PartSize}, {Name: "Speed", Desc: "30 feet", Type: PartSpeed},
 			{Name: "Darkvision", Desc: "You have Darkvision with a range of 60 feet."}, {Name: "Trance", Desc: "You don't need to sleep."},
 			{Name: "Drow Lineage", Desc: "You know the [[compendium:spell/dancing-lights|Dancing Lights]] cantrip."},
 		}, SubraceOf: "elf"}},
 		// Parents from another book come bundled; a reprinted one is "(2014)".
 		{"species/half-elf", TextData{Parts: []NameDesc{
-			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Size", Desc: "Medium", Type: PartSize}, {Name: "Speed", Desc: "30 feet", Type: PartSpeed},
 			{Name: "Ability Score Increase", Desc: "Charisma +2, +1 to 2 of Strength, Dexterity, Constitution, Intelligence, Wisdom"},
 			{Name: "Fey Ancestry", Desc: "You resist charm."}, {Name: "Skill Versatility", Desc: "You gain two skills."},
 		}}},
 		{"species/elf-2014", TextData{Parts: []NameDesc{
-			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Size", Desc: "Medium", Type: PartSize}, {Name: "Speed", Desc: "30 feet", Type: PartSpeed},
 			{Name: "Ability Score Increase", Desc: "Dexterity +2"}, {Name: "Keen Senses", Desc: "You have Perception."},
 		}}},
 		// A subrace is complete: an overwritten trait is replaced in place.
 		{"species/half-elf-drow-descent", TextData{Parts: []NameDesc{
-			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Size", Desc: "Medium", Type: PartSize}, {Name: "Speed", Desc: "30 feet", Type: PartSpeed},
 			{Name: "Ability Score Increase", Desc: "Charisma +2, +1 to 2 of Strength, Dexterity, Constitution, Intelligence, Wisdom"},
 			{Name: "Fey Ancestry", Desc: "You resist charm."}, {Name: "Skill Versatility", Desc: "You know Dancing Lights."},
 		}, SubraceOf: "half-elf"}},
 		{"species/half-elf-aquatic-elf-descent", TextData{Parts: []NameDesc{
-			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Size", Desc: "Medium", Type: PartSize}, {Name: "Speed", Desc: "30 feet", Type: PartSpeed},
 			{Name: "Ability Score Increase", Desc: "Wisdom +1"},
 			{Name: "Fey Ancestry", Desc: "You resist charm."}, {Name: "Skill Versatility", Desc: "You gain two skills."}, {Name: "Swim", Desc: "You swim."},
 		}, SubraceOf: "half-elf"}},
 		{"species/elf-high", TextData{Parts: []NameDesc{
-			{Name: "Size", Desc: "Medium", Type: partSize}, {Name: "Speed", Desc: "30 feet", Type: partSpeed},
+			{Name: "Size", Desc: "Medium", Type: PartSize}, {Name: "Speed", Desc: "30 feet", Type: PartSpeed},
 			{Name: "Ability Score Increase", Desc: "Dexterity +2, Intelligence +1"},
 			{Name: "Keen Senses", Desc: "You have Perception."}, {Name: "Cantrip", Desc: "You know one wizard cantrip."},
 		}, SubraceOf: "elf-2014"}},
 		{"background/acolyte", TextData{Desc: "You devoted yourself to service in a temple.", Parts: []NameDesc{
-			{Name: "Ability Scores", Desc: "Intelligence, Wisdom, Charisma", Type: partAbilities},
-			{Name: "Feat", Desc: "Magic Initiate (Cleric)", Type: partFeat},
-			{Name: "Skill Proficiencies", Desc: "Insight and Religion", Type: partSkills},
-			{Name: "Tool Proficiency", Desc: "Calligrapher's Supplies", Type: partTools},
+			{Name: "Ability Scores", Desc: "Intelligence, Wisdom, Charisma", Type: PartAbilities},
+			{Name: "Feat", Desc: "Magic Initiate (Cleric)", Type: PartFeat},
+			{Name: "Skill Proficiencies", Desc: "Insight and Religion", Type: PartSkills},
+			{Name: "Tool Proficiency", Desc: "Calligrapher's Supplies", Type: PartTools},
 			{Name: "Equipment", Desc: "Choose A or B: (A) Holy Symbol, 8 GP; or (B) 50 GP", Type: "equipment"},
 		}}},
 		{"feat/grappler", TextData{

@@ -20,6 +20,7 @@ import (
 
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 )
 
@@ -351,7 +352,7 @@ func HomebrewInputFor(kind enum.CompendiumKind, name, desc string, data any) Hom
 		in.AC, in.HP, in.CR, in.Desc = d.AC, d.HP, d.CR, d.Desc
 		in.Size, in.MonsterType, in.Alignment, in.ACDetail, in.HitDice, in.Initiative = d.Size, d.Type, d.Alignment, d.ACDetail, d.HitDice, d.Initiative
 		in.MonsterSpeed, in.MonsterSaves, in.MonsterSkills = speedText(d.Speed), bonusText(d.Saves), bonusText(d.Skills)
-		in.Str, in.Dex, in.Con, in.Int, in.Wis, in.Cha = d.Abilities["str"], d.Abilities["dex"], d.Abilities["con"], d.Abilities["int"], d.Abilities["wis"], d.Abilities["cha"]
+		in.Str, in.Dex, in.Con, in.Int, in.Wis, in.Cha = d.Abilities[dnd5e.Str], d.Abilities[dnd5e.Dex], d.Abilities[dnd5e.Con], d.Abilities[dnd5e.Int], d.Abilities[dnd5e.Wis], d.Abilities[dnd5e.Cha]
 		in.Senses, in.Languages, in.Resistances, in.Immunities, in.Vulnerable, in.Traits = d.Senses, d.Languages, d.Resistance, d.Immunity, d.Vulnerability, TraitsText(d.Traits)
 		in.Actions, in.BonusActions = actionsText(d.Actions, actionTypes[0]), actionsText(d.Actions, actionTypes[1])
 		in.Reactions, in.Legendary = actionsText(d.Actions, actionTypes[2]), actionsText(d.Actions, actionTypes[3])
@@ -372,19 +373,19 @@ func HomebrewInputFor(kind enum.CompendiumKind, name, desc string, data any) Hom
 		in.Desc, in.Prerequisite, in.Traits = d.Desc, d.Prerequisite, TraitsText(d.Parts)
 		for _, p := range d.Parts {
 			switch p.Type {
-			case partSize:
+			case PartSize:
 				in.Size = p.Desc
-			case partSpeed:
+			case PartSpeed:
 				in.Speed = firstInt(p.Desc)
-			case partAbilities:
+			case PartAbilities:
 				in.Abilities = p.Desc
-			case partSkills:
+			case PartSkills:
 				in.Skills = p.Desc
-			case partTools:
+			case PartTools:
 				in.Tools = p.Desc
-			case partLanguages:
+			case PartLanguages:
 				in.Languages = p.Desc
-			case partFeat:
+			case PartFeat:
 				in.Feat = p.Desc
 			}
 		}
@@ -409,13 +410,26 @@ func InputForEntry(e Entry) HomebrewInput {
 
 // Typed part names (NameDesc.Type) the character wizard applies.
 const (
-	partSize      = "size"
-	partSpeed     = "speed"
-	partAbilities = "ability_score"
-	partSkills    = "skill_proficiency"
-	partTools     = "tool_proficiency"
-	partLanguages = "languages"
-	partFeat      = "feat"
+	PartSize      = "size"
+	PartSpeed     = "speed"
+	PartAbilities = "ability_score"
+	PartSkills    = "skill_proficiency"
+	PartTools     = "tool_proficiency"
+	PartLanguages = "languages"
+	PartFeat      = "feat"
+	PartEquipment = "equipment"
+)
+
+// Background part labels (NameDesc.Name) the wizard reads; Languages and
+// Speed are the statblock labels.
+const (
+	LabelSize              = "Size"
+	LabelAbilityScores     = "Ability Scores"
+	LabelFeat              = "Feat"
+	LabelSkillProficiency  = "Skill Proficiencies"
+	LabelToolProficiency   = "Tool Proficiency"
+	LabelToolProficiencies = "Tool Proficiencies"
+	LabelEquipment         = "Equipment"
 )
 
 var reFirstInt = regexp.MustCompile(`\d+`)
@@ -433,15 +447,15 @@ func (in HomebrewInput) typedParts() []NameDesc {
 			out = append(out, NameDesc{Name: name, Desc: desc, Type: typ})
 		}
 	}
-	add(partSize, "Size", in.Size)
+	add(PartSize, LabelSize, in.Size)
 	if in.Speed > 0 {
-		add(partSpeed, "Speed", fmt.Sprintf("%d feet", in.Speed))
+		add(PartSpeed, LabelSpeed, fmt.Sprintf("%d feet", in.Speed))
 	}
-	add(partAbilities, "Ability Scores", in.Abilities)
-	add(partSkills, "Skill Proficiencies", in.Skills)
-	add(partTools, "Tool Proficiencies", in.Tools)
-	add(partLanguages, "Languages", in.Languages)
-	add(partFeat, "Feat", in.Feat)
+	add(PartAbilities, LabelAbilityScores, in.Abilities)
+	add(PartSkills, LabelSkillProficiency, in.Skills)
+	add(PartTools, LabelToolProficiencies, in.Tools)
+	add(PartLanguages, LabelLanguages, in.Languages)
+	add(PartFeat, LabelFeat, in.Feat)
 	return append(out, ParseTraits(in.Traits)...)
 }
 
@@ -467,7 +481,7 @@ func (in HomebrewInput) Entry() (Entry, error) {
 			CR: in.CR, Senses: in.Senses, Languages: in.Languages, Resistance: in.Resistances, Immunity: in.Immunities, Vulnerability: in.Vulnerable,
 			Traits: ParseTraits(in.Traits), Actions: parseActions(in.Actions, in.BonusActions, in.Reactions, in.Legendary), Desc: in.Desc,
 		}
-		for k, v := range map[string]int{"str": in.Str, "dex": in.Dex, "con": in.Con, "int": in.Int, "wis": in.Wis, "cha": in.Cha} {
+		for k, v := range map[string]int{dnd5e.Str: in.Str, dnd5e.Dex: in.Dex, dnd5e.Con: in.Con, dnd5e.Int: in.Int, dnd5e.Wis: in.Wis, dnd5e.Cha: in.Cha} {
 			if v > 0 {
 				d.Abilities[k] = v
 			}
@@ -495,7 +509,7 @@ func (in HomebrewInput) Entry() (Entry, error) {
 		e.Data = d
 	case enum.KindClass, enum.KindSubclass:
 		d := ClassData{
-			HitDie: in.HitDie, Caster: cmp.Or(in.Caster, "none"), Saves: in.Saves, Features: ParseFeatures(in.Features), Table: ParseTable(in.Table),
+			HitDie: in.HitDie, Caster: cmp.Or(in.Caster, dnd5e.CasterNone), Saves: in.Saves, Features: ParseFeatures(in.Features), Table: ParseTable(in.Table),
 			Desc: withCoreTraits(in.Desc, map[string]string{classTraits[0]: in.Skills, classTraits[1]: in.Armor, classTraits[2]: in.Weapons, classTraits[3]: in.Tools}),
 		}
 		if e.Kind == enum.KindSubclass {

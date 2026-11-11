@@ -211,7 +211,7 @@ type sourceOf struct {
 
 // inheritsSourceKeys are the lists whose records carry their source in
 // inherits (magic variants), not at the top.
-var inheritsSourceKeys = []string{"magicvariant"}
+var inheritsSourceKeys = []string{keyMagicVariant}
 
 // filterSource keeps the entries of a JSON array whose source is id.
 func filterSource(arr json.RawMessage, id string, inherits bool) ([]json.RawMessage, error) {
@@ -268,7 +268,7 @@ func filterDoc(raw json.RawMessage, id string, keys ...string) (map[string][]jso
 var reLinkTag = regexp.MustCompile(`\{@(creature|spell|item) ([^{}|"\\]*)((?:\|[^{}|"\\]*)*)\}`)
 
 // tagDefaultSources are the sources 5etools assumes when a tag names none.
-var tagDefaultSources = map[string]string{"creature": "MM", "spell": "PHB", "item": "DMG"}
+var tagDefaultSources = map[string]string{keyCreature: "MM", keySpell: "PHB", keyItem: "DMG"}
 
 // reprints returns, per name|source key of a mirror file, the uid its record
 // was reprinted as. A missing or unreadable file gives an empty map.
@@ -320,10 +320,10 @@ func (m *mirror) reprints(rel string) map[string]string {
 func (m *mirror) reprintOf(tag, name, source string) string {
 	var files []string
 	switch tag {
-	case "item":
+	case keyItem:
 		files = []string{"items.json", "items-base.json"}
 	default:
-		rel := map[string]string{"creature": "bestiary/index.json", "spell": "spells/index.json"}[tag]
+		rel := map[string]string{keyCreature: "bestiary/index.json", keySpell: "spells/index.json"}[tag]
 		idx, err := m.index(rel)
 		if err != nil {
 			return ""
@@ -499,8 +499,8 @@ func copyTargets(doc map[string][]json.RawMessage, raw json.RawMessage, other fu
 		}
 	}
 	// A subrace's race comes along too: its entries build on the race's.
-	have := copyIndex(append(slices.Clone(doc["race"]), out["race"]...))
-	for _, r := range doc["subrace"] {
+	have := copyIndex(append(slices.Clone(doc[keyRace]), out[keyRace]...))
+	for _, r := range doc[keySubrace] {
 		var s struct {
 			RaceName   string `json:"raceName"`
 			RaceSource string `json:"raceSource"`
@@ -512,13 +512,13 @@ func copyTargets(doc map[string][]json.RawMessage, raw json.RawMessage, other fu
 		if key == "" || have[key] != nil {
 			continue
 		}
-		p, err := pool("", "race")
+		p, err := pool("", keyRace)
 		if err != nil {
 			return nil, err
 		}
 		if t, ok := p[key]; ok {
 			have[key] = t
-			out["race"] = append(out["race"], t)
+			out[keyRace] = append(out[keyRace], t)
 		}
 	}
 	return out, nil
@@ -545,7 +545,7 @@ var (
 		{"fluff-items.json", "fluff-items.json"},
 		{"magicvariants.json", "magicvariants.json"},
 	}
-	classKeys = []string{"class", "subclass", "classFeature", "subclassFeature"}
+	classKeys = []string{keyClass, keySubclass, keyClassFeature, keySubclassFeature}
 )
 
 func (m *mirror) writeBook(w bookWriter, b Book) error {
@@ -648,7 +648,7 @@ type classRef struct {
 // features belong to, whatever their own source.
 func (m *mirror) keepClassParents(raw json.RawMessage, doc map[string][]json.RawMessage) error {
 	parents := map[string]bool{}
-	for _, k := range []string{"subclass", "subclassFeature"} {
+	for _, k := range []string{keySubclass, keySubclassFeature} {
 		for _, e := range doc[k] {
 			var r classRef
 			if json.Unmarshal(e, &r) == nil && r.ClassName != "" {
@@ -666,7 +666,7 @@ func (m *mirror) keepClassParents(raw json.RawMessage, doc map[string][]json.Raw
 		return err
 	}
 	have := map[string]bool{}
-	for _, e := range doc["class"] {
+	for _, e := range doc[keyClass] {
 		var r classRef
 		if json.Unmarshal(e, &r) == nil {
 			have[r.Name] = true
@@ -675,7 +675,7 @@ func (m *mirror) keepClassParents(raw json.RawMessage, doc map[string][]json.Raw
 	for _, e := range all.Class {
 		var r classRef
 		if json.Unmarshal(e, &r) == nil && parents[r.Name] && !have[r.Name] {
-			doc["class"] = append(doc["class"], e)
+			doc[keyClass] = append(doc[keyClass], e)
 		}
 	}
 	return nil
@@ -703,7 +703,7 @@ func keepReferencedFeatures(raw json.RawMessage, doc map[string][]json.RawMessag
 		}
 	}
 	kept := map[string]bool{}
-	for _, e := range doc["subclassFeature"] {
+	for _, e := range doc[keySubclassFeature] {
 		var f ftClassFeature
 		if json.Unmarshal(e, &f) == nil {
 			kept[f.key()] = true
@@ -712,7 +712,7 @@ func keepReferencedFeatures(raw json.RawMessage, doc map[string][]json.RawMessag
 	// A bundled feature may reference further ones, so scan until none is new.
 	for scanned := 0; ; {
 		var todo []json.RawMessage
-		for _, k := range []string{"subclass", "classFeature", "subclassFeature"} {
+		for _, k := range []string{keySubclass, keyClassFeature, keySubclassFeature} {
 			todo = append(todo, doc[k]...)
 		}
 		if scanned == len(todo) {
@@ -725,7 +725,7 @@ func keepReferencedFeatures(raw json.RawMessage, doc map[string][]json.RawMessag
 				key, _ := ftFeatureKey(string(m[1]), true)
 				if f, ok := byKey[key]; ok && !kept[key] {
 					kept[key] = true
-					doc["subclassFeature"] = append(doc["subclassFeature"], f)
+					doc[keySubclassFeature] = append(doc[keySubclassFeature], f)
 				}
 			}
 		}

@@ -30,14 +30,14 @@ import (
 // once; it can be redone (wizardChange) until the review is saved, then the
 // sheet is changed directly.
 var wizardSteps = []views.WizardStep{
-	{Key: "class", Title: "Class"},
-	{Key: "background", Title: "Background"},
-	{Key: "species", Title: "Species"},
-	{Key: "abilities", Title: "Ability scores"},
-	{Key: "choices", Title: "Choices"},
-	{Key: "equipment", Title: "Equipment"},
-	{Key: "details", Title: "Details"},
-	{Key: "review", Title: "Review"},
+	{Key: views.StepClass, Title: "Class"},
+	{Key: views.StepBackground, Title: "Background"},
+	{Key: views.StepSpecies, Title: "Species"},
+	{Key: views.StepAbilities, Title: "Ability scores"},
+	{Key: views.StepChoices, Title: "Choices"},
+	{Key: views.StepEquipment, Title: "Equipment"},
+	{Key: views.StepDetails, Title: "Details"},
+	{Key: views.StepReview, Title: "Review"},
 }
 
 func wizardPath(id int64, step string) string {
@@ -56,21 +56,21 @@ func nextStep(id int64, key string) string {
 // stepNeeds are the earlier picks a step asks about: saved without them, it
 // could never ask for what they bring (a background feat's spells, a class's gear).
 var stepNeeds = map[string][]string{
-	"abilities": {"background"},
-	"choices":   {"class", "background", "species"},
-	"equipment": {"class", "background"},
+	views.StepAbilities: {views.StepBackground},
+	views.StepChoices:   {views.StepClass, views.StepBackground, views.StepSpecies},
+	views.StepEquipment: {views.StepClass, views.StepBackground},
 }
 
 // missingSteps are the steps step needs that the sheet lacks. A background
 // is needed only when the compendium has one to pick.
 func (a *App) missingSteps(ctx context.Context, sh dnd5e.Sheet, step string, campaignID int64) ([]views.WizardStep, error) {
-	has := map[string]bool{"class": len(sh.Classes) > 0, "species": sh.Species != "", "background": sh.Background != ""}
-	if !has["background"] && slices.Contains(stepNeeds[step], "background") {
+	has := map[string]bool{views.StepClass: len(sh.Classes) > 0, views.StepSpecies: sh.Species != "", views.StepBackground: sh.Background != ""}
+	if !has[views.StepBackground] && slices.Contains(stepNeeds[step], views.StepBackground) {
 		names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: enum.KindBackground, CampaignID: campaignID})
 		if err != nil {
 			return nil, err
 		}
-		has["background"] = len(names) == 0
+		has[views.StepBackground] = len(names) == 0
 	}
 	var out []views.WizardStep
 	for _, s := range wizardSteps {
@@ -85,8 +85,8 @@ func (a *App) missingSteps(ctx context.Context, sh dnd5e.Sheet, step string, cam
 // increases, before they moved to the abilities step.
 // shortcut: also true for a finished new sheet that skipped the abilities, which then shows the "set on the sheet" text; drop once no sheet predates the move.
 func legacyBackground(sh dnd5e.Sheet) bool {
-	_, snap := sh.SetupSnapshots["background"]
-	return sh.SetUp("background") && !snap && !sh.SetUp("abilities")
+	_, snap := sh.SetupSnapshots[views.StepBackground]
+	return sh.SetUp(views.StepBackground) && !snap && !sh.SetUp(views.StepAbilities)
 }
 
 // backgroundChoice is the sheet's background as the wizard shows it, for its
@@ -214,17 +214,17 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 	if v.Missing, err = a.missingSteps(ctx, s.C.Sheet, step, ch.CampaignID); err != nil {
 		return v, err
 	}
-	if step == "abilities" {
+	if step == views.StepAbilities {
 		v.Choice, err = a.backgroundChoice(ctx, s.C.Sheet)
 		v.LegacyBackground = legacyBackground(s.C.Sheet)
 		return v, err
 	}
-	kind := map[string]enum.CompendiumKind{"class": enum.KindClass, "species": enum.KindSpecies, "background": enum.KindBackground}[step]
+	kind := map[string]enum.CompendiumKind{views.StepClass: enum.KindClass, views.StepSpecies: enum.KindSpecies, views.StepBackground: enum.KindBackground}[step]
 	if kind == "" {
 		switch step {
-		case "equipment":
+		case views.StepEquipment:
 			v.Equipment, err = a.equipmentChoices(ctx, s.C.Sheet)
-		case "choices":
+		case views.StepChoices:
 			var cr creation
 			cr, err = a.creationChoices(ctx, s.C.Sheet, ch.CampaignID)
 			v.Choices = &cr.view
@@ -254,16 +254,16 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 	if err != nil {
 		return v, err
 	}
-	if step == "species" {
+	if step == views.StepSpecies {
 		if e, data, err = a.speciesVariant(ctx, &v, e, data, variant, ch.CampaignID); err != nil {
 			return v, err
 		}
 	}
 	v.Choice = wizardChoice(e, data)
 	switch step {
-	case "class":
+	case views.StepClass:
 		v.Choice.SkillPick = classSkillPick(s.C.Sheet, v.Choice.Skills, v.Choice.SkillCount, nil)
-	case "background":
+	case views.StepBackground:
 		v.Choice.SkillPick, err = a.backgroundSkillPick(ctx, s.C.Sheet, v.Choice.Skills)
 	}
 	return v, err
@@ -304,7 +304,7 @@ func wizardChoice(e sqlc.CompendiumEntry, data any) *views.WizardChoice {
 	switch d := data.(type) {
 	case *compendium.ClassData:
 		ch.Traits = compendium.CoreTraits(d.Desc)
-		ch.SkillCount, ch.Skills = skillChoice(ch.Traits["Skill Proficiencies"])
+		ch.SkillCount, ch.Skills = skillChoice(ch.Traits[compendium.TraitSkillProficiencies])
 		for _, f := range d.Features {
 			if slices.Contains(f.Levels, 1) && !strings.Contains(strings.ToLower(f.Name), "core") {
 				ch.Features = append(ch.Features, views.FeaturePreview{Name: f.Name, Desc: f.Desc, Effects: dnd5e.ParseEffects(f.Name, f.Desc, d.Table, e.Name).Summary()})
@@ -313,9 +313,9 @@ func wizardChoice(e sqlc.CompendiumEntry, data any) *views.WizardChoice {
 	case *compendium.TextData:
 		for _, p := range d.Parts {
 			switch p.Type {
-			case "ability_score":
+			case compendium.PartAbilities:
 				ch.Abilities = abilityKeys(p.Desc)
-			case "skill_proficiency":
+			case compendium.PartSkills:
 				ch.Skills = skillKeys(compendium.SplitList(p.Desc))
 				ch.SkillCount = len(ch.Skills)
 			case "":
@@ -323,7 +323,7 @@ func wizardChoice(e sqlc.CompendiumEntry, data any) *views.WizardChoice {
 				// equipment, the feat) are applied or shown as facts.
 				ch.Features = append(ch.Features, views.FeaturePreview{Name: p.Name, Desc: p.Desc, Effects: dnd5e.ParseEffects(p.Name, p.Desc, nil, "").Summary()})
 			}
-			if p.Type != "" || p.Name == "Speed" || p.Name == "Size" {
+			if p.Type != "" || p.Name == compendium.LabelSpeed || p.Name == compendium.LabelSize {
 				ch.Facts = append(ch.Facts, p)
 			}
 		}
@@ -468,7 +468,7 @@ func (a *App) equipmentChoices(ctx context.Context, sh dnd5e.Sheet) ([]views.Equ
 	}
 	err := add(enum.KindBackground, compendium.Slugify(sh.Background), func(d any) string {
 		for _, p := range d.(*compendium.TextData).Parts {
-			if p.Type == "equipment" {
+			if p.Type == compendium.PartEquipment {
 				return p.Desc
 			}
 		}
@@ -858,7 +858,7 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 	g := views.ChoiceGroup{Key: key, Title: p.Name + ": an Origin feat", Count: 1, Options: opts}
 	return choiceGroup{g, func(s *dnd5e.Sheet, picked []string) {
 		o := opts[slices.IndexFunc(opts, func(o compendium.NameDesc) bool { return o.Name == picked[0] })]
-		addFeat(s, dnd5e.Feature{Name: o.Name, Source: "Feat", Description: o.Desc})
+		addFeat(s, dnd5e.Feature{Name: o.Name, Source: dnd5e.SourceFeat, Description: o.Desc})
 		pinFeat(s, o.Name, sources[o.Name])
 	}, sub}, true, nil
 }
@@ -917,7 +917,7 @@ func (a *App) backgroundFeatChoices(ctx context.Context, sh dnd5e.Sheet, campaig
 	}
 	for _, p := range bg.Parts {
 		full := strings.TrimSpace(p.Desc)
-		if p.Type != "feat" || !slices.Contains(sh.Feats, full) {
+		if p.Type != compendium.PartFeat || !slices.Contains(sh.Feats, full) {
 			continue
 		}
 		name, list := featList(full)
@@ -1086,7 +1086,7 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 			g := views.ChoiceGroup{Key: key + "_list", Title: name + ": spell list", Count: 1, Options: opts}
 			out = append(out, choiceGroup{g, func(s *dnd5e.Sheet, picked []string) {
 				full := fmt.Sprintf("%s (%s)", name, picked[0])
-				if i := slices.IndexFunc(s.Features, func(f dnd5e.Feature) bool { return f.Name == name && f.Source == "Feat" }); i >= 0 {
+				if i := slices.IndexFunc(s.Features, func(f dnd5e.Feature) bool { return f.Name == name && f.Source == dnd5e.SourceFeat }); i >= 0 {
 					s.Features[i].Name = full
 				}
 				if i := slices.Index(s.Feats, name); i >= 0 {
@@ -1712,7 +1712,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		return &cmd
 	}
 	switch step {
-	case "class":
+	case views.StepClass:
 		if pick == "" {
 			return nil, nil
 		}
@@ -1744,7 +1744,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			cc.Sheet.AddProfs(info.Name, skills, trainedIn(choice.Traits)...)
 			return nil
 		}), nil
-	case "species", "background":
+	case views.StepSpecies, views.StepBackground:
 		if pick == "" {
 			return nil, nil
 		}
@@ -1758,7 +1758,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			return nil, err
 		}
 		td := data.(*compendium.TextData)
-		if step == "species" {
+		if step == views.StepSpecies {
 			return once(func(s *dnd5e.Sheet, _ *dnd5e.Character) error {
 				applySpecies(s, row.Name, td)
 				s.SpeciesSource = row.SourceKey
@@ -1797,7 +1797,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			}
 			return nil
 		}), nil
-	case "abilities":
+	case views.StepAbilities:
 		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
 		if err != nil || legacyBackground(sheet) {
 			return nil, err
@@ -1843,7 +1843,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			cc.MaxHP, cc.HP = max(cc.MaxHP+delta, 0), max(cc.HP+delta, 0)
 			return nil
 		}), nil
-	case "choices":
+	case views.StepChoices:
 		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
 		if err != nil {
 			return nil, err
@@ -1882,7 +1882,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			}
 			return nil
 		}), nil
-	case "equipment":
+	case views.StepEquipment:
 		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
 		if err != nil {
 			return nil, err
@@ -1906,7 +1906,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			applyEquipment(s, picked, gear)
 			return nil
 		}), nil
-	case "details":
+	case views.StepDetails:
 		var f detailsForm
 		var errs []error
 		if err := c.ShouldBind(&f); err != nil {
@@ -1935,7 +1935,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			return nil
 		})
 		return &cmd, nil
-	case "review":
+	case views.StepReview:
 		cmd := dnd5e.NewCommand("create review", perm.ScopeSheet, func(cc *dnd5e.Character) error {
 			if !cc.Sheet.SetUp(step) {
 				cc.Sheet.SetupDone = append(cc.Sheet.SetupDone, step)
@@ -1962,7 +1962,7 @@ func (a *App) wizardPick(ctx context.Context, kind enum.CompendiumKind, pick str
 // proficiencies (tool choices are left to the player).
 func trainedIn(traits map[string]string) []string {
 	var out []string
-	for _, k := range []string{"Armor Training", "Weapon Proficiencies", "Tool Proficiencies"} {
+	for _, k := range []string{compendium.TraitArmorTraining, compendium.TraitWeaponProficiencies, compendium.TraitToolProficiencies} {
 		if v := traits[k]; v != "" && !strings.HasPrefix(strings.ToLower(v), "choose") {
 			out = append(out, v)
 		}
@@ -1982,11 +1982,11 @@ func applySpecies(s *dnd5e.Sheet, name string, d *compendium.TextData) {
 			applyTraitText(s, p.Name+". "+p.Desc)
 		}
 		switch {
-		case p.Type == "speed" || p.Name == "Speed":
+		case p.Type == compendium.PartSpeed || p.Name == compendium.LabelSpeed:
 			if m := reFeet.FindStringSubmatch(p.Desc); m != nil {
 				s.Speed, _ = strconv.Atoi(m[1])
 			}
-		case p.Type == "size" || p.Name == "Size":
+		case p.Type == compendium.PartSize || p.Name == compendium.LabelSize:
 			// "Medium or Small" names no single size: the player picks it in Details.
 			if size := dnd5e.SizeNamed(strings.TrimSuffix(strings.TrimSpace(p.Desc), ".")); size != "" {
 				s.Size = size
@@ -2054,7 +2054,7 @@ type detailsForm struct {
 // The second result is the feat's source key ("" when it has no entry).
 func (a *App) originFeat(ctx context.Context, d *compendium.TextData) (*dnd5e.Feature, string, error) {
 	for _, p := range d.Parts {
-		if p.Type != "feat" {
+		if p.Type != compendium.PartFeat {
 			continue
 		}
 		name, _, _ := strings.Cut(p.Desc, " (")
@@ -2062,7 +2062,7 @@ func (a *App) originFeat(ctx context.Context, d *compendium.TextData) (*dnd5e.Fe
 		if err != nil {
 			return nil, "", err
 		}
-		f := &dnd5e.Feature{Name: strings.TrimSpace(p.Desc), Source: "Feat"}
+		f := &dnd5e.Feature{Name: strings.TrimSpace(p.Desc), Source: dnd5e.SourceFeat}
 		if td != nil {
 			f.Description = textMarkdown(td)
 		}
@@ -2075,9 +2075,9 @@ func applyBackground(s *dnd5e.Sheet, name string, d *compendium.TextData, feat *
 	s.Background = name
 	for _, p := range d.Parts {
 		switch p.Type {
-		case "skill_proficiency":
+		case compendium.PartSkills:
 			s.AddProfs(name, skillKeys(compendium.SplitList(p.Desc)))
-		case "tool_proficiency":
+		case compendium.PartTools:
 			s.AddProfs(name, nil, p.Desc)
 		}
 	}

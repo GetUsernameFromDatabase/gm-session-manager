@@ -124,7 +124,7 @@ func (a *App) updateEntity(c *gin.Context) {
 		if key == "" || value == "" {
 			continue
 		}
-		fields[key] = perm.Field{Value: value, IsRevealed: c.PostForm(fmt.Sprintf("revealed_%d", i)) == "true"}
+		fields[key] = perm.Field{Value: value, IsRevealed: c.PostForm(fmt.Sprintf("revealed_%d", i)) == strTrue}
 	}
 	raw, err := json.Marshal(fields)
 	if err != nil {
@@ -134,7 +134,7 @@ func (a *App) updateEntity(c *gin.Context) {
 	ctx := c.Request.Context()
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		if err := q.UpdateEntity(ctx, sqlc.UpdateEntityParams{
-			ID: e.ID, Name: strings.TrimSpace(form.Name), IsRevealed: c.PostForm("revealed") == "true",
+			ID: e.ID, Name: strings.TrimSpace(form.Name), IsRevealed: c.PostForm("revealed") == strTrue,
 			FieldsJson: string(raw), CompendiumRef: e.CompendiumRef,
 		}); err != nil {
 			return err

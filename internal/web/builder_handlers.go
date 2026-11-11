@@ -80,20 +80,20 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 }
 
 // kindSources name where a feature looked up in the compendium comes from.
-var kindSources = map[enum.CompendiumKind]string{enum.KindFeat: "Feat", enum.KindSpecies: "Species", enum.KindBackground: "Background"}
+var kindSources = map[enum.CompendiumKind]string{enum.KindFeat: dnd5e.SourceFeat, enum.KindSpecies: "Species", enum.KindBackground: "Background"}
 
 // compendiumWeapon fills a sheet weapon from a compendium item: damage
 // "1d8 slashing", finesse weapons use the better of STR and DEX, and
 // ammunition (ranged) weapons DEX.
 func compendiumWeapon(name string, d *compendium.ItemData) dnd5e.Weapon {
-	w := dnd5e.Weapon{Name: name, Ability: "str", Proficient: true, Range: d.Range, Properties: d.Properties, Mastery: d.Mastery}
+	w := dnd5e.Weapon{Name: name, Ability: dnd5e.Str, Proficient: true, Range: d.Range, Properties: d.Properties, Mastery: d.Mastery}
 	w.Dice, w.DamageType, _ = strings.Cut(strings.TrimSpace(d.Damage), " ")
 	props := strings.ToLower(d.Properties)
 	switch {
 	case strings.Contains(props, "finesse"):
-		w.Ability = "finesse"
+		w.Ability = dnd5e.Finesse
 	case strings.Contains(props, "ammunition"):
-		w.Ability = "dex"
+		w.Ability = dnd5e.Dex
 	}
 	return w
 }
@@ -266,7 +266,7 @@ func (a *App) searchRows(ctx context.Context, q, kind string, campaignID int64) 
 // tracks for it: action, uses, unarmored AC and stat change rows.
 func featureCommand(c *gin.Context) (dnd5e.Command, error) {
 	f := dnd5e.Feature{
-		Name: strings.TrimSpace(c.PostForm("subject")), Source: c.PostForm("source"), Description: c.PostForm("text"),
+		Name: strings.TrimSpace(c.PostForm(argSubject)), Source: c.PostForm("source"), Description: c.PostForm(argText),
 		Action: strings.TrimSpace(c.PostForm("action")), Unarmored: strings.TrimSpace(c.PostForm("unarmored")), NoShield: c.PostForm("no_shield") != "",
 	}
 	if f.Name == "" {
@@ -314,13 +314,13 @@ func featureCommand(c *gin.Context) (dnd5e.Command, error) {
 
 // weaponCommand saves a weapon from the builder, range and properties too.
 func weaponCommand(c *gin.Context) (dnd5e.Command, error) {
-	name := strings.TrimSpace(c.PostForm("subject"))
+	name := strings.TrimSpace(c.PostForm(argSubject))
 	if name == "" {
 		return dnd5e.Command{}, errors.New("name the weapon")
 	}
 	return dnd5e.SaveWeapon(dnd5e.Weapon{
-		Name: name, Ability: strings.ToLower(c.PostForm("ability")), Dice: strings.ToLower(strings.TrimSpace(c.PostForm("dice"))),
-		DamageType: strings.TrimSpace(c.PostForm("dtype")), Proficient: c.PostForm("prof") != "",
+		Name: name, Ability: strings.ToLower(c.PostForm(argAbility)), Dice: strings.ToLower(strings.TrimSpace(c.PostForm(argDice))),
+		DamageType: strings.TrimSpace(c.PostForm(argDamageType)), Proficient: c.PostForm(argProf) != "",
 		Range: strings.TrimSpace(c.PostForm("range")), Properties: strings.TrimSpace(c.PostForm("properties")),
 		Mastery: strings.TrimSpace(c.PostForm("mastery")),
 	}), nil

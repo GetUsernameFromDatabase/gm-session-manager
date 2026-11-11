@@ -174,7 +174,7 @@ var Help = []HelpEntry{
 	{"concentrate <spell> | end", "concentrate Bless", "Start or end concentration"},
 	{"exhaustion +n | -n", "exhaustion +1", "Change exhaustion level"},
 	{"deathsave success|fail|reset", "deathsave fail", "Track death saves"},
-	{"inspiration", "inspiration", "Toggle Heroic Inspiration"},
+	{verbInspiration, verbInspiration, "Toggle Heroic Inspiration"},
 	{`item add|remove "<name>" [qty]`, `item add "Rope (50 ft)"`, "Add or remove items (quote names with spaces)"},
 	{`item set "<name>" <qty>`, "item set Torch 5", "Set an item's count; 0 removes it"},
 	{`item note "<name>" <text>`, "item note Torch half burnt", "Note on an item"},
@@ -240,7 +240,7 @@ func Completions(s Sheet, words []string, slot string) []string {
 			out = append(out, f.Name)
 		}
 	case "<weapon>":
-		if word(1) == "remove" {
+		if word(1) == verbRemove {
 			return s.Masteries
 		}
 		for _, w := range s.Weapons {
@@ -248,19 +248,19 @@ func Completions(s Sheet, words []string, slot string) []string {
 		}
 	case `"<name>"`, "<name>", `<slug|"item">`:
 		switch {
-		case word(0) == "feature":
+		case word(0) == verbFeature:
 			for _, f := range s.Features {
 				out = append(out, f.Name)
 			}
-		case word(0) == "weapon" && word(1) != "ready":
+		case word(0) == verbWeapon && word(1) != verbReady:
 			for _, w := range s.Weapons {
 				out = append(out, w.Name)
 			}
-		case word(0) == "prof" && word(2) == "skill":
+		case word(0) == verbProf && word(2) == ModSkill:
 			return Completions(s, nil, "<skill>")
-		case word(0) == "prof" && word(2) == "save":
+		case word(0) == verbProf && word(2) == ModSave:
 			return Abilities
-		case word(0) == "prof":
+		case word(0) == verbProf:
 		default:
 			for _, it := range s.Inventory {
 				out = append(out, it.Name)
@@ -296,39 +296,90 @@ func Parse(input string, raw ...string) (Command, error) {
 
 type parser func(args []string) (Command, error)
 
+// Command names (the parsers keys).
+const (
+	verbHP             = "hp"
+	verbTemp           = "temp"
+	verbMaxHP          = "maxhp"
+	verbToggle         = "toggle"
+	verbCondition      = "condition"
+	verbConcentrate    = "concentrate"
+	verbDeathSave      = "deathsave"
+	verbSlot           = "slot"
+	verbPact           = "pact"
+	verbRest           = "rest"
+	verbHitDie         = "hitdie"
+	verbItem           = "item"
+	verbCoin           = "coin"
+	verbInspiration    = "inspiration"
+	verbSet            = "set"
+	verbProf           = "prof"
+	verbSpell          = "spell"
+	verbFeature        = "feature"
+	verbWeapon         = "weapon"
+	verbMastery        = "mastery"
+	verbMod            = "mod"
+	verbUse            = "use"
+	verbRestore        = "restore"
+	verbArmor          = "armor"
+	verbShield         = "shield"
+	verbSource         = "source"
+	verbChangeSubclass = "change-subclass"
+)
+
+// Subcommand words the parsers switch on.
+const (
+	verbAdd       = "add"
+	verbRemove    = "remove"
+	verbPrepare   = "prepare"
+	verbUnprepare = "unprepare"
+	verbEnd       = "end"
+	verbSuccess   = "success"
+	verbFail      = "fail"
+	verbReset     = "reset"
+	verbMax       = "max"
+	verbNote      = "note"
+	verbWear      = "wear"
+	verbOn        = "on"
+	verbOff       = "off"
+	verbReady     = "ready"
+	verbStow      = "stow"
+	verbEdit      = "edit"
+)
+
 var parsers map[string]parser
 
 func init() {
 	parsers = map[string]parser{
-		"hp":          parseHP,
-		"temp":        parseTemp,
-		"maxhp":       parseMaxHP,
-		"toggle":      parseToggle,
-		"condition":   parseCondition,
-		"concentrate": parseConcentrate,
-		"exhaustion":  parseExhaustion,
-		"deathsave":   parseDeathSave,
-		"slot":        parseSlot,
-		"pact":        parsePact,
-		"rest":        parseRest,
-		"hitdie":      parseHitDie,
-		"item":        parseItem,
-		"coin":        parseCoin,
-		"inspiration": parseInspiration,
-		"set":         parseSet,
-		"prof":        parseProf,
-		"spell":       parseSpell,
-		"feature":     parseFeature,
-		"weapon":      parseWeapon,
-		"mastery":     parseMastery,
-		"mod":         parseMod,
-		"use":         func(args []string) (Command, error) { return parseUse(args, false) },
-		"restore":     func(args []string) (Command, error) { return parseUse(args, true) },
-		"armor":       parseArmor,
-		"shield":      parseShield,
-		"source":      parseSource,
+		verbHP:          parseHP,
+		verbTemp:        parseTemp,
+		verbMaxHP:       parseMaxHP,
+		verbToggle:      parseToggle,
+		verbCondition:   parseCondition,
+		verbConcentrate: parseConcentrate,
+		Exhaustion:      parseExhaustion,
+		verbDeathSave:   parseDeathSave,
+		verbSlot:        parseSlot,
+		verbPact:        parsePact,
+		verbRest:        parseRest,
+		verbHitDie:      parseHitDie,
+		verbItem:        parseItem,
+		verbCoin:        parseCoin,
+		verbInspiration: parseInspiration,
+		verbSet:         parseSet,
+		verbProf:        parseProf,
+		verbSpell:       parseSpell,
+		verbFeature:     parseFeature,
+		verbWeapon:      parseWeapon,
+		verbMastery:     parseMastery,
+		verbMod:         parseMod,
+		verbUse:         func(args []string) (Command, error) { return parseUse(args, false) },
+		verbRestore:     func(args []string) (Command, error) { return parseUse(args, true) },
+		verbArmor:       parseArmor,
+		verbShield:      parseShield,
+		verbSource:      parseSource,
 		// Owner only (ScopeSheet), unlike source: it rebuilds the character.
-		"change-subclass": func(args []string) (Command, error) {
+		verbChangeSubclass: func(args []string) (Command, error) {
 			if err := want(args, 3, "change-subclass <class> <slug> <source>"); err != nil {
 				return Command{}, err
 			}
@@ -512,7 +563,7 @@ func parseMaxHP(args []string) (Command, error) {
 
 func conditionSlug(s string) (string, error) {
 	slug := strings.ToLower(s)
-	if !IsConditionSlug(slug) || slug == "exhaustion" {
+	if !IsConditionSlug(slug) || slug == Exhaustion {
 		return "", fmt.Errorf("unknown condition %q", s)
 	}
 	return slug, nil
@@ -526,7 +577,7 @@ func condCommand(op CondOp) Command {
 }
 
 func parseToggle(args []string) (Command, error) {
-	if len(args) == 2 && strings.EqualFold(args[0], "condition") {
+	if len(args) == 2 && strings.EqualFold(args[0], verbCondition) {
 		args = args[1:]
 	}
 	if err := want(args, 1, "toggle prone"); err != nil {
@@ -549,9 +600,9 @@ func parseCondition(args []string) (Command, error) {
 		return Command{}, err
 	}
 	switch strings.ToLower(args[0]) {
-	case "add":
+	case verbAdd:
 		return condCommand(CondOp{Op: CondAdd, Slug: slug, Note: strings.Join(args[2:], " ")}), nil
-	case "remove":
+	case verbRemove:
 		return condCommand(CondOp{Op: CondRemove, Slug: slug}), nil
 	}
 	return Command{}, fmt.Errorf("usage: %s", usage)
@@ -561,7 +612,7 @@ func parseConcentrate(args []string) (Command, error) {
 	if len(args) == 0 {
 		return Command{}, errors.New("usage: concentrate <spell> | concentrate end")
 	}
-	if len(args) == 1 && strings.EqualFold(args[0], "end") {
+	if len(args) == 1 && strings.EqualFold(args[0], verbEnd) {
 		return condCommand(CondOp{Op: CondRemove, Slug: TrackConcentration}), nil
 	}
 	return condCommand(CondOp{Op: CondAdd, Slug: TrackConcentration, Note: strings.Join(args, " ")}), nil
@@ -575,7 +626,7 @@ func parseExhaustion(args []string) (Command, error) {
 	if err != nil || a.set {
 		return Command{}, errors.New("use +n or -n")
 	}
-	return condCommand(CondOp{Op: CondExhaustion, Slug: "exhaustion", Delta: a.n}), nil
+	return condCommand(CondOp{Op: CondExhaustion, Slug: Exhaustion, Delta: a.n}), nil
 }
 
 func parseDeathSave(args []string) (Command, error) {
@@ -583,15 +634,15 @@ func parseDeathSave(args []string) (Command, error) {
 		return Command{}, err
 	}
 	kind := strings.ToLower(args[0])
-	if kind != "success" && kind != "fail" && kind != "reset" {
+	if kind != verbSuccess && kind != verbFail && kind != verbReset {
 		return Command{}, errors.New("use success, fail or reset")
 	}
 	return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 		ds := &c.Sheet.DeathSaves
 		switch kind {
-		case "success":
+		case verbSuccess:
 			ds.Successes = min(ds.Successes+1, 3)
-		case "fail":
+		case verbFail:
 			ds.Failures = min(ds.Failures+1, 3)
 		default:
 			*ds = DeathSaves{}
@@ -619,10 +670,10 @@ func parseSlot(args []string) (Command, error) {
 	}
 	op := strings.ToLower(args[0])
 	switch {
-	case op == "use" && len(args) == 2, op == "restore" && len(args) == 2:
+	case op == verbUse && len(args) == 2, op == verbRestore && len(args) == 2:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			sl := &c.Sheet.Slots[lvl-1]
-			if op == "use" {
+			if op == verbUse {
 				if sl.Used >= sl.Max {
 					return fmt.Errorf("no level %d slots left", lvl)
 				}
@@ -632,7 +683,7 @@ func parseSlot(args []string) (Command, error) {
 			}
 			return nil
 		}), nil
-	case op == "max" && len(args) == 3:
+	case op == verbMax && len(args) == 3:
 		n, err := strconv.Atoi(args[2])
 		if err != nil || n < 0 || n > 9 {
 			return Command{}, errors.New("slot count must be 0-9")
@@ -651,12 +702,12 @@ func parsePact(args []string) (Command, error) {
 		return Command{}, err
 	}
 	op := strings.ToLower(args[0])
-	if op != "use" && op != "restore" {
+	if op != verbUse && op != verbRestore {
 		return Command{}, errors.New("use or restore")
 	}
 	return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 		p := &c.Sheet.Pact
-		if op == "use" {
+		if op == verbUse {
 			if p.Used >= p.Max {
 				return errors.New("no pact slots left")
 			}
@@ -673,23 +724,23 @@ func parseRest(args []string) (Command, error) {
 		return Command{}, err
 	}
 	switch strings.ToLower(args[0]) {
-	case "short":
+	case ResetShort:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			c.Sheet.Pact.Used = 0
 			for i := range c.Sheet.Features {
 				switch u := &c.Sheet.Features[i].Uses; u.Reset {
-				case "short":
+				case ResetShort:
 					u.Used = 0
-				case "short-one":
+				case ResetShortOne:
 					u.Used = max(u.Used-1, 0)
 				}
 			}
 			return nil
 		}), nil
-	case "long":
+	case ResetLong:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, fx *Effects) error {
 			c.LongRest()
-			fx.Conditions = append(fx.Conditions, CondOp{Op: CondExhaustion, Slug: "exhaustion", Delta: -1})
+			fx.Conditions = append(fx.Conditions, CondOp{Op: CondExhaustion, Slug: Exhaustion, Delta: -1})
 			return nil
 		}), nil
 	}
@@ -718,11 +769,11 @@ func parseHitDie(args []string) (Command, error) {
 		return Command{}, err
 	}
 	op := strings.ToLower(args[0])
-	if op != "use" && op != "restore" {
+	if op != verbUse && op != verbRestore {
 		return Command{}, errors.New("use or restore")
 	}
 	return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
-		if op == "use" {
+		if op == verbUse {
 			if c.Sheet.HitDiceUsed >= c.Sheet.Level() {
 				return errors.New("no hit dice left")
 			}
@@ -740,7 +791,7 @@ func parseItem(args []string) (Command, error) {
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
 	op, name := strings.ToLower(args[0]), args[1]
-	if op == "note" {
+	if op == verbNote {
 		note := strings.Join(args[2:], " ")
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			i := findItem(c.Sheet.Inventory, name)
@@ -755,15 +806,15 @@ func parseItem(args []string) (Command, error) {
 	if len(args) == 3 {
 		n, err := strconv.Atoi(args[2])
 		// Setting to 0 removes the item; adding or removing 0 means nothing.
-		if err != nil || n < 0 || n == 0 && op != "set" {
+		if err != nil || n < 0 || n == 0 && op != verbSet {
 			return Command{}, errors.New("quantity must be a positive number")
 		}
 		qty = n
-	} else if len(args) > 3 || op == "set" {
+	} else if len(args) > 3 || op == verbSet {
 		return Command{}, fmt.Errorf("usage: %s (quote names with spaces)", usage)
 	}
 	switch op {
-	case "set":
+	case verbSet:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			i := findItem(c.Sheet.Inventory, name)
 			switch {
@@ -777,7 +828,7 @@ func parseItem(args []string) (Command, error) {
 			}
 			return nil
 		}), nil
-	case "add":
+	case verbAdd:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			if i := findItem(c.Sheet.Inventory, name); i >= 0 {
 				c.Sheet.Inventory[i].Qty += qty
@@ -786,7 +837,7 @@ func parseItem(args []string) (Command, error) {
 			}
 			return nil
 		}), nil
-	case "remove":
+	case verbRemove:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			i := findItem(c.Sheet.Inventory, name)
 			if i < 0 {
@@ -866,7 +917,7 @@ var coinPicks = map[string]func(*Coins) *int{
 }
 
 func parseInspiration(args []string) (Command, error) {
-	if err := want(args, 0, "inspiration"); err != nil {
+	if err := want(args, 0, verbInspiration); err != nil {
 		return Command{}, err
 	}
 	return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
@@ -950,6 +1001,16 @@ const (
 	ProfExpertise  = "expertise"
 )
 
+// What "prof add|remove" changes, besides ModSkill and ModSave.
+const (
+	profKindExpertise     = "expertise"
+	profKindOther         = "other"
+	profKindLanguage      = "language"
+	profKindResistance    = "resistance"
+	profKindImmunity      = "immunity"
+	profKindVulnerability = "vulnerability"
+)
+
 // ProfLevel is a skill's proficiency level.
 func (s Sheet) ProfLevel(skill string) string {
 	switch {
@@ -981,7 +1042,7 @@ func parseProfSet(args []string) (Command, error) {
 	}
 	kind, key, level := strings.ToLower(args[1]), strings.ToLower(args[2]), strings.ToLower(args[3])
 	switch {
-	case kind == "skill" && slices.ContainsFunc(Skills, func(sk Skill) bool { return sk.Key == key }) &&
+	case kind == ModSkill && slices.ContainsFunc(Skills, func(sk Skill) bool { return sk.Key == key }) &&
 		slices.Contains([]string{ProfNone, ProfProficient, ProfExpertise}, level):
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			setIn(&c.Sheet.SkillProfs, key, level != ProfNone)
@@ -991,7 +1052,7 @@ func parseProfSet(args []string) (Command, error) {
 			}
 			return nil
 		}), nil
-	case kind == "save" && slices.Contains(Abilities, key) && (level == ProfNone || level == ProfProficient):
+	case kind == ModSave && slices.Contains(Abilities, key) && (level == ProfNone || level == ProfProficient):
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			setIn(&c.Sheet.SaveProfs, key, level == ProfProficient)
 			return nil
@@ -1006,49 +1067,49 @@ func parseProf(args []string) (Command, error) {
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
 	op, kind, value := strings.ToLower(args[0]), strings.ToLower(args[1]), strings.Join(args[2:], " ")
-	if op == "set" {
+	if op == verbSet {
 		return parseProfSet(args)
 	}
-	if op != "add" && op != "remove" {
+	if op != verbAdd && op != verbRemove {
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
 	var pick func(s *Sheet) *[]string
 	switch kind {
-	case "skill", "expertise":
+	case ModSkill, profKindExpertise:
 		value = strings.ToLower(value)
 		if !slices.ContainsFunc(Skills, func(sk Skill) bool { return sk.Key == value }) {
 			return Command{}, fmt.Errorf("unknown skill %q", value)
 		}
 		pick = func(s *Sheet) *[]string { return &s.SkillProfs }
-		if kind == "expertise" {
+		if kind == profKindExpertise {
 			pick = func(s *Sheet) *[]string { return &s.Expertise }
 		}
-	case "save":
+	case ModSave:
 		value = strings.ToLower(value)
 		if !slices.Contains(Abilities, value) {
 			return Command{}, fmt.Errorf("unknown ability %q", value)
 		}
 		pick = func(s *Sheet) *[]string { return &s.SaveProfs }
-	case "other":
+	case profKindOther:
 		pick = func(s *Sheet) *[]string { return &s.OtherProfs }
-	case "language":
+	case profKindLanguage:
 		pick = func(s *Sheet) *[]string { return &s.Languages }
-	case "resistance", "immunity", "vulnerability":
+	case profKindResistance, profKindImmunity, profKindVulnerability:
 		value = strings.ToLower(value)
 		if !slices.Contains(DamageTypes, value) {
 			return Command{}, fmt.Errorf("unknown damage type %q", value)
 		}
 		pick = map[string]func(s *Sheet) *[]string{
-			"resistance":    func(s *Sheet) *[]string { return &s.Resistances },
-			"immunity":      func(s *Sheet) *[]string { return &s.Immunities },
-			"vulnerability": func(s *Sheet) *[]string { return &s.Vulnerabilities },
+			profKindResistance:    func(s *Sheet) *[]string { return &s.Resistances },
+			profKindImmunity:      func(s *Sheet) *[]string { return &s.Immunities },
+			profKindVulnerability: func(s *Sheet) *[]string { return &s.Vulnerabilities },
 		}[kind]
 	default:
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
 	return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
-		setIn(pick(&c.Sheet), value, op == "add")
-		if op == "remove" && (kind == "skill" || kind == "other") {
+		setIn(pick(&c.Sheet), value, op == verbAdd)
+		if op == verbRemove && (kind == ModSkill || kind == profKindOther) {
 			delete(c.Sheet.ProfSources, value) // removed by hand: no longer the feature's
 		}
 		return nil
@@ -1065,7 +1126,7 @@ func parseSpell(args []string) (Command, error) {
 		return slices.IndexFunc(c.Sheet.Spells, func(s Spell) bool { return s.Slug == slug })
 	}
 	switch op {
-	case "add":
+	case verbAdd:
 		cmd := scoped(perm.ScopeSheet, func(c *Character, env Env, _ *Effects) error {
 			if env.Spell.Slug != slug {
 				return fmt.Errorf("unknown spell %q", slug)
@@ -1077,28 +1138,28 @@ func parseSpell(args []string) (Command, error) {
 		})
 		cmd.SpellSlug = slug
 		return cmd, nil
-	case "remove":
+	case verbRemove:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			if i := find(c); i >= 0 {
 				c.Sheet.Spells = slices.Delete(c.Sheet.Spells, i, i+1)
 			}
 			return nil
 		}), nil
-	case "prepare", "unprepare":
+	case verbPrepare, verbUnprepare:
 		cmd := scoped(perm.ScopeSheet, func(c *Character, env Env, _ *Effects) error {
 			i := find(c)
 			if i < 0 {
 				return fmt.Errorf("spell %q is not on the sheet", slug)
 			}
-			if op == "prepare" && !c.Sheet.Spells[i].Prepared {
+			if op == verbPrepare && !c.Sheet.Spells[i].Prepared {
 				if err := c.Sheet.checkPrepareCap(c.Sheet.Spells[i], env.PreparedCaps); err != nil {
 					return err
 				}
 			}
-			c.Sheet.Spells[i].Prepared = op == "prepare"
+			c.Sheet.Spells[i].Prepared = op == verbPrepare
 			return nil
 		})
-		cmd.PrepareCaps = op == "prepare"
+		cmd.PrepareCaps = op == verbPrepare
 		return cmd, nil
 	}
 	return Command{}, fmt.Errorf("usage: %s", usage)
@@ -1150,7 +1211,7 @@ func parseFeature(args []string) (Command, error) {
 		return slices.IndexFunc(c.Sheet.Features, func(f Feature) bool { return strings.EqualFold(f.Name, name) })
 	}
 	switch op {
-	case "add":
+	case verbAdd:
 		desc := strings.Join(args[2:], " ")
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			if i := find(c); i >= 0 {
@@ -1160,7 +1221,7 @@ func parseFeature(args []string) (Command, error) {
 			}
 			return nil
 		}), nil
-	case "remove":
+	case verbRemove:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			if i := find(c); i >= 0 {
 				name := c.Sheet.Features[i].Name
@@ -1170,7 +1231,7 @@ func parseFeature(args []string) (Command, error) {
 			}
 			return nil
 		}), nil
-	case "set":
+	case verbSet:
 		set, err := parseFeatureSet(args[2:])
 		if err != nil {
 			return Command{}, err
@@ -1219,10 +1280,10 @@ func parseFeatureSet(args []string) (func(f *Feature), error) {
 				return nil, err
 			}
 			steps = append(steps, func(f *Feature) {
-				u.Reset = cmp.Or(f.Uses.Reset, "long")
+				u.Reset = cmp.Or(f.Uses.Reset, ResetLong)
 				f.Uses = u
 			})
-		case k == "reset" && slices.Contains([]string{"short", "long", "short-one"}, v):
+		case k == "reset" && slices.Contains([]string{ResetShort, ResetLong, ResetShortOne}, v):
 			steps = append(steps, func(f *Feature) { f.Uses.Reset = v })
 		default:
 			return nil, fmt.Errorf("unknown setting %q", a)
@@ -1240,7 +1301,7 @@ func parseUses(v string) (Uses, error) {
 	switch {
 	case v == "none":
 		return Uses{}, nil
-	case v == "prof":
+	case v == verbProf:
 		return Uses{Prof: true}, nil
 	case slices.Contains(Abilities, v):
 		return Uses{Ability: v}, nil
@@ -1284,12 +1345,12 @@ func parseUse(args []string, restore bool) (Command, error) {
 // armor off; it stays in the inventory.
 func parseArmor(args []string) (Command, error) {
 	switch {
-	case len(args) == 1 && strings.EqualFold(args[0], "off"):
+	case len(args) == 1 && strings.EqualFold(args[0], verbOff):
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			c.Sheet.Armor = nil
 			return nil
 		}), nil
-	case len(args) == 2 && strings.EqualFold(args[0], "wear"):
+	case len(args) == 2 && strings.EqualFold(args[0], verbWear):
 		cmd := scoped(perm.ScopeSheet, func(c *Character, env Env, _ *Effects) error {
 			sh := &c.Sheet
 			if i := sh.ArmorItem(args[1]); i >= 0 {
@@ -1320,8 +1381,8 @@ func parseShield(args []string) (Command, error) {
 	if err := want(args, 1, "shield on | shield off"); err != nil {
 		return Command{}, err
 	}
-	on := strings.EqualFold(args[0], "on")
-	if !on && !strings.EqualFold(args[0], "off") {
+	on := strings.EqualFold(args[0], verbOn)
+	if !on && !strings.EqualFold(args[0], verbOff) {
 		return Command{}, errors.New("on or off")
 	}
 	return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
@@ -1352,15 +1413,15 @@ func parseWeapon(args []string) (Command, error) {
 		return slices.IndexFunc(c.Sheet.Weapons, func(w Weapon) bool { return strings.EqualFold(w.Name, name) })
 	}
 	switch {
-	case op == "add" && len(args) >= 4:
+	case op == verbAdd && len(args) >= 4:
 		w := Weapon{Name: name, Ability: strings.ToLower(args[2]), Dice: strings.ToLower(args[3])}
 		rest := args[4:]
-		if n := len(rest); n > 0 && strings.EqualFold(rest[n-1], "prof") {
+		if n := len(rest); n > 0 && strings.EqualFold(rest[n-1], verbProf) {
 			w.Proficient, rest = true, rest[:n-1]
 		}
 		w.DamageType = strings.Join(rest, " ")
 		return SaveWeapon(w), nil
-	case op == "ready" && len(args) == 2:
+	case op == verbReady && len(args) == 2:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			i := findItem(c.Sheet.Inventory, name)
 			if i < 0 || c.Sheet.Inventory[i].Weapon == nil {
@@ -1371,7 +1432,7 @@ func parseWeapon(args []string) (Command, error) {
 			}
 			return nil
 		}), nil
-	case op == "stow" && len(args) == 2:
+	case op == verbStow && len(args) == 2:
 		// Its modifiers stay, for when it is readied again.
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			i := find(c)
@@ -1381,7 +1442,7 @@ func parseWeapon(args []string) (Command, error) {
 			c.Sheet.Weapons = slices.Delete(c.Sheet.Weapons, i, i+1)
 			return nil
 		}), nil
-	case op == "remove" && len(args) == 2:
+	case op == verbRemove && len(args) == 2:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			i := find(c)
 			if i < 0 {
@@ -1408,7 +1469,7 @@ func parseMastery(args []string) (Command, error) {
 	}
 	op, name := strings.ToLower(args[0]), WeaponKind(strings.Join(args[1:], " "))
 	switch op {
-	case "add":
+	case verbAdd:
 		cmd := scoped(perm.ScopeSheet, func(c *Character, env Env, _ *Effects) error {
 			if env.MasteryWeapon == "" {
 				return fmt.Errorf("no weapon %q with a mastery property in the compendium", name)
@@ -1425,7 +1486,7 @@ func parseMastery(args []string) (Command, error) {
 		})
 		cmd.MasteryWeapon = name
 		return cmd, nil
-	case "remove":
+	case verbRemove:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			c.Sheet.Masteries = slices.DeleteFunc(c.Sheet.Masteries, func(m string) bool { return strings.EqualFold(m, name) })
 			return nil
@@ -1459,7 +1520,7 @@ func parseMod(args []string) (Command, error) {
 		return Command{}, fmt.Errorf("unknown modifier target %q", target)
 	}
 	switch op {
-	case "add":
+	case verbAdd:
 		if len(args) < 4 {
 			return Command{}, fmt.Errorf("usage: %s (the note says where it comes from)", usage)
 		}
@@ -1475,7 +1536,7 @@ func parseMod(args []string) (Command, error) {
 			}
 			return nil
 		}), nil
-	case "edit":
+	case verbEdit:
 		if len(args) < 6 {
 			return Command{}, fmt.Errorf("usage: %s", usage)
 		}
@@ -1495,7 +1556,7 @@ func parseMod(args []string) (Command, error) {
 			c.Sheet.Modifiers[i] = m
 			return nil
 		}), nil
-	case "remove":
+	case verbRemove:
 		note := strings.Join(args[2:], " ")
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 			i := findMod(c, target, note)

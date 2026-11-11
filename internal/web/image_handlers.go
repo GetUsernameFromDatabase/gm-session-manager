@@ -252,7 +252,7 @@ func (a *App) attachmentToImage(c *gin.Context) {
 			return
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"id": img.ID, "name": img.Name})
+	c.JSON(http.StatusOK, gin.H{keyID: img.ID, keyName: img.Name})
 }
 
 // ensureCategory returns the category named name exactly, creating it,

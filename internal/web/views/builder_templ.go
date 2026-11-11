@@ -2077,7 +2077,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = weaponFields(s, dnd5e.Weapon{Ability: "str", Proficient: true}, false).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = weaponFields(s, dnd5e.Weapon{Ability: dnd5e.Str, Proficient: true}, false).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2896,7 +2896,7 @@ func weaponFields(s SheetView, w dnd5e.Weapon, editing bool) templ.Component {
 }
 
 func weaponAbilities() []selectcomp.ItemData {
-	items := []selectcomp.ItemData{{Value: "finesse", Label: "Finesse (better of STR and DEX)"}}
+	items := []selectcomp.ItemData{{Value: dnd5e.Finesse, Label: "Finesse (better of STR and DEX)"}}
 	for _, a := range dnd5e.Abilities {
 		items = append(items, selectcomp.ItemData{Value: a, Label: dnd5e.AbilityNames[a]})
 	}
@@ -3088,7 +3088,7 @@ func featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, s
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = formSelect("builder-reset", "reset", resetItems, cmp.Or(f.Uses.Reset, "long"), "w-full", "").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = formSelect("builder-reset", "reset", resetItems, cmp.Or(f.Uses.Reset, dnd5e.ResetLong), "w-full", "").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3246,13 +3246,13 @@ func featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, s
 	})
 }
 
-var actionItems = []selectcomp.ItemData{{Value: " ", Label: "Nothing special"}, {Value: "action", Label: "An action"}, {Value: "bonus", Label: "A bonus action"}, {Value: "reaction", Label: "A reaction"}, {Value: "magic", Label: "A Magic action"}}
+var actionItems = []selectcomp.ItemData{{Value: " ", Label: "Nothing special"}, {Value: dnd5e.ActionMain, Label: "An action"}, {Value: dnd5e.ActionBonus, Label: "A bonus action"}, {Value: dnd5e.ActionReaction, Label: "A reaction"}, {Value: dnd5e.ActionMagic, Label: "A Magic action"}}
 
 var sizeItems = selectItems(dnd5e.Sizes, func(s string) string { return s }, func(s string) string { return s })
 
-var resetItems = []selectcomp.ItemData{{Value: "long", Label: "A long rest"}, {Value: "short", Label: "A short or long rest"}, {Value: "short-one", Label: "One on a short rest, all on a long rest"}}
+var resetItems = []selectcomp.ItemData{{Value: dnd5e.ResetLong, Label: "A long rest"}, {Value: dnd5e.ResetShort, Label: "A short or long rest"}, {Value: dnd5e.ResetShortOne, Label: "One on a short rest, all on a long rest"}}
 
-var whenItems = []selectcomp.ItemData{{Value: " ", Label: "Always"}, {Value: "no-heavy-armor", Label: "Not in heavy armor"}, {Value: "unarmored", Label: "Wearing no armor"}, {Value: "unarmored-no-shield", Label: "No armor and no shield"}}
+var whenItems = []selectcomp.ItemData{{Value: " ", Label: "Always"}, {Value: dnd5e.WhenNoHeavyArmor, Label: "Not in heavy armor"}, {Value: dnd5e.WhenUnarmored, Label: "Wearing no armor"}, {Value: dnd5e.WhenUnarmoredNoShield, Label: "No armor and no shield"}}
 
 var unarmoredItems = append([]selectcomp.ItemData{{Value: " ", Label: "Armor or base AC as usual"}},
 	selectItems(dnd5e.Abilities, func(a string) string { return a }, func(a string) string { return "10 + Dexterity + " + dnd5e.AbilityNames[a] })...)
@@ -4449,20 +4449,20 @@ func (s SheetView) builderSubjects(key string) ([]selectcomp.ItemData, map[strin
 	switch key {
 	case "cond-add":
 		for _, slug := range append(slices.Clone(dnd5e.Conditions), dnd5e.TrackConcentration) {
-			if _, on := s.condition(slug); !on && slug != exhaustion {
+			if _, on := s.condition(slug); !on && slug != dnd5e.Exhaustion {
 				add(slug, slug)
 			}
 		}
 		add(dnd5e.TrackCustom, "custom effect")
 	case "cond-remove":
 		for _, c := range s.Conditions {
-			if c.Slug != exhaustion && !slices.ContainsFunc(items, func(it selectcomp.ItemData) bool { return it.Value == c.Slug }) {
+			if c.Slug != dnd5e.Exhaustion && !slices.ContainsFunc(items, func(it selectcomp.ItemData) bool { return it.Value == c.Slug }) {
 				add(c.Slug, strings.TrimSpace(c.Slug+" "+c.Note))
 			}
 		}
 	case "exh-up", "exh-down":
 		level := 0
-		if c, on := s.condition(exhaustion); on {
+		if c, on := s.condition(dnd5e.Exhaustion); on {
 			level, _ = strconv.Atoi(c.Note)
 		}
 		maxes[""] = 6 - level
@@ -4471,7 +4471,7 @@ func (s SheetView) builderSubjects(key string) ([]selectcomp.ItemData, map[strin
 		}
 		maxes[""] = level
 		if level > 0 {
-			add(exhaustion, exhaustion)
+			add(dnd5e.Exhaustion, dnd5e.Exhaustion)
 		}
 	case "ability":
 		abilities(func(string) bool { return true })

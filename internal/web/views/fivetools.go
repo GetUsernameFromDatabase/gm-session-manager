@@ -139,6 +139,17 @@ const (
 	SharedWithKey = "with"
 )
 
+// Compendium list query keys: the search, kind and habitat filters, the open
+// tab, and the browse cursor (the after_* keys).
+const (
+	QueryKey     = "q"
+	KindKey      = "kind"
+	HabitatKey   = "habitat"
+	TabKey       = "tab"
+	AfterNameKey = "after_name"
+	AfterIDKey   = "after_id"
+)
+
 // sharedHref browses source's shared entries in the campaign ctx renders in.
 func sharedHref(ctx context.Context, source string) templ.SafeURL {
 	return templ.SafeURL(CompendiumPath(ctx, "?"+url.Values{SharedKey: {source}}.Encode()))
@@ -152,7 +163,7 @@ func sharedWithHref(v CompendiumView, with string) templ.SafeURL {
 		q.Set(SharedWithKey, with)
 	}
 	if v.Kind != "" {
-		q.Set("kind", v.Kind)
+		q.Set(KindKey, v.Kind)
 	}
 	return templ.SafeURL(CompendiumURL(q, v.Campaign))
 }

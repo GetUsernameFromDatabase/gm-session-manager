@@ -7,10 +7,19 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"gm-session-manager/internal/dnd5e"
 )
 
 // Monster action types, in statblock order.
-var actionTypes = []string{"action", "bonus_action", "reaction", "legendary_action"}
+const (
+	monsterAction          = "action"
+	monsterBonusAction     = "bonus_action"
+	monsterReaction        = "reaction"
+	monsterLegendaryAction = "legendary_action"
+)
+
+var actionTypes = []string{monsterAction, monsterBonusAction, monsterReaction, monsterLegendaryAction}
 
 // searchText is a statblock's plain text for search.
 func (d MonsterData) searchText() string {
@@ -51,7 +60,7 @@ func bonusText(m map[string]int) string {
 	}
 	slices.SortFunc(keys, func(a, b string) int {
 		// Abilities in sheet order first, then skills alphabetically.
-		ia, ib := slices.Index(abilityOrder, a), slices.Index(abilityOrder, b)
+		ia, ib := slices.Index(dnd5e.Abilities, a), slices.Index(dnd5e.Abilities, b)
 		if ia >= 0 && ib >= 0 {
 			return ia - ib
 		}
@@ -68,9 +77,8 @@ func bonusText(m map[string]int) string {
 }
 
 var (
-	abilityOrder = []string{"str", "dex", "con", "int", "wis", "cha"}
-	reBonus      = regexp.MustCompile(`^(.+?)\s*([-+−]\s*\d+)$`)
-	reSpeed      = regexp.MustCompile(`(?i)(?:([a-z]+)\s+)?(\d+)\s*(?:ft\.?|feet)?`)
+	reBonus = regexp.MustCompile(`^(.+?)\s*([-+−]\s*\d+)$`)
+	reSpeed = regexp.MustCompile(`(?i)(?:([a-z]+)\s+)?(\d+)\s*(?:ft\.?|feet)?`)
 )
 
 // parseBonuses reads "Dex +5, Wis +3" (saves, keyed by ability) or
@@ -99,7 +107,7 @@ func parseBonuses(s string, saves bool) map[string]int {
 
 // abilityKey is "dex" for "dex" or "dexterity", else "".
 func abilityKey(name string) string {
-	if len(name) >= 3 && slices.Contains(abilityOrder, name[:3]) {
+	if len(name) >= 3 && slices.Contains(dnd5e.Abilities, name[:3]) {
 		return name[:3]
 	}
 	return ""

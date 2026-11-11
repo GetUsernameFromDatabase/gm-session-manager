@@ -494,9 +494,9 @@ func (a *App) readableLinks(ctx context.Context, v perm.Viewer, campaignID int64
 	}
 	for _, l := range links {
 		switch l.Kind {
-		case "image":
+		case string(enum.LinkImage):
 			out[l.Key()] = true
-		case "note":
+		case string(enum.LinkNote):
 			out[l.Key()] = slices.ContainsFunc(notes, func(n sqlc.Note) bool { return n.ID == l.ID })
 		case "entity":
 			out[l.Key()] = slices.ContainsFunc(npcs, func(e sqlc.Entity) bool { return e.ID == l.ID })

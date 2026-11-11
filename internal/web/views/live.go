@@ -84,7 +84,7 @@ func (s SheetView) Hot(st hub.State) {
 	}
 	st["hd"] = hitDice(s.C.Sheet)
 	for _, slug := range dnd5e.Conditions {
-		if c, on := s.condition(slug); slug != exhaustion {
+		if c, on := s.condition(slug); slug != dnd5e.Exhaustion { // its level is its own chip
 			st["cond."+slug] = on
 		} else if on {
 			st["exh"] = c.Note
@@ -188,9 +188,6 @@ func (r Roster) Shape() Roster {
 	}
 	return r
 }
-
-// exhaustion is the one condition with a level, shown as its own chip.
-const exhaustion = "exhaustion"
 
 func dying(s SheetView) bool { return s.C.HP <= 0 && s.C.MaxHP > 0 }
 

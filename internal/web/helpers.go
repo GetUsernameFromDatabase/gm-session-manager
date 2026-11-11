@@ -176,7 +176,26 @@ func (a *App) idParam(c *gin.Context, name string) (int64, bool) {
 	return id, true
 }
 
-func isHTMX(c *gin.Context) bool { return c.GetHeader("HX-Request") == "true" }
+func isHTMX(c *gin.Context) bool { return c.GetHeader("HX-Request") == strTrue }
+
+// strTrue is a true flag as forms, headers and build settings spell it.
+const strTrue = "true"
+
+// Keys of the JSON answers fetch-based endpoints read.
+const (
+	keyID         = "id"
+	keyName       = "name"
+	keyError      = "error"
+	keyImage      = "image"
+	keyURL        = "url"
+	keyMime       = "mime"
+	keyDoc        = "doc"
+	keyDocVersion = "docVersion"
+	keySteps      = "steps"
+	keyClientIDs  = "clientIDs"
+	keyEditable   = "editable"
+	keyVersion    = "version"
+)
 
 // fail reports an error: as an out-of-band flash for htmx requests (status
 // 422, which app.js tells htmx to swap), or as a plain page.

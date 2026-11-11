@@ -5,6 +5,7 @@ linters:
   enable:
     - bodyclose
     - errorlint
+    - goconst
     - gosec
     - misspell
     - noctx
@@ -13,6 +14,11 @@ linters:
     - sqlclosecheck
     - unconvert
     - unparam
+  settings:
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+      match-constant: true
   exclusions:
     generated: lax
     paths:
@@ -24,6 +30,9 @@ linters:
     rules:
       - path: _test\.go
         linters: [gosec]
+      # Test data repeats on purpose, and goconst matches text, not meaning.
+      - path: _test\.go
+        linters: [goconst]
 
 formatters:
   enable:

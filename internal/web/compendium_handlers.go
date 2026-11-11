@@ -226,13 +226,8 @@ func (a *App) decodeLinked(ctx context.Context, e sqlc.CompendiumEntry, campaign
 	return compendium.DecodeData(e.Kind, js)
 }
 
-// compendiumBatch is how many rows one search or scroll step loads; the
-// after_* query keys are the browse cursor.
-const (
-	compendiumBatch     = 100
-	compendiumAfterName = "after_name"
-	compendiumAfterID   = "after_id"
-)
+// compendiumBatch is how many rows one search or scroll step loads.
+const compendiumBatch = 100
 
 func (a *App) compendiumPage(c *gin.Context) {
 	a.renderCompendium(c, views.ImportNotice{Tab: c.Query("import")})
@@ -244,11 +239,11 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 		return
 	}
 	ctx := c.Request.Context()
-	v := views.CompendiumView{Query: strings.TrimSpace(c.Query("q")), Kind: c.Query("kind"), IsGM: w.isGM(), Import: notice, Tab: c.Query("tab"), Campaign: viewerCampaign(camp)}
+	v := views.CompendiumView{Query: strings.TrimSpace(c.Query(views.QueryKey)), Kind: c.Query(views.KindKey), IsGM: w.isGM(), Import: notice, Tab: c.Query(views.TabKey), Campaign: viewerCampaign(camp)}
 	v.Import.Dir, v.Import.OnHost, v.Import.Job = a.compendiumDir(), w.id.Loopback, a.fiveTools.get()
 	// Only monsters have habitats, so the filter applies to them alone.
 	if v.Kind == string(enum.KindMonster) {
-		v.Habitat = c.Query("habitat")
+		v.Habitat = c.Query(views.HabitatKey)
 	}
 	var err error
 	// A source's shared entries, from the GM's priority card; a search leaves them.
@@ -268,8 +263,8 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 	} else {
 		// Browse the kind ("" is every kind) a batch at a time; the last row
 		// of a full batch is the cursor for the next.
-		afterID, _ := strconv.ParseInt(c.Query(compendiumAfterID), 10, 64)
-		rows, err := a.Store.ListCompendiumByKind(ctx, sqlc.ListCompendiumByKindParams{Kind: v.Kind, Habitat: v.Habitat, AfterName: c.Query(compendiumAfterName), AfterID: afterID, CampaignID: viewerCampaign(camp), PageSize: compendiumBatch})
+		afterID, _ := strconv.ParseInt(c.Query(views.AfterIDKey), 10, 64)
+		rows, err := a.Store.ListCompendiumByKind(ctx, sqlc.ListCompendiumByKindParams{Kind: v.Kind, Habitat: v.Habitat, AfterName: c.Query(views.AfterNameKey), AfterID: afterID, CampaignID: viewerCampaign(camp), PageSize: compendiumBatch})
 		if err != nil {
 			a.serverError(c, err)
 			return
@@ -279,10 +274,10 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 		}
 		if len(rows) == compendiumBatch {
 			last := rows[len(rows)-1]
-			v.More = views.CompendiumURL(url.Values{"kind": {v.Kind}, "habitat": {v.Habitat}, compendiumAfterName: {last.Name}, compendiumAfterID: {strconv.FormatInt(last.ID, 10)}}, v.Campaign)
+			v.More = views.CompendiumURL(url.Values{views.KindKey: {v.Kind}, views.HabitatKey: {v.Habitat}, views.AfterNameKey: {last.Name}, views.AfterIDKey: {strconv.FormatInt(last.ID, 10)}}, v.Campaign)
 		}
 	}
-	if c.Query(compendiumAfterID) != "" {
+	if c.Query(views.AfterIDKey) != "" {
 		a.render(c, http.StatusOK, views.CompendiumRows(v))
 		return
 	}
@@ -327,8 +322,8 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
 	ctx := c.Request.Context()
 	v.With = c.Query(views.SharedWithKey)
-	afterID, _ := strconv.ParseInt(c.Query(compendiumAfterID), 10, 64)
-	rows, err := a.Store.ListSharedEntries(ctx, sqlc.ListSharedEntriesParams{SourceKey: v.Shared, With: v.With, Kind: v.Kind, AfterName: c.Query(compendiumAfterName), AfterID: afterID, CampaignID: v.Campaign, PageSize: compendiumBatch})
+	afterID, _ := strconv.ParseInt(c.Query(views.AfterIDKey), 10, 64)
+	rows, err := a.Store.ListSharedEntries(ctx, sqlc.ListSharedEntriesParams{SourceKey: v.Shared, With: v.With, Kind: v.Kind, AfterName: c.Query(views.AfterNameKey), AfterID: afterID, CampaignID: v.Campaign, PageSize: compendiumBatch})
 	if err != nil {
 		return err
 	}
@@ -337,7 +332,7 @@ func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
 	}
 	if len(rows) == compendiumBatch {
 		last := rows[len(rows)-1]
-		v.More = views.CompendiumURL(url.Values{views.SharedKey: {v.Shared}, views.SharedWithKey: {v.With}, "kind": {v.Kind}, compendiumAfterName: {last.Name}, compendiumAfterID: {strconv.FormatInt(last.ID, 10)}}, v.Campaign)
+		v.More = views.CompendiumURL(url.Values{views.SharedKey: {v.Shared}, views.SharedWithKey: {v.With}, views.KindKey: {v.Kind}, views.AfterNameKey: {last.Name}, views.AfterIDKey: {strconv.FormatInt(last.ID, 10)}}, v.Campaign)
 	}
 	if len(rows) > 0 {
 		order, err := a.Store.ListSharedOrder(ctx, sqlc.ListSharedOrderParams{SourceKey: v.Shared, CampaignID: v.Campaign})
@@ -350,7 +345,7 @@ func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
 			v.CopyOrder[k] = append(v.CopyOrder[k], o.SourceKey)
 		}
 	}
-	if c.Query(compendiumAfterID) != "" {
+	if c.Query(views.AfterIDKey) != "" {
 		return nil // a later batch: the chips are already on the page
 	}
 	kinds, err := a.Store.CountSharedByKind(ctx, sqlc.CountSharedByKindParams{SourceKey: v.Shared, With: v.With, CampaignID: v.Campaign})
@@ -402,7 +397,7 @@ func (a *App) compendiumSearch(c *gin.Context) {
 	if !w.isGM() {
 		t.EncounterID, t.EntityID = 0, 0
 	}
-	if strings.TrimSpace(c.Query("q")) == "" {
+	if strings.TrimSpace(c.Query(views.QueryKey)) == "" {
 		c.Status(http.StatusOK) // cleared box: empty list, so the dropdown hides
 		return
 	}
@@ -411,7 +406,7 @@ func (a *App) compendiumSearch(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	names, text, err := compendium.Search(c.Request.Context(), a.Store.Queries, c.Query("q"), c.Query("kind"), "", campaignID, 15)
+	names, text, err := compendium.Search(c.Request.Context(), a.Store.Queries, c.Query(views.QueryKey), c.Query(views.KindKey), "", campaignID, 15)
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -462,7 +457,7 @@ func (a *App) compendiumFind(c *gin.Context) {
 	if !ok {
 		return
 	}
-	e, err := a.entryBySlug(c.Request.Context(), enum.CompendiumKind(c.Param("kind")), c.Param("slug"), viewerCampaign(camp))
+	e, err := a.entryBySlug(c.Request.Context(), enum.CompendiumKind(c.Param(views.KindKey)), c.Param("slug"), viewerCampaign(camp))
 	if !a.found(c, err) {
 		return
 	}
@@ -546,7 +541,7 @@ func (a *App) compendiumCompare(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	kind, slug := enum.CompendiumKind(c.Param("kind")), c.Param("slug")
+	kind, slug := enum.CompendiumKind(c.Param(views.KindKey)), c.Param("slug")
 	if !compendium.ValidKind(kind) {
 		a.found(c, sql.ErrNoRows)
 		return
@@ -608,7 +603,7 @@ func (a *App) compendiumLookup(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	kind, name := enum.CompendiumKind(c.Query("kind")), strings.TrimSpace(c.Query("name"))
+	kind, name := enum.CompendiumKind(c.Query(views.KindKey)), strings.TrimSpace(c.Query("name"))
 	var e sqlc.CompendiumEntry
 	var err error
 	if name != "" {
@@ -647,7 +642,7 @@ func (a *App) compendiumRandom(c *gin.Context) {
 	if !ok {
 		return
 	}
-	id, err := a.Store.RandomCompendiumEntry(c.Request.Context(), sqlc.RandomCompendiumEntryParams{Kind: c.Query("kind"), Habitat: c.Query("habitat"), CampaignID: viewerCampaign(camp)})
+	id, err := a.Store.RandomCompendiumEntry(c.Request.Context(), sqlc.RandomCompendiumEntryParams{Kind: c.Query(views.KindKey), Habitat: c.Query(views.HabitatKey), CampaignID: viewerCampaign(camp)})
 	if !a.found(c, err) {
 		return
 	}
@@ -739,7 +734,7 @@ func (a *App) homebrewNew(c *gin.Context) {
 	if !ok {
 		return
 	}
-	kind := enum.CompendiumKind(c.DefaultQuery("kind", string(enum.KindMonster)))
+	kind := enum.CompendiumKind(c.DefaultQuery(views.KindKey, string(enum.KindMonster)))
 	if !w.isGM() && !slices.Contains(compendium.PlayerKinds, kind) {
 		kind = enum.KindSpell
 	}
@@ -968,7 +963,7 @@ func (a *App) compendiumPagePreview(c *gin.Context) {
 func compendiumBack(query string) string {
 	in, _ := url.ParseQuery(query)
 	out := url.Values{}
-	for _, k := range []string{"q", "kind"} {
+	for _, k := range []string{views.QueryKey, views.KindKey} {
 		if v := in.Get(k); v != "" {
 			out.Set(k, v)
 		}

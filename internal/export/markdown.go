@@ -9,6 +9,21 @@ import (
 	"strings"
 )
 
+// ProseMirror node types the export writes.
+const (
+	pmParagraph      = "paragraph"
+	pmHeading        = "heading"
+	pmBlockquote     = "blockquote"
+	pmBulletList     = "bulletList"
+	pmOrderedList    = "orderedList"
+	pmCodeBlock      = "codeBlock"
+	pmHorizontalRule = "horizontalRule"
+	pmImage          = "image"
+	pmText           = "text"
+	pmHardBreak      = "hardBreak"
+	pmMention        = "mention"
+)
+
 // pmNode is a ProseMirror JSON node.
 type pmNode struct {
 	Type    string         `json:"type"`
@@ -62,33 +77,33 @@ func (w writer) blocks(nodes []pmNode, prefix string) {
 
 func (w writer) block(n pmNode, prefix string) {
 	switch n.Type {
-	case "paragraph":
+	case pmParagraph:
 		w.line(prefix, w.inline(n.Content))
-	case "heading":
+	case pmHeading:
 		level := 1
 		if l, ok := n.Attrs["level"].(float64); ok {
 			level = int(l)
 		}
 		w.line(prefix, strings.Repeat("#", level)+" "+w.inline(n.Content))
-	case "blockquote":
+	case pmBlockquote:
 		w.blocks(n.Content, prefix+"> ")
-	case "bulletList", "orderedList":
+	case pmBulletList, pmOrderedList:
 		for i, item := range n.Content {
 			marker := "- "
-			if n.Type == "orderedList" {
+			if n.Type == pmOrderedList {
 				marker = fmt.Sprintf("%d. ", i+1)
 			}
 			w.listItem(item, prefix, marker)
 		}
-	case "codeBlock":
+	case pmCodeBlock:
 		w.line(prefix, "```")
 		for l := range strings.SplitSeq(plain(n.Content), "\n") {
 			w.line(prefix, l)
 		}
 		w.line(prefix, "```")
-	case "horizontalRule":
+	case pmHorizontalRule:
 		w.line(prefix, "---")
-	case "image":
+	case pmImage:
 		w.line(prefix, w.inline([]pmNode{n}))
 	default:
 		if len(n.Content) > 0 {
@@ -129,11 +144,11 @@ func (w writer) inline(nodes []pmNode) string {
 	var b strings.Builder
 	for _, n := range nodes {
 		switch n.Type {
-		case "text":
+		case pmText:
 			b.WriteString(applyMarks(escape(n.Text), n.Marks))
-		case "hardBreak":
+		case pmHardBreak:
 			b.WriteString("  \n")
-		case "mention":
+		case pmMention:
 			id, _ := n.Attrs["id"].(string)
 			label, _ := n.Attrs["label"].(string)
 			if label == "" {
@@ -141,7 +156,7 @@ func (w writer) inline(nodes []pmNode) string {
 			}
 			// An attached picture is an image of the block's own file.
 			if num, ok := strings.CutPrefix(id, "attachment:"); ok {
-				b.WriteString(w.inline([]pmNode{{Type: "image", Attrs: map[string]any{"src": "/attachments/" + num, "alt": label}}}))
+				b.WriteString(w.inline([]pmNode{{Type: pmImage, Attrs: map[string]any{"src": "/attachments/" + num, "alt": label}}}))
 				continue
 			}
 			if target := w.links.Mention(id); target != "" {
@@ -149,7 +164,7 @@ func (w writer) inline(nodes []pmNode) string {
 			} else {
 				b.WriteString(escape(label))
 			}
-		case "image":
+		case pmImage:
 			src, _ := n.Attrs["src"].(string)
 			alt, _ := n.Attrs["alt"].(string)
 			if target := w.links.Image(src); target != "" {

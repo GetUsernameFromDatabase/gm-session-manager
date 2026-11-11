@@ -9,7 +9,7 @@ import (
 func geared() Character {
 	c := fighter()
 	leather, chain := WornArmor{Name: "Leather", Type: "light", Base: 11, AddDex: true}, WornArmor{Name: "Chain Mail", Type: "heavy", Base: 16}
-	sword, dagger := Weapon{Name: "Longsword", Ability: "str", Dice: "1d8"}, Weapon{Name: "Dagger", Ability: "finesse", Dice: "1d4"}
+	sword, dagger := Weapon{Name: "Longsword", Ability: Str, Dice: "1d8"}, Weapon{Name: "Dagger", Ability: "finesse", Dice: "1d4"}
 	c.Sheet.Armor, c.Sheet.Weapons = &leather, []Weapon{dagger}
 	c.Sheet.Modifiers = []CustomMod{{Target: ModAttack + ".Longsword", Value: 1, Note: "+1 sword"}}
 	c.Sheet.Inventory = append(c.Sheet.Inventory,
@@ -119,7 +119,7 @@ func TestUpgradeSheet(t *testing.T) {
 
 func TestExplainDamage(t *testing.T) {
 	c := geared()
-	c.Sheet.Scores["dex"] = 16
+	c.Sheet.Scores[Dex] = 16
 	c.Sheet.Modifiers = append(c.Sheet.Modifiers, CustomMod{Target: ModDamage + ".Dagger", Value: 2, Note: "Sharp"})
 	parts := c.Sheet.Explain(ModDamage + ".Dagger")
 	if len(parts) != 2 || Sum(parts) != 5 || c.Sheet.DamageLabel(c.Sheet.Weapons[0]) != "1d4+5" {
@@ -143,7 +143,7 @@ func TestExplainDamage(t *testing.T) {
 func TestDualWield(t *testing.T) {
 	dagger := Weapon{Name: "Dagger", Ability: "finesse", Dice: "1d4", Properties: "Finesse, Light, Thrown"}
 	short := Weapon{Name: "Shortsword", Ability: "finesse", Dice: "1d6", Properties: "Finesse, Light"}
-	long := Weapon{Name: "Longsword", Ability: "str", Dice: "1d8", Properties: "Versatile"}
+	long := Weapon{Name: "Longsword", Ability: Str, Dice: "1d8", Properties: "Versatile"}
 	tests := []struct {
 		name     string
 		weapons  []Weapon
@@ -162,7 +162,7 @@ func TestDualWield(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewSheet()
-			s.Scores["dex"], s.Scores["str"], s.Weapons = tt.dex, min(tt.dex, 10), tt.weapons
+			s.Scores[Dex], s.Scores[Str], s.Weapons = tt.dex, min(tt.dex, 10), tt.weapons
 			s.Inventory = []Item{{Name: "Dagger", Qty: tt.qty, Weapon: &dagger}}
 			if tt.style {
 				s.Features = []Feature{{Name: "Two-Weapon Fighting"}}

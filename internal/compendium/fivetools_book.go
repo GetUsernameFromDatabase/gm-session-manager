@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 )
 
@@ -68,7 +69,7 @@ func parseFiveToolsBookReport(key string, files map[string][]byte) (Source, []En
 // picture links, by the rule the single monster import uses.
 func FiveToolsImages(files map[string][]byte) map[string]string {
 	out := map[string]string{}
-	recs, _, err := ftRecords(files, "bestiary.json", "monster")
+	recs, _, err := ftRecords(files, "bestiary.json", keyMonster)
 	if err != nil {
 		return out
 	}
@@ -148,11 +149,11 @@ type ftNamed struct {
 func (n ftNamed) key() string { return strings.ToLower(n.Name + "|" + n.Source) }
 
 func (p *ftBook) monsters() error {
-	fluff, err := p.fluff("fluff-bestiary.json", "monsterFluff")
+	fluff, err := p.fluff("fluff-bestiary.json", keyMonsterFluff)
 	if err != nil {
 		return err
 	}
-	return each(p, "bestiary.json", "monster", func(m ftMonster) {
+	return each(p, "bestiary.json", keyMonster, func(m ftMonster) {
 		d := m.data()
 		d.Desc = fluff[strings.ToLower(m.Name+"|"+m.Source)]
 		if e := p.add(enum.KindMonster, m.Name, d, joinText(d.searchText(), d.Desc)); e != nil {
@@ -203,7 +204,7 @@ var ftSchools = map[string]string{
 }
 
 func (p *ftBook) spells() error {
-	fluff, err := p.fluff("fluff-spells.json", "spellFluff")
+	fluff, err := p.fluff("fluff-spells.json", keySpellFluff)
 	if err != nil {
 		return err
 	}
@@ -220,7 +221,7 @@ func (p *ftBook) spells() error {
 			return fmt.Errorf("5etools spell-classes.json: %w", err)
 		}
 	}
-	return each(p, "spells.json", "spell", func(s ftSpell) {
+	return each(p, "spells.json", keySpell, func(s ftSpell) {
 		d := SpellData{
 			Level: s.Level, School: ftSchools[s.School], Ritual: s.Meta.Ritual,
 			Desc: joinNonEmpty("\n\n", ftEntries(s.Entries), fluff[s.key()]),
@@ -267,21 +268,28 @@ func (p *ftBook) spells() error {
 	})
 }
 
+// 5etools casting time units that name an action.
+const (
+	ftUnitAction   = "action"
+	ftUnitBonus    = "bonus"
+	ftUnitReaction = "reaction"
+)
+
 // ftCastingTime is "Action", "Bonus Action", "Reaction, which you take…"
 // or "10 minutes", as the sheet reads casting times.
 func ftCastingTime(n int, unit, condition string) string {
 	var s string
 	switch unit {
-	case "action":
+	case ftUnitAction:
 		s = "Action"
-	case "bonus":
+	case ftUnitBonus:
 		s = "Bonus Action"
-	case "reaction":
+	case ftUnitReaction:
 		s = "Reaction"
 	default:
 		s = ftAmount(n, unit)
 	}
-	if n > 1 && (unit == "action" || unit == "bonus" || unit == "reaction") {
+	if n > 1 && (unit == ftUnitAction || unit == ftUnitBonus || unit == ftUnitReaction) {
 		s = strconv.Itoa(n) + " " + s + "s"
 	}
 	return joinNonEmpty(", ", s, condition)
@@ -297,19 +305,19 @@ func ftAmount(n int, unit string) string {
 
 func ftRange(typ string, d ftDistance) string {
 	switch typ {
-	case "special":
+	case rangeSpecial:
 		return "Special"
-	case "point":
+	case rangePoint:
 		switch d.Type {
-		case "feet":
+		case distFeet:
 			return fmt.Sprintf("%d feet", d.Amount)
-		case "miles":
+		case distMiles:
 			return ftAmount(d.Amount, "mile")
 		}
 		return label(d.Type)
 	}
 	// An area around the caster: "Self (15-foot cone)".
-	unit := map[string]string{"feet": "foot", "miles": "mile"}[d.Type]
+	unit := map[string]string{distFeet: "foot", distMiles: "mile"}[d.Type]
 	if d.Amount > 0 && unit != "" {
 		return fmt.Sprintf("Self (%d-%s %s)", d.Amount, unit, typ)
 	}
@@ -318,18 +326,18 @@ func ftRange(typ string, d ftDistance) string {
 
 func ftDuration(typ string, d ftDistance, conc bool, ends []string) string {
 	switch typ {
-	case "instant":
+	case durationInstant:
 		return "Instantaneous"
-	case "timed":
+	case durationTimed:
 		s := ftAmount(d.Amount, d.Type)
 		if conc { // the page adds "Concentration, " from the flag
 			return "up to " + s
 		}
 		return s
-	case "permanent":
+	case durationPermanent:
 		var until []string
 		for _, e := range ends {
-			until = append(until, map[string]string{"dispel": "dispelled", "trigger": "triggered", "discharge": "discharged"}[e])
+			until = append(until, map[string]string{endsDispel: "dispelled", endsTrigger: "triggered", endsDischarge: "discharged"}[e])
 		}
 		if len(until) > 0 {
 			return "Until " + strings.Join(slices.DeleteFunc(until, func(s string) bool { return s == "" }), " or ")
@@ -375,15 +383,15 @@ func ftRequires(reqs []map[string]json.RawMessage) string {
 			_ = json.Unmarshal(req[k], &s)
 			return s
 		}
-		code, _, _ := strings.Cut(str("type"), "|")
+		code, _, _ := strings.Cut(str(keyType), "|")
 		var w string
 		switch {
-		case str("name") != "":
-			w = str("name")
-		case str("scfType") != "":
-			w = str("scfType") + " focus"
-		case str("weaponCategory") != "":
-			w = str("weaponCategory") + " weapon"
+		case str(keyName) != "":
+			w = str(keyName)
+		case str(keyScfType) != "":
+			w = str(keyScfType) + " focus"
+		case str(keyWeaponCategory) != "":
+			w = str(keyWeaponCategory) + " weapon"
 		case code != "":
 			w = cmp.Or(ftArmorWeights[code], strings.ReplaceAll(ftItemTypes[code], "-", " "))
 		default:
@@ -400,14 +408,38 @@ func ftRequires(reqs []map[string]json.RawMessage) string {
 	return strings.Join(out, ", ")
 }
 
+// Item categories (ItemData.Category), as ftItemTypes maps 5etools codes.
+const (
+	itemWeapon      = "weapon"
+	itemArmor       = "armor"
+	itemTools       = "tools"
+	itemAdventuring = "adventuring-gear"
+	itemVehicle     = "vehicle"
+	itemTreasure    = "treasure"
+	itemShield      = "shield"
+	itemAmmunition  = "ammunition"
+	itemSpellFocus  = "spellcasting-focus"
+	itemPotion      = "potion"
+	itemRing        = "ring"
+	itemRod         = "rod"
+	itemScroll      = "scroll"
+	itemWand        = "wand"
+	itemExplosive   = "explosive"
+	itemMount       = "mount"
+	itemTradeGood   = "trade-good"
+	itemStaff       = "staff"
+	itemWondrous    = "wondrous-item"
+	itemOther       = "other"
+)
+
 // ftItemTypes maps 5etools item type codes to our categories (Open5e's).
 var ftItemTypes = map[string]string{
-	"M": "weapon", "R": "weapon", "LA": "armor", "MA": "armor", "HA": "armor", "S": "shield",
-	"A": "ammunition", "AF": "ammunition", "AT": "tools", "T": "tools", "INS": "tools", "GS": "tools",
-	"G": "adventuring-gear", "TAH": "adventuring-gear", "FD": "adventuring-gear", "SCF": "spellcasting-focus",
-	"P": "potion", "RG": "ring", "RD": "rod", "SC": "scroll", "WD": "wand", "EXP": "explosive",
-	"MNT": "mount", "VEH": "vehicle", "SHP": "vehicle", "AIR": "vehicle", "SPC": "vehicle",
-	"TG": "trade-good", "$": "treasure", "$A": "treasure", "$C": "treasure", "$G": "treasure",
+	"M": itemWeapon, "R": itemWeapon, "LA": itemArmor, "MA": itemArmor, "HA": itemArmor, "S": itemShield,
+	"A": itemAmmunition, "AF": itemAmmunition, "AT": itemTools, "T": itemTools, "INS": itemTools, "GS": itemTools,
+	"G": itemAdventuring, "TAH": itemAdventuring, "FD": itemAdventuring, "SCF": itemSpellFocus,
+	"P": itemPotion, "RG": itemRing, "RD": itemRod, "SC": itemScroll, "WD": itemWand, "EXP": itemExplosive,
+	"MNT": itemMount, "VEH": itemVehicle, "SHP": itemVehicle, "AIR": itemVehicle, "SPC": itemVehicle,
+	"TG": itemTradeGood, "$": itemTreasure, "$A": itemTreasure, "$C": itemTreasure, "$G": itemTreasure,
 }
 
 var ftDamageTypes = map[string]string{
@@ -422,17 +454,17 @@ var ftProperties = map[string]string{
 
 // ftBaseKeys are the fields a magic item takes from its base item.
 var ftBaseKeys = []string{
-	"type", "weaponCategory", "dmg1", "dmg2", "dmgType", "property", "range",
-	"ac", "strength", "stealth", "weight", "weapon", "armor", "mastery",
+	keyType, keyWeaponCategory, keyDmg1, keyDmg2, keyDmgType, keyProperty, keyRange,
+	keyAC, keyStrength, keyStealth, keyWeight, keyWeapon, keyArmor, keyMastery,
 }
 
 func (p *ftBook) items() error {
-	fluff, err := p.fluff("fluff-items.json", "itemFluff")
+	fluff, err := p.fluff("fluff-items.json", keyItemFluff)
 	if err != nil {
 		return err
 	}
 	// items-base.json is every book's base items: only the book's own count.
-	all, _, err := ftRecords(p.files, "items-base.json", "baseitem")
+	all, _, err := ftRecords(p.files, "items-base.json", keyBaseItem)
 	if err != nil {
 		return err
 	}
@@ -453,7 +485,7 @@ func (p *ftBook) items() error {
 			norm(it)
 		}
 	}
-	for _, key := range []string{"item", "itemGroup"} {
+	for _, key := range []string{keyItem, keyItemGroup} {
 		recs, err := p.records("items.json", key)
 		if err != nil {
 			return err
@@ -488,7 +520,7 @@ var ftPlaceholder = regexp.MustCompile(`\{=(\w+)\}`)
 // book's own items so a real item of the same name wins.
 // shortcut: no per-base expansion ("+1 Longsword"), upgrade when players need the variant as a concrete base item.
 func (p *ftBook) magicVariants() error {
-	return each(p, "magicvariants.json", "magicvariant", func(v struct {
+	return each(p, "magicvariants.json", keyMagicVariant, func(v struct {
 		ftNamed
 		Requires []map[string]json.RawMessage `json:"requires"`
 		Inherits ftRec                        `json:"inherits"`
@@ -496,7 +528,7 @@ func (p *ftBook) magicVariants() error {
 		rec := ftRec{}
 		maps.Copy(rec, v.Inherits)
 		// Fill from inherits' own values, as JSON text so quotes stay escaped.
-		raw, _ := json.Marshal(rec["entries"])
+		raw, _ := json.Marshal(rec[keyEntries])
 		filled := ftPlaceholder.ReplaceAllStringFunc(string(raw), func(m string) string {
 			var s string
 			if json.Unmarshal(v.Inherits[m[2:len(m)-1]], &s) != nil {
@@ -505,7 +537,7 @@ func (p *ftBook) magicVariants() error {
 			q, _ := json.Marshal(s)
 			return string(q[1 : len(q)-1])
 		})
-		rec["entries"] = json.RawMessage(filled)
+		rec[keyEntries] = json.RawMessage(filled)
 		it, err := ftDecode[ftItem](rec)
 		if err != nil {
 			p.skipped++
@@ -529,18 +561,18 @@ func ftItemData(it ftItem) ItemData {
 	typ := ftCode(it.Type)
 	d := ItemData{
 		Category: ftItemTypes[typ], Rarity: label(it.Rarity), Range: it.Range,
-		Martial: it.WeaponCategory == "martial", Desc: ftEntries(it.Entries),
+		Martial: it.WeaponCategory == keyMartial, Desc: ftEntries(it.Entries),
 		Attunement: it.ReqAttune != nil && string(it.ReqAttune) != "false" && string(it.ReqAttune) != "null",
 	}
 	switch {
 	case it.Staff:
-		d.Category = "staff"
+		d.Category = itemStaff
 	case d.Category == "" && it.Wondrous:
-		d.Category = "wondrous-item"
+		d.Category = itemWondrous
 	case d.Category == "":
-		d.Category = "other"
+		d.Category = itemOther
 	}
-	if it.Rarity == "none" {
+	if it.Rarity == keyNone {
 		d.Rarity = ""
 	}
 	if it.Value > 0 {
@@ -624,7 +656,7 @@ type ftRace struct {
 }
 
 func (p *ftBook) species() error {
-	fluff, err := p.fluff("fluff-races.json", "raceFluff")
+	fluff, err := p.fluff("fluff-races.json", keyRaceFluff)
 	if err != nil {
 		return err
 	}
@@ -641,7 +673,7 @@ func (p *ftBook) species() error {
 		}
 		var typed []NameDesc
 		if len(sizes) > 0 {
-			typed = append(typed, NameDesc{Name: "Size", Desc: strings.Join(sizes, " or "), Type: partSize})
+			typed = append(typed, NameDesc{Name: LabelSize, Desc: strings.Join(sizes, " or "), Type: PartSize})
 		}
 		var walk int
 		var speeds struct {
@@ -649,22 +681,22 @@ func (p *ftBook) species() error {
 		}
 		if json.Unmarshal(r.Speed, &walk) == nil || json.Unmarshal(r.Speed, &speeds) == nil {
 			if walk = max(walk, speeds.Walk); walk > 0 {
-				typed = append(typed, NameDesc{Name: "Speed", Desc: fmt.Sprintf("%d feet", walk), Type: partSpeed})
+				typed = append(typed, NameDesc{Name: LabelSpeed, Desc: fmt.Sprintf("%d feet", walk), Type: PartSpeed})
 			}
 		}
 		// 2014 races also tell their size in a trait; the typed fact says it.
 		if len(sizes) > 0 {
-			parts = slices.DeleteFunc(parts, func(p NameDesc) bool { return p.Name == "Size" && p.Type == "" })
+			parts = slices.DeleteFunc(parts, func(p NameDesc) bool { return p.Name == LabelSize && p.Type == "" })
 		}
 		d := link
 		d.Desc, d.Parts = joinNonEmpty("\n\n", desc, cmp.Or(fluff[strings.ToLower(name+"|"+r.Source)], fluff[fluffKey])), append(typed, parts...)
 		p.add(enum.KindSpecies, name, d, joinText(d.Desc, partsText(d.Parts)))
 	}
-	recs, err := p.records("races.json", "race")
+	recs, err := p.records("races.json", keyRace)
 	if err != nil {
 		return err
 	}
-	subs, err := p.records("races.json", "subrace")
+	subs, err := p.records("races.json", keySubrace)
 	if err != nil {
 		return err
 	}
@@ -677,7 +709,7 @@ func (p *ftBook) species() error {
 		}
 	}
 	names := map[string]string{} // race key → species name
-	bundled, err := ftCopyTargets(p.files, "races.json", "race")
+	bundled, err := ftCopyTargets(p.files, "races.json", keyRace)
 	if err != nil {
 		return err
 	}
@@ -825,7 +857,7 @@ func ftRaceAbility(opts []map[string]json.RawMessage) string {
 	var alts []string
 	for _, o := range opts {
 		var parts []string
-		for _, k := range []string{"str", "dex", "con", "int", "wis", "cha"} {
+		for _, k := range dnd5e.Abilities {
 			var by int
 			if json.Unmarshal(o[k], &by) == nil && by != 0 {
 				parts = append(parts, fmt.Sprintf("%s %+d", ftAbilityNames[k], by))
@@ -840,7 +872,7 @@ func ftRaceAbility(opts []map[string]json.RawMessage) string {
 				Weights []int    `json:"weights"`
 			} `json:"weighted"`
 		}
-		if json.Unmarshal(o["choose"], &c) == nil {
+		if json.Unmarshal(o[keyChoose], &c) == nil {
 			switch {
 			case c.Weighted != nil && len(c.Weighted.Weights) > 0:
 				var ws []string
@@ -861,11 +893,11 @@ func ftRaceAbility(opts []map[string]json.RawMessage) string {
 }
 
 func (p *ftBook) backgrounds() error {
-	fluff, err := p.fluff("fluff-backgrounds.json", "backgroundFluff")
+	fluff, err := p.fluff("fluff-backgrounds.json", keyBackgroundFluff)
 	if err != nil {
 		return err
 	}
-	return each(p, "backgrounds.json", "background", func(b ftNamed) {
+	return each(p, "backgrounds.json", keyBackground, func(b ftNamed) {
 		desc, parts := ftParts(b.Entries)
 		d := TextData{Desc: joinNonEmpty("\n\n", desc, fluff[b.key()]), Parts: parts}
 		p.add(enum.KindBackground, b.Name, d, joinText(d.Desc, partsText(d.Parts)))
@@ -885,7 +917,7 @@ var ftFeatCategories = map[string]string{
 }
 
 func (p *ftBook) feats() error {
-	return each(p, "feats.json", "feat", func(f ftFeat) {
+	return each(p, "feats.json", keyFeat, func(f ftFeat) {
 		desc, parts := ftParts(f.Entries)
 		const asi = "Ability Score Increase"
 		if inc := ftFeatIncrease(f.Ability, f.Category); inc != "" && !strings.Contains(joinText(desc, partsText(parts)), asi) {
@@ -901,7 +933,7 @@ func (p *ftBook) feats() error {
 func ftFeatIncrease(abilities []map[string]json.RawMessage, category string) string {
 	for _, a := range abilities {
 		var hidden bool
-		_ = json.Unmarshal(a["hidden"], &hidden)
+		_ = json.Unmarshal(a[keyHidden], &hidden)
 		// Hidden choices (Ability Score Improvement) are already in the feat's text.
 		if hidden {
 			continue
@@ -910,13 +942,13 @@ func ftFeatIncrease(abilities []map[string]json.RawMessage, category string) str
 		if category == "EB" {
 			limit = 30
 		}
-		_ = json.Unmarshal(a["max"], &limit)
+		_ = json.Unmarshal(a[keyMax], &limit)
 		var choose struct {
 			From   []string        `json:"from"`
 			Amount int             `json:"amount"`
 			Entry  json.RawMessage `json:"entry"`
 		}
-		if json.Unmarshal(a["choose"], &choose) == nil && len(choose.From) > 0 {
+		if json.Unmarshal(a[keyChoose], &choose) == nil && len(choose.From) > 0 {
 			who := "one ability score of your choice"
 			if n := len(choose.From); n < len(ftAbilityNames) {
 				names := make([]string, n)
@@ -958,13 +990,13 @@ func ftPrerequisite(opts []map[string]json.RawMessage) string {
 			Level int     `json:"level"`
 			Class ftNamed `json:"class"`
 		}
-		if json.Unmarshal(o["level"], &level) == nil && level > 0 {
+		if json.Unmarshal(o[keyLevel], &level) == nil && level > 0 {
 			parts = append(parts, fmt.Sprintf("Level %d+", level))
-		} else if json.Unmarshal(o["level"], &lv) == nil && lv.Level > 0 {
+		} else if json.Unmarshal(o[keyLevel], &lv) == nil && lv.Level > 0 {
 			parts = append(parts, strings.TrimSpace(fmt.Sprintf("Level %d+ %s", lv.Level, lv.Class.Name)))
 		}
 		var abilities []map[string]int
-		_ = json.Unmarshal(o["ability"], &abilities)
+		_ = json.Unmarshal(o[keyAbility], &abilities)
 		var ab []string
 		for _, a := range abilities {
 			for _, k := range slices.Sorted(maps.Keys(a)) {
@@ -973,7 +1005,7 @@ func ftPrerequisite(opts []map[string]json.RawMessage) string {
 		}
 		parts = append(parts, strings.Join(ab, " or "))
 		var named []ftNamed
-		for _, k := range []string{"race", "background"} {
+		for _, k := range []string{keyRace, keyBackground} {
 			named = named[:0]
 			_ = json.Unmarshal(o[k], &named)
 			var names []string
@@ -983,29 +1015,29 @@ func ftPrerequisite(opts []map[string]json.RawMessage) string {
 			parts = append(parts, strings.Join(names, " or "))
 		}
 		var feats []string
-		_ = json.Unmarshal(o["feat"], &feats)
+		_ = json.Unmarshal(o[keyFeat], &feats)
 		for i, f := range feats {
 			feats[i] = label(ftCode(f))
 		}
 		parts = append(parts, strings.Join(feats, ", "))
-		for _, k := range []string{"spellcasting", "spellcasting2020", "spellcastingFeature", "spellcastingPrepared"} {
+		for _, k := range []string{keySpellcasting, keySpellcasting2020, keySpellcastingFeat, keySpellcastingPrep} {
 			if o[k] != nil {
 				parts = append(parts, "Spellcasting or Pact Magic Feature")
 				break
 			}
 		}
 		var profs []map[string]string
-		_ = json.Unmarshal(o["proficiency"], &profs)
+		_ = json.Unmarshal(o[keyProficiency], &profs)
 		for _, pr := range profs {
-			if a := pr["armor"]; a != "" {
+			if a := pr[keyArmor]; a != "" {
 				parts = append(parts, label(a)+" Armor Training")
 			}
-			if w := pr["weapon"]; w != "" {
+			if w := pr[keyWeapon]; w != "" {
 				parts = append(parts, label(w)+" Weapon Proficiency")
 			}
 		}
 		var other string
-		_ = json.Unmarshal(o["other"], &other)
+		_ = json.Unmarshal(o[keyOther], &other)
 		parts = append(parts, plainTags(other))
 		if s := joinNonEmpty(", ", parts...); s != "" {
 			out = append(out, s)
@@ -1020,7 +1052,7 @@ func (p *ftBook) conditions() error {
 	for _, c := range []struct {
 		key, category string
 		kind          enum.CompendiumKind
-	}{{"condition", "", enum.KindCondition}, {"status", "Status", enum.KindCondition}, {"disease", "Disease", enum.KindRule}} {
+	}{{keyCondition, "", enum.KindCondition}, {keyStatus, "Status", enum.KindCondition}, {keyDisease, "Disease", enum.KindRule}} {
 		if err := each(p, "conditionsdiseases.json", c.key, func(n ftNamed) {
 			d := TextData{Desc: ftEntries(n.Entries), Category: c.category}
 			p.add(c.kind, n.Name, d, d.Desc)
@@ -1034,7 +1066,7 @@ func (p *ftBook) conditions() error {
 var ftRuleTypes = map[string]string{"C": "Core", "O": "Optional", "V": "Variant", "VO": "Variant optional", "VV": "Variant variant"}
 
 func (p *ftBook) rules() error {
-	if err := each(p, "variantrules.json", "variantrule", func(r struct {
+	if err := each(p, "variantrules.json", keyVariantRule, func(r struct {
 		ftNamed
 		RuleType string `json:"ruleType"`
 	}) {
@@ -1044,7 +1076,7 @@ func (p *ftBook) rules() error {
 		return err
 	}
 	// items-base.json holds every book's mastery properties: only the book's own count.
-	return each(p, "items-base.json", "itemMastery", func(m ftNamed) {
+	return each(p, "items-base.json", keyItemMastery, func(m ftNamed) {
 		if strings.EqualFold(m.Source, p.id) {
 			d := TextData{Desc: ftEntries(m.Entries), Category: masteryCategory}
 			p.add(enum.KindRule, m.Name, d, d.Desc)
@@ -1054,8 +1086,8 @@ func (p *ftBook) rules() error {
 
 // ftPartTypes are list item names the character wizard reads as typed parts.
 var ftPartTypes = map[string]string{
-	"Ability Scores": partAbilities, "Feat": partFeat, "Skill Proficiencies": partSkills,
-	"Tool Proficiency": partTools, "Tool Proficiencies": partTools, "Languages": partLanguages, "Equipment": "equipment",
+	LabelAbilityScores: PartAbilities, LabelFeat: PartFeat, LabelSkillProficiency: PartSkills,
+	LabelToolProficiency: PartTools, LabelToolProficiencies: PartTools, LabelLanguages: PartLanguages, LabelEquipment: PartEquipment,
 }
 
 // ftParts splits entries into a description and named parts: named
@@ -1073,7 +1105,7 @@ func ftParts(raws []json.RawMessage) (string, []NameDesc) {
 		}
 		_ = json.Unmarshal(raw, &o)
 		switch {
-		case o.Type == "list":
+		case o.Type == keyList:
 			var rest []string
 			for _, it := range o.Items {
 				var item struct {
@@ -1222,7 +1254,7 @@ func ftDecode[T any](r ftRec) (T, error) {
 
 // ftNotCopied are fields a copy does not inherit (its own pictures and
 // page), unless _preserve names them.
-var ftNotCopied = []string{"page", "hasFluff", "hasFluffImages", "hasToken", "srd", "srd52", "basicRules", "basicRules2024", "reprintedAs", "otherSources", "_versions"}
+var ftNotCopied = []string{keyPage, keyHasFluff, keyHasFluffImages, keyHasToken, keySrd, keySrd52, keyBasicRules, keyBasicRules2024, keyReprintedAs, keyOtherSources, keyVersions}
 
 var errCopy = errors.New("unresolved _copy")
 
@@ -1245,7 +1277,7 @@ func (c ftCopyRef) key() string {
 // ftResolve applies a record's _copy: the target's fields, then its own,
 // then _mod.
 func ftResolve(index map[string]ftRec, r ftRec, depth int) (ftRec, error) {
-	raw, ok := r["_copy"]
+	raw, ok := r[keyCopy]
 	if !ok {
 		return r, nil
 	}
@@ -1276,7 +1308,7 @@ func ftResolve(index map[string]ftRec, r ftRec, depth int) (ftRec, error) {
 		}
 	}
 	for k, v := range r {
-		if k != "_copy" {
+		if k != keyCopy {
 			out[k] = v
 		}
 	}
@@ -1293,7 +1325,7 @@ func ftResolve(index map[string]ftRec, r ftRec, depth int) (ftRec, error) {
 // once per implementation with its _variables ("{{color}}") and fields.
 // "Elf; Drow Lineage" is named "Elf (Drow Lineage)", as subraces are.
 func ftVersions(r ftRec) ([]ftRec, int) {
-	raw, ok := r["_versions"]
+	raw, ok := r[keyVersions]
 	if !ok {
 		return nil, 0
 	}
@@ -1305,16 +1337,16 @@ func ftVersions(r ftRec) ([]ftRec, int) {
 	var all []ftRec
 	skipped := 0
 	for _, v := range vs {
-		abstract, ok := v["_abstract"]
+		abstract, ok := v[keyAbstract]
 		if !ok {
 			all = append(all, v)
 			continue
 		}
 		var impls []ftRec
-		_ = json.Unmarshal(v["_implementations"], &impls)
+		_ = json.Unmarshal(v[keyImplementations], &impls)
 		for _, impl := range impls {
 			var vars map[string]string
-			_ = json.Unmarshal(impl["_variables"], &vars)
+			_ = json.Unmarshal(impl[keyVariables], &vars)
 			body := string(abstract)
 			for k, val := range vars {
 				quoted, _ := json.Marshal(val) // the value lands inside JSON strings
@@ -1326,7 +1358,7 @@ func ftVersions(r ftRec) ([]ftRec, int) {
 				continue
 			}
 			for k, x := range impl {
-				if k != "_variables" {
+				if k != keyVariables {
 					ver[k] = x
 				}
 			}
@@ -1336,19 +1368,19 @@ func ftVersions(r ftRec) ([]ftRec, int) {
 	index := map[string]ftRec{parent.key(): r}
 	var out []ftRec
 	for _, v := range all {
-		ref, _ := json.Marshal(map[string]json.RawMessage{"_mod": v["_mod"], "name": r["name"], "source": r["source"]})
+		ref, _ := json.Marshal(map[string]json.RawMessage{keyMod: v[keyMod], keyName: r[keyName], keySource: r[keySource]})
 		ver := maps.Clone(v)
-		delete(ver, "_mod")
-		ver["_copy"] = ref
+		delete(ver, keyMod)
+		ver[keyCopy] = ref
 		res, err := ftResolve(index, ver, 0)
 		if err != nil {
 			skipped++
 			continue
 		}
 		var name string
-		if json.Unmarshal(res["name"], &name) == nil {
+		if json.Unmarshal(res[keyName], &name) == nil {
 			if base, version, ok := strings.Cut(name, "; "); ok {
-				res["name"], _ = json.Marshal(base + " (" + version + ")")
+				res[keyName], _ = json.Marshal(base + " (" + version + ")")
 			}
 		}
 		out = append(out, res)
@@ -1374,7 +1406,7 @@ var reJSGroup = regexp.MustCompile(`\$(\d)`)
 func ftMod(rec ftRec, key string, raw json.RawMessage) error {
 	var s string
 	if json.Unmarshal(raw, &s) == nil {
-		if s != "remove" {
+		if s != keyRemove {
 			return errCopy
 		}
 		delete(rec, key)
@@ -1389,7 +1421,7 @@ func ftMod(rec ftRec, key string, raw json.RawMessage) error {
 		ops = []ftModOp{op}
 	}
 	for _, op := range ops {
-		if op.Mode == "replaceTxt" {
+		if op.Mode == modReplaceTxt {
 			var pat string
 			if json.Unmarshal(op.Replace, &pat) != nil || strings.Trim(op.Flags, "gi") != "" {
 				return errCopy
@@ -1403,7 +1435,7 @@ func ftMod(rec ftRec, key string, raw json.RawMessage) error {
 			}
 			with := reJSGroup.ReplaceAllString(op.With, "$${$1}")
 			for k, v := range rec {
-				if (key == "*" && k != "name" && k != "source" && !strings.HasPrefix(k, "_")) || k == key {
+				if (key == keyModAll && k != keyName && k != keySource && !strings.HasPrefix(k, "_")) || k == key {
 					var val any
 					_ = json.Unmarshal(v, &val)
 					rec[k], _ = json.Marshal(ftReplaceText(val, re, with))
@@ -1419,13 +1451,13 @@ func ftMod(rec ftRec, key string, raw json.RawMessage) error {
 			items = []any{one}
 		}
 		switch op.Mode {
-		case "appendArr":
+		case modAppendArr:
 			arr = append(arr, items...)
-		case "prependArr":
+		case modPrependArr:
 			arr = append(items, arr...)
-		case "insertArr":
+		case modInsertArr:
 			arr = slices.Insert(arr, min(max(op.Index, 0), len(arr)), items...)
-		case "removeArr":
+		case modRemoveArr:
 			var names []string
 			if json.Unmarshal(op.Names, &names) != nil {
 				var one string
@@ -1438,7 +1470,7 @@ func ftMod(rec ftRec, key string, raw json.RawMessage) error {
 				}
 			}
 			arr = slices.DeleteFunc(arr, func(v any) bool { return slices.Contains(names, ftName(v)) })
-		case "replaceArr":
+		case modReplaceArr:
 			var name string
 			_ = json.Unmarshal(op.Replace, &name)
 			i := slices.IndexFunc(arr, func(v any) bool { return ftName(v) == name })
@@ -1460,7 +1492,7 @@ func ftName(v any) string {
 		return s
 	}
 	if m, ok := v.(map[string]any); ok {
-		s, _ := m["name"].(string)
+		s, _ := m[keyName].(string)
 		return s
 	}
 	return ""
@@ -1477,7 +1509,7 @@ func ftReplaceText(v any, re *regexp.Regexp, with string) any {
 		}
 	case map[string]any:
 		for k := range x {
-			if k != "type" {
+			if k != keyType {
 				x[k] = ftReplaceText(x[k], re, with)
 			}
 		}

@@ -21,8 +21,18 @@ const System = "dnd5e"
 // Edition is the rules edition this module implements.
 const Edition = "2024"
 
+// Ability score keys.
+const (
+	Str = "str"
+	Dex = "dex"
+	Con = "con"
+	Int = "int"
+	Wis = "wis"
+	Cha = "cha"
+)
+
 // Abilities lists the ability score keys in sheet order.
-var Abilities = []string{"str", "dex", "con", "int", "wis", "cha"}
+var Abilities = []string{Str, Dex, Con, Int, Wis, Cha}
 
 // Sizes are the creature sizes, smallest first.
 var Sizes = []string{"Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"}
@@ -38,8 +48,8 @@ func SizeNamed(name string) string {
 
 // AbilityNames maps ability keys to display names.
 var AbilityNames = map[string]string{
-	"str": "Strength", "dex": "Dexterity", "con": "Constitution",
-	"int": "Intelligence", "wis": "Wisdom", "cha": "Charisma",
+	Str: "Strength", Dex: "Dexterity", Con: "Constitution",
+	Int: "Intelligence", Wis: "Wisdom", Cha: "Charisma",
 }
 
 // Skill is a 2024 skill and its ability.
@@ -49,24 +59,43 @@ type Skill struct {
 
 // Skills lists every 2024 skill.
 var Skills = []Skill{
-	{"acrobatics", "Acrobatics", "dex"}, {"animal-handling", "Animal Handling", "wis"},
-	{"arcana", "Arcana", "int"}, {"athletics", "Athletics", "str"},
-	{"deception", "Deception", "cha"}, {"history", "History", "int"},
-	{"insight", "Insight", "wis"}, {"intimidation", "Intimidation", "cha"},
-	{"investigation", "Investigation", "int"}, {"medicine", "Medicine", "wis"},
-	{"nature", "Nature", "int"}, {"perception", "Perception", "wis"},
-	{"performance", "Performance", "cha"}, {"persuasion", "Persuasion", "cha"},
-	{"religion", "Religion", "int"}, {"sleight-of-hand", "Sleight of Hand", "dex"},
-	{"stealth", "Stealth", "dex"}, {"survival", "Survival", "wis"},
+	{"acrobatics", "Acrobatics", Dex}, {"animal-handling", "Animal Handling", Wis},
+	{"arcana", "Arcana", Int}, {"athletics", "Athletics", Str},
+	{"deception", "Deception", Cha}, {"history", "History", Int},
+	{"insight", "Insight", Wis}, {"intimidation", "Intimidation", Cha},
+	{"investigation", "Investigation", Int}, {"medicine", "Medicine", Wis},
+	{"nature", "Nature", Int}, {"perception", "Perception", Wis},
+	{"performance", "Performance", Cha}, {"persuasion", "Persuasion", Cha},
+	{"religion", "Religion", Int}, {"sleight-of-hand", "Sleight of Hand", Dex},
+	{"stealth", "Stealth", Dex}, {"survival", "Survival", Wis},
 }
 
 // Conditions lists the 2024 conditions, plus the trackers the combat tracker
 // and sheet treat like conditions.
 var Conditions = []string{
-	"blinded", "charmed", "deafened", "exhaustion", "frightened", "grappled",
-	"incapacitated", "invisible", "paralyzed", "petrified", "poisoned", "prone",
-	"restrained", "stunned", "unconscious",
+	Blinded, Charmed, Deafened, Exhaustion, Frightened, Grappled,
+	Incapacitated, Invisible, Paralyzed, Petrified, Poisoned, Prone,
+	Restrained, Stunned, Unconscious,
 }
+
+// Condition slugs. Exhaustion is the one with levels.
+const (
+	Blinded       = "blinded"
+	Charmed       = "charmed"
+	Deafened      = "deafened"
+	Exhaustion    = "exhaustion"
+	Frightened    = "frightened"
+	Grappled      = "grappled"
+	Incapacitated = "incapacitated"
+	Invisible     = "invisible"
+	Paralyzed     = "paralyzed"
+	Petrified     = "petrified"
+	Poisoned      = "poisoned"
+	Prone         = "prone"
+	Restrained    = "restrained"
+	Stunned       = "stunned"
+	Unconscious   = "unconscious"
+)
 
 // Trackers are condition-like entries: concentration (note names the
 // spell) and custom effects (note describes them).
@@ -79,21 +108,21 @@ const (
 // shown on hover. Paraphrased from the SRD 5.2 (CC-BY 4.0, Wizards of the
 // Coast).
 var ConditionSummaries = map[string]string{
-	"blinded":          "Can't see; fails checks that need sight. Attacks against it have advantage; its attacks have disadvantage.",
-	"charmed":          "Can't attack or harm the charmer. The charmer has advantage on social checks against it.",
-	"deafened":         "Can't hear; fails checks that need hearing.",
-	"exhaustion":       "Each level: −2 to d20 tests and −5 ft speed. Level 6 is death. A long rest removes one level.",
-	"frightened":       "Disadvantage on checks and attacks while the source is in sight; can't willingly move closer to it.",
-	"grappled":         "Speed 0. Disadvantage on attacks against anyone but the grappler, who can drag it along.",
-	"incapacitated":    "No actions, bonus actions or reactions; can't speak; concentration ends. Disadvantage on initiative.",
-	"invisible":        "Can't be seen. Advantage on initiative and its attacks; attacks against it have disadvantage.",
-	"paralyzed":        "Incapacitated, speed 0, fails Str and Dex saves. Attacks against it have advantage; hits within 5 ft are crits.",
-	"petrified":        "Turned to stone: incapacitated, speed 0, fails Str and Dex saves, resists all damage, immune to poison.",
-	"poisoned":         "Disadvantage on attack rolls and ability checks.",
-	"prone":            "Can only crawl or stand up (half speed). Disadvantage on attacks; attacks within 5 ft have advantage, farther ones disadvantage.",
-	"restrained":       "Speed 0. Disadvantage on attacks and Dex saves; attacks against it have advantage.",
-	"stunned":          "Incapacitated, fails Str and Dex saves. Attacks against it have advantage.",
-	"unconscious":      "Incapacitated and prone, drops what it holds, fails Str and Dex saves. Attacks have advantage; hits within 5 ft are crits.",
+	Blinded:            "Can't see; fails checks that need sight. Attacks against it have advantage; its attacks have disadvantage.",
+	Charmed:            "Can't attack or harm the charmer. The charmer has advantage on social checks against it.",
+	Deafened:           "Can't hear; fails checks that need hearing.",
+	Exhaustion:         "Each level: −2 to d20 tests and −5 ft speed. Level 6 is death. A long rest removes one level.",
+	Frightened:         "Disadvantage on checks and attacks while the source is in sight; can't willingly move closer to it.",
+	Grappled:           "Speed 0. Disadvantage on attacks against anyone but the grappler, who can drag it along.",
+	Incapacitated:      "No actions, bonus actions or reactions; can't speak; concentration ends. Disadvantage on initiative.",
+	Invisible:          "Can't be seen. Advantage on initiative and its attacks; attacks against it have disadvantage.",
+	Paralyzed:          "Incapacitated, speed 0, fails Str and Dex saves. Attacks against it have advantage; hits within 5 ft are crits.",
+	Petrified:          "Turned to stone: incapacitated, speed 0, fails Str and Dex saves, resists all damage, immune to poison.",
+	Poisoned:           "Disadvantage on attack rolls and ability checks.",
+	Prone:              "Can only crawl or stand up (half speed). Disadvantage on attacks; attacks within 5 ft have advantage, farther ones disadvantage.",
+	Restrained:         "Speed 0. Disadvantage on attacks and Dex saves; attacks against it have advantage.",
+	Stunned:            "Incapacitated, fails Str and Dex saves. Attacks against it have advantage.",
+	Unconscious:        "Incapacitated and prone, drops what it holds, fails Str and Dex saves. Attacks have advantage; hits within 5 ft are crits.",
 	TrackConcentration: "Ends on incapacitation, casting another concentration spell, or a failed Con save after damage (DC 10 or half the damage, max 30).",
 }
 
@@ -215,6 +244,9 @@ type Feature struct {
 	NoShield  bool   `json:"no_shield,omitempty"`
 }
 
+// SourceFeat is the Source of a feature that is a feat.
+const SourceFeat = "Feat"
+
 // Uses is how often a feature can be used between rests: Fixed times, the
 // Ability modifier (minimum once), the proficiency bonus, or a class table
 // column (ByLevel, by level in Class). The zero value means unlimited.
@@ -229,6 +261,13 @@ type Uses struct {
 	// short-one (one on a short rest, all on a long rest).
 	Reset string `json:"reset,omitempty" validate:"omitempty,oneof=short long short-one"`
 }
+
+// Uses.Reset values.
+const (
+	ResetShort    = "short"
+	ResetLong     = "long"
+	ResetShortOne = "short-one"
+)
 
 // Limited reports whether the uses are counted at all.
 func (u Uses) Limited() bool { return u.Fixed > 0 || u.Ability != "" || u.Prof || len(u.ByLevel) > 0 }
@@ -294,8 +333,11 @@ type Coins struct {
 	PP int `json:"pp" validate:"min=0"`
 }
 
+// Finesse is the Weapon.Ability that takes the better of Strength and Dexterity.
+const Finesse = "finesse"
+
 // Weapon is an attack on the sheet. Ability is the attack ability, or
-// "finesse" for the better of Strength and Dexterity.
+// Finesse.
 type Weapon struct {
 	Name       string `json:"name"                  validate:"required,max=200"`
 	Ability    string `json:"ability"               validate:"oneof=str dex con int wis cha finesse"`
@@ -344,21 +386,28 @@ type CustomMod struct {
 	When   string `json:"when,omitempty"   validate:"omitempty,oneof=unarmored unarmored-no-shield no-heavy-armor"`
 }
 
+// CustomMod.When values.
+const (
+	WhenUnarmored         = "unarmored"
+	WhenUnarmoredNoShield = "unarmored-no-shield"
+	WhenNoHeavyArmor      = "no-heavy-armor"
+)
+
 // WhenLabels say when a conditional modifier applies.
 var WhenLabels = map[string]string{
-	"unarmored":           "while wearing no armor",
-	"unarmored-no-shield": "while wearing no armor and no shield",
-	"no-heavy-armor":      "while not in heavy armor",
+	WhenUnarmored:         "while wearing no armor",
+	WhenUnarmoredNoShield: "while wearing no armor and no shield",
+	WhenNoHeavyArmor:      "while not in heavy armor",
 }
 
 // Applies reports whether a modifier's condition holds now.
 func (s Sheet) Applies(m CustomMod) bool {
 	switch m.When {
-	case "unarmored":
+	case WhenUnarmored:
 		return s.Armor == nil
-	case "unarmored-no-shield":
+	case WhenUnarmoredNoShield:
 		return s.Armor == nil && !s.Shield
-	case "no-heavy-armor":
+	case WhenNoHeavyArmor:
 		return s.Armor == nil || s.Armor.Type != "heavy"
 	}
 	return true
@@ -374,6 +423,15 @@ const (
 	ModPassive = "passive"
 	ModAttack  = "attack"
 	ModDamage  = "damage"
+	ModSave    = "save"
+	ModSkill   = "skill"
+)
+
+// Explain targets that no modifier can change.
+const (
+	ExplainOffhand     = "offhand"
+	ExplainSpellAttack = "spell.attack"
+	ExplainSpellDC     = "spell.dc"
 )
 
 // IsModTarget reports whether target names a value modifiers can change.
@@ -383,9 +441,9 @@ func IsModTarget(target string) bool {
 	}
 	kind, rest, ok := strings.Cut(target, ".")
 	switch kind {
-	case "save":
+	case ModSave:
 		return slices.Contains(Abilities, rest)
-	case "skill":
+	case ModSkill:
 		return slices.ContainsFunc(Skills, func(sk Skill) bool { return sk.Key == rest })
 	case ModAttack, ModDamage:
 		return ok && rest != ""
@@ -629,7 +687,7 @@ func (s *Sheet) upgrade() {
 		// The old base AC counted only without armor or Unarmored Defense;
 		// 10 was the default, which now becomes 10 + Dexterity.
 		if s.AC != 10 && s.Armor == nil && s.unarmoredDefense() == nil {
-			s.ACBonus = s.AC - 10 - s.Mod("dex")
+			s.ACBonus = s.AC - 10 - s.Mod(Dex)
 		}
 		s.AC = 0
 	}
@@ -717,8 +775,8 @@ func (s Sheet) Initiative() int { return Sum(s.Explain(ModInit)) }
 
 // AttackMod is the ability modifier a weapon uses.
 func (s Sheet) AttackMod(w Weapon) int {
-	if w.Ability == "finesse" {
-		return max(s.Mod("str"), s.Mod("dex"))
+	if w.Ability == Finesse {
+		return max(s.Mod(Str), s.Mod(Dex))
 	}
 	return s.Mod(w.Ability)
 }
@@ -794,8 +852,8 @@ func Signed(n int) string {
 
 // spellAbilities are the spellcasting abilities of the casting classes.
 var spellAbilities = map[string]string{
-	"artificer": "int", "bard": "cha", "cleric": "wis", "druid": "wis", "paladin": "cha",
-	"ranger": "wis", "sorcerer": "cha", "warlock": "cha", "wizard": "int",
+	"artificer": Int, "bard": Cha, "cleric": Wis, "druid": Wis, "paladin": Cha,
+	"ranger": Wis, "sorcerer": Cha, "warlock": Cha, "wizard": Int,
 }
 
 // SpellAbility is the spellcasting ability of the character's first

@@ -46,7 +46,7 @@ func switchFighter() Character {
 		return Feature{Name: name, Source: "Fighter", Level: lvl, Description: desc}
 	}
 	s.Features = []Feature{
-		{Name: "Second Wind", Source: "Fighter", Level: 1, Description: "old wind", Uses: Uses{Fixed: 2, Used: 1, Reset: "short"}},
+		{Name: "Second Wind", Source: "Fighter", Level: 1, Description: "old wind", Uses: Uses{Fixed: 2, Used: 1, Reset: ResetShort}},
 		from("Action Surge", "my surge", 2),
 		from("Old Only", "gone", 2),
 		from("Fighter Subclass", "pick", 3),

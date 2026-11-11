@@ -268,7 +268,7 @@ func combatantDefenses(r sqlc.ListCombatantsRow, conds []sqlc.Condition) dnd5e.D
 }
 
 func petrified(conds []sqlc.Condition) bool {
-	return slices.ContainsFunc(conds, func(c sqlc.Condition) bool { return c.Slug == "petrified" })
+	return slices.ContainsFunc(conds, func(c sqlc.Condition) bool { return c.Slug == dnd5e.Petrified })
 }
 
 // outOfFight reports a combatant whose turn is skipped: a monster or NPC at
@@ -649,7 +649,7 @@ func (a *App) combatantCondition(c *gin.Context, cb sqlc.Combatant, enc sqlc.Enc
 		owner = condOwner{characterID: cb.CharacterID.Int64}
 	}
 	op := dnd5e.CondOp{Op: dnd5e.CondAdd, Slug: slug, Note: note}
-	if slug == "exhaustion" {
+	if slug == dnd5e.Exhaustion {
 		op = dnd5e.CondOp{Op: dnd5e.CondExhaustion, Slug: slug, Delta: 1}
 	}
 	ctx := c.Request.Context()

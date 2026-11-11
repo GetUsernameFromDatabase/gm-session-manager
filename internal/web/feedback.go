@@ -29,9 +29,6 @@ import (
 // Bug reports and ideas are files on the host for the GM to open: one
 // folder per report, with its Markdown file and screenshots.
 
-// kindError marks a report the server wrote itself for a 500.
-const kindError = "error"
-
 // maxSlug caps the title's part of a report's folder name.
 const maxSlug = 40
 
@@ -115,7 +112,7 @@ func (a *App) sendFeedback(c *gin.Context) {
 		return
 	}
 	r := report{form: f, from: a.reporter(c, f.Player), sent: time.Now().UTC(), browser: browserName(c.Request.UserAgent())}
-	if f.Kind == "bug" {
+	if f.Kind == views.FeedbackBug {
 		r.requests = a.reqs.recent(key)
 		r.console, r.consoleOK = parseConsole(f.Console)
 	}
@@ -125,7 +122,7 @@ func (a *App) sendFeedback(c *gin.Context) {
 		return
 	}
 	// Named like the dialog's button: "Send report" / "Send idea".
-	a.render(c, http.StatusOK, views.Toast(map[string]string{"bug": "Report sent.", "idea": "Idea sent."}[f.Kind], false))
+	a.render(c, http.StatusOK, views.Toast(map[string]string{views.FeedbackBug: "Report sent.", views.FeedbackIdea: "Idea sent."}[f.Kind], false))
 }
 
 // saveReport writes r into a new folder (removed again if that fails) and
@@ -163,7 +160,7 @@ func (a *App) reporter(c *gin.Context, player string) string {
 // on file even when nobody says so. The response has already gone out.
 func (a *App) autoReport(c *gin.Context, key string, e reqEntry) {
 	r := report{
-		form:     feedbackForm{Kind: kindError, Title: e.Method + " " + c.Request.URL.Path, Body: e.Error, Page: e.Path},
+		form:     feedbackForm{Kind: views.FeedbackError, Title: e.Method + " " + c.Request.URL.Path, Body: e.Error, Page: e.Path},
 		from:     a.reporter(c, ""),
 		sent:     e.At,
 		browser:  browserName(c.Request.UserAgent()),
@@ -231,7 +228,7 @@ func saveScreenshot(dir, base string, fh *multipart.FileHeader) (name, mime stri
 func (r report) markdown() string {
 	f := r.form
 	var b strings.Builder
-	kind := map[string]string{"bug": "Bug", "idea": "Idea", kindError: "Server error"}[f.Kind]
+	kind := map[string]string{views.FeedbackBug: "Bug", views.FeedbackIdea: "Idea", views.FeedbackError: "Server error"}[f.Kind]
 	fmt.Fprintf(&b, "# %s: %s\n\n| | |\n|---|---|\n", kind, oneLine(f.Title))
 	row := func(k, v string) {
 		if v != "" {
@@ -257,13 +254,13 @@ func (r report) markdown() string {
 		}
 	}
 	switch f.Kind {
-	case "bug":
+	case views.FeedbackBug:
 		section("What happened", f.Body)
 		section("Steps to reproduce", f.Steps)
 		section("Expected", f.Expected)
 		r.requestTables(&b)
 		r.consoleTables(&b)
-	case kindError:
+	case views.FeedbackError:
 		section("Error", f.Body)
 		r.requestTables(&b)
 	default:
@@ -454,7 +451,7 @@ var appBuild = sync.OnceValue(func() string {
 		case "vcs.time":
 			at = ", " + strings.SplitN(s.Value, "T", 2)[0]
 		case "vcs.modified":
-			if s.Value == "true" {
+			if s.Value == strTrue {
 				dirty = " (modified)"
 			}
 		}

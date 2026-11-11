@@ -470,8 +470,8 @@ func (a *App) blockDoc(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"doc": json.RawMessage(b.DocJson), "docVersion": b.DocVersion, "steps": steps.Steps,
-		"clientIDs": steps.ClientIDs, "editable": perm.CanEditBlock(w.viewer, pb),
+		keyDoc: json.RawMessage(b.DocJson), keyDocVersion: b.DocVersion, keySteps: steps.Steps,
+		keyClientIDs: steps.ClientIDs, keyEditable: perm.CanEditBlock(w.viewer, pb),
 	})
 }
 
@@ -514,7 +514,7 @@ func (a *App) submitSteps(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCollabBody)
 	var body submitBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{keyError: err.Error()})
 		return
 	}
 	ctx := c.Request.Context()
@@ -559,7 +559,7 @@ func (a *App) submitSteps(c *gin.Context) {
 		ids[i] = body.ClientID
 	}
 	a.broadcastSteps(ctx, b, stepsPayload{Type: "steps", Block: b.ID, Version: body.Version, Steps: body.Steps, ClientIDs: ids})
-	c.JSON(http.StatusOK, gin.H{"version": body.Version + int64(len(body.Steps))})
+	c.JSON(http.StatusOK, gin.H{keyVersion: body.Version + int64(len(body.Steps))})
 }
 
 // broadcastSteps sends steps to subscribed clients that may still read the
@@ -653,8 +653,8 @@ func (a *App) uploadAttachment(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"id": att.ID, "url": fmt.Sprintf("/attachments/%d", att.ID), "name": att.Name, "mime": att.Mime,
-		"image": slices.Contains(inlineTypes, att.Mime),
+		keyID: att.ID, keyURL: fmt.Sprintf("/attachments/%d", att.ID), keyName: att.Name, keyMime: att.Mime,
+		keyImage: slices.Contains(inlineTypes, att.Mime),
 	})
 }
 
@@ -664,11 +664,11 @@ func (a *App) receiveUpload(c *gin.Context, campaignID int64, blockID sql.NullIn
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAttachmentBytes+1<<20)
 	fh, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file missing or larger than 20 MB"})
+		c.JSON(http.StatusBadRequest, gin.H{keyError: "file missing or larger than 20 MB"})
 		return sqlc.Attachment{}, false
 	}
 	if fh.Size > maxAttachmentBytes {
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "files are limited to 20 MB"})
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{keyError: "files are limited to 20 MB"})
 		return sqlc.Attachment{}, false
 	}
 	att, err := a.storeUpload(c.Request.Context(), campaignID, blockID, fh)
@@ -822,7 +822,7 @@ func (a *App) CleanAttachments(ctx context.Context) error {
 }
 
 // linkKinds maps the prefixes that narrow [[ links to the kind they pick.
-var linkKinds = map[string]string{"note": "note", "npc": "npc", "img": "image", "image": "image"}
+var linkKinds = map[string]string{"note": string(enum.LinkNote), "npc": string(enum.EntityNPC), "img": string(enum.LinkImage), "image": string(enum.LinkImage)}
 
 // linkItems lists notes, entities and (for the GM) images the viewer may
 // see whose title contains q, for [[ links and the quick switcher. A
@@ -842,8 +842,8 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 		return nil, err
 	}
 	for _, n := range notes {
-		if want("note", n.Title) {
-			items = append(items, views.LinkItem{ID: fmt.Sprintf("note:%d", n.ID), Label: n.Title, Kind: "note", URL: fmt.Sprintf("/notes/%d", n.ID)})
+		if note := string(enum.LinkNote); want(note, n.Title) {
+			items = append(items, views.LinkItem{ID: fmt.Sprintf("%s:%d", note, n.ID), Label: n.Title, Kind: note, URL: fmt.Sprintf("/notes/%d", n.ID)})
 		}
 	}
 	ents, err := a.entityList(ctx, w.viewer, campaignID)
@@ -851,8 +851,8 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 		return nil, err
 	}
 	for _, e := range ents.Entities {
-		if want("npc", e.Name) {
-			items = append(items, views.LinkItem{ID: fmt.Sprintf("entity:%d", e.ID), Label: e.Name, Kind: "npc", URL: fmt.Sprintf("/entities/%d", e.ID)})
+		if npc := string(enum.EntityNPC); want(npc, e.Name) {
+			items = append(items, views.LinkItem{ID: fmt.Sprintf("entity:%d", e.ID), Label: e.Name, Kind: npc, URL: fmt.Sprintf("/entities/%d", e.ID)})
 		}
 	}
 	if image := string(enum.LinkImage); w.isGM() && (kind == "" || kind == image) {

@@ -14,6 +14,18 @@ type Part struct {
 	Off   bool
 }
 
+// Fixed Part labels.
+const (
+	labelProficiency = "Proficiency"
+	labelBase        = "Base"
+	labelBaseSpeed   = "Base speed"
+	labelUnarmored   = "Unarmored"
+	labelShield      = "Shield"
+	labelACBonus     = "AC bonus (set by hand)"
+	labelAlert       = "Alert (proficiency bonus)"
+	labelExpertise   = "Expertise (twice proficiency)"
+)
+
 // Sum adds up the parts that count.
 func Sum(parts []Part) int {
 	n := 0
@@ -38,43 +50,43 @@ func (s Sheet) Explain(target string) []Part {
 	case target == ModSpeed:
 		return append(s.speedBase(), s.modParts(ModSpeed)...)
 	case target == ModInit:
-		parts := []Part{s.abilityPart("dex")}
+		parts := []Part{s.abilityPart(Dex)}
 		// The 2024 Alert feat's bonus grows with level, which a fixed modifier
 		// cannot; 2014 Alert's flat +5 is a modifier like any other.
 		if slices.ContainsFunc(s.Features, func(f Feature) bool {
 			return strings.EqualFold(f.Name, "Alert") && strings.Contains(strings.ToLower(f.Description), "add your proficiency bonus")
 		}) {
-			parts = append(parts, Part{Label: "Alert (proficiency bonus)", Value: s.ProficiencyBonus()})
+			parts = append(parts, Part{Label: labelAlert, Value: s.ProficiencyBonus()})
 		}
 		return append(parts, s.modParts(ModInit)...)
 	case target == ModPassive:
-		return append(append([]Part{{Label: "Base", Value: 10}}, s.skillParts(skillByKey("perception"))...), s.modParts(ModPassive)...)
-	case kind == "save":
+		return append(append([]Part{{Label: labelBase, Value: 10}}, s.skillParts(skillByKey("perception"))...), s.modParts(ModPassive)...)
+	case kind == ModSave:
 		parts := []Part{s.abilityPart(rest)}
 		if slices.Contains(s.SaveProfs, rest) {
-			parts = append(parts, Part{Label: "Proficiency", Value: s.ProficiencyBonus()})
+			parts = append(parts, Part{Label: labelProficiency, Value: s.ProficiencyBonus()})
 		}
 		return append(parts, s.modParts(target)...)
-	case kind == "skill":
+	case kind == ModSkill:
 		return s.skillParts(skillByKey(rest))
-	case kind == ModAttack, kind == ModDamage, kind == "offhand":
+	case kind == ModAttack, kind == ModDamage, kind == ExplainOffhand:
 		if i := slices.IndexFunc(s.Weapons, func(w Weapon) bool { return w.Name == rest }); i >= 0 {
 			switch kind {
 			case ModDamage:
 				return s.damageParts(s.Weapons[i])
-			case "offhand":
+			case ExplainOffhand:
 				return s.offHandParts(s.Weapons[i])
 			}
 			return s.attackParts(s.Weapons[i])
 		}
-	case target == "spell.attack", target == "spell.dc":
+	case target == ExplainSpellAttack, target == ExplainSpellDC:
 		ab := s.SpellAbility()
 		if ab == "" {
 			return nil
 		}
-		parts := []Part{s.abilityPart(ab), {Label: "Proficiency", Value: s.ProficiencyBonus()}}
-		if rest == "dc" {
-			parts = append([]Part{{Label: "Base", Value: 8}}, parts...)
+		parts := []Part{s.abilityPart(ab), {Label: labelProficiency, Value: s.ProficiencyBonus()}}
+		if target == ExplainSpellDC {
+			parts = append([]Part{{Label: labelBase, Value: 8}}, parts...)
 		}
 		return parts
 	}
@@ -114,7 +126,7 @@ func (s Sheet) modParts(target string) []Part {
 // defense, else 10 + Dexterity; plus a shield and the bonus set by hand.
 func (s Sheet) acBase() []Part {
 	var parts []Part
-	dex := s.Mod("dex")
+	dex := s.Mod(Dex)
 	if a := s.Armor; a != nil {
 		parts = append(parts, Part{Label: a.Name, Value: a.Base})
 		if a.AddDex {
@@ -125,15 +137,15 @@ func (s Sheet) acBase() []Part {
 			parts = append(parts, Part{Label: label, Value: dex})
 		}
 	} else if f := s.unarmoredDefense(); f != nil {
-		parts = append(parts, Part{Label: f.Name, Value: 10}, s.abilityPart("dex"), s.abilityPart(f.Unarmored))
+		parts = append(parts, Part{Label: f.Name, Value: 10}, s.abilityPart(Dex), s.abilityPart(f.Unarmored))
 	} else {
-		parts = append(parts, Part{Label: "Unarmored", Value: 10}, s.abilityPart("dex"))
+		parts = append(parts, Part{Label: labelUnarmored, Value: 10}, s.abilityPart(Dex))
 	}
 	if s.Shield {
-		parts = append(parts, Part{Label: "Shield", Value: 2})
+		parts = append(parts, Part{Label: labelShield, Value: 2})
 	}
 	if s.ACBonus != 0 {
-		parts = append(parts, Part{Label: "AC bonus (set by hand)", Value: s.ACBonus})
+		parts = append(parts, Part{Label: labelACBonus, Value: s.ACBonus})
 	}
 	return parts
 }
@@ -168,7 +180,7 @@ func (s Sheet) unarmoredDefense() *Feature {
 // ArmorTooHeavy reports whether the worn armor's Strength requirement is
 // not met, which costs 10 feet of speed.
 func (s Sheet) ArmorTooHeavy() bool {
-	return s.Armor != nil && s.Armor.StrReq > 0 && s.Score("str") < s.Armor.StrReq
+	return s.Armor != nil && s.Armor.StrReq > 0 && s.Score(Str) < s.Armor.StrReq
 }
 
 // StealthDisadvantage reports whether the worn armor hampers Stealth.
@@ -189,7 +201,7 @@ func (s Sheet) ArmorUntrained() []string {
 }
 
 func (s Sheet) speedBase() []Part {
-	parts := []Part{{Label: "Base speed", Value: s.Speed}}
+	parts := []Part{{Label: labelBaseSpeed, Value: s.Speed}}
 	if s.ArmorTooHeavy() {
 		parts = append(parts, Part{Label: fmt.Sprintf("%s needs Strength %d", s.Armor.Name, s.Armor.StrReq), Value: -10})
 	}
@@ -203,9 +215,9 @@ func (s Sheet) skillParts(sk Skill) []Part {
 	parts := []Part{s.abilityPart(sk.Ability)}
 	switch {
 	case slices.Contains(s.Expertise, sk.Key):
-		parts = append(parts, Part{Label: "Expertise (twice proficiency)", Value: 2 * s.ProficiencyBonus()})
+		parts = append(parts, Part{Label: labelExpertise, Value: 2 * s.ProficiencyBonus()})
 	case slices.Contains(s.SkillProfs, sk.Key):
-		parts = append(parts, Part{Label: s.ProfLabel("Proficiency", sk.Key), Value: s.ProficiencyBonus()})
+		parts = append(parts, Part{Label: s.ProfLabel(labelProficiency, sk.Key), Value: s.ProficiencyBonus()})
 	}
 	return append(parts, s.modParts("skill."+sk.Key)...)
 }
@@ -232,7 +244,7 @@ func (s Sheet) OtherProfLabels() []string {
 // weaponAbilityPart is the ability modifier a weapon attacks and damages with.
 func (s Sheet) weaponAbilityPart(w Weapon) Part {
 	label := AbilityNames[w.Ability] + " modifier"
-	if w.Ability == "finesse" {
+	if w.Ability == Finesse {
 		label = "Finesse: better of Strength and Dexterity"
 	}
 	return Part{Label: label, Value: s.AttackMod(w)}
@@ -241,7 +253,7 @@ func (s Sheet) weaponAbilityPart(w Weapon) Part {
 func (s Sheet) attackParts(w Weapon) []Part {
 	parts := []Part{s.weaponAbilityPart(w)}
 	if w.Proficient {
-		parts = append(parts, Part{Label: "Proficiency", Value: s.ProficiencyBonus()})
+		parts = append(parts, Part{Label: labelProficiency, Value: s.ProficiencyBonus()})
 	}
 	return append(append(parts, s.modParts(ModAttack)...), s.modParts(ModAttack+"."+w.Name)...)
 }

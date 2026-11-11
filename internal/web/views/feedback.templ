@@ -14,6 +14,14 @@ import (
 // PathFeedback takes bug reports and ideas; they are saved as files on the host.
 const PathFeedback = "/feedback"
 
+// Report kinds: a person picks a bug or an idea; the server writes error
+// reports itself for a 500.
+const (
+	FeedbackBug   = "bug"
+	FeedbackIdea  = "idea"
+	FeedbackError = "error"
+)
+
 // MaxScreenshots is how many pictures one report may carry.
 const MaxScreenshots = 3
 
@@ -66,9 +74,9 @@ templ feedbackForm() {
 		<input type="hidden" name="dark"/>
 		<input type="hidden" name="player"/>
 		<input type="hidden" name="console"/>
-		@radiogroup.RadioGroup(radiogroup.Props{Name: "kind", DefaultValue: "bug", Class: "grid-cols-2 gap-3", Attributes: templ.Attributes{"aria-label": "Kind"}}) {
-			@feedbackKind("bug", "Something broke", "It did the wrong thing", icon.Bug)
-			@feedbackKind("idea", "I have an idea", "It could do more", icon.Lightbulb)
+		@radiogroup.RadioGroup(radiogroup.Props{Name: "kind", DefaultValue: FeedbackBug, Class: "grid-cols-2 gap-3", Attributes: templ.Attributes{"aria-label": "Kind"}}) {
+			@feedbackKind(FeedbackBug, "Something broke", "It did the wrong thing", icon.Bug)
+			@feedbackKind(FeedbackIdea, "I have an idea", "It could do more", icon.Lightbulb)
 		}
 		@field.Group(field.GroupProps{Class: "gap-4"}) {
 			@feedbackField("feedback-title-input", "Title") {

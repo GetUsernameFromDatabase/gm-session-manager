@@ -169,18 +169,18 @@ var multiclassPrereqs = map[string]struct {
 	abilities []string
 	anyOf     bool
 }{
-	"barbarian": {[]string{"str"}, false},
-	"bard":      {[]string{"cha"}, false},
-	"cleric":    {[]string{"wis"}, false},
-	"druid":     {[]string{"wis"}, false},
-	"fighter":   {[]string{"str", "dex"}, true},
-	"monk":      {[]string{"dex", "wis"}, false},
-	"paladin":   {[]string{"str", "cha"}, false},
-	"ranger":    {[]string{"dex", "wis"}, false},
-	"rogue":     {[]string{"dex"}, false},
-	"sorcerer":  {[]string{"cha"}, false},
-	"warlock":   {[]string{"cha"}, false},
-	"wizard":    {[]string{"int"}, false},
+	"barbarian": {[]string{Str}, false},
+	"bard":      {[]string{Cha}, false},
+	"cleric":    {[]string{Wis}, false},
+	"druid":     {[]string{Wis}, false},
+	"fighter":   {[]string{Str, Dex}, true},
+	"monk":      {[]string{Dex, Wis}, false},
+	"paladin":   {[]string{Str, Cha}, false},
+	"ranger":    {[]string{Dex, Wis}, false},
+	"rogue":     {[]string{Dex}, false},
+	"sorcerer":  {[]string{Cha}, false},
+	"warlock":   {[]string{Cha}, false},
+	"wizard":    {[]string{Int}, false},
 }
 
 // multiclassWarning explains an unmet multiclassing prerequisite of the
@@ -379,7 +379,7 @@ func applyASI(s *Sheet, ch LevelUpChoice) error {
 		return errors.New("choose a feat or an ability score increase, not both")
 	case ch.Feat != "":
 		s.Feats = append(s.Feats, ch.Feat)
-		s.Features = append(s.Features, Feature{Name: ch.Feat, Source: "Feat", Description: ch.FeatDesc})
+		s.Features = append(s.Features, Feature{Name: ch.Feat, Source: SourceFeat, Description: ch.FeatDesc})
 	case len(ch.ASI) == 1:
 		return raise(s, ch.ASI[0], 2)
 	case len(ch.ASI) == 2 && ch.ASI[0] != ch.ASI[1]:
@@ -416,7 +416,7 @@ func hpGain(s Sheet, hitDie, roll int) int {
 	case roll > 0:
 		base = roll
 	}
-	return max(base+s.Mod("con"), 1)
+	return max(base+s.Mod(Con), 1)
 }
 
 // AddSpell adds sp unless the sheet has it already.

@@ -122,7 +122,20 @@ func hpCommand(c *gin.Context) (dnd5e.Command, error) {
 // builderArgs are the command builder's fields, in the order the commands
 // take them (see views.CommandBuilder). from and fromnote name the thing an
 // edit changes.
-var builderArgs = []string{"from", "fromnote", "subject", "ability", "dice", "dtype", "prof", "n", "text"}
+var builderArgs = []string{argFrom, argFromNote, argSubject, argAbility, argDice, argDamageType, argProf, argN, argText}
+
+// Builder form fields passed to the command as arguments, in order.
+const (
+	argFrom       = "from"
+	argFromNote   = "fromnote"
+	argSubject    = "subject"
+	argAbility    = "ability"
+	argDice       = "dice"
+	argDamageType = "dtype"
+	argProf       = "prof"
+	argN          = "n"
+	argText       = "text"
+)
 
 // parseCommand reads a command from the builder (a prefix plus raw
 // arguments, so names and free text need no quoting) or the other forms.
@@ -144,14 +157,14 @@ func parseCommand(c *gin.Context) (dnd5e.Command, error) {
 	for _, f := range builderArgs {
 		v, ok := c.GetPostForm(f)
 		// Free text stays as typed; fromnote must match a stored note exactly.
-		if f != "text" && f != "fromnote" {
+		if f != argText && f != argFromNote {
 			v = strings.TrimSpace(v)
 		}
-		if f == "n" && v != "" {
+		if f == argN && v != "" {
 			v = c.PostForm("sign") + v
 		}
 		// An empty text still counts: it clears a backstory.
-		if ok && (v != "" || f == "text") {
+		if ok && (v != "" || f == argText) {
 			raw = append(raw, v)
 		}
 	}
@@ -178,7 +191,7 @@ func (a *App) commandBuilder(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	a.render(c, http.StatusOK, views.CommandBuilder(s, c.Query("verb"), c.Query("op"), c.Query("subject"), x))
+	a.render(c, http.StatusOK, views.CommandBuilder(s, c.Query("verb"), c.Query("op"), c.Query(argSubject), x))
 }
 
 // characterCommand applies one command in a transaction and pushes the

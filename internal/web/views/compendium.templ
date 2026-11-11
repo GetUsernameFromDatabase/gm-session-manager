@@ -124,7 +124,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 				New homebrew
 			}
 		</div>
-		@tabs.Tabs(tabs.Props{ID: "compendium-tabs", DefaultValue: v.openTab(), Attributes: templ.Attributes{"data-fit": true, "data-url-param": "tab"}}) {
+		@tabs.Tabs(tabs.Props{ID: "compendium-tabs", DefaultValue: v.openTab(), Attributes: templ.Attributes{"data-fit": true, "data-url-param": TabKey}}) {
 			@tabs.List(tabs.ListProps{Class: "mb-4 w-fit"}) {
 				@tabs.Trigger(tabs.TriggerProps{Value: CompendiumTabBrowse}) {
 					@icon.Search()
@@ -194,10 +194,10 @@ templ compendiumSearchForm(v CompendiumView) {
 			@inputgroup.Addon() {
 				@icon.Search()
 			}
-			@inputgroup.Input(inputgroup.InputProps{ID: "compendium-q", Name: "q", Type: "search", Value: v.Query, Placeholder: "Search spells, monsters, items, rules…", Attributes: templ.Attributes{"autocomplete": "off", "aria-label": "Search the compendium"}})
+			@inputgroup.Input(inputgroup.InputProps{ID: "compendium-q", Name: QueryKey, Type: "search", Value: v.Query, Placeholder: "Search spells, monsters, items, rules…", Attributes: templ.Attributes{"autocomplete": "off", "aria-label": "Search the compendium"}})
 		}
-		<input type="hidden" name="kind" value={ v.Kind }/>
-		<input type="hidden" name="habitat" value={ v.Habitat }/>
+		<input type="hidden" name={ KindKey } value={ v.Kind }/>
+		<input type="hidden" name={ HabitatKey } value={ v.Habitat }/>
 		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{
 			"data-href": CompendiumPath(ctx, "/random"),
 			"onclick":   templ.JSUnsafeFuncCall("window.open(this.dataset.href + '?' + new URLSearchParams(new FormData(this.form)), '_blank')"), "title": "Random entry of the chosen kind and habitat (new tab)",
@@ -954,7 +954,7 @@ func entryHref(ctx context.Context, id int64) string {
 func (v CompendiumView) kindBase() url.Values {
 	q := url.Values{}
 	if v.Query != "" {
-		q.Set("q", v.Query)
+		q.Set(QueryKey, v.Query)
 	}
 	if v.Shared != "" {
 		q.Set(SharedKey, v.Shared)
@@ -976,9 +976,9 @@ func CompendiumRest(path string) string {
 
 // habitatHref toggles habitat in the monster filter, in Habitats order.
 func habitatHref(query, habitat, current string, campaign int64) string {
-	q := url.Values{"kind": {string(enum.KindMonster)}}
+	q := url.Values{KindKey: {string(enum.KindMonster)}}
 	if query != "" {
-		q.Set("q", query)
+		q.Set(QueryKey, query)
 	}
 	set := kindSet(current)
 	var next []string
@@ -988,7 +988,7 @@ func habitatHref(query, habitat, current string, campaign int64) string {
 		}
 	}
 	if len(next) > 0 {
-		q.Set("habitat", strings.Join(next, ","))
+		q.Set(HabitatKey, strings.Join(next, ","))
 	}
 	return CompendiumURL(q, campaign)
 }
@@ -1004,7 +1004,7 @@ func kindHref(q url.Values, kind enum.CompendiumKind, current string, campaign i
 		}
 	}
 	if len(next) > 0 {
-		q.Set("kind", strings.Join(next, ","))
+		q.Set(KindKey, strings.Join(next, ","))
 	}
 	return CompendiumURL(q, campaign)
 }
@@ -1884,7 +1884,7 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 					for _, a := range []struct {
 						key string
 						n   int
-					}{{"str", v.Input.Str}, {"dex", v.Input.Dex}, {"con", v.Input.Con}, {"int", v.Input.Int}, {"wis", v.Input.Wis}, {"cha", v.Input.Cha}} {
+					}{{dnd5e.Str, v.Input.Str}, {dnd5e.Dex, v.Input.Dex}, {dnd5e.Con, v.Input.Con}, {dnd5e.Int, v.Input.Int}, {dnd5e.Wis, v.Input.Wis}, {dnd5e.Cha, v.Input.Cha}} {
 						@label.Label(label.Props{Class: "flex-col items-stretch gap-1 text-center text-xs"}) {
 							{ strings.ToUpper(a.key) }
 							@input.Input(input.Props{Name: a.key, Value: fmt.Sprint(a.n), Class: "px-1 text-center", Attributes: templ.Attributes{"type": "number", "min": "0", "max": "30"}})

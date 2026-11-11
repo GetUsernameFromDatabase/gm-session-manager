@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 )
 
@@ -52,7 +53,7 @@ type ftClassFeature struct {
 
 // ftCasters maps casterProgression to our caster types. Only subclasses
 // (Eldritch Knight, Arcane Trickster) are third casters.
-var ftCasters = map[string]string{"full": "full", "1/2": "half", "1/3": "third", "artificer": "half", "pact": "pact"}
+var ftCasters = map[string]string{"full": dnd5e.CasterFull, "1/2": dnd5e.CasterHalf, "1/3": dnd5e.CasterThird, "artificer": dnd5e.CasterHalf, "pact": dnd5e.CasterPact}
 
 // ftClassRefs resolves class and subclass feature references of one file.
 type ftClassRefs struct {
@@ -107,17 +108,17 @@ func (x ftClassRefs) expand(v any, depth int) any {
 	case map[string]any:
 		var ref string
 		var subclass bool
-		switch t["type"] {
-		case "refClassFeature":
-			ref, _ = t["classFeature"].(string)
-		case "refSubclassFeature":
-			ref, _ = t["subclassFeature"].(string)
+		switch t[keyType] {
+		case keyRefClassFeature:
+			ref, _ = t[keyClassFeature].(string)
+		case keyRefSubclassFeature:
+			ref, _ = t[keySubclassFeature].(string)
 			subclass = true
-		case "refOptionalfeature":
-			ref, _ = t["optionalfeature"].(string)
+		case keyRefOptFeature:
+			ref, _ = t[keyOptionalFeature].(string)
 		default:
 			for k, e := range t {
-				if k != "type" {
+				if k != keyType {
 					t[k] = x.expand(e, depth)
 				}
 			}
@@ -125,13 +126,13 @@ func (x ftClassRefs) expand(v any, depth int) any {
 		}
 		key, _ := ftFeatureKey(ref, subclass)
 		f, ok := x.byKey[key]
-		if t["type"] == "refOptionalfeature" || !ok || depth > 3 {
+		if t[keyType] == keyRefOptFeature || !ok || depth > 3 {
 			return ftCode(ref)
 		}
 		var entries any
 		b, _ := json.Marshal(f.Entries)
 		_ = json.Unmarshal(b, &entries)
-		return map[string]any{"type": "entries", "name": f.Name, "entries": x.expand(entries, depth+1)}
+		return map[string]any{keyType: keyEntries, keyName: f.Name, keyEntries: x.expand(entries, depth+1)}
 	}
 	return v
 }
@@ -175,13 +176,13 @@ func (p *ftBook) classes() error {
 
 func (p *ftBook) classFile(file string) error {
 	x := ftClassRefs{byKey: map[string]ftClassFeature{}}
-	for _, list := range []string{"classFeature", "subclassFeature"} {
+	for _, list := range []string{keyClassFeature, keySubclassFeature} {
 		if err := each(p, file, list, func(f ftClassFeature) { x.byKey[f.key()] = f }); err != nil {
 			return err
 		}
 	}
 	// The file keeps other books' classes as parents of this book's subclasses.
-	if err := each(p, file, "class", func(c ftClass) {
+	if err := each(p, file, keyClass, func(c ftClass) {
 		if !strings.EqualFold(c.Source, p.id) {
 			return
 		}
@@ -202,7 +203,7 @@ func (p *ftBook) classFile(file string) error {
 			refs = append(refs, ref)
 		}
 		d := ClassData{
-			HitDie: c.HD.Faces, Caster: cmp.Or(ftCasters[c.CasterProgression], "none"), Saves: c.Proficiency,
+			HitDie: c.HD.Faces, Caster: cmp.Or(ftCasters[c.CasterProgression], dnd5e.CasterNone), Saves: c.Proficiency,
 			Features: x.features(refs, false, gains), Table: ftClassTable(c.TableGroups),
 		}
 		p.add(enum.KindClass, c.Name, d, featuresSearchText(d.Features))
@@ -212,19 +213,19 @@ func (p *ftBook) classFile(file string) error {
 	// Some books ship a subclass twice, for the 2014 and the 2024 class; the 2024 copy wins.
 	twin := func(s ftSubclass) string { return strings.ToLower(s.Name + "|" + s.ShortName + "|" + s.Source) }
 	has2024 := map[string]bool{}
-	if err := each(p, file, "subclass", func(s ftSubclass) {
+	if err := each(p, file, keySubclass, func(s ftSubclass) {
 		if strings.EqualFold(s.ClassSource, "XPHB") {
 			has2024[twin(s)] = true
 		}
 	}); err != nil {
 		return err
 	}
-	return each(p, file, "subclass", func(s ftSubclass) {
+	return each(p, file, keySubclass, func(s ftSubclass) {
 		if !strings.EqualFold(s.Source, p.id) || (!strings.EqualFold(s.ClassSource, "XPHB") && has2024[twin(s)]) {
 			return
 		}
 		d := ClassData{
-			Caster: cmp.Or(ftCasters[s.CasterProgression], "none"), SubclassOf: Slugify(s.ClassName),
+			Caster: cmp.Or(ftCasters[s.CasterProgression], dnd5e.CasterNone), SubclassOf: Slugify(s.ClassName),
 			Features: x.features(s.SubclassFeatures, true, nil), Table: ftClassTable(s.TableGroups),
 		}
 		p.add(enum.KindSubclass, s.Name, d, featuresSearchText(d.Features))
@@ -287,11 +288,11 @@ func ftClassCell(raw json.RawMessage) string {
 		val = "+" + val
 	}
 	switch o.Type {
-	case "bonus":
+	case keyBonus:
 		return val
-	case "bonusSpeed":
+	case keyBonusSpeed:
 		return val + " ft."
-	case "dice":
+	case keyDice:
 		var dice []string
 		for _, d := range o.ToRoll {
 			dice = append(dice, strconv.Itoa(d.Number)+"d"+strconv.Itoa(d.Faces))

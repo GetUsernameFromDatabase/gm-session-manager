@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"gm-session-manager/internal/enum"
 )
 
 // wikiLinkPattern is a [[kind:id|label]] link in plain text (NPC fields),
@@ -44,7 +46,7 @@ func (l WikiLink) URL() string {
 	if l.Kind == LinkCompendium {
 		return ""
 	}
-	return map[string]string{"note": "/notes/", "entity": "/entities/", "image": "/images/"}[l.Kind] + strconv.FormatInt(l.ID, 10)
+	return map[string]string{string(enum.LinkNote): "/notes/", string(enum.LinkEntity): "/entities/", string(enum.LinkImage): "/images/"}[l.Kind] + strconv.FormatInt(l.ID, 10)
 }
 
 // WikiPart is a run of plain text, or one link.

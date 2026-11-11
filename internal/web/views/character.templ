@@ -64,7 +64,7 @@ func (s SheetView) condition(slug string) (sqlc.Condition, bool) {
 // defenses are the sheet's, resisting all damage while Petrified.
 func (s SheetView) defenses() dnd5e.Defenses {
 	d := s.C.Sheet.Defenses()
-	_, d.ResistAll = s.condition("petrified")
+	_, d.ResistAll = s.condition(dnd5e.Petrified)
 	return d
 }
 
@@ -165,7 +165,7 @@ templ CharacterSheet(s SheetView) {
 				</div>
 			}
 		</div>
-		if s.CanSheet && s.C.Sheet.Level() == 0 && !s.C.Sheet.SetUp("review") {
+		if s.CanSheet && s.C.Sheet.Level() == 0 && !s.C.Sheet.SetUp(StepReview) {
 			<p class="rounded-lg border border-primary/50 bg-primary/5 p-3 text-sm">
 				New character? Choose class, species, scores, background and equipment one step at a time:
 				<a class="font-medium underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d/create", s.ID)) }>finish setting up</a>.
@@ -289,7 +289,7 @@ templ vitalsStrip(s SheetView) {
 					@modWarn(s, "ac", dnd5e.ModAC)
 				}
 				@stat(s, "Init", dnd5e.Signed(s.C.Sheet.Initiative()), "", edit{"mods", "mod-add", dnd5e.ModInit}) {
-					@modWarn(s, "init", dnd5e.ModInit, "dex")
+					@modWarn(s, "init", dnd5e.ModInit, dnd5e.Dex)
 				}
 				@stat(s, "Speed", fmt.Sprint(s.C.Sheet.WalkSpeed()), "", edit{"details", "set-speed", ""}) {
 					@modWarn(s, "speed", dnd5e.ModSpeed)
@@ -347,7 +347,7 @@ templ statsCard(s SheetView) {
 			<dl class="grid grid-cols-3 gap-x-6 gap-y-2 text-sm lg:grid-cols-6">
 				@stat(s, "Prof", dnd5e.Signed(s.C.Sheet.ProficiencyBonus()), "", edit{})
 				@stat(s, "Passive Perception", fmt.Sprint(s.C.Sheet.PassivePerception()), "", edit{"mods", "mod-add", dnd5e.ModPassive}) {
-					@modWarn(s, "passive", dnd5e.ModPassive, "skill.perception", "wis")
+					@modWarn(s, "passive", dnd5e.ModPassive, "skill.perception", dnd5e.Wis)
 				}
 				@stat(s, "Hit dice", hitDice(s.C.Sheet), "hd", edit{"rest", "hitdie-use", ""})
 				@stat(s, "Size", cmp.Or(s.C.Sheet.Size, "—"), "", edit{"details", "set-size", ""})
@@ -499,7 +499,7 @@ templ breakdown(sh dnd5e.Sheet, target string) {
 }
 
 // plainTotals are the breakdown targets that are values, not bonuses.
-var plainTotals = []string{dnd5e.ModAC, dnd5e.ModSpeed, dnd5e.ModPassive, "spell.dc"}
+var plainTotals = []string{dnd5e.ModAC, dnd5e.ModSpeed, dnd5e.ModPassive, dnd5e.ExplainSpellDC}
 
 // armorCard is the armor worn and what it makes of AC, then the armor in
 // the inventory to change into.
@@ -514,7 +514,7 @@ templ armorCard(s SheetView) {
 			}
 			<ul class="divide-y text-sm">
 				if sh.Armor != nil {
-					@gearRow(s, sh.Armor.Name, sh.Armor.Type+" · "+dnd5e.ArmorEffect(*sh.Armor, sh.Mod("dex")), "armor off", "Take off", true)
+					@gearRow(s, sh.Armor.Name, sh.Armor.Type+" · "+dnd5e.ArmorEffect(*sh.Armor, sh.Mod(dnd5e.Dex)), "armor off", "Take off", true)
 				}
 				if sh.Shield {
 					@gearRow(s, "Shield", "+2 AC", "shield off", "Put down", true)
@@ -523,7 +523,7 @@ templ armorCard(s SheetView) {
 					if it.Shield {
 						@gearRow(s, it.Name, "+2 AC", fmt.Sprintf("armor wear %q", it.Name), "Wear", false)
 					} else {
-						@gearRow(s, it.Name, it.Armor.Type+" · "+dnd5e.ArmorEffect(*it.Armor, sh.Mod("dex")), fmt.Sprintf("armor wear %q", it.Name), "Wear", false)
+						@gearRow(s, it.Name, it.Armor.Type+" · "+dnd5e.ArmorEffect(*it.Armor, sh.Mod(dnd5e.Dex)), fmt.Sprintf("armor wear %q", it.Name), "Wear", false)
 					}
 				}
 			</ul>
@@ -658,7 +658,7 @@ templ cardTitle(s SheetView, title, verb, op string) {
 templ conditionsCard(s SheetView) {
 	<div id="conditions" class="group/conds flex flex-wrap items-center gap-1.5" data-conds data-keep-open>
 		for _, slug := range dnd5e.Conditions {
-			if slug == exhaustion {
+			if slug == dnd5e.Exhaustion {
 				@exhaustionChip(s)
 			} else {
 				@conditionChip(s, slug)
@@ -715,7 +715,7 @@ templ conditionChip(s SheetView, slug string) {
 }
 
 templ exhaustionChip(s SheetView) {
-	{{ c, on := s.condition(exhaustion) }}
+	{{ c, on := s.condition(dnd5e.Exhaustion) }}
 	@tooltip.Tooltip() {
 		<span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground data-on:border-primary data-on:bg-primary data-on:text-primary-foreground max-sm:not-data-on:not-group-data-open/conds:hidden" data-on?={ on } { tooltip.Trigger(ctx)... }>
 			if s.CanConditions {
@@ -733,7 +733,7 @@ templ exhaustionChip(s SheetView) {
 				}
 			}
 		</span>
-		@conditionTip(exhaustion)
+		@conditionTip(dnd5e.Exhaustion)
 	}
 }
 
@@ -1175,10 +1175,10 @@ templ featuresCard(s SheetView) {
 
 // actionKinds are what an action takes, in turn order.
 var actionKinds = []struct{ key, title, tip string }{
-	{"action", "Action", "One per turn: attack, cast a spell, Dash, Dodge, Help, Hide…"},
-	{"bonus", "Bonus Action", "One per turn, only for things that say so."},
-	{"reaction", "Reaction", "One per round, even on others' turns, when its trigger happens."},
-	{"other", "Other", "Limited features that take no action of their own."},
+	{dnd5e.ActionMain, "Action", "One per turn: attack, cast a spell, Dash, Dodge, Help, Hide…"},
+	{dnd5e.ActionBonus, "Bonus Action", "One per turn, only for things that say so."},
+	{dnd5e.ActionReaction, "Reaction", "One per round, even on others' turns, when its trigger happens."},
+	{actionOther, "Other", "Limited features that take no action of their own."},
 }
 
 // actionSections are the Actions card's sections: what each action is.
@@ -1214,12 +1214,12 @@ func (s SheetView) actions() map[string][]actionEntry {
 	out := map[string][]actionEntry{}
 	for _, w := range sh.Weapons {
 		detail := fmt.Sprintf("%s to hit · %s · %s", dnd5e.Signed(sh.AttackBonus(w)), sh.DamageLabel(w), weaponReach(w))
-		out["attacks"] = append(out["attacks"], actionEntry{Name: w.Name, Detail: detail, Why: w.Properties, Kind: "action", Weapon: w.Name})
+		out["attacks"] = append(out["attacks"], actionEntry{Name: w.Name, Detail: detail, Why: w.Properties, Kind: dnd5e.ActionMain, Weapon: w.Name})
 	}
 	if sh.CanDualWield() {
 		for _, w := range sh.LightWeapons() {
 			detail := fmt.Sprintf("%s to hit · %s · %s", dnd5e.Signed(sh.AttackBonus(w)), sh.OffHandDamage(w), weaponReach(w))
-			out["attacks"] = append(out["attacks"], actionEntry{Name: "Off-hand: " + w.Name, Detail: detail, Why: offHandRule, Kind: "bonus", Weapon: w.Name, OffHand: true})
+			out["attacks"] = append(out["attacks"], actionEntry{Name: "Off-hand: " + w.Name, Detail: detail, Why: offHandRule, Kind: dnd5e.ActionBonus, Weapon: w.Name, OffHand: true})
 		}
 	}
 	for _, sp := range sh.Spells {
@@ -1247,14 +1247,14 @@ func (s SheetView) actions() map[string][]actionEntry {
 			f.Action = s.freeCastAction(f.Name)
 		}
 		kind := f.Action
-		if kind == "magic" {
-			kind = "action"
+		if kind == dnd5e.ActionMagic {
+			kind = dnd5e.ActionMain
 		}
 		if kind == "" {
 			if !f.Uses.Limited() {
 				continue
 			}
-			kind = "other"
+			kind = actionOther
 		}
 		detail := strings.TrimSpace(dnd5e.ActionLabels[f.Action] + " · " + f.Source)
 		out["features"] = append(out["features"], actionEntry{Name: f.Name, Detail: strings.Trim(detail, " ·"), Why: f.Description, Kind: kind, FeatureIdx: i, Uses: f.Uses.Limited()})
@@ -1276,7 +1276,7 @@ func (s SheetView) freeCastAction(name string) string {
 	if i < 0 || s.SpellData[s.C.Sheet.Spells[i].Slug] == nil {
 		return ""
 	}
-	return strings.TrimPrefix(castingKind(s.SpellData[s.C.Sheet.Spells[i].Slug].CastingTime), "other")
+	return strings.TrimPrefix(castingKind(s.SpellData[s.C.Sheet.Spells[i].Slug].CastingTime), actionOther)
 }
 
 func kindOrder(kind string) int {
@@ -1293,14 +1293,17 @@ func castingKind(t string) string {
 	t = strings.ToLower(t)
 	switch {
 	case strings.HasPrefix(t, "bonus"):
-		return "bonus"
+		return dnd5e.ActionBonus
 	case strings.HasPrefix(t, "reaction"):
-		return "reaction"
+		return dnd5e.ActionReaction
 	case strings.HasPrefix(t, "action"), strings.HasPrefix(t, "1 action"):
-		return "action"
+		return dnd5e.ActionMain
 	}
-	return "other"
+	return actionOther
 }
+
+// actionOther is the Actions card group for what takes no action.
+const actionOther = "other"
 
 // weaponReach is "melee" or "ranged 80/320".
 func weaponReach(w dnd5e.Weapon) string {
@@ -1379,7 +1382,7 @@ templ actionRow(s SheetView, e actionEntry) {
 						</div>
 						<div>
 							<div class="font-medium text-foreground">Damage bonus</div>
-							@breakdown(s.C.Sheet, utils.IfElse(e.OffHand, "offhand", dnd5e.ModDamage)+"."+e.Weapon)
+							@breakdown(s.C.Sheet, utils.IfElse(e.OffHand, dnd5e.ExplainOffhand, dnd5e.ModDamage)+"."+e.Weapon)
 						</div>
 					</div>
 					if e.Why != "" {
@@ -1535,10 +1538,10 @@ templ weaponRow(s SheetView, id string, w dnd5e.Weapon, ready bool) {
 // weaponAbility names the ability a weapon attacks with; finesse takes
 // the better of STR and DEX, as AttackBonus does.
 func (s SheetView) weaponAbility(w dnd5e.Weapon) string {
-	if w.Ability != "finesse" {
+	if w.Ability != dnd5e.Finesse {
 		return strings.ToUpper(w.Ability)
 	}
-	if s.C.Sheet.Mod("dex") > s.C.Sheet.Mod("str") {
+	if s.C.Sheet.Mod(dnd5e.Dex) > s.C.Sheet.Mod(dnd5e.Str) {
 		return "DEX (finesse)"
 	}
 	return "STR (finesse)"
@@ -1548,8 +1551,8 @@ func (s SheetView) weaponAbility(w dnd5e.Weapon) string {
 // hit or damage), including those on its ability.
 func attackTargets(w dnd5e.Weapon, kind string) []string {
 	t := []string{kind, kind + "." + w.Name}
-	if w.Ability == "finesse" {
-		return append(t, "str", "dex")
+	if w.Ability == dnd5e.Finesse {
+		return append(t, dnd5e.Str, dnd5e.Dex)
 	}
 	return append(t, w.Ability)
 }

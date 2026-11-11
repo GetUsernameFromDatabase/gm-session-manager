@@ -108,12 +108,14 @@ func (a *App) joinQR(c *gin.Context) {
 	c.Data(http.StatusOK, "image/png", png)
 }
 
+const titleAdminLogin = "GM login"
+
 func (a *App) adminLoginForm(c *gin.Context) {
 	if auth.FromContext(c).Session != nil {
 		c.Redirect(http.StatusSeeOther, PathHome)
 		return
 	}
-	a.render(c, http.StatusOK, views.AdminLogin(views.Layout{Title: "GM login"}, ""))
+	a.render(c, http.StatusOK, views.AdminLogin(views.Layout{Title: titleAdminLogin}, ""))
 }
 
 // adminLogin creates an admin session for a device that knows the .env
@@ -127,13 +129,13 @@ func (a *App) adminLogin(c *gin.Context) {
 
 	var form adminLoginForm
 	if err := c.ShouldBind(&form); err != nil {
-		a.render(c, http.StatusBadRequest, views.AdminLogin(views.Layout{Title: "GM login"}, "Enter a username and password."))
+		a.render(c, http.StatusBadRequest, views.AdminLogin(views.Layout{Title: titleAdminLogin}, "Enter a username and password."))
 		return
 	}
 
 	token, _, err := a.Auth.LoginAdmin(c.Request.Context(), form.Username, form.Password)
 	if errors.Is(err, auth.ErrBadCredentials) {
-		a.render(c, http.StatusUnauthorized, views.AdminLogin(views.Layout{Title: "GM login"}, "Wrong username or password."))
+		a.render(c, http.StatusUnauthorized, views.AdminLogin(views.Layout{Title: titleAdminLogin}, "Wrong username or password."))
 		return
 	}
 	if err != nil {

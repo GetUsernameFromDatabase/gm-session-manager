@@ -49,11 +49,11 @@ var (
 )
 
 var abilityByName = map[string]string{
-	"strength": "str", "dexterity": "dex", "constitution": "con",
-	"intelligence": "int", "wisdom": "wis", "charisma": "cha",
+	"strength": Str, "dexterity": Dex, "constitution": Con,
+	"intelligence": Int, "wisdom": Wis, "charisma": Cha,
 }
 
-var actionKinds = map[string]string{"action": "action", "bonus action": "bonus", "reaction": "reaction", "magic action": "magic", "magic": "magic"}
+var actionKinds = map[string]string{"action": ActionMain, "bonus action": ActionBonus, "reaction": ActionReaction, "magic action": ActionMagic, "magic": ActionMagic}
 
 var timesWords = map[string]int{"twice": 2, "three times": 3, "four times": 4}
 
@@ -84,11 +84,11 @@ func ParseEffects(name, desc string, table map[string]map[int]string, class stri
 	if e.Uses.Limited() {
 		switch {
 		case reShortOne.MatchString(desc):
-			e.Uses.Reset = "short-one"
+			e.Uses.Reset = ResetShortOne
 		case reShortRest.MatchString(desc):
-			e.Uses.Reset = "short"
+			e.Uses.Reset = ResetShort
 		default:
-			e.Uses.Reset = "long"
+			e.Uses.Reset = ResetLong
 		}
 	}
 	if m := reSpeed.FindStringSubmatch(desc); m != nil {
@@ -185,11 +185,11 @@ func armorCondition(text string) string {
 	t := strings.ToLower(text)
 	switch {
 	case strings.Contains(t, "heavy armor"):
-		return "no-heavy-armor"
+		return WhenNoHeavyArmor
 	case strings.Contains(t, "armor") && strings.Contains(t, "shield"):
-		return "unarmored-no-shield"
+		return WhenUnarmoredNoShield
 	case strings.Contains(t, "armor"):
-		return "unarmored"
+		return WhenUnarmored
 	}
 	return ""
 }
@@ -237,7 +237,15 @@ func (e FeatureEffects) Summary() []string {
 }
 
 // ActionLabels name a feature's action kinds.
-var ActionLabels = map[string]string{"action": "Action", "bonus": "Bonus Action", "reaction": "Reaction", "magic": "Magic action"}
+var ActionLabels = map[string]string{ActionMain: "Action", ActionBonus: "Bonus Action", ActionReaction: "Reaction", ActionMagic: "Magic action"}
+
+// Feature.Action values.
+const (
+	ActionMain     = "action"
+	ActionBonus    = "bonus"
+	ActionReaction = "reaction"
+	ActionMagic    = "magic"
+)
 
 // UsesLabel says how often something can be used, e.g. "Charisma
 // modifier uses per long rest".
@@ -258,7 +266,7 @@ func UsesLabel(u Uses) string {
 	default:
 		return ""
 	}
-	return n + map[string]string{"short": " per short rest", "long": " per long rest", "short-one": " per long rest (one back on a short rest)"}[u.Reset]
+	return n + map[string]string{ResetShort: " per short rest", ResetLong: " per long rest", ResetShortOne: " per long rest (one back on a short rest)"}[u.Reset]
 }
 
 // SaveFeature adds the feature, or replaces the one of the same name

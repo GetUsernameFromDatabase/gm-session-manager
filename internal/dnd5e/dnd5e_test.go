@@ -12,7 +12,7 @@ import (
 
 func fighter() Character {
 	s := NewSheet()
-	s.Scores["con"] = 14
+	s.Scores[Con] = 14
 	s.Classes = []ClassLevel{{Slug: "fighter", Name: "Fighter", Level: 3, HitDie: 10, Caster: CasterNone}}
 	s.Slots[0] = Slot{Max: 2}
 	s.Inventory = []Item{{Name: "Torch", Qty: 3}}
@@ -79,7 +79,7 @@ func TestCommands(t *testing.T) {
 		{"item set Torch 0", perm.ScopeSheet, func(c Character, _ Effects) bool { return len(c.Sheet.Inventory) == 0 }, false},
 		{"item set Torch", 0, nil, true},
 		{"item add Torch 0", 0, nil, true},
-		{"set ability str 16", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Scores["str"] == 16 }, false},
+		{"set ability str 16", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Scores[Str] == 16 }, false},
 		{"set ability str 31", 0, nil, true},
 		{"set name Tess the Bold", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Name == "Tess the Bold" }, false},
 		{"prof add skill athletics", perm.ScopeSheet, func(c Character, _ Effects) bool { return len(c.Sheet.SkillProfs) == 1 }, false},
@@ -88,12 +88,12 @@ func TestCommands(t *testing.T) {
 			return c.Sheet.ProfLevel("stealth") == ProfExpertise && slices.Contains(c.Sheet.SkillProfs, "stealth")
 		}, false},
 		{"prof set skill stealth none", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.ProfLevel("stealth") == ProfNone }, false},
-		{"prof set save con proficient", perm.ScopeSheet, func(c Character, _ Effects) bool { return slices.Contains(c.Sheet.SaveProfs, "con") }, false},
+		{"prof set save con proficient", perm.ScopeSheet, func(c Character, _ Effects) bool { return slices.Contains(c.Sheet.SaveProfs, Con) }, false},
 		{"prof set save con expertise", 0, nil, true},
 		{"prof set skill flying proficient", 0, nil, true},
 		{"set backstory Raised by wolves", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Backstory == "Raised by wolves" }, false},
 		{"weapon add Longsword str 1d8 slashing prof", perm.ScopeSheet, func(c Character, _ Effects) bool {
-			return c.Sheet.Weapons[0] == Weapon{Name: "Longsword", Ability: "str", Dice: "1d8", DamageType: "slashing", Proficient: true}
+			return c.Sheet.Weapons[0] == Weapon{Name: "Longsword", Ability: Str, Dice: "1d8", DamageType: "slashing", Proficient: true}
 		}, false},
 		{"weapon add Club luck 1d4", 0, nil, true},
 		{"weapon remove Longsword", 0, nil, true},
@@ -179,8 +179,8 @@ func TestCustomMods(t *testing.T) {
 		name      string
 		got, want any
 	}{
-		{"score", s.Score("dex"), 18},
-		{"save", s.SaveBonus("dex"), 4},
+		{"score", s.Score(Dex), 18},
+		{"save", s.SaveBonus(Dex), 4},
 		{"same note replaces", s.ArmorClass(), 10 + 4 + 1},
 		{"initiative", s.Initiative(), 9},
 		{"to hit", s.AttackBonus(w), 4 + 2 + 1},
@@ -302,7 +302,7 @@ func TestLevelUpThirdCaster(t *testing.T) {
 }
 
 var wizard = ClassInfo{
-	Slug: "wizard", Name: "Wizard", HitDie: 6, Caster: CasterFull, Saves: []string{"int", "wis"},
+	Slug: "wizard", Name: "Wizard", HitDie: 6, Caster: CasterFull, Saves: []string{Int, Wis},
 	Features: []ClassFeature{
 		{Name: "Arcane Recovery", Levels: []int{1}},
 		{Name: "Wizard Subclass", Levels: []int{3}},
@@ -313,8 +313,8 @@ var wizard = ClassInfo{
 
 func TestLevelUp(t *testing.T) {
 	newbie := Character{Name: "Wren", Sheet: NewSheet()}
-	newbie.Sheet.Scores["con"] = 14
-	newbie.Sheet.Scores["int"] = 19
+	newbie.Sheet.Scores[Con] = 14
+	newbie.Sheet.Scores[Int] = 19
 
 	// Level 1: maximum hit die plus Constitution, class saving throws.
 	c := newbie
@@ -351,21 +351,21 @@ func TestLevelUp(t *testing.T) {
 	if !plan.ASI || plan.Columns["Cantrips"] != "4" {
 		t.Errorf("plan 4: %+v", plan)
 	}
-	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{"int"}, Feat: "Alert"}); err == nil {
+	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{Int}, Feat: "Alert"}); err == nil {
 		t.Error("feat and ASI together accepted")
 	}
-	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{"int"}}); err == nil {
+	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{Int}}); err == nil {
 		t.Error("score above 20 accepted")
 	}
-	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{"int", "con"}}); err != nil {
+	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{Int, Con}}); err != nil {
 		t.Fatal(err)
 	}
-	if c.Sheet.Scores["int"] != 20 || c.Sheet.Scores["con"] != 15 || c.Sheet.Level() != 4 {
+	if c.Sheet.Scores[Int] != 20 || c.Sheet.Scores[Con] != 15 || c.Sheet.Level() != 4 {
 		t.Errorf("level 4 scores %+v", c.Sheet.Scores)
 	}
 
 	// Multiclassing adds a class without its saving throws.
-	fighterClass := ClassInfo{Slug: "fighter", Name: "Fighter", HitDie: 10, Caster: CasterNone, Saves: []string{"str", "con"}}
+	fighterClass := ClassInfo{Slug: "fighter", Name: "Fighter", HitDie: 10, Caster: CasterNone, Saves: []string{Str, Con}}
 	// Unmet prerequisites warn (Fighter needs STR or DEX 13) but do not block.
 	if plan, _ := c.Sheet.Plan(fighterClass); len(plan.Warnings) != 1 || !strings.Contains(plan.Warnings[0], "Strength or Dexterity") {
 		t.Errorf("multiclass warnings %q", plan.Warnings)
@@ -385,7 +385,7 @@ func TestLevelUp(t *testing.T) {
 	if len(c.Sheet.Classes) != 2 || len(c.Sheet.SaveProfs) != 2 || c.Sheet.ClassSummary() != "Wizard 4 (Evoker) / Fighter 1" {
 		t.Errorf("multiclass: %+v saves %v", c.Sheet.Classes, c.Sheet.SaveProfs)
 	}
-	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{"str"}}); err == nil {
+	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{Str}}); err == nil {
 		t.Error("ASI at a non-ASI level accepted")
 	}
 }
@@ -565,7 +565,7 @@ func TestResistances(t *testing.T) {
 		t.Errorf("immunities %q, vulnerabilities %q", c.Sheet.Immunities, c.Sheet.Vulnerabilities)
 	}
 	s := Sheet{Classes: []ClassLevel{{Name: "Warlock"}}}
-	if s.SpellAbilityOf(Spell{}) != "cha" || s.SpellAbilityOf(Spell{Ability: "int"}) != "int" {
+	if s.SpellAbilityOf(Spell{}) != Cha || s.SpellAbilityOf(Spell{Ability: Int}) != Int {
 		t.Error("SpellAbilityOf")
 	}
 }
@@ -588,10 +588,10 @@ func TestCompletions(t *testing.T) {
 		{"use", `"<feature>"`, "Second Wind"},
 		{"armor wear", `<slug|"item">`, "Torch"},
 		{"prof add skill", "<name>", "stealth"},
-		{"prof add save", "<name>", "con"},
+		{"prof add save", "<name>", Con},
 		{"spell remove", "<slug>", "fire-bolt"},
 		{"concentrate", "<spell>", "Fire Bolt"},
-		{"set ability", "<ab>", "str"},
+		{"set ability", "<ab>", Str},
 	}
 	for _, tt := range tests {
 		if got := Completions(s, strings.Fields(tt.words), tt.slot); !slices.Contains(got, tt.want) {
@@ -696,7 +696,7 @@ func TestPrepareCap(t *testing.T) {
 		{"under the cap", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "b", Name: "B", Level: 1, Class: "wizard"}}, "spell prepare b", caps, ""},
 		{"at the cap", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "c", Name: "C", Level: 2, Prepared: true, Class: "wizard"}, {Slug: "b", Name: "B", Level: 1, Class: "wizard"}}, "spell prepare b", caps, full},
 		{"prepared already", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "c", Name: "C", Level: 2, Prepared: true, Class: "wizard"}}, "spell prepare a", caps, ""},
-		{"feat and lineage spells are not counted", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Feat: "Magic Initiate (Wizard)"}, {Slug: "c", Name: "C", Level: 1, Prepared: true, Ability: "cha"}, {Slug: "b", Name: "B", Level: 1, Class: "wizard"}}, "spell prepare b", map[string]int{"wizard": 1}, ""},
+		{"feat and lineage spells are not counted", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Feat: "Magic Initiate (Wizard)"}, {Slug: "c", Name: "C", Level: 1, Prepared: true, Ability: Cha}, {Slug: "b", Name: "B", Level: 1, Class: "wizard"}}, "spell prepare b", map[string]int{"wizard": 1}, ""},
 		{"a feat spell is never capped", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "wizard"}, {Slug: "b", Name: "B", Level: 1, Feat: "Magic Initiate (Wizard)"}}, "spell prepare b", map[string]int{"wizard": 1}, ""},
 		{"untagged spells of a single class count", []ClassLevel{wizard}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true}, {Slug: "c", Name: "C", Level: 1, Prepared: true}, {Slug: "b", Name: "B", Level: 1}}, "spell prepare b", caps, full},
 		{"another class's spells are not counted", []ClassLevel{wizard, cleric}, []Spell{{Slug: "a", Name: "A", Level: 1, Prepared: true, Class: "cleric"}, {Slug: "c", Name: "C", Level: 1, Prepared: true, Class: "cleric"}, {Slug: "b", Name: "B", Level: 1, Class: "wizard"}}, "spell prepare b", caps, ""},

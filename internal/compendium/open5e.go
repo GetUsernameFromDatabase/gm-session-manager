@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 )
 
@@ -201,8 +202,8 @@ type o5eChild struct {
 func childParent(c o5eChild) string { return c.Parent }
 
 var abilityKeys = map[string]string{
-	"strength": "str", "dexterity": "dex", "constitution": "con",
-	"intelligence": "int", "wisdom": "wis", "charisma": "cha",
+	"strength": dnd5e.Str, "dexterity": dnd5e.Dex, "constitution": dnd5e.Con,
+	"intelligence": dnd5e.Int, "wisdom": dnd5e.Wis, "charisma": dnd5e.Cha,
 }
 
 func (n normalizer) monsters() ([]Entry, error) {
@@ -620,7 +621,7 @@ func (n normalizer) classes() ([]Entry, error) {
 			return nil, err
 		}
 		d := ClassData{
-			HitDie: hitDie(c.HitDice), Caster: strings.ToLower(cmp.Or(c.CasterType, "none")),
+			HitDie: hitDie(c.HitDice), Caster: strings.ToLower(cmp.Or(c.CasterType, dnd5e.CasterNone)),
 			Saves: c.Saves, Table: map[string]map[int]string{},
 		}
 		kind := enum.KindClass
