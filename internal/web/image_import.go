@@ -134,6 +134,9 @@ var (
 // guessSample bounds how many rows guessMapping looks at.
 const guessSample = 200
 
+// maxNameLen matches the max=200 tag on an image's name.
+const maxNameLen = 200
+
 // guessMapping picks the closest column for each field, never one column
 // twice: the link is the column most full of http(s) links, the others go
 // by header names. It is only the starting point the GM can change.
@@ -231,7 +234,7 @@ func reviewRows(rows [][]string, m views.ImportMapping) []views.ImportRow {
 		switch {
 		case r.Name == "":
 			r.Problem = "no name"
-		case len(r.Name) > 200:
+		case len(r.Name) > maxNameLen:
 			r.Problem = "name too long"
 		case r.Host == "":
 			r.Problem = "not an http(s) link"
@@ -472,8 +475,11 @@ type csvImportForm struct {
 	URL string `form:"url" validate:"required,http_url,max=2000"`
 }
 
-// csvClient fetches CSV links; the timeout keeps a dead link from hanging the request.
-var csvClient = &http.Client{Timeout: 20 * time.Second}
+// csvTimeout keeps a dead CSV link from hanging the request.
+const csvTimeout = 20 * time.Second
+
+// csvClient fetches CSV links.
+var csvClient = &http.Client{Timeout: csvTimeout}
 
 // csvSource opens the uploaded CSV file, or else downloads the CSV link.
 func csvSource(c *gin.Context) (io.ReadCloser, error) {

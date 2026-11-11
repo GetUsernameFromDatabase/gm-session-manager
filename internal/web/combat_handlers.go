@@ -275,7 +275,7 @@ func petrified(conds []sqlc.Condition) bool {
 // 0 HP, or a PC who failed three death saves (a PC at 0 HP still rolls them).
 func outOfFight(r sqlc.ListCombatantsRow) bool {
 	if s, ok := pcSheet(r); ok {
-		return s.DeathSaves.Failures >= 3
+		return s.DeathSaves.Failures >= dnd5e.MaxDeathSaves
 	}
 	return !r.CharacterID.Valid && r.Hp <= 0 && r.MaxHp > 0
 }

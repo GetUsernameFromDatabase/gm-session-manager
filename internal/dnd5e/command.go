@@ -641,9 +641,9 @@ func parseDeathSave(args []string) (Command, error) {
 		ds := &c.Sheet.DeathSaves
 		switch kind {
 		case verbSuccess:
-			ds.Successes = min(ds.Successes+1, 3)
+			ds.Successes = min(ds.Successes+1, MaxDeathSaves)
 		case verbFail:
-			ds.Failures = min(ds.Failures+1, 3)
+			ds.Failures = min(ds.Failures+1, MaxDeathSaves)
 		default:
 			*ds = DeathSaves{}
 		}

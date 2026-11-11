@@ -285,7 +285,7 @@ func (r report) requestTables(b *strings.Builder) {
 	b.WriteString("\n## Failed requests\n\n")
 	failed := false
 	for _, e := range r.requests {
-		if e.Status < 400 {
+		if e.Status < http.StatusBadRequest {
 			continue
 		}
 		if !failed {

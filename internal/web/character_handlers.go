@@ -609,7 +609,7 @@ func applyCondOps(ctx context.Context, q *sqlc.Queries, o condOwner, ops []dnd5e
 			if has {
 				level, _ = strconv.Atoi(existing.Note)
 			}
-			level = min(max(level+op.Delta, 0), 6)
+			level = min(max(level+op.Delta, 0), dnd5e.MaxExhaustion)
 			if err = remove(); err == nil && level > 0 {
 				err = o.add(ctx, q, op.Slug, strconv.Itoa(level), sql.NullInt64{})
 			}

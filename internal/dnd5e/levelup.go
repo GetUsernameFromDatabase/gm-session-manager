@@ -105,7 +105,7 @@ const (
 
 // Plan computes what gaining a level in class would do.
 func (s Sheet) Plan(class ClassInfo) (LevelUpPlan, error) {
-	if s.Level() >= 20 {
+	if s.Level() >= MaxLevel {
 		return LevelUpPlan{}, errors.New("already level 20")
 	}
 	p := LevelUpPlan{Class: class, NewLevel: s.Level() + 1}
@@ -194,7 +194,7 @@ func (s Sheet) multiclassWarning(class string) string {
 	names := make([]string, len(pre.abilities))
 	for i, a := range pre.abilities {
 		names[i] = AbilityNames[a]
-		if s.Score(a) >= 13 {
+		if s.Score(a) >= MulticlassMin {
 			met++
 		}
 	}
@@ -398,7 +398,7 @@ func raise(s *Sheet, ability string, by int) error {
 	if !slices.Contains(Abilities, ability) {
 		return fmt.Errorf("unknown ability %q", ability)
 	}
-	if s.Scores[ability]+by > 20 {
+	if s.Scores[ability]+by > AbilityCap {
 		return fmt.Errorf("%s cannot go above 20", AbilityNames[ability])
 	}
 	s.Scores[ability] += by

@@ -406,7 +406,7 @@ func (a *App) compendiumSearch(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	names, text, err := compendium.Search(c.Request.Context(), a.Store.Queries, c.Query(views.QueryKey), c.Query(views.KindKey), "", campaignID, 15)
+	names, text, err := compendium.Search(c.Request.Context(), a.Store.Queries, c.Query(views.QueryKey), c.Query(views.KindKey), "", campaignID, maxPicks)
 	if err != nil {
 		a.serverError(c, err)
 		return

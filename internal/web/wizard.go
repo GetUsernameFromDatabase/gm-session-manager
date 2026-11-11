@@ -1826,7 +1826,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 			}
 		}
 		for _, ab := range dnd5e.Abilities {
-			if scores[ab]+raises[ab] > 20 {
+			if scores[ab]+raises[ab] > dnd5e.AbilityCap {
 				errs = append(errs, fieldError{userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])}, ab})
 			}
 		}

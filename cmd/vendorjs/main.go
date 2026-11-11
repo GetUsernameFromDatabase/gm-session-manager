@@ -255,8 +255,11 @@ func fetch(ctx context.Context, src string) ([]byte, error) {
 	return fetchURL(ctx, cdnBase+src)
 }
 
+// fetchTimeout covers one CDN download.
+const fetchTimeout = 30 * time.Second
+
 func fetchURL(ctx context.Context, url string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

@@ -115,7 +115,7 @@ func (a *App) recordRequest(c *gin.Context) {
 	if s := c.GetInt(failStatusKey); s != 0 {
 		e.Status = s
 	}
-	if e.Status >= 400 {
+	if e.Status >= http.StatusBadRequest {
 		e.Error = errorText(c, w)
 	}
 	a.reqs.add(key, e)

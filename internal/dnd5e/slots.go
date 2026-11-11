@@ -64,9 +64,9 @@ func CasterLevel(classes []ClassLevel) int {
 		casters++
 	}
 	if casters == 1 && third >= 3 {
-		return min((third+2)/3, 20)
+		return min((third+2)/3, MaxLevel)
 	}
-	return min(full+(half+1)/2+third/3, 20)
+	return min(full+(half+1)/2+third/3, MaxLevel)
 }
 
 // SlotMaxima returns the spell slot maxima and Pact Magic slots for the
@@ -75,7 +75,7 @@ func SlotMaxima(classes []ClassLevel) (slots [9]int, pact, pactLevel int) {
 	slots = spellcasterSlots[CasterLevel(classes)]
 	for _, c := range classes {
 		if c.Caster == CasterPact {
-			p := pactSlots[min(c.Level, 20)]
+			p := pactSlots[min(c.Level, MaxLevel)]
 			pact, pactLevel = p[0], p[1]
 		}
 	}

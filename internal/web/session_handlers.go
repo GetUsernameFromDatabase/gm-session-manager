@@ -83,6 +83,9 @@ func (a *App) joinInfo(campaignID int64) views.JoinInfo {
 // queryCampaign picks the campaign a join QR code leads to (views.JoinQRSrc).
 const queryCampaign = "campaign"
 
+// qrSize is the join QR code's width in pixels.
+const qrSize = 256
+
 // joinQR is the QR code for the first join address, shown on the GM page.
 func (a *App) joinQR(c *gin.Context) {
 	var campaignID int64
@@ -99,7 +102,7 @@ func (a *App) joinQR(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	png, err := qrcode.Encode(urls[0], qrcode.Medium, 256)
+	png, err := qrcode.Encode(urls[0], qrcode.Medium, qrSize)
 	if err != nil {
 		a.serverError(c, err)
 		return

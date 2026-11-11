@@ -30,6 +30,8 @@ const (
 	tlsDir          = "tls"
 	compendiumDir   = "compendium"
 	shutdownTimeout = 5 * time.Second
+	// readHeaderTimeout stops a client that never finishes its headers from holding a connection.
+	readHeaderTimeout = 10 * time.Second
 )
 
 // version is set at build time by build.sh (-X main.version=…).
@@ -132,7 +134,7 @@ func run() error {
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
 		Handler:           app.Router(),
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: readHeaderTimeout,
 		TLSConfig:         &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
 	}
 	// Websockets would otherwise keep Shutdown waiting until its timeout.
@@ -146,7 +148,7 @@ func run() error {
 	}
 	defer func() { _ = base.Close() }()
 	tlsL, plainL := join.SplitTLS(base)
-	redirect := &http.Server{Handler: join.RedirectHTTPS, ReadHeaderTimeout: 10 * time.Second}
+	redirect := &http.Server{Handler: join.RedirectHTTPS, ReadHeaderTimeout: readHeaderTimeout}
 	go func() { _ = redirect.Serve(plainL) }()
 
 	go keepAwake(ctx)

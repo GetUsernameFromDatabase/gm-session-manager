@@ -318,6 +318,17 @@ type WornArmor struct {
 	Stealth bool   `json:"stealth,omitempty"`
 }
 
+// Rule limits and starting values (the validate tags repeat some: tags can't name a constant).
+const (
+	MaxLevel      = 20
+	AbilityCap    = 20 // highest score an ASI or background raise reaches
+	MaxDeathSaves = 3  // successes or failures
+	MaxExhaustion = 6
+	MulticlassMin = 13 // score each multiclass prerequisite needs
+	BaseScore     = 10
+	BaseSpeed     = 30
+)
+
 // DeathSaves tracks death saving throws.
 type DeathSaves struct {
 	Successes int `json:"successes" validate:"min=0,max=3"`
@@ -630,9 +641,9 @@ var StandardLanguages = []string{"Common Sign Language", "Draconic", "Dwarvish",
 // NewSheet returns the sheet of a freshly created character.
 func NewSheet() Sheet {
 	// Every character speaks Common; sheets saved before languages get it too.
-	s := Sheet{Scores: map[string]int{}, Speed: 30, Languages: []string{"Common"}}
+	s := Sheet{Scores: map[string]int{}, Speed: BaseSpeed, Languages: []string{"Common"}}
 	for _, a := range Abilities {
-		s.Scores[a] = 10
+		s.Scores[a] = BaseScore
 	}
 	return s
 }

@@ -20,7 +20,7 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
-// maxPicks caps the builder's look-up results and suggestion lists.
+// maxPicks caps the builder's look-up results and the compendium picker's suggestion lists.
 const maxPicks = 15
 
 // builderExtra is what a builder form takes from the compendium: a weapon

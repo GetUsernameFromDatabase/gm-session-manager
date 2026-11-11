@@ -26,10 +26,15 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
-// Limits for collaboration requests and uploads.
+// Limits for collaboration requests, uploads and searches.
 const (
 	maxCollabBody      = 4 << 20
 	maxAttachmentBytes = 20 << 20
+	maxReadableNotes   = 500
+	maxSearchHits      = 50
+	maxLinkSuggestions = 20
+	// sniffLen is all http.DetectContentType looks at.
+	sniffLen = 512
 )
 
 type noteForm struct {
@@ -56,7 +61,7 @@ func (a *App) notesPage(c *gin.Context) {
 	v := views.NoteListView{CampaignID: id, Notes: notes, Query: strings.TrimSpace(c.Query("q")), CanCreate: true}
 	if v.Query != "" {
 		v.Hits, err = a.Store.SearchReadableBlocks(ctx, sqlc.SearchReadableBlocksParams{
-			CampaignID: id, Pattern: "%" + v.Query + "%", IsGm: w.isGM(), CharacterID: w.viewer.CharacterID, MaxResults: 50,
+			CampaignID: id, Pattern: "%" + v.Query + "%", IsGm: w.isGM(), CharacterID: w.viewer.CharacterID, MaxResults: maxSearchHits,
 		})
 		if err != nil {
 			a.serverError(c, err)
@@ -714,7 +719,7 @@ func (a *App) storeFile(ctx context.Context, campaignID int64, blockID sql.NullI
 // saveSniffed writes src to path and returns the content type sniffed from
 // its first bytes (never the client's claim) and its size.
 func saveSniffed(path string, src io.Reader) (string, int64, error) {
-	head := make([]byte, 512)
+	head := make([]byte, sniffLen)
 	n, err := io.ReadFull(src, head)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return "", 0, err
@@ -864,7 +869,7 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 			items = append(items, views.LinkItem{ID: fmt.Sprintf("%s:%d", image, img.ID), Label: img.Name, Kind: image, URL: fmt.Sprintf("/images/%d", img.ID)})
 		}
 	}
-	return items[:min(len(items), 20)], nil
+	return items[:min(len(items), maxLinkSuggestions)], nil
 }
 
 func (a *App) linkSuggestions(c *gin.Context) {

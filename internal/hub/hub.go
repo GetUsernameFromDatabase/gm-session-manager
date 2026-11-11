@@ -71,6 +71,12 @@ const ringSize = 512
 // considered stuck and dropped (it reconnects and catches up).
 const outBuffer = 64
 
+// Random byte lengths: IDs only need to be unique, secrets unguessable.
+const (
+	idLen     = 8
+	secretLen = 16
+)
+
 type event struct {
 	seq        uint64
 	campaignID int64
@@ -93,7 +99,7 @@ type Hub struct {
 func New(handler Handler) *Hub {
 	return &Hub{
 		handler: handler,
-		epoch:   randomID(8),
+		epoch:   randomID(idLen),
 		clients: map[*Client]struct{}{},
 		pending: map[string]*Pending{},
 	}

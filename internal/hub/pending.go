@@ -60,7 +60,7 @@ type Pending struct {
 // tells the GM.
 func (h *Hub) AddPending(req Pending) Pending {
 	p := &req
-	p.ID, p.Secret, p.Created, p.State = randomID(8), randomID(16), time.Now(), Waiting
+	p.ID, p.Secret, p.Created, p.State = randomID(idLen), randomID(secretLen), time.Now(), Waiting
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.pending[p.ID] = p

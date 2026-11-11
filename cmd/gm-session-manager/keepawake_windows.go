@@ -11,6 +11,9 @@ import (
 // ES_CONTINUOUS it needs no thread of its own, so it is simply repeated.
 const esSystemRequired = 0x00000001
 
+// keepAwakeEvery is well inside the shortest idle-sleep setting Windows offers.
+const keepAwakeEvery = 30 * time.Second
+
 // keepAwake stops the host from sleeping while the server runs, so players'
 // devices do not lose it mid-session. The screen may still turn off.
 func keepAwake(ctx context.Context) {
@@ -19,7 +22,7 @@ func keepAwake(ctx context.Context) {
 		slog.Warn("cannot keep the computer awake", "err", err)
 		return
 	}
-	tick := time.NewTicker(30 * time.Second)
+	tick := time.NewTicker(keepAwakeEvery)
 	defer tick.Stop()
 	for {
 		_, _, _ = proc.Call(esSystemRequired)

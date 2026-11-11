@@ -345,7 +345,7 @@ func combatantKind(r sqlc.ListCombatantsRow) string {
 
 func (a *App) readableNotes(ctx context.Context, v perm.Viewer, campaignID int64) ([]sqlc.Note, error) {
 	return a.Store.ListReadableNotes(ctx, sqlc.ListReadableNotesParams{
-		CampaignID: campaignID, IsGm: v.IsGM, CharacterID: v.CharacterID, MaxResults: 500,
+		CampaignID: campaignID, IsGm: v.IsGM, CharacterID: v.CharacterID, MaxResults: maxReadableNotes,
 	})
 }
 
