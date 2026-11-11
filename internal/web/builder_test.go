@@ -9,17 +9,17 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 )
 
 // TestBuilderInventory covers the coin form (one change per coin, as a
 // difference from the amount shown) and setting an item's count.
 func TestBuilderInventory(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	cmdPath := fmt.Sprintf("/characters/%d/cmd", e.characterID)
 	coins := func(gp, wasGP string) url.Values {
 		f := url.Values{}
@@ -76,7 +76,7 @@ func TestBuilderFeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	form := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/builder?verb=features&op=feature-add&entry=%d", e.characterID, feat.ID), player, nil, true).Body.String()
 	if !strings.Contains(form, `name="feat_source" value="test"`) {
 		t.Fatalf("form lacks the feat's source: %s", form)
@@ -120,7 +120,7 @@ func TestBuilderCompendium(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.allowEntrySources(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	id := e.characterID
 	for _, tt := range []struct{ path, want string }{
 		{fmt.Sprintf("/characters/%d/picks?pick=weapon&q=rapi", id), fmt.Sprintf("entry=%d", rapier.ID)},
@@ -178,7 +178,7 @@ func TestItemLookupByName(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	for _, tt := range []struct{ name, want string }{{"rapier", "1d8 piercing"}, {"Lucky pebble", ""}} {
 		w := e.do(t, http.MethodGet, "/compendium/lookup?kind=item&name="+url.QueryEscape(tt.name), player, nil, true)
 		if body := w.Body.String(); w.Code != http.StatusOK || (tt.want == "") != (body == "") || !strings.Contains(body, tt.want) {
@@ -191,7 +191,7 @@ func TestItemLookupByName(t *testing.T) {
 // own remove button above the add field, with no separate remove form.
 func TestLanguagesForm(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	body := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/builder?verb=profs&op=lang-add", e.characterID), player, nil, true).Body.String()
 	for _, want := range []string{`aria-label="Remove Common"`, "prof remove language", "Add a language"} {
 		if !strings.Contains(body, want) {

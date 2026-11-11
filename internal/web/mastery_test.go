@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
@@ -22,7 +22,7 @@ import (
 func seedMastery(t *testing.T, e testEnv) {
 	t.Helper()
 	e.source(t, "test", "2024")
-	entry := func(kind, slug, name, data string) sqlc.UpsertCompendiumEntryParams {
+	entry := func(kind enum.CompendiumKind, slug, name, data string) sqlc.UpsertCompendiumEntryParams {
 		return sqlc.UpsertCompendiumEntryParams{Kind: kind, Slug: slug, Name: name, SourceKey: "test", ContentHash: "x", DataJson: data}
 	}
 	for _, p := range []sqlc.UpsertCompendiumEntryParams{
@@ -46,7 +46,7 @@ func seedMastery(t *testing.T, e testEnv) {
 func TestWeaponMastery(t *testing.T) {
 	e := newTestEnv(t)
 	seedMastery(t, e)
-	player, gm := e.token(t, auth.RolePlayer), e.token(t, auth.RoleAdmin)
+	player, gm := e.token(t, enum.RolePlayer), e.token(t, enum.RoleAdmin)
 	levelUp := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	for _, step := range []struct {
 		form url.Values
@@ -120,7 +120,7 @@ func TestLevelUpSubclassCaster(t *testing.T) {
 	if err := e.q().UpsertCompendiumEntry(t.Context(), testKnight); err != nil {
 		t.Fatal(err)
 	}
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	levelUp := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	for _, form := range []url.Values{
 		{"class": {"testfighter"}, views.FieldMastery: {"Longsword", "Dagger"}},
@@ -188,7 +188,7 @@ func TestMasteryMulticlass(t *testing.T) {
 func TestCompendiumFind(t *testing.T) {
 	e := newTestEnv(t)
 	seedMastery(t, e)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	rule, _ := e.q().GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "rule", Slug: "sap"})
 	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
 	w := e.do(t, http.MethodGet, base+"/find/rule/sap", player, nil, false)
@@ -221,7 +221,7 @@ func TestLiveMastery(t *testing.T) {
 		return st[hub.HashKey]
 	}
 	before := hash()
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", e.characterID), e.token(t, auth.RolePlayer), url.Values{"cmd": {"mastery add Longsword"}}, true); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", e.characterID), e.token(t, enum.RolePlayer), url.Values{"cmd": {"mastery add Longsword"}}, true); w.Code != http.StatusOK {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	if hash() == before {

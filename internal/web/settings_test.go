@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -65,8 +65,8 @@ func TestStartUpBrokenSettings(t *testing.T) {
 // while an import runs; players never do; the switch is stored.
 func TestStaleBooksBanner(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	writeBook(t, e.app, "xge", compendium.Book{ID: "xge", Name: "Xanathar"})
 	writeBook(t, e.app, "tce", compendium.Book{ID: "tce", Name: "Tasha", Version: compendium.DownloadVersion})
 	if err := e.app.StartUp(t.Context()); err != nil {

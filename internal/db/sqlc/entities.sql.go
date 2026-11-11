@@ -8,6 +8,8 @@ package sqlc
 import (
 	"context"
 	"database/sql"
+
+	"gm-session-manager/internal/enum"
 )
 
 const addEntityFieldLink = `-- name: AddEntityFieldLink :exec
@@ -19,7 +21,7 @@ ON CONFLICT DO NOTHING
 type AddEntityFieldLinkParams struct {
 	EntityID   int64
 	FieldKey   string
-	TargetType string
+	TargetType enum.LinkTarget
 	TargetID   int64
 	IsRevealed bool
 }
@@ -54,7 +56,7 @@ RETURNING id, campaign_id, kind, name, is_revealed, fields_json, compendium_ref,
 
 type CreateEntityParams struct {
 	CampaignID    int64
-	Kind          string
+	Kind          enum.EntityKind
 	Name          string
 	IsRevealed    bool
 	FieldsJson    string
@@ -294,7 +296,7 @@ ORDER BY e.name COLLATE NOCASE
 `
 
 type ListEntityFieldBacklinksParams struct {
-	TargetType string
+	TargetType enum.LinkTarget
 	TargetID   int64
 	IsGm       bool
 }

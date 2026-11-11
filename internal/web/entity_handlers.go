@@ -9,15 +9,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
 )
-
-// Entity kinds (entities.kind). NPCs are the first kind.
-const entityNPC = "npc"
 
 // maxEntityFields bounds the editor form.
 const maxEntityFields = 100
@@ -50,7 +47,7 @@ func (a *App) createEntity(c *gin.Context) {
 		return
 	}
 	e, err := a.Store.CreateEntity(c.Request.Context(), sqlc.CreateEntityParams{
-		CampaignID: id, Kind: entityNPC, Name: strings.TrimSpace(form.Name), FieldsJson: "{}",
+		CampaignID: id, Kind: enum.EntityNPC, Name: strings.TrimSpace(form.Name), FieldsJson: "{}",
 	})
 	if err != nil {
 		a.serverError(c, err)
@@ -93,11 +90,11 @@ func (a *App) entityPage(c *gin.Context) {
 		a.fail(c, http.StatusNotFound, "Not found.")
 		return
 	}
-	if ev.Backlinks, err = a.backlinks(ctx, w, row.CampaignID, "entity", id); err != nil {
+	if ev.Backlinks, err = a.backlinks(ctx, w, row.CampaignID, enum.LinkEntity, id); err != nil {
 		a.serverError(c, err)
 		return
 	}
-	if ev.EntityLinks, err = a.entityMentions(ctx, w, "entity", id); err != nil {
+	if ev.EntityLinks, err = a.entityMentions(ctx, w, enum.LinkEntity, id); err != nil {
 		a.serverError(c, err)
 		return
 	}
@@ -160,7 +157,7 @@ func saveFieldLinks(ctx context.Context, q *sqlc.Queries, entityID int64, fields
 	for key, f := range fields {
 		for _, l := range views.WikiLinks(f.Value) {
 			if err := q.AddEntityFieldLink(ctx, sqlc.AddEntityFieldLinkParams{
-				EntityID: entityID, FieldKey: key, TargetType: l.Kind, TargetID: l.ID, IsRevealed: f.IsRevealed,
+				EntityID: entityID, FieldKey: key, TargetType: enum.LinkTarget(l.Kind), TargetID: l.ID, IsRevealed: f.IsRevealed,
 			}); err != nil {
 				return err
 			}
@@ -240,7 +237,7 @@ func (a *App) imageToEntity(c *gin.Context) {
 	var e sqlc.Entity
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		var err error
-		if e, err = q.CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: img.CampaignID, Kind: entityNPC, Name: img.Name, FieldsJson: string(raw)}); err != nil {
+		if e, err = q.CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: img.CampaignID, Kind: enum.EntityNPC, Name: img.Name, FieldsJson: string(raw)}); err != nil {
 			return err
 		}
 		return linkEntityLook(ctx, q, e, img.CampaignID, img.ID)
@@ -320,7 +317,7 @@ func (a *App) linkEntity(c *gin.Context) {
 		if !a.found(c, err) {
 			return
 		}
-		if entry.Kind != string(compendium.KindMonster) {
+		if entry.Kind != enum.KindMonster {
 			a.fail(c, http.StatusUnprocessableEntity, "Link a monster statblock.")
 			return
 		}

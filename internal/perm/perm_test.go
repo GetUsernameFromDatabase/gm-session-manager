@@ -3,6 +3,8 @@ package perm
 import (
 	"slices"
 	"testing"
+
+	"gm-session-manager/internal/enum"
 )
 
 const (
@@ -30,19 +32,19 @@ type blockCase struct {
 // blockCases is the note-block visibility table in CLAUDE.md (Permissions). The SQL
 // agreement test runs the same cases against the readable-block queries.
 var blockCases = []blockCase{
-	{"gm", Block{Visibility: VisGM}, []string{"gm"}, []string{"gm"}, []string{"gm"}},
-	{"players read-only", Block{Visibility: VisPlayers}, []string{"gm", "alice", "bob"}, []string{"gm"}, []string{"gm"}},
-	{"players editable", Block{Visibility: VisPlayers, PlayersCanEdit: true}, []string{"gm", "alice", "bob"}, []string{"gm", "alice", "bob"}, []string{"gm"}},
-	{"listed alice", Block{Visibility: VisListed, Audience: []int64{alice}}, []string{"gm", "alice"}, []string{"gm"}, []string{"gm"}},
-	{"listed alice, editable flag ignored", Block{Visibility: VisListed, PlayersCanEdit: true, Audience: []int64{alice}}, []string{"gm", "alice"}, []string{"gm"}, []string{"gm"}},
-	{"listed empty fails closed", Block{Visibility: VisListed}, []string{"gm"}, []string{"gm"}, []string{"gm"}},
-	{"owner alice", Block{Visibility: VisOwner, NoteOwnerID: alice}, []string{"alice"}, []string{"alice"}, []string{"alice"}},
-	{"players block in alice's note", Block{Visibility: VisPlayers, NoteOwnerID: alice}, []string{"gm", "alice", "bob"}, []string{"gm", "alice"}, []string{"alice"}},
-	{"players block alice wrote in gm note", Block{Visibility: VisPlayers, AuthorID: alice}, []string{"gm", "alice", "bob"}, []string{"gm", "alice"}, []string{"gm"}},
-	{"alice's block the gm hid", Block{Visibility: VisGM, AuthorID: alice}, []string{"gm"}, []string{"gm"}, []string{"gm"}},
-	{"alice's block made secret for alice", Block{Visibility: VisListed, AuthorID: alice, Audience: []int64{alice}}, []string{"gm", "alice"}, []string{"gm", "alice"}, []string{"gm"}},
-	{"alice's block made secret for bob", Block{Visibility: VisListed, AuthorID: alice, Audience: []int64{bob}}, []string{"gm", "bob"}, []string{"gm"}, []string{"gm"}},
-	{"owner with no owner reads as nobody", Block{Visibility: VisOwner}, nil, nil, []string{"gm"}},
+	{"gm", Block{Visibility: enum.VisGM}, []string{"gm"}, []string{"gm"}, []string{"gm"}},
+	{"players read-only", Block{Visibility: enum.VisPlayers}, []string{"gm", "alice", "bob"}, []string{"gm"}, []string{"gm"}},
+	{"players editable", Block{Visibility: enum.VisPlayers, PlayersCanEdit: true}, []string{"gm", "alice", "bob"}, []string{"gm", "alice", "bob"}, []string{"gm"}},
+	{"listed alice", Block{Visibility: enum.VisListed, Audience: []int64{alice}}, []string{"gm", "alice"}, []string{"gm"}, []string{"gm"}},
+	{"listed alice, editable flag ignored", Block{Visibility: enum.VisListed, PlayersCanEdit: true, Audience: []int64{alice}}, []string{"gm", "alice"}, []string{"gm"}, []string{"gm"}},
+	{"listed empty fails closed", Block{Visibility: enum.VisListed}, []string{"gm"}, []string{"gm"}, []string{"gm"}},
+	{"owner alice", Block{Visibility: enum.VisOwner, NoteOwnerID: alice}, []string{"alice"}, []string{"alice"}, []string{"alice"}},
+	{"players block in alice's note", Block{Visibility: enum.VisPlayers, NoteOwnerID: alice}, []string{"gm", "alice", "bob"}, []string{"gm", "alice"}, []string{"alice"}},
+	{"players block alice wrote in gm note", Block{Visibility: enum.VisPlayers, AuthorID: alice}, []string{"gm", "alice", "bob"}, []string{"gm", "alice"}, []string{"gm"}},
+	{"alice's block the gm hid", Block{Visibility: enum.VisGM, AuthorID: alice}, []string{"gm"}, []string{"gm"}, []string{"gm"}},
+	{"alice's block made secret for alice", Block{Visibility: enum.VisListed, AuthorID: alice, Audience: []int64{alice}}, []string{"gm", "alice"}, []string{"gm", "alice"}, []string{"gm"}},
+	{"alice's block made secret for bob", Block{Visibility: enum.VisListed, AuthorID: alice, Audience: []int64{bob}}, []string{"gm", "bob"}, []string{"gm"}, []string{"gm"}},
+	{"owner with no owner reads as nobody", Block{Visibility: enum.VisOwner}, nil, nil, []string{"gm"}},
 	{"unknown visibility", Block{Visibility: "public"}, nil, nil, []string{"gm"}},
 }
 
@@ -74,11 +76,11 @@ func TestCanManageBlock(t *testing.T) {
 		block    Block
 		managers []string
 	}{
-		{"gm block in gm note", Block{Visibility: VisPlayers}, []string{"gm"}},
-		{"alice's block in gm note", Block{Visibility: VisPlayers, AuthorID: alice}, []string{"gm", "alice"}},
-		{"alice's block the gm hid", Block{Visibility: VisGM, AuthorID: alice}, []string{"gm"}},
-		{"alice's block for listed bob", Block{Visibility: VisListed, AuthorID: alice, Audience: []int64{bob}}, []string{"gm"}},
-		{"players block in alice's note", Block{Visibility: VisPlayers, NoteOwnerID: alice}, []string{"alice"}},
+		{"gm block in gm note", Block{Visibility: enum.VisPlayers}, []string{"gm"}},
+		{"alice's block in gm note", Block{Visibility: enum.VisPlayers, AuthorID: alice}, []string{"gm", "alice"}},
+		{"alice's block the gm hid", Block{Visibility: enum.VisGM, AuthorID: alice}, []string{"gm"}},
+		{"alice's block for listed bob", Block{Visibility: enum.VisListed, AuthorID: alice, Audience: []int64{bob}}, []string{"gm"}},
+		{"players block in alice's note", Block{Visibility: enum.VisPlayers, NoteOwnerID: alice}, []string{"alice"}},
 	}
 	for _, tt := range tests {
 		for _, who := range viewerOf {
@@ -97,20 +99,20 @@ func TestBlockVisibilities(t *testing.T) {
 		v           Viewer
 		owner       int64
 		gameSession bool
-		allowed     []Visibility
+		allowed     []enum.Visibility
 	}{
-		{"gm in gm note", GM, 0, false, []Visibility{VisGM, VisPlayers, VisListed}},
-		{"gm in gm game session", GM, 0, true, []Visibility{VisGM, VisPlayers, VisListed}},
+		{"gm in gm note", GM, 0, false, []enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed}},
+		{"gm in gm game session", GM, 0, true, []enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed}},
 		{"gm in player note", GM, alice, false, nil},
-		{"owner in own note", asAlice, alice, false, []Visibility{VisOwner, VisPlayers}},
+		{"owner in own note", asAlice, alice, false, []enum.Visibility{enum.VisOwner, enum.VisPlayers}},
 		{"other player in note", asBob, alice, false, nil},
 		{"other player in player game session", asBob, alice, true, nil},
 		{"player in gm note", asAlice, 0, false, nil},
-		{"player in gm game session", asAlice, 0, true, []Visibility{VisPlayers}},
+		{"player in gm game session", asAlice, 0, true, []enum.Visibility{enum.VisPlayers}},
 		{"anon", anon, 0, false, nil},
 		{"anon in gm game session", anon, 0, true, nil},
 	}
-	all := []Visibility{VisGM, VisPlayers, VisListed, VisOwner, "public"}
+	all := []enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed, enum.VisOwner, "public"}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := BlockVisibilities(tt.v, tt.owner, tt.gameSession); !slices.Equal(got, tt.allowed) {
@@ -251,7 +253,7 @@ func TestCanSeeCombatantHP(t *testing.T) {
 }
 
 func TestCanReadAttachment(t *testing.T) {
-	secret := &Block{Visibility: VisListed, Audience: []int64{alice}}
+	secret := &Block{Visibility: enum.VisListed, Audience: []int64{alice}}
 	tests := []struct {
 		name  string
 		v     Viewer
@@ -262,7 +264,7 @@ func TestCanReadAttachment(t *testing.T) {
 		{"player no block", asAlice, nil, false},
 		{"listed member", asAlice, secret, true},
 		{"listed outsider", asBob, secret, false},
-		{"owner block gm", GM, &Block{Visibility: VisOwner, NoteOwnerID: alice}, false},
+		{"owner block gm", GM, &Block{Visibility: enum.VisOwner, NoteOwnerID: alice}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -351,9 +353,9 @@ func TestVisibleLooks(t *testing.T) {
 }
 
 func TestCanReadImage(t *testing.T) {
-	players := Block{Visibility: VisPlayers}
-	forAlice := Block{Visibility: VisListed, Audience: []int64{alice}}
-	gmOnly := Block{Visibility: VisGM}
+	players := Block{Visibility: enum.VisPlayers}
+	forAlice := Block{Visibility: enum.VisListed, Audience: []int64{alice}}
+	gmOnly := Block{Visibility: enum.VisGM}
 	tests := []struct {
 		name    string
 		blocks  []Block

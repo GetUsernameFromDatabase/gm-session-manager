@@ -16,6 +16,7 @@ import (
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 const (
@@ -73,14 +74,14 @@ func newTestEnv(t *testing.T) testEnv {
 }
 
 // token issues a session of the given role, or returns "" for none.
-func (e testEnv) token(t *testing.T, role auth.Role) string {
+func (e testEnv) token(t *testing.T, role enum.Role) string {
 	t.Helper()
 	var tok string
 	var err error
 	switch role {
-	case auth.RolePlayer:
+	case enum.RolePlayer:
 		tok, _, err = e.mgr.IssuePlayer(t.Context(), e.characterID)
-	case auth.RoleAdmin:
+	case enum.RoleAdmin:
 		tok, _, err = e.mgr.LoginAdmin(t.Context(), testAdminUser, testAdminPass)
 	}
 	if err != nil {
@@ -120,7 +121,7 @@ func sessionCookie(w *httptest.ResponseRecorder) *http.Cookie {
 func TestAdminLogin(t *testing.T) {
 	tests := []struct {
 		name       string
-		existing   auth.Role
+		existing   enum.Role
 		form       url.Values
 		wantStatus int
 	}{
@@ -129,8 +130,8 @@ func TestAdminLogin(t *testing.T) {
 		{"wrong user", "", url.Values{"username": {"bob"}, "password": {testAdminPass}}, http.StatusUnauthorized},
 		{"missing password", "", url.Values{"username": {testAdminUser}}, http.StatusBadRequest},
 		{"empty", "", url.Values{}, http.StatusBadRequest},
-		{"already a player: log out first", auth.RolePlayer, adminCreds, http.StatusConflict},
-		{"already an admin: log out first", auth.RoleAdmin, adminCreds, http.StatusConflict},
+		{"already a player: log out first", enum.RolePlayer, adminCreds, http.StatusConflict},
+		{"already an admin: log out first", enum.RoleAdmin, adminCreds, http.StatusConflict},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -166,11 +167,11 @@ func TestLogout(t *testing.T) {
 	tests := []struct {
 		name       string
 		remoteAddr string
-		role       auth.Role
+		role       enum.Role
 	}{
-		{"lan player", lanAddr, auth.RolePlayer},
-		{"lan admin", lanAddr, auth.RoleAdmin},
-		{"loopback player switching back to admin", loopbackAddr, auth.RolePlayer},
+		{"lan player", lanAddr, enum.RolePlayer},
+		{"lan admin", lanAddr, enum.RoleAdmin},
+		{"loopback player switching back to admin", loopbackAddr, enum.RolePlayer},
 		{"no session", lanAddr, ""},
 	}
 	for _, tt := range tests {
@@ -218,7 +219,7 @@ func TestMain(m *testing.M) {
 func TestCampaignJoinLinks(t *testing.T) {
 	e := newTestEnv(t)
 	e.app.LANIPs = []net.IP{net.ParseIP("192.168.1.10")}
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 
 	cases := []struct {
 		path, url, qr string

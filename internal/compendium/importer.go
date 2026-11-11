@@ -20,6 +20,7 @@ import (
 
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 // Report describes the import of one source directory.
@@ -144,7 +145,7 @@ func storeSource(ctx context.Context, store *db.Store, src Source, path, hash st
 			return err
 		}
 		for _, row := range existing {
-			if e := seen[row.Kind+"/"+row.Slug]; e != nil {
+			if e := seen[string(row.Kind)+"/"+row.Slug]; e != nil {
 				if err := SeedHabitats(ctx, q, row.ID, e.Habitats); err != nil {
 					return fmt.Errorf("habitats of %s: %w", e.Slug, err)
 				}
@@ -182,7 +183,7 @@ func upsert(ctx context.Context, q *sqlc.Queries, src Source, e Entry) error {
 		return err
 	}
 	err = q.UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{
-		Kind: string(e.Kind), Slug: e.Slug, Name: e.Name, SourceKey: src.Key,
+		Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: src.Key,
 		DataJson: data, BodyText: e.Text, ContentHash: hash,
 	})
 	if err != nil {
@@ -259,13 +260,13 @@ func Search(ctx context.Context, q *sqlc.Queries, query, kind, habitat string, c
 // fields: monsters the statblock; spells the spell fields; items the item,
 // weapon and armor fields.
 type HomebrewInput struct {
-	Kind  string `form:"kind"  validate:"required"`
-	Name  string `form:"name"  validate:"required,max=200"`
-	Desc  string `form:"desc"  validate:"max=50000"`
-	AC    int    `form:"ac"    validate:"min=0,max=50"`
-	HP    int    `form:"hp"    validate:"min=0,max=10000"`
-	CR    string `form:"cr"    validate:"max=10"`
-	Level int    `form:"level" validate:"min=0,max=9"`
+	Kind  enum.CompendiumKind `form:"kind"  validate:"required"`
+	Name  string              `form:"name"  validate:"required,max=200"`
+	Desc  string              `form:"desc"  validate:"max=50000"`
+	AC    int                 `form:"ac"    validate:"min=0,max=50"`
+	HP    int                 `form:"hp"    validate:"min=0,max=10000"`
+	CR    string              `form:"cr"    validate:"max=10"`
+	Level int                 `form:"level" validate:"min=0,max=9"`
 
 	// Monsters; Speed, Saves and Skills use the text of speedText and
 	// bonusText, the action sections that of ParseTraits. Size, Languages
@@ -343,7 +344,7 @@ type HomebrewInput struct {
 }
 
 // HomebrewInputFor fills the editor from a stored entry.
-func HomebrewInputFor(kind, name, desc string, data any) HomebrewInput {
+func HomebrewInputFor(kind enum.CompendiumKind, name, desc string, data any) HomebrewInput {
 	in := HomebrewInput{Kind: kind, Name: name, Desc: desc}
 	switch d := data.(type) {
 	case *MonsterData:
@@ -401,7 +402,7 @@ func InputForEntry(e Entry) HomebrewInput {
 	if err != nil {
 		data = e.Data
 	}
-	in := HomebrewInputFor(string(e.Kind), e.Name, e.Text, data)
+	in := HomebrewInputFor(e.Kind, e.Name, e.Text, data)
 	in.Habitats = e.Habitats
 	return in
 }
@@ -453,12 +454,12 @@ func (in HomebrewInput) Entry() (Entry, error) {
 	if !ValidKind(in.Kind) {
 		return Entry{}, fmt.Errorf("unknown kind %q", in.Kind)
 	}
-	e := Entry{Kind: Kind(in.Kind), Slug: Slugify(in.Name), Name: strings.TrimSpace(in.Name), Text: in.Desc}
+	e := Entry{Kind: in.Kind, Slug: Slugify(in.Name), Name: strings.TrimSpace(in.Name), Text: in.Desc}
 	if e.Slug == "" {
 		return Entry{}, errors.New("name needs at least one letter or digit")
 	}
 	switch e.Kind {
-	case KindMonster:
+	case enum.KindMonster:
 		d := MonsterData{
 			Size: strings.TrimSpace(in.Size), Type: strings.TrimSpace(in.MonsterType), Alignment: strings.TrimSpace(in.Alignment),
 			AC: in.AC, ACDetail: strings.TrimSpace(in.ACDetail), HP: in.HP, HitDice: strings.TrimSpace(in.HitDice), Initiative: in.Initiative,
@@ -473,7 +474,7 @@ func (in HomebrewInput) Entry() (Entry, error) {
 		}
 		e.Data = d
 		e.Text = joinText(in.Desc, d.searchText())
-	case KindSpell:
+	case enum.KindSpell:
 		var classes []string
 		for _, c := range strings.Split(in.Classes, ",") {
 			if c = Slugify(c); c != "" {
@@ -485,19 +486,19 @@ func (in HomebrewInput) Entry() (Entry, error) {
 			Components: in.Components, Duration: in.Duration, Concentration: in.Concentration, Ritual: in.Ritual,
 			Classes: classes, Desc: in.Desc, HigherLevel: in.HigherLevel,
 		}
-	case KindItem:
+	case enum.KindItem:
 		d := ItemData{Category: in.Category, Damage: in.Damage, Properties: in.Properties, Range: in.WeaponRange, Martial: in.Martial, Mastery: in.Mastery, Desc: in.Desc}
 		if in.ArmorType != "" {
 			d.Armor = &ArmorData{Type: in.ArmorType, Base: in.ArmorBase, AddDex: in.ArmorAddDex, DexCap: in.ArmorDexCap, StrReq: in.ArmorStrReq, Stealth: in.ArmorStealth}
 			d.ArmorClass = armorText(*d.Armor)
 		}
 		e.Data = d
-	case KindClass, KindSubclass:
+	case enum.KindClass, enum.KindSubclass:
 		d := ClassData{
 			HitDie: in.HitDie, Caster: cmp.Or(in.Caster, "none"), Saves: in.Saves, Features: ParseFeatures(in.Features), Table: ParseTable(in.Table),
 			Desc: withCoreTraits(in.Desc, map[string]string{classTraits[0]: in.Skills, classTraits[1]: in.Armor, classTraits[2]: in.Weapons, classTraits[3]: in.Tools}),
 		}
-		if e.Kind == KindSubclass {
+		if e.Kind == enum.KindSubclass {
 			d.SubclassOf = Slugify(in.SubclassOf)
 		}
 		e.Data = d
@@ -535,7 +536,7 @@ func SaveHomebrew(ctx context.Context, q *sqlc.Queries, id int64, in HomebrewInp
 		return id, q.UpdateHomebrew(ctx, sqlc.UpdateHomebrewParams{ID: id, Name: e.Name, DataJson: data, BodyText: e.Text, ContentHash: hash})
 	}
 	row, err := q.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{
-		Kind: string(e.Kind), Slug: e.Slug, Name: e.Name, DataJson: data, BodyText: e.Text, ContentHash: hash,
+		Kind: e.Kind, Slug: e.Slug, Name: e.Name, DataJson: data, BodyText: e.Text, ContentHash: hash,
 		OwnerCharacterID: sql.NullInt64{Int64: owner.CharacterID, Valid: owner.CharacterID != 0}, Scoped: owner.CharacterID != 0,
 	})
 	if err != nil {

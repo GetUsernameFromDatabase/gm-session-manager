@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gm-session-manager/internal/auth"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -83,8 +84,8 @@ func TestFeedbackAccess(t *testing.T) {
 		cookie string
 		want   int
 	}{
-		{"player", e.token(t, auth.RolePlayer), http.StatusOK},
-		{"GM", e.token(t, auth.RoleAdmin), http.StatusOK},
+		{"player", e.token(t, enum.RolePlayer), http.StatusOK},
+		{"GM", e.token(t, enum.RoleAdmin), http.StatusOK},
 		{"visitor", "", http.StatusUnprocessableEntity},
 	}
 	for _, tt := range tests {
@@ -103,7 +104,7 @@ func TestFeedbackAccess(t *testing.T) {
 
 func TestFeedbackValidation(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	tests := []struct {
 		name  string
 		edit  func(url.Values)
@@ -138,7 +139,7 @@ func TestFeedbackValidation(t *testing.T) {
 // the requests that failed with their errors, and the pictures sent.
 func TestBugReport(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	e.do(t, http.MethodGet, "/notes/9999", player, nil, true)
 
 	f := bugForm("../../Dice | tray")
@@ -195,7 +196,7 @@ func TestBugReport(t *testing.T) {
 
 func TestIdeaHasNoRequests(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	f := bugForm("More dice colors")
 	f.Set("kind", "idea")
 	w := e.sendFeedback(t, gm, f, nil)
@@ -256,7 +257,7 @@ func TestBadConsole(t *testing.T) {
 			e := newTestEnv(t)
 			f := bugForm("x")
 			f.Set("console", tt.console)
-			if w := e.sendFeedback(t, e.token(t, auth.RolePlayer), f, nil); w.Code != http.StatusOK {
+			if w := e.sendFeedback(t, e.token(t, enum.RolePlayer), f, nil); w.Code != http.StatusOK {
 				t.Fatalf("status %d", w.Code)
 			}
 			for _, md := range e.reports(t) {
@@ -272,7 +273,7 @@ func TestBadConsole(t *testing.T) {
 // newest first, linking its file; it goes away once they are deleted.
 func TestFeedbackIndex(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	index := filepath.Join(e.app.DataDir, FeedbackIndexName)
 	read := func() string {
 		b, err := os.ReadFile(index)
@@ -324,7 +325,7 @@ func TestFeedbackIndex(t *testing.T) {
 func TestFeedbackTooBig(t *testing.T) {
 	e := newTestEnv(t)
 	big := strings.Repeat("x", views.MaxScreenshots*maxAttachmentBytes+2<<20)
-	w := e.sendFeedback(t, e.token(t, auth.RolePlayer), bugForm("Big"), map[string]string{"big.png": big})
+	w := e.sendFeedback(t, e.token(t, enum.RolePlayer), bugForm("Big"), map[string]string{"big.png": big})
 	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "too big") {
 		t.Errorf("status %d: %s", w.Code, w.Body)
 	}
@@ -338,7 +339,7 @@ func TestFeedbackTooBig(t *testing.T) {
 func TestAutoReport(t *testing.T) {
 	e := newTestEnv(t)
 	e.router.GET("/boom", func(c *gin.Context) { e.app.serverError(c, errors.New("disk full")) })
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	e.do(t, http.MethodGet, "/boom", "", nil, false) // a visitor
 	if n := len(e.reports(t)); n != 0 {
 		t.Fatalf("a visitor's error wrote %d reports", n)

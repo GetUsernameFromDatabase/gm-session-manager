@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 // A mastery is a "Name|Source" code or an object with a uid (Psychic Blade).
@@ -129,7 +130,7 @@ func TestImportFiveToolsBook(t *testing.T) {
 		t.Errorf("cat habitats after re-import %v", got)
 	}
 	// Pickers offer species and subraces (marked with their base), never versions.
-	names, err := store.ListCompendiumNames(t.Context(), sqlc.ListCompendiumNamesParams{Kind: string(KindSpecies)})
+	names, err := store.ListCompendiumNames(t.Context(), sqlc.ListCompendiumNamesParams{Kind: enum.KindSpecies})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +148,7 @@ func TestImportFiveToolsBook(t *testing.T) {
 // link resolution, so they get the labels, never the tokens.
 func TestTokensReadAsLabels(t *testing.T) {
 	raw := `{"desc":"The target is [[compendium:condition/prone|Prone]].","actions":[{"name":"Shove","desc":"It falls [[compendium:condition/prone|prone]].","type":"action"}]}`
-	d, err := DecodeData(KindMonster, raw)
+	d, err := DecodeData(enum.KindMonster, raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,11 +156,11 @@ func TestTokensReadAsLabels(t *testing.T) {
 	if m.Desc != "The target is Prone." || m.Actions[0].Desc != "It falls prone." {
 		t.Errorf("decoded %q / %q", m.Desc, m.Actions[0].Desc)
 	}
-	in := InputForEntry(Entry{Kind: KindMonster, Name: "Ogre", Data: *m})
+	in := InputForEntry(Entry{Kind: enum.KindMonster, Name: "Ogre", Data: *m})
 	if strings.Contains(in.Actions, "[[") || !strings.Contains(in.Actions, "It falls prone.") {
 		t.Errorf("form actions %q", in.Actions)
 	}
-	in = InputForEntry(Entry{Kind: KindMonster, Name: "Ogre", Data: MonsterData{Desc: "See [[compendium:monster/goblin|goblins]]."}})
+	in = InputForEntry(Entry{Kind: enum.KindMonster, Name: "Ogre", Data: MonsterData{Desc: "See [[compendium:monster/goblin|goblins]]."}})
 	if in.Desc != "See goblins." {
 		t.Errorf("form desc %q", in.Desc)
 	}

@@ -19,13 +19,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
 )
-
-// linkImage is the note_links target type of images.
-const linkImage = "image"
 
 // imageForm is the image editor. The file comes from the multipart body;
 // a new image needs a link or a file.
@@ -247,7 +245,7 @@ func (a *App) attachmentToImage(c *gin.Context) {
 	if att.BlockID.Valid {
 		b, _, err := a.loadBlock(ctx, att.BlockID.Int64)
 		if err == nil {
-			err = a.Store.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetType: linkImage, TargetID: img.ID})
+			err = a.Store.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetType: enum.LinkImage, TargetID: img.ID})
 		}
 		if err != nil {
 			a.serverError(c, err)
@@ -400,11 +398,11 @@ func (a *App) imagePage(c *gin.Context) {
 		a.serverError(c, err)
 		return
 	}
-	if v.Backlinks, err = a.backlinks(ctx, w, img.CampaignID, linkImage, img.ID); err != nil {
+	if v.Backlinks, err = a.backlinks(ctx, w, img.CampaignID, enum.LinkImage, img.ID); err != nil {
 		a.serverError(c, err)
 		return
 	}
-	if v.EntityLinks, err = a.entityMentions(ctx, w, linkImage, img.ID); err != nil {
+	if v.EntityLinks, err = a.entityMentions(ctx, w, enum.LinkImage, img.ID); err != nil {
 		a.serverError(c, err)
 		return
 	}

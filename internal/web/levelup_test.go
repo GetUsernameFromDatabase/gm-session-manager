@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -24,7 +24,7 @@ func TestRevertLevelUp(t *testing.T) {
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	start, _ := e.q().GetCharacter(ctx, e.characterID)
 	var after []int64
@@ -65,7 +65,7 @@ func TestLevelUpTwice(t *testing.T) {
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	level := func() int {
 		ch, _ := e.q().GetCharacter(ctx, e.characterID)
@@ -100,7 +100,7 @@ func TestLevelUpInvocations(t *testing.T) {
 		}
 	}
 	e.allowEntrySources(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	if w := e.do(t, http.MethodGet, base+"?class=testlock", player, nil, false); !strings.Contains(w.Body.String(), "Eldritch Invocations") || strings.Contains(w.Body.String(), "Agonizing Blast") {
 		t.Errorf("level 1 form lacks the pick or offers a level 2 option")
@@ -192,7 +192,7 @@ func TestLevelUpLineage(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.allowEntrySources(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	// Each level's new invocations: one, two, none.
 	for i, picks := range [][]string{{"Armor of Shadows"}, {"Agonizing Blast", "Shadow Step"}, nil} {
@@ -310,7 +310,7 @@ func TestLevelUpFeats(t *testing.T) {
 			if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
 				t.Fatal(err)
 			}
-			player := e.token(t, auth.RolePlayer)
+			player := e.token(t, enum.RolePlayer)
 			base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 			for range 3 {
 				if w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}}), false); w.Code != http.StatusSeeOther {
@@ -391,7 +391,7 @@ func TestLevelUpFeatWithoutASI(t *testing.T) {
 	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
 		t.Fatal(err)
 	}
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	form := url.Values{"class": {"wizard"}, "feat": {"magic-initiate"}}
 	w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, form), false)
@@ -406,7 +406,7 @@ func TestLevelUpFeatWithoutASI(t *testing.T) {
 func TestLevelUpGoneSubclass(t *testing.T) {
 	e := newTestEnv(t)
 	loadFeatFixtures(t, e)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	before := e.sheet(t).Level()
 	form := url.Values{"class": {"wizard"}, "subclass": {"gone-school"}}
 	w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/levelup", e.characterID), player, wizardLevelUp(t, e, form), true)
@@ -435,7 +435,7 @@ func TestLevelUpEpicBoon(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.allowEntrySources(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	if body := e.do(t, http.MethodGet, base+"?class=boonling", player, nil, false).Body.String(); !strings.Contains(body, `value="boon-of-fate"`) {
 		t.Fatalf("Boon of Fate not offered: %s", body)
@@ -458,7 +458,7 @@ func TestRevertLevelUpInterleaved(t *testing.T) {
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
 	start, _ := e.q().GetCharacter(ctx, e.characterID)
 	startSheet, _ := dnd5e.ParseSheet(start.SheetJson)
@@ -526,17 +526,17 @@ func TestChangeSubclass(t *testing.T) {
 	path := fmt.Sprintf("/characters/%d/subclass", e.characterID)
 	tests := []struct {
 		name   string
-		role   auth.Role
+		role   enum.Role
 		method string
 		form   url.Values
 		want   int
 	}{
 		// htmx turns the 403 into a 422 flash; the message below tells them apart.
-		{"gm form", auth.RoleAdmin, http.MethodGet, nil, http.StatusUnprocessableEntity},
-		{"gm change", auth.RoleAdmin, http.MethodPost, url.Values{"class": {"wizard"}, "subclass": {"Evoker"}}, http.StatusUnprocessableEntity},
-		{"owner form", auth.RolePlayer, http.MethodGet, nil, http.StatusOK},
-		{"owner, unknown subclass", auth.RolePlayer, http.MethodPost, url.Values{"class": {"wizard"}, "subclass": {"Necromancer"}}, http.StatusUnprocessableEntity},
-		{"owner change", auth.RolePlayer, http.MethodPost, url.Values{"class": {"wizard"}, "subclass": {"Evoker"}}, http.StatusOK},
+		{"gm form", enum.RoleAdmin, http.MethodGet, nil, http.StatusUnprocessableEntity},
+		{"gm change", enum.RoleAdmin, http.MethodPost, url.Values{"class": {"wizard"}, "subclass": {"Evoker"}}, http.StatusUnprocessableEntity},
+		{"owner form", enum.RolePlayer, http.MethodGet, nil, http.StatusOK},
+		{"owner, unknown subclass", enum.RolePlayer, http.MethodPost, url.Values{"class": {"wizard"}, "subclass": {"Necromancer"}}, http.StatusUnprocessableEntity},
+		{"owner change", enum.RolePlayer, http.MethodPost, url.Values{"class": {"wizard"}, "subclass": {"Evoker"}}, http.StatusOK},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -548,7 +548,7 @@ func TestChangeSubclass(t *testing.T) {
 			if w.Code != tt.want {
 				t.Fatalf("status %d, want %d: %s", w.Code, tt.want, w.Body)
 			}
-			if tt.role == auth.RoleAdmin && !strings.Contains(w.Body.String(), "Only the player changes their subclass") {
+			if tt.role == enum.RoleAdmin && !strings.Contains(w.Body.String(), "Only the player changes their subclass") {
 				t.Errorf("gm not refused: %s", w.Body)
 			}
 			if tt.name == "owner form" && !strings.Contains(w.Body.String(), "Spells or options Old School gave you stay on the sheet") {

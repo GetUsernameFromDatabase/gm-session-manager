@@ -11,6 +11,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
@@ -160,7 +161,7 @@ func (a *App) sheetSpells(ctx context.Context, sheet dnd5e.Sheet) (map[string]*c
 	for i, sp := range sheet.Spells {
 		slugs[i] = sp.Slug
 	}
-	rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: string(compendium.KindSpell), Slugs: slugs})
+	rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: enum.KindSpell, Slugs: slugs})
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +177,7 @@ func (a *App) sheetSpells(ctx context.Context, sheet dnd5e.Sheet) (map[string]*c
 		r, ok := best[sp.Slug]
 		data := r.DataJson
 		if sp.Source != "" && sp.Source != r.SourceKey {
-			e, err := a.Store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(compendium.KindSpell), Slug: sp.Slug, SourceKey: sp.Source})
+			e, err := a.Store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSpell, Slug: sp.Slug, SourceKey: sp.Source})
 			switch {
 			case err == nil:
 				data, ok = e.DataJson, true
@@ -187,7 +188,7 @@ func (a *App) sheetSpells(ctx context.Context, sheet dnd5e.Sheet) (map[string]*c
 		if !ok {
 			continue
 		}
-		d, err := compendium.DecodeData(compendium.KindSpell, data)
+		d, err := compendium.DecodeData(enum.KindSpell, data)
 		if err != nil {
 			return nil, err
 		}
@@ -236,7 +237,7 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 			ID: r.ID, Name: r.Name, AC: r.Ac, HPVisible: r.HpVisible, CharacterID: r.CharacterID.Int64, EntityID: r.EntityID.Int64,
 			Kind:   combatantKind(r),
 			IsOwn:  v.IsPlayer() && r.CharacterID.Int64 == v.CharacterID,
-			Active: enc.Status == "active" && enc.ActiveCombatantID.Int64 == r.ID,
+			Active: enc.Status == enum.EncounterActive && enc.ActiveCombatantID.Int64 == r.ID,
 			Out:    outOfFight(r),
 		}
 		if s, ok := pcSheet(r); ok { // the stored AC is from when they joined
@@ -399,7 +400,7 @@ func (a *App) noteView(ctx context.Context, v perm.Viewer, note sqlc.Note) (view
 	if !nv.CanManage && len(rows) == 0 {
 		return nv, false, nil
 	}
-	nv.Visibilities = perm.BlockVisibilities(v, note.OwnerCharacterID.Int64, note.Kind == views.KindGameSession)
+	nv.Visibilities = perm.BlockVisibilities(v, note.OwnerCharacterID.Int64, note.Kind == enum.NoteGameSession)
 	names, err := a.characterNames(ctx, note.CampaignID)
 	if err != nil {
 		return nv, false, err
@@ -410,7 +411,7 @@ func (a *App) noteView(ctx context.Context, v perm.Viewer, note sqlc.Note) (view
 			return nv, false, err
 		}
 		pb := perm.Block{
-			Visibility: perm.Visibility(r.Visibility), PlayersCanEdit: r.PlayersCanEdit, NoteOwnerID: note.OwnerCharacterID.Int64,
+			Visibility: r.Visibility, PlayersCanEdit: r.PlayersCanEdit, NoteOwnerID: note.OwnerCharacterID.Int64,
 			Audience: audience, AuthorID: r.AuthorCharacterID.Int64,
 		}
 		if !perm.CanReadBlock(v, pb) {
@@ -429,7 +430,7 @@ func (a *App) noteView(ctx context.Context, v perm.Viewer, note sqlc.Note) (view
 		}
 		nv.Blocks = append(nv.Blocks, bv)
 	}
-	if v.IsGM && slices.Contains(nv.Visibilities, perm.VisListed) {
+	if v.IsGM && slices.Contains(nv.Visibilities, enum.VisListed) {
 		if nv.Characters, err = a.Store.ListCharactersByCampaign(ctx, note.CampaignID); err != nil {
 			return nv, false, err
 		}

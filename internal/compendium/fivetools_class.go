@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"gm-session-manager/internal/enum"
 )
 
 // This file reads the class-<name>.json files of a 5etools book folder:
@@ -203,7 +205,7 @@ func (p *ftBook) classFile(file string) error {
 			HitDie: c.HD.Faces, Caster: cmp.Or(ftCasters[c.CasterProgression], "none"), Saves: c.Proficiency,
 			Features: x.features(refs, false, gains), Table: ftClassTable(c.TableGroups),
 		}
-		p.add(KindClass, c.Name, d, featuresSearchText(d.Features))
+		p.add(enum.KindClass, c.Name, d, featuresSearchText(d.Features))
 	}); err != nil {
 		return err
 	}
@@ -225,7 +227,7 @@ func (p *ftBook) classFile(file string) error {
 			Caster: cmp.Or(ftCasters[s.CasterProgression], "none"), SubclassOf: Slugify(s.ClassName),
 			Features: x.features(s.SubclassFeatures, true, nil), Table: ftClassTable(s.TableGroups),
 		}
-		p.add(KindSubclass, s.Name, d, featuresSearchText(d.Features))
+		p.add(enum.KindSubclass, s.Name, d, featuresSearchText(d.Features))
 	})
 }
 

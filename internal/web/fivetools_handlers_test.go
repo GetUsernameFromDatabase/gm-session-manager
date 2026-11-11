@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -48,8 +48,8 @@ func (e testEnv) feat(t *testing.T, source, slug, desc string) int64 {
 
 func TestFiveToolsGMOnly(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
-	gm := e.token(t, auth.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
 	e.source(t, "5etools-phb", "2014")
 	tests := []struct{ method, path string }{
 		{http.MethodGet, "/compendium/5etools"},
@@ -81,7 +81,7 @@ func TestFiveToolsGMOnly(t *testing.T) {
 
 func TestSourceMove(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	e.source(t, "srd-2024", "2024") // 200
 	e.source(t, "book-a", "2024")   // 100
 	e.source(t, "book-b", "2014")   // 300
@@ -126,7 +126,7 @@ func TestSourceMove(t *testing.T) {
 // misses a source (a stale page) changes nothing.
 func TestSourceOrder(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	e.source(t, "book-a", "2024")
 	e.source(t, "book-b", "2014")
 	order := func() string {
@@ -167,7 +167,7 @@ func TestSourceOrder(t *testing.T) {
 // progress, and a second import or a removal waits for it to finish.
 func TestFiveToolsImportRunning(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	e.source(t, "5etools-phb", "2014")
 	e.app.fiveTools.start(4)
 	e.app.fiveTools.update(func(j *views.FiveToolsJob) { j.Done, j.Current = 1, "Test Book" })
@@ -233,7 +233,7 @@ func TestImportSummary(t *testing.T) {
 
 func TestFiveToolsRemove(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	e.source(t, "5etools-phb", "2014")
 	e.source(t, "5etools-xge", "2014")
 	e.feat(t, "5etools-phb", "alert", "x")
@@ -268,8 +268,8 @@ func TestFiveToolsRemove(t *testing.T) {
 // names the other, and a [[compendium:...]] token links to the winning copy.
 func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	e.source(t, "book-new", "2024") // 100 wins
 	e.source(t, "book-old", "2014") // 300
 	text := "See [[compendium:feat/alert|Alert]], [[compendium:feat/ghost|Ghost]], [[compendium:feat/secret|Secret]] and [[compendium:feat/shared|Shared]]."
@@ -328,7 +328,7 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 // pin is gone it is deleted with its folder.
 func TestSourceDeleteUsed(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	e.source(t, "my-folder", "2024")
 	featID := e.feat(t, "my-folder", "alert", "x")
 	folder := filepath.Join(e.app.compendiumDir(), "my-folder")

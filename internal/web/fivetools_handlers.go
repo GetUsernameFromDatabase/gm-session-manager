@@ -13,6 +13,7 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/web/views"
 )
@@ -296,7 +297,7 @@ func (a *App) resolveCompendiumLinks(ctx context.Context, dataJSON string, campa
 	}
 	ids := map[string]int64{}
 	for kind, slugs := range refs {
-		rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: kind, Slugs: slugs})
+		rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: enum.CompendiumKind(kind), Slugs: slugs})
 		if err != nil {
 			return "", err
 		}

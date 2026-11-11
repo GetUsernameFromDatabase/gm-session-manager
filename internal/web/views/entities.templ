@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
@@ -509,11 +510,11 @@ templ wikiLink(l WikiLink) {
 		class="wikilink"
 		href={ templ.SafeURL(l.URL()) }
 		data-mention={ l.Key() }
-		if l.Kind == "image" {
+		if l.Kind == string(enum.LinkImage) {
 			data-float={ cmp.Or(l.Float, "left") }
 		}
 	>
-		if l.Kind == "image" {
+		if l.Kind == string(enum.LinkImage) {
 			<img src={ ImageSrc(l.ID) } alt={ l.Label } loading="lazy"/>
 		}
 		<span>{ l.Label }</span>

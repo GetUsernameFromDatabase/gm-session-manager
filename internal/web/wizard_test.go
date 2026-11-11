@@ -16,10 +16,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -51,7 +51,7 @@ func TestCreationWizard(t *testing.T) {
 		}
 	}
 	e.allowEntrySources(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/create", e.characterID)
 	if w := e.do(t, http.MethodGet, base, player, nil, false); w.Header().Get("Location") != base+"/class" {
 		t.Fatalf("start: %d %v", w.Code, w.Header())
@@ -211,7 +211,7 @@ func TestCreationWizard(t *testing.T) {
 func TestWizardChange(t *testing.T) {
 	e := newTestEnv(t)
 	loadFeatFixtures(t, e)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/create", e.characterID)
 	for _, step := range []struct {
 		step string
@@ -351,7 +351,7 @@ func TestFeatChoices(t *testing.T) {
 			e := newTestEnv(t)
 			ctx := t.Context()
 			loadFeatFixtures(t, e)
-			player := e.token(t, auth.RolePlayer)
+			player := e.token(t, enum.RolePlayer)
 			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
 			for _, step := range []string{"class=wizard", "species=human", "background=sage"} {
 				step, pick, _ := strings.Cut(step, "=")
@@ -408,7 +408,7 @@ func TestCreationSpeciesSpells(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			player := e.token(t, auth.RolePlayer)
+			player := e.token(t, enum.RolePlayer)
 			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
 			for _, step := range []string{"class=wizard", "species=" + tc.species, "background=testfolk"} {
 				step, pick, _ := strings.Cut(step, "=")
@@ -602,7 +602,7 @@ func TestBackgroundRepicksClassSkill(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	base, player := fmt.Sprintf("/characters/%d/create/", e.characterID), e.token(t, auth.RolePlayer)
+	base, player := fmt.Sprintf("/characters/%d/create/", e.characterID), e.token(t, enum.RolePlayer)
 	if w := e.do(t, http.MethodPost, base+"class", player, url.Values{"pick": {"testmonk"}, "skill": {"insight", "stealth"}}, false); w.Code != http.StatusSeeOther {
 		t.Fatalf("class: %d %s", w.Code, w.Body)
 	}
@@ -650,7 +650,7 @@ func TestClassSkillCount(t *testing.T) {
 	if err := e0.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testcommoner", Name: "Testcommoner", SourceKey: "test", ContentHash: "x", DataJson: `{"hit_die":8}`}); err != nil {
 		t.Fatal(err)
 	}
-	w0 := e0.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/create/class", e0.characterID), e0.token(t, auth.RolePlayer), url.Values{"pick": {"testcommoner"}, "skill": {"athletics"}}, false)
+	w0 := e0.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/create/class", e0.characterID), e0.token(t, enum.RolePlayer), url.Values{"pick": {"testcommoner"}, "skill": {"athletics"}}, false)
 	if body := w0.Body.String(); w0.Code != http.StatusUnprocessableEntity || errorAt(body, views.FieldSkill) || !strings.Contains(body, ">choose none<") {
 		t.Errorf("skill on a class without skills: %d, message not at the top", w0.Code)
 	}
@@ -669,7 +669,7 @@ func TestClassSkillCount(t *testing.T) {
 			t.Fatal(err)
 		}
 		form := url.Values{"pick": {"testfighter"}, "skill": tc.skills}
-		path, player := fmt.Sprintf("/characters/%d/create/class", e.characterID), e.token(t, auth.RolePlayer)
+		path, player := fmt.Sprintf("/characters/%d/create/class", e.characterID), e.token(t, enum.RolePlayer)
 		w := e.do(t, http.MethodPost, path, player, form, false)
 		if w.Code != tc.code {
 			t.Errorf("%v: %d, want %d", tc.skills, w.Code, tc.code)
@@ -890,7 +890,7 @@ func TestCreationOptionCheck(t *testing.T) {
 			if err := e.q().UpsertCompendiumEntry(t.Context(), cloak); err != nil {
 				t.Fatal(err)
 			}
-			player := e.token(t, auth.RolePlayer)
+			player := e.token(t, enum.RolePlayer)
 			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
 			for _, step := range []string{"class=testlock", "species=human", "background=testfolk"} {
 				step, pick, _ := strings.Cut(step, "=")
@@ -1036,7 +1036,7 @@ func TestSpeciesResistance(t *testing.T) {
 	if err := e.q().UpsertCompendiumEntry(ctx, species); err != nil {
 		t.Fatal(err)
 	}
-	d, err := compendium.DecodeData(compendium.KindSpecies, species.DataJson)
+	d, err := compendium.DecodeData(enum.KindSpecies, species.DataJson)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1145,7 +1145,7 @@ func TestFindItemPlurals(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	for _, slug := range []string{"dagger", "pouch", "glass"} {
-		entry := sqlc.UpsertCompendiumEntryParams{Kind: string(compendium.KindItem), Slug: slug, Name: slug, DataJson: "{}", SourceKey: "test", ContentHash: "x"}
+		entry := sqlc.UpsertCompendiumEntryParams{Kind: enum.KindItem, Slug: slug, Name: slug, DataJson: "{}", SourceKey: "test", ContentHash: "x"}
 		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
 			t.Fatal(err)
 		}
@@ -1238,7 +1238,7 @@ func TestWizardSpeciesVariant(t *testing.T) {
 		}
 	}
 	e.allowEntrySources(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/create/species", e.characterID)
 	page := e.do(t, http.MethodGet, base, player, nil, false).Body.String()
 	if strings.Contains(page, "Drow Descent") {

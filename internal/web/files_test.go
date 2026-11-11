@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -72,7 +72,7 @@ func TestFilesCleanup(t *testing.T) {
 	if err := e.q().InsertBlockStep(t.Context(), sqlc.InsertBlockStepParams{BlockID: block, Version: 1, ClientID: "c", StepJson: step}); err != nil {
 		t.Fatal(err)
 	}
-	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
 
 	if w := e.do(t, http.MethodGet, views.PathFiles, player, nil, false); w.Code == http.StatusOK {
 		t.Fatal("a player may not open the Files page")
@@ -116,7 +116,7 @@ func TestCampaignFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
 	base := views.FilesBase(e.campaignID)
 
 	page := e.do(t, http.MethodGet, base, gm, nil, false).Body.String()
@@ -147,10 +147,10 @@ func TestAttachmentToImage(t *testing.T) {
 	e := newTestEnv(t)
 	att := e.attachFile(t, e.playersBlock(t), "Harbour map.png")
 	path := fmt.Sprintf("/attachments/%d/to-image", att.ID)
-	if w := e.do(t, http.MethodPost, path, e.token(t, auth.RolePlayer), nil, true); w.Code == http.StatusOK {
+	if w := e.do(t, http.MethodPost, path, e.token(t, enum.RolePlayer), nil, true); w.Code == http.StatusOK {
 		t.Fatal("a player may not add campaign images")
 	}
-	w := e.do(t, http.MethodPost, path, e.token(t, auth.RoleAdmin), nil, true)
+	w := e.do(t, http.MethodPost, path, e.token(t, enum.RoleAdmin), nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
 	}
@@ -173,7 +173,7 @@ func TestAttachmentToImage(t *testing.T) {
 		t.Error("the note's attachment is gone")
 	}
 	// Players of the block see the new image before the editor's next snapshot links it.
-	if w := e.do(t, http.MethodGet, fmt.Sprintf("/images/%d/file", img.ID), e.token(t, auth.RolePlayer), nil, false); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodGet, fmt.Sprintf("/images/%d/file", img.ID), e.token(t, enum.RolePlayer), nil, false); w.Code != http.StatusOK {
 		t.Errorf("player reading the converted image: %d", w.Code)
 	}
 }
@@ -200,12 +200,12 @@ func TestAttachmentAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	viewers := map[string]string{
-		"gm": e.token(t, auth.RoleAdmin), "alice": e.token(t, auth.RolePlayer),
+		"gm": e.token(t, enum.RoleAdmin), "alice": e.token(t, enum.RolePlayer),
 		"bob": player(e.campaignID, "Bob"), "carol": player(other.ID, "Carol"),
 	}
-	block := func(owner int64, vis string) int64 {
+	block := func(owner int64, vis enum.Visibility) int64 {
 		t.Helper()
-		note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: vis, OwnerCharacterID: nullID(owner)})
+		note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: string(vis), OwnerCharacterID: nullID(owner)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -222,6 +222,10 @@ func TestAttachmentAccess(t *testing.T) {
 	gone := block(0, "players")
 	orphan := e.attachFile(t, gone, "orphan.png")
 	if err := e.q().DeleteBlock(ctx, gone); err != nil {
+		t.Fatal(err)
+	}
+	// The orphan's missing block must still scan into the typed visibility.
+	if _, err := e.q().ListAttachmentFiles(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -255,7 +259,7 @@ func TestFileUsePrivacy(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	tests := []struct {
-		vis   string
+		vis   enum.Visibility
 		owner int64
 		want  views.FileUse
 	}{
@@ -264,7 +268,7 @@ func TestFileUsePrivacy(t *testing.T) {
 		{"owner", e.characterID, views.FileUse{Kind: views.FileUseNote, Private: true}},
 	}
 	for _, tt := range tests {
-		t.Run(tt.vis, func(t *testing.T) {
+		t.Run(string(tt.vis), func(t *testing.T) {
 			note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Secret plans", OwnerCharacterID: nullID(tt.owner)})
 			if err != nil {
 				t.Fatal(err)

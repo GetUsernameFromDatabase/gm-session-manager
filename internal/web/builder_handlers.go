@@ -15,6 +15,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
 )
@@ -30,7 +31,7 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 	var x views.BuilderExtra
 	switch c.Query("op") {
 	case "set-species", "set-background":
-		kind := strings.TrimPrefix(c.Query("op"), "set-")
+		kind := enum.CompendiumKind(strings.TrimPrefix(c.Query("op"), "set-"))
 		rows, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: campaignID})
 		for _, r := range rows {
 			x.Suggestions = append(x.Suggestions, r.Name)
@@ -52,7 +53,7 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 	if visible, err := a.entryVisible(ctx, e, campaignID); err != nil || !visible {
 		return x, err
 	}
-	data, err := compendium.DecodeData(compendium.Kind(e.Kind), e.DataJson)
+	data, err := compendium.DecodeData(e.Kind, e.DataJson)
 	if err != nil {
 		return x, err
 	}
@@ -71,7 +72,7 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 		f := dnd5e.Feature{Name: e.Name, Description: textMarkdown(d), Source: kindSources[e.Kind]}
 		x.FeatureMods = dnd5e.ParseEffects(e.Name, f.Description, nil, "").Apply(&f)
 		x.Feature = &f
-		if e.Kind == string(compendium.KindFeat) {
+		if e.Kind == enum.KindFeat {
 			x.FeatSource = e.SourceKey
 		}
 	}
@@ -79,7 +80,7 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 }
 
 // kindSources name where a feature looked up in the compendium comes from.
-var kindSources = map[string]string{string(compendium.KindFeat): "Feat", string(compendium.KindSpecies): "Species", string(compendium.KindBackground): "Background"}
+var kindSources = map[enum.CompendiumKind]string{enum.KindFeat: "Feat", enum.KindSpecies: "Species", enum.KindBackground: "Background"}
 
 // compendiumWeapon fills a sheet weapon from a compendium item: damage
 // "1d8 slashing", finesse weapons use the better of STR and DEX, and
@@ -151,7 +152,7 @@ func (a *App) builderPicks(c *gin.Context) {
 
 // itemPicks are compendium weapons, or armor and shields.
 func (a *App) itemPicks(ctx context.Context, q string, campaignID int64, armor bool) ([]views.BuilderPick, error) {
-	rows, err := a.searchRows(ctx, q, string(compendium.KindItem), campaignID)
+	rows, err := a.searchRows(ctx, q, string(enum.KindItem), campaignID)
 	if err != nil {
 		return nil, err
 	}
@@ -185,13 +186,13 @@ func (a *App) entryData(ctx context.Context, id int64) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return compendium.DecodeData(compendium.Kind(e.Kind), e.DataJson)
+	return compendium.DecodeData(e.Kind, e.DataJson)
 }
 
 // featurePicks are feats and class features named like q. Class features
 // live inside their class, so classes whose text matches are opened up.
 func (a *App) featurePicks(ctx context.Context, q string, campaignID int64) ([]views.BuilderPick, error) {
-	feats, err := a.searchRows(ctx, q, string(compendium.KindFeat), campaignID)
+	feats, err := a.searchRows(ctx, q, string(enum.KindFeat), campaignID)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +200,7 @@ func (a *App) featurePicks(ctx context.Context, q string, campaignID int64) ([]v
 	for _, r := range feats {
 		picks = append(picks, views.BuilderPick{EntryID: r.ID, Name: r.Name, Detail: "Feat"})
 	}
-	classes, err := a.searchRows(ctx, q, string(compendium.KindClass), campaignID)
+	classes, err := a.searchRows(ctx, q, string(enum.KindClass), campaignID)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +232,7 @@ func (a *App) commandCompletions(c *gin.Context) {
 	out := []string{}
 	if len(words) >= 2 && strings.EqualFold(words[0], "spell") && strings.EqualFold(words[1], "add") {
 		if q != "" {
-			rows, err := a.searchRows(c.Request.Context(), q, string(compendium.KindSpell), ch.CampaignID)
+			rows, err := a.searchRows(c.Request.Context(), q, string(enum.KindSpell), ch.CampaignID)
 			if err != nil {
 				a.serverError(c, err)
 				return

@@ -3,6 +3,8 @@ package compendium
 import (
 	"reflect"
 	"testing"
+
+	"gm-session-manager/internal/enum"
 )
 
 // TestMonsterFormRoundTrip: a statblock survives the homebrew form.
@@ -23,7 +25,7 @@ func TestMonsterFormRoundTrip(t *testing.T) {
 		},
 		Desc: "Howls.",
 	}
-	in := InputForEntry(Entry{Kind: KindMonster, Name: "Howler", Data: d})
+	in := InputForEntry(Entry{Kind: enum.KindMonster, Name: "Howler", Data: d})
 	e, err := in.Entry()
 	if err != nil {
 		t.Fatal(err)

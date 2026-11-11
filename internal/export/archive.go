@@ -13,6 +13,7 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 // Campaign writes a zip of one campaign to w:
@@ -59,7 +60,7 @@ func Campaign(ctx context.Context, w io.Writer, q *sqlc.Queries, campaignID int6
 		Mention: func(id string) string {
 			kind, rawID, _ := strings.Cut(id, ":")
 			n, _ := strconv.ParseInt(rawID, 10, 64)
-			if kind == "note" {
+			if kind == string(enum.LinkNote) {
 				return noteFile[n]
 			}
 			return ""
@@ -80,7 +81,7 @@ func Campaign(ctx context.Context, w io.Writer, q *sqlc.Queries, campaignID int6
 		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "# %s\n\n", n.Title)
-		if n.Kind == "game_session" {
+		if n.Kind == enum.NoteGameSession {
 			b.WriteString("_Game session_\n\n")
 		}
 		for _, blk := range byNote[n.ID] {

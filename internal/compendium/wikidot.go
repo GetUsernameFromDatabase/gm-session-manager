@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"gm-session-manager/internal/enum"
+
 	"golang.org/x/net/html"
 )
 
@@ -26,7 +28,7 @@ var wikidotSite = Site{
 	Imports: "2014 classes, subclasses, lineages, backgrounds and feats",
 	hosts:   []string{wikidotHost},
 	page:    func(u *url.URL) string { return strings.ToLower(strings.Trim(u.Path, "/")) },
-	check: func(page string) (Kind, error) {
+	check: func(page string) (enum.CompendiumKind, error) {
 		if !rePage.MatchString(page) {
 			return "", fmt.Errorf("%q is not a %s page", page, wikidotHost)
 		}
@@ -56,19 +58,19 @@ var wikidotClasses = []string{
 const WikidotBase = "https://" + wikidotHost + "/"
 
 // wikidotKind is the kind of a page, "" for pages read as plain text.
-func wikidotKind(page string) Kind {
+func wikidotKind(page string) enum.CompendiumKind {
 	prefix, _, sub := strings.Cut(page, ":")
 	switch {
 	case !sub && slices.Contains(wikidotClasses, prefix):
-		return KindClass
+		return enum.KindClass
 	case prefix == "lineage" || prefix == "race":
-		return KindSpecies
+		return enum.KindSpecies
 	case prefix == "background":
-		return KindBackground
+		return enum.KindBackground
 	case prefix == "feat":
-		return KindFeat
+		return enum.KindFeat
 	case sub && slices.Contains(wikidotClasses, prefix):
-		return KindSubclass
+		return enum.KindSubclass
 	}
 	return ""
 }
@@ -114,10 +116,10 @@ func ParseWikidot(page string, body []byte) (string, Entry, error) {
 	prefix, sub, _ := strings.Cut(page, ":")
 	e := Entry{Kind: kind, Name: title, Slug: Slugify(cmp.Or(sub, page))}
 	switch kind {
-	case KindClass:
+	case enum.KindClass:
 		d := wikidotClass(page, blocks)
 		e.Data, e.Text = d, joinText(withoutTable(d.Desc), FeaturesText(d.Features))
-	case KindSubclass:
+	case enum.KindSubclass:
 		if _, after, ok := strings.Cut(title, ":"); ok {
 			e.Name = strings.TrimSpace(after) // "Monk: Way of Mercy"
 		}

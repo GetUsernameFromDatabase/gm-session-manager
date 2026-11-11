@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -107,7 +107,7 @@ func TestSpellCounts(t *testing.T) {
 		}
 	}
 	e.allowEntrySources(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	create := fmt.Sprintf("/characters/%d/create/", e.characterID)
 	for _, step := range []string{"class=testlock", "species=human", "background=testfolk"} {
 		step, p, _ := strings.Cut(step, "=")
@@ -185,7 +185,7 @@ func TestPrepareCapCommand(t *testing.T) {
 	if err := e.q().UpsertCompendiumEntry(t.Context(), lock); err != nil {
 		t.Fatal(err)
 	}
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	if w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/create/class", e.characterID), player, url.Values{"pick": {"testlock"}}, false); w.Code != http.StatusSeeOther {
 		t.Fatalf("class: %d %s", w.Code, w.Body)
 	}

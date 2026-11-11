@@ -7,6 +7,8 @@ package sqlc
 import (
 	"database/sql"
 	"time"
+
+	"gm-session-manager/internal/enum"
 )
 
 type Attachment struct {
@@ -91,7 +93,7 @@ type CompendiumCampaign struct {
 
 type CompendiumEntry struct {
 	ID               int64
-	Kind             string
+	Kind             enum.CompendiumKind
 	Slug             string
 	Name             string
 	SourceKey        string
@@ -139,7 +141,7 @@ type Encounter struct {
 	ID                int64
 	CampaignID        int64
 	Name              string
-	Status            string
+	Status            enum.EncounterStatus
 	Round             int64
 	ActiveCombatantID sql.NullInt64
 	CreatedAt         time.Time
@@ -148,7 +150,7 @@ type Encounter struct {
 type Entity struct {
 	ID            int64
 	CampaignID    int64
-	Kind          string
+	Kind          enum.EntityKind
 	Name          string
 	IsRevealed    bool
 	FieldsJson    string
@@ -160,7 +162,7 @@ type Entity struct {
 type EntityFieldLink struct {
 	EntityID   int64
 	FieldKey   string
-	TargetType string
+	TargetType enum.LinkTarget
 	TargetID   int64
 	IsRevealed bool
 }
@@ -205,7 +207,7 @@ type MonsterHabitat struct {
 type Note struct {
 	ID               int64
 	CampaignID       int64
-	Kind             string
+	Kind             enum.NoteKind
 	Title            string
 	OwnerCharacterID sql.NullInt64
 	CreatedAt        time.Time
@@ -216,7 +218,7 @@ type NoteBlock struct {
 	ID                int64
 	NoteID            int64
 	Position          int64
-	Visibility        string
+	Visibility        enum.Visibility
 	PlayersCanEdit    bool
 	DocJson           string
 	DocVersion        int64
@@ -233,14 +235,14 @@ type NoteBlockAudience struct {
 type NoteLink struct {
 	SourceNoteID  int64
 	SourceBlockID int64
-	TargetType    string
+	TargetType    enum.LinkTarget
 	TargetID      int64
 }
 
 type Session struct {
 	ID          int64
 	TokenHash   []byte
-	Role        string
+	Role        enum.Role
 	CharacterID sql.NullInt64
 	LastSeenAt  time.Time
 	CreatedAt   time.Time

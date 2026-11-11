@@ -14,36 +14,37 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
 )
 
 // refCompendiumKind is the compendium kind each sheet ref kind names.
-var refCompendiumKind = map[string]compendium.Kind{
-	dnd5e.RefClass: compendium.KindClass, dnd5e.RefSubclass: compendium.KindSubclass, dnd5e.RefSpell: compendium.KindSpell,
-	dnd5e.RefSpecies: compendium.KindSpecies, dnd5e.RefBackground: compendium.KindBackground,
-	dnd5e.RefFeat: compendium.KindFeat, dnd5e.RefArmor: compendium.KindItem,
+var refCompendiumKind = map[string]enum.CompendiumKind{
+	dnd5e.RefClass: enum.KindClass, dnd5e.RefSubclass: enum.KindSubclass, dnd5e.RefSpell: enum.KindSpell,
+	dnd5e.RefSpecies: enum.KindSpecies, dnd5e.RefBackground: enum.KindBackground,
+	dnd5e.RefFeat: enum.KindFeat, dnd5e.RefArmor: enum.KindItem,
 }
 
 // entryFor is the copy of kind/slug a sheet ref pinned to pin uses: the
 // pinned copy while it exists, else the priority copy, with missing set when
 // a pin was passed over. sql.ErrNoRows when neither exists. It takes q, not
 // the App, so upgrades can run it inside their transaction.
-func entryFor(ctx context.Context, q *sqlc.Queries, kind compendium.Kind, slug, pin string) (row sqlc.CompendiumEntry, missing bool, err error) {
+func entryFor(ctx context.Context, q *sqlc.Queries, kind enum.CompendiumKind, slug, pin string) (row sqlc.CompendiumEntry, missing bool, err error) {
 	if pin != "" {
-		row, err = q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(kind), Slug: slug, SourceKey: pin})
+		row, err = q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: kind, Slug: slug, SourceKey: pin})
 		if !errors.Is(err, sql.ErrNoRows) {
 			return row, false, err
 		}
 	}
-	row, err = q.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(kind), Slug: slug})
+	row, err = q.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug})
 	return row, pin != "", err
 }
 
 // classEntry is entryFor for a class, as a ClassInfo.
 func classEntry(ctx context.Context, q *sqlc.Queries, slug, pin string) (dnd5e.ClassInfo, bool, error) {
-	row, missing, err := entryFor(ctx, q, compendium.KindClass, slug, pin)
+	row, missing, err := entryFor(ctx, q, enum.KindClass, slug, pin)
 	if err != nil {
 		return dnd5e.ClassInfo{}, missing, err
 	}
@@ -106,7 +107,7 @@ func (a *App) sourceIssues(ctx context.Context, s dnd5e.Sheet, campaignID int64)
 		for i, r := range list {
 			slugs[i] = r.slug
 		}
-		rows, err := a.Store.ListEntrySourcesBySlugs(ctx, sqlc.ListEntrySourcesBySlugsParams{Kind: string(refCompendiumKind[kind]), Slugs: slugs, CampaignID: campaignID})
+		rows, err := a.Store.ListEntrySourcesBySlugs(ctx, sqlc.ListEntrySourcesBySlugsParams{Kind: refCompendiumKind[kind], Slugs: slugs, CampaignID: campaignID})
 		if err != nil {
 			return nil, err
 		}
@@ -161,7 +162,7 @@ func (a *App) sourceEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet,
 // visibleCopy is ref's entry at ref.Source when campaignID may see it and
 // allows the source; a userError otherwise.
 func (a *App) visibleCopy(ctx context.Context, q *sqlc.Queries, ref dnd5e.SourceRef, campaignID int64) (sqlc.CompendiumEntry, error) {
-	row, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(refCompendiumKind[ref.Kind]), Slug: ref.Slug, SourceKey: ref.Source})
+	row, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: refCompendiumKind[ref.Kind], Slug: ref.Slug, SourceKey: ref.Source})
 	if err == nil {
 		var visible, allowed bool
 		if visible, err = a.entryVisible(ctx, row, campaignID); err == nil && !visible {
@@ -201,7 +202,7 @@ func (a *App) subclassChangeEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5
 	if err != nil {
 		return nil, dnd5e.ClassInfo{}, err
 	}
-	d, err := compendium.DecodeData(compendium.KindSubclass, row.DataJson)
+	d, err := compendium.DecodeData(enum.KindSubclass, row.DataJson)
 	if err != nil {
 		return nil, dnd5e.ClassInfo{}, err
 	}
@@ -244,7 +245,7 @@ func (a *App) classSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Shee
 	if err != nil || subSlug == "" {
 		return old, next, err
 	}
-	sub, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: string(compendium.KindSubclass), Slug: subSlug, SourceKey: row.SourceKey})
+	sub, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSubclass, Slug: subSlug, SourceKey: row.SourceKey})
 	switch {
 	case err == nil:
 		err = setSubclass(&next, sub)
@@ -286,7 +287,7 @@ func subclassPair(ctx context.Context, q *sqlc.Queries, cl dnd5e.ClassLevel, old
 	if oldSlug == "" {
 		return nil, next, nil
 	}
-	oldRow, missing, err := entryFor(ctx, q, compendium.KindSubclass, oldSlug, oldPin)
+	oldRow, missing, err := entryFor(ctx, q, enum.KindSubclass, oldSlug, oldPin)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && missing {
 		return nil, next, nil
 	}

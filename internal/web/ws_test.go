@@ -17,6 +17,7 @@ import (
 	"github.com/coder/websocket"
 
 	"gm-session-manager/internal/auth"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/web/views"
 )
@@ -97,7 +98,7 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 	e := newTestEnv(t)
 	srv := httptest.NewServer(e.router)
 	t.Cleanup(srv.Close)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	sess, err := e.mgr.Resolve(t.Context(), player)
 	if err != nil {
 		t.Fatal(err)
@@ -189,7 +190,7 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 	})
 
 	// The combat tab heard none of it: its first message is its own view.
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/campaigns/%d/encounters", e.campaignID), e.token(t, auth.RoleAdmin), url.Values{"name": {"Ambush"}}, true); w.Code >= 400 {
+	if w := e.do(t, http.MethodPost, fmt.Sprintf("/campaigns/%d/encounters", e.campaignID), e.token(t, enum.RoleAdmin), url.Values{"name": {"Ambush"}}, true); w.Code >= 400 {
 		t.Fatalf("create encounter: %d", w.Code)
 	}
 	m := readUntil(t, combat, "any message", func(wsMessage) bool { return true })

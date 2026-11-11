@@ -12,7 +12,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	"fmt"
 	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/checkbox"
@@ -25,12 +25,6 @@ import (
 	selectcomp "gm-session-manager/internal/web/components/select"
 	"slices"
 	"strings"
-)
-
-// Note kinds (notes.kind).
-const (
-	KindGameSession = "game_session"
-	KindGeneric     = "generic"
 )
 
 // NoteListView is the notes index.
@@ -169,7 +163,7 @@ func NotesPage(l Layout, v NoteListView) templ.Component {
 					var templ_7745c5c3_Var6 string
 					templ_7745c5c3_Var6, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/notes/%d#block-%d", h.NoteID, h.BlockID))).ResolveURL(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 61, Col: 123}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 55, Col: 123}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 					if templ_7745c5c3_Err != nil {
@@ -182,7 +176,7 @@ func NotesPage(l Layout, v NoteListView) templ.Component {
 					var templ_7745c5c3_Var7 string
 					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(h.Title)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 61, Col: 135}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 55, Col: 135}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 					if templ_7745c5c3_Err != nil {
@@ -195,7 +189,7 @@ func NotesPage(l Layout, v NoteListView) templ.Component {
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(h.Text)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 62, Col: 81}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 56, Col: 81}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
@@ -405,7 +399,7 @@ func NoteList(campaignID int64, notes []NoteItem) templ.Component {
 func notesOfKind(notes []NoteItem, sessions bool) []NoteItem {
 	var out []NoteItem
 	for _, n := range notes {
-		if (n.Kind == KindGameSession) == sessions {
+		if (n.Kind == enum.NoteGameSession) == sessions {
 			out = append(out, n)
 		}
 	}
@@ -477,7 +471,7 @@ func noteSection(title string, notes []NoteItem) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 115, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 109, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -495,7 +489,7 @@ func noteSection(title string, notes []NoteItem) templ.Component {
 				var templ_7745c5c3_Var19 string
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/notes/%d", n.ID))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 119, Col: 121}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 113, Col: 121}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 				if templ_7745c5c3_Err != nil {
@@ -508,7 +502,7 @@ func noteSection(title string, notes []NoteItem) templ.Component {
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(n.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 119, Col: 133}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 113, Col: 133}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 				if templ_7745c5c3_Err != nil {
@@ -578,7 +572,7 @@ func closeDialogAfter(reset string) templ.ComponentScript {
 }
 
 // noteFields are a note's title and type, for creating or editing it.
-func noteFields(id, title, kind string) templ.Component {
+func noteFields(id, title string, kind enum.NoteKind) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -689,7 +683,7 @@ func noteFields(id, title, kind string) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = formSelect(id+"-kind", "kind", noteKindItems, kind, "", "").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = formSelect(id+"-kind", "kind", noteKindItems, string(kind), "", "").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -783,7 +777,7 @@ func newNoteDialog(campaignID int64) templ.Component {
 				var templ_7745c5c3_Var31 string
 				templ_7745c5c3_Var31, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/campaigns/%d/notes", campaignID))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 177, Col: 93}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 171, Col: 93}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 				if templ_7745c5c3_Err != nil {
@@ -833,7 +827,7 @@ func newNoteDialog(campaignID int64) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = noteFields("new-note", "", KindGeneric).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = noteFields("new-note", "", enum.NoteGeneric).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -996,7 +990,7 @@ func noteEditDialog(n NoteItem) templ.Component {
 					var templ_7745c5c3_Var41 string
 					templ_7745c5c3_Var41, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("/notes/%d/rename", n.ID)).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 206, Col: 75}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 200, Col: 75}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 					if templ_7745c5c3_Err != nil {
@@ -1178,7 +1172,7 @@ func noteEditDialog(n NoteItem) templ.Component {
 // loaded by the editor from /blocks/{id}/doc.
 type BlockView struct {
 	ID             int64
-	Visibility     perm.Visibility
+	Visibility     enum.Visibility
 	PlayersCanEdit bool
 	Audience       []int64
 	// ForYou is set for non-GM readers of a secret, who are always in its audience.
@@ -1229,7 +1223,7 @@ func authorRef(a Author) templ.Component {
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(a.Href)).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 263, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 257, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var49)
 			if templ_7745c5c3_Err != nil {
@@ -1242,7 +1236,7 @@ func authorRef(a Author) templ.Component {
 			var templ_7745c5c3_Var50 string
 			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(a.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 263, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 257, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 			if templ_7745c5c3_Err != nil {
@@ -1260,7 +1254,7 @@ func authorRef(a Author) templ.Component {
 			var templ_7745c5c3_Var51 string
 			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs("by " + a.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 265, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 259, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {
@@ -1280,7 +1274,7 @@ type NoteView struct {
 	Note         sqlc.Note
 	Blocks       []BlockView
 	CanManage    bool
-	Visibilities []perm.Visibility
+	Visibilities []enum.Visibility
 	// Characters are the campaign's characters, for 'listed' audiences.
 	Characters  []sqlc.Character
 	Backlinks   []sqlc.ListBacklinksRow
@@ -1300,15 +1294,15 @@ func (v NoteView) characterNames(ids []int64) string {
 	return strings.Join(names, ", ")
 }
 
-func visibilityLabel(vis perm.Visibility) string {
+func visibilityLabel(vis enum.Visibility) string {
 	switch vis {
-	case perm.VisGM:
+	case enum.VisGM:
 		return "GM only"
-	case perm.VisPlayers:
+	case enum.VisPlayers:
 		return "Everyone"
-	case perm.VisListed:
+	case enum.VisListed:
 		return "Secret"
-	case perm.VisOwner:
+	case enum.VisOwner:
 		return "Private"
 	}
 	return string(vis)
@@ -1316,11 +1310,11 @@ func visibilityLabel(vis perm.Visibility) string {
 
 // visRail colours a block's left rail and its access label by visibility:
 // the colour is how a reader tells who else can read a passage.
-var visRail = map[perm.Visibility]struct{ rail, label string }{
-	perm.VisGM:      {"border-l-rose-500", "text-rose-700 dark:text-rose-300"},
-	perm.VisPlayers: {"border-l-sky-500", "text-sky-700 dark:text-sky-300"},
-	perm.VisListed:  {"border-l-amber-500", "text-amber-700 dark:text-amber-300"},
-	perm.VisOwner:   {"border-l-violet-500", "text-violet-700 dark:text-violet-300"},
+var visRail = map[enum.Visibility]struct{ rail, label string }{
+	enum.VisGM:      {"border-l-rose-500", "text-rose-700 dark:text-rose-300"},
+	enum.VisPlayers: {"border-l-sky-500", "text-sky-700 dark:text-sky-300"},
+	enum.VisListed:  {"border-l-amber-500", "text-amber-700 dark:text-amber-300"},
+	enum.VisOwner:   {"border-l-violet-500", "text-violet-700 dark:text-violet-300"},
 }
 
 func NotePage(l Layout, v NoteView) templ.Component {
@@ -1426,7 +1420,7 @@ func NotePage(l Layout, v NoteView) templ.Component {
 				var templ_7745c5c3_Var56 string
 				templ_7745c5c3_Var56, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/notes/%d", b.ID))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 330, Col: 83}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 324, Col: 83}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var56)
 				if templ_7745c5c3_Err != nil {
@@ -1439,7 +1433,7 @@ func NotePage(l Layout, v NoteView) templ.Component {
 				var templ_7745c5c3_Var57 string
 				templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(b.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 330, Col: 95}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 324, Col: 95}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 				if templ_7745c5c3_Err != nil {
@@ -1498,7 +1492,7 @@ func NoteMeta(v NoteView) templ.Component {
 			var templ_7745c5c3_Var59 string
 			templ_7745c5c3_Var59, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("note-%d-meta", v.Note.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 342, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 336, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var59)
 			if templ_7745c5c3_Err != nil {
@@ -1534,7 +1528,7 @@ func NoteMeta(v NoteView) templ.Component {
 			var templ_7745c5c3_Var60 string
 			templ_7745c5c3_Var60, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("/notes/%d/rename", v.Note.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 345, Col: 85}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 339, Col: 85}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var60)
 			if templ_7745c5c3_Err != nil {
@@ -1547,7 +1541,7 @@ func NoteMeta(v NoteView) templ.Component {
 			var templ_7745c5c3_Var61 string
 			templ_7745c5c3_Var61, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.Note.Kind).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 346, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 340, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var61)
 			if templ_7745c5c3_Err != nil {
@@ -1573,7 +1567,7 @@ func NoteMeta(v NoteView) templ.Component {
 			var templ_7745c5c3_Var62 string
 			templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinStringErrs(v.Note.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 350, Col: 82}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 344, Col: 82}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
 			if templ_7745c5c3_Err != nil {
@@ -1588,7 +1582,7 @@ func NoteMeta(v NoteView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if v.Note.Kind == KindGameSession {
+		if v.Note.Kind == enum.NoteGameSession {
 			templ_7745c5c3_Var63 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
@@ -1625,7 +1619,7 @@ func NoteMeta(v NoteView) templ.Component {
 		var templ_7745c5c3_Var64 string
 		templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs("Updated ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 364, Col: 15}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 358, Col: 15}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 		if templ_7745c5c3_Err != nil {
@@ -1671,7 +1665,7 @@ func NoteBlocks(v NoteView) templ.Component {
 			var templ_7745c5c3_Var66 string
 			templ_7745c5c3_Var66, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("note-%d-blocks", v.Note.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 371, Col: 51}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 365, Col: 51}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var66)
 			if templ_7745c5c3_Err != nil {
@@ -1711,7 +1705,7 @@ func NoteBlocks(v NoteView) templ.Component {
 				var templ_7745c5c3_Var67 string
 				templ_7745c5c3_Var67, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("block-%d", b.ID)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 373, Col: 46}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 367, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var67)
 				if templ_7745c5c3_Err != nil {
@@ -1742,7 +1736,7 @@ func NoteBlocks(v NoteView) templ.Component {
 				var templ_7745c5c3_Var70 string
 				templ_7745c5c3_Var70, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(b.ID)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 373, Col: 151}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 367, Col: 151}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var70)
 				if templ_7745c5c3_Err != nil {
@@ -1755,7 +1749,7 @@ func NoteBlocks(v NoteView) templ.Component {
 				var templ_7745c5c3_Var71 string
 				templ_7745c5c3_Var71, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(b.CanEdit)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 373, Col: 191}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 367, Col: 191}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var71)
 				if templ_7745c5c3_Err != nil {
@@ -1822,7 +1816,7 @@ func NoteBlocks(v NoteView) templ.Component {
 			var templ_7745c5c3_Var74 string
 			templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(visibilityLabel(b.Visibility))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 375, Col: 95}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 369, Col: 95}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
 			if templ_7745c5c3_Err != nil {
@@ -1836,11 +1830,11 @@ func NoteBlocks(v NoteView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if b.Visibility == perm.VisListed && b.ForYou {
+			if b.Visibility == enum.VisListed && b.ForYou {
 				var templ_7745c5c3_Var75 string
 				templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(", for you")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 379, Col: 20}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 373, Col: 20}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 				if templ_7745c5c3_Err != nil {
@@ -1850,11 +1844,11 @@ func NoteBlocks(v NoteView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else if b.Visibility == perm.VisListed {
+			} else if b.Visibility == enum.VisListed {
 				var templ_7745c5c3_Var76 string
 				templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(", for " + v.characterNames(b.Audience))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 381, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 375, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 				if templ_7745c5c3_Err != nil {
@@ -1865,11 +1859,11 @@ func NoteBlocks(v NoteView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			if b.Visibility == perm.VisPlayers && b.PlayersCanEdit {
+			if b.Visibility == enum.VisPlayers && b.PlayersCanEdit {
 				var templ_7745c5c3_Var77 string
 				templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(", players can edit")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 384, Col: 29}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 378, Col: 29}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 				if templ_7745c5c3_Err != nil {
@@ -1911,7 +1905,7 @@ func NoteBlocks(v NoteView) templ.Component {
 			var templ_7745c5c3_Var78 string
 			templ_7745c5c3_Var78, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("editor-%d", b.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 397, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 391, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var78)
 			if templ_7745c5c3_Err != nil {
@@ -1924,7 +1918,7 @@ func NoteBlocks(v NoteView) templ.Component {
 			var templ_7745c5c3_Var79 string
 			templ_7745c5c3_Var79, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(b.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 397, Col: 121}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 391, Col: 121}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var79)
 			if templ_7745c5c3_Err != nil {
@@ -1979,7 +1973,7 @@ func NoteGone(id int64) templ.Component {
 			var templ_7745c5c3_Var81 string
 			templ_7745c5c3_Var81, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("note-%d-meta", id)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 409, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 403, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 			if templ_7745c5c3_Err != nil {
@@ -2102,7 +2096,7 @@ func NoteGone(id int64) templ.Component {
 			var templ_7745c5c3_Var86 string
 			templ_7745c5c3_Var86, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("note-%d-blocks", id)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 421, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 415, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var86)
 			if templ_7745c5c3_Err != nil {
@@ -2280,7 +2274,7 @@ func blockMenu(v NoteView, b BlockView, i int) templ.Component {
 								var templ_7745c5c3_Var94 string
 								templ_7745c5c3_Var94, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(b.ID)).Resolve(ctx)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 444, Col: 71}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 438, Col: 71}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var94)
 								if templ_7745c5c3_Err != nil {
@@ -2394,7 +2388,7 @@ func blockMenu(v NoteView, b BlockView, i int) templ.Component {
 					var templ_7745c5c3_Var98 string
 					templ_7745c5c3_Var98, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("/blocks/%d/access", b.ID)).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 462, Col: 84}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 456, Col: 84}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var98)
 					if templ_7745c5c3_Err != nil {
@@ -2548,7 +2542,7 @@ func moveButton(blockID int64, dir string) templ.Component {
 	})
 }
 
-func visibilityFields(v NoteView, current perm.Visibility, editable bool, audience []int64) templ.Component {
+func visibilityFields(v NoteView, current enum.Visibility, editable bool, audience []int64) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -2597,19 +2591,19 @@ func visibilityFields(v NoteView, current perm.Visibility, editable bool, audien
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = formSelect("", "visibility", selectItems(v.Visibilities, func(vis perm.Visibility) string { return string(vis) }, visibilityLabel), string(current), "w-full", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = formSelect("", "visibility", selectItems(v.Visibilities, func(vis enum.Visibility) string { return string(vis) }, visibilityLabel), string(current), "w-full", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if slices.Contains(v.Visibilities, perm.VisPlayers) {
+		if slices.Contains(v.Visibilities, enum.VisPlayers) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "<div data-for-vis=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var106 string
-			templ_7745c5c3_Var106, templ_7745c5c3_Err = templruntime.NewAttributeExpression(string(perm.VisPlayers)).Resolve(ctx)
+			templ_7745c5c3_Var106, templ_7745c5c3_Err = templruntime.NewAttributeExpression(string(enum.VisPlayers)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 495, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 489, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var106)
 			if templ_7745c5c3_Err != nil {
@@ -2619,7 +2613,7 @@ func visibilityFields(v NoteView, current perm.Visibility, editable bool, audien
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if current != perm.VisPlayers {
+			if current != enum.VisPlayers {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, " hidden")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -2656,15 +2650,15 @@ func visibilityFields(v NoteView, current perm.Visibility, editable bool, audien
 				return templ_7745c5c3_Err
 			}
 		}
-		if slices.Contains(v.Visibilities, perm.VisListed) {
+		if slices.Contains(v.Visibilities, enum.VisListed) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "<fieldset data-for-vis=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var108 string
-			templ_7745c5c3_Var108, templ_7745c5c3_Err = templruntime.NewAttributeExpression(string(perm.VisListed)).Resolve(ctx)
+			templ_7745c5c3_Var108, templ_7745c5c3_Err = templruntime.NewAttributeExpression(string(enum.VisListed)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 502, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 496, Col: 50}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var108)
 			if templ_7745c5c3_Err != nil {
@@ -2674,7 +2668,7 @@ func visibilityFields(v NoteView, current perm.Visibility, editable bool, audien
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if current != perm.VisListed {
+			if current != enum.VisListed {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, " hidden")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -2700,7 +2694,7 @@ func visibilityFields(v NoteView, current perm.Visibility, editable bool, audien
 					var templ_7745c5c3_Var110 string
 					templ_7745c5c3_Var110, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 506, Col: 14}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 500, Col: 14}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var110))
 					if templ_7745c5c3_Err != nil {
@@ -2730,7 +2724,7 @@ func visibilityFields(v NoteView, current perm.Visibility, editable bool, audien
 // chosen. It runs on the visibility fields' change events.
 const visToggleJS = `const vis = this.querySelector("[name=visibility]").value; for (const f of this.querySelectorAll("[data-for-vis]")) f.hidden = f.dataset.forVis !== vis`
 
-var noteKindItems = []selectcomp.ItemData{{Value: KindGeneric, Label: "Note"}, {Value: KindGameSession, Label: "Game session"}}
+var noteKindItems = []selectcomp.ItemData{{Value: string(enum.NoteGeneric), Label: "Note"}, {Value: string(enum.NoteGameSession), Label: "Game session"}}
 
 // checkField is a shadcn checkbox with its label.
 func checkField(name, value string, checked bool) templ.Component {
@@ -2805,7 +2799,7 @@ func addBlockForm(v NoteView) templ.Component {
 		var templ_7745c5c3_Var114 string
 		templ_7745c5c3_Var114, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("/notes/%d/blocks", v.Note.ID)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 531, Col: 127}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 525, Col: 127}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var114)
 		if templ_7745c5c3_Err != nil {
@@ -2883,7 +2877,7 @@ func SwitcherResults(items []LinkItem) templ.Component {
 			var templ_7745c5c3_Var117 string
 			templ_7745c5c3_Var117, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(it.URL)).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 545, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 539, Col: 87}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var117)
 			if templ_7745c5c3_Err != nil {
@@ -2896,7 +2890,7 @@ func SwitcherResults(items []LinkItem) templ.Component {
 			var templ_7745c5c3_Var118 string
 			templ_7745c5c3_Var118, templ_7745c5c3_Err = templ.JoinStringErrs(it.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 545, Col: 100}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 539, Col: 100}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var118))
 			if templ_7745c5c3_Err != nil {
@@ -2909,7 +2903,7 @@ func SwitcherResults(items []LinkItem) templ.Component {
 			var templ_7745c5c3_Var119 string
 			templ_7745c5c3_Var119, templ_7745c5c3_Err = templ.JoinStringErrs(it.Kind)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 545, Col: 156}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/notes.templ`, Line: 539, Col: 156}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var119))
 			if templ_7745c5c3_Err != nil {

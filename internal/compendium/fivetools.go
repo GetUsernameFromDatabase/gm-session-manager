@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"gm-session-manager/internal/enum"
 )
 
 // 5e.tools refuses server fetches and builds its pages in the browser, so
@@ -30,11 +32,11 @@ var fiveToolsSite = Site{
 	NoteURL: "https://github.com/5etools-mirror-3/5etools-src/tree/main/data/bestiary",
 	hosts:   []string{"5e.tools", "www.5e.tools"},
 	page:    fiveToolsPage,
-	check: func(page string) (Kind, error) {
+	check: func(page string) (enum.CompendiumKind, error) {
 		if !reFiveToolsPage.MatchString(page) {
 			return "", errors.New("5e.tools blocks the server, so only bestiary (monster) links can be read, like https://5e.tools/bestiary/howler-mtf.html")
 		}
-		return KindMonster, nil
+		return enum.KindMonster, nil
 	},
 	link: func(page string) string {
 		src, name, _ := strings.Cut(page, "/")
@@ -177,7 +179,7 @@ func ParseFiveTools(body []byte, slug string) (book, image string, e Entry, err 
 	if m.Page > 0 {
 		book += fmt.Sprintf(" p. %d", m.Page)
 	}
-	return book, m.image(), Entry{Kind: KindMonster, Slug: slug, Name: m.Name, Data: d, Text: plainText(d.searchText()), Habitats: habitatsFrom(m.Environment)}, nil
+	return book, m.image(), Entry{Kind: enum.KindMonster, Slug: slug, Name: m.Name, Data: d, Text: plainText(d.searchText()), Habitats: habitatsFrom(m.Environment)}, nil
 }
 
 // image is the monster's picture link, or "" when 5etools has none.
@@ -438,9 +440,9 @@ var ftAbilityNames = map[string]string{
 }
 
 // ftLinkKinds are the tags that name a compendium entry, by our kind.
-var ftLinkKinds = map[string]Kind{
-	"spell": KindSpell, "item": KindItem, "creature": KindMonster, "condition": KindCondition,
-	"feat": KindFeat, "background": KindBackground, "race": KindSpecies, "itemMastery": KindRule,
+var ftLinkKinds = map[string]enum.CompendiumKind{
+	"spell": enum.KindSpell, "item": enum.KindItem, "creature": enum.KindMonster, "condition": enum.KindCondition,
+	"feat": enum.KindFeat, "background": enum.KindBackground, "race": enum.KindSpecies, "itemMastery": enum.KindRule,
 }
 
 // ftDisplayTags are reference tags whose third argument is the text shown

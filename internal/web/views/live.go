@@ -9,6 +9,7 @@ import (
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 
 	"github.com/a-h/templ"
@@ -128,7 +129,7 @@ func (e EncounterView) Hot(st hub.State) {
 	if !e.showsTracker() {
 		return
 	}
-	if e.Encounter.Status == "active" {
+	if e.Encounter.Status == enum.EncounterActive {
 		st["round"] = roundLabel(e.Encounter.Round)
 		st["turn.prev"], st["turn.cur"], st["turn.next"] = e.turnNames()
 		if e.IsGM {
@@ -228,5 +229,5 @@ func deviceLabel(d Device) string {
 // showsTracker mirrors Encounter: players never see a fight still being
 // prepared.
 func (e EncounterView) showsTracker() bool {
-	return e.IsGM || e.Encounter.Status != "preparing"
+	return e.IsGM || e.Encounter.Status != enum.EncounterPreparing
 }

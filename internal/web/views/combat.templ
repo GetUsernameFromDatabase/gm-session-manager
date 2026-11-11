@@ -8,6 +8,7 @@ import (
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
@@ -185,9 +186,9 @@ templ encounterLinks(campaignID int64, encounters []sqlc.Encounter, current int6
 			}
 		>
 			{ e.Name }
-			if e.Status == "active" {
+			if e.Status == enum.EncounterActive {
 				<span class="text-green-600">●</span>
-			} else if e.Status == "ended" {
+			} else if e.Status == enum.EncounterEnded {
 				<span class="text-muted-foreground">(ended)</span>
 			}
 		</a>
@@ -214,22 +215,22 @@ templ Encounter(e EncounterView) {
 			<div class="flex flex-wrap items-center justify-between gap-2">
 				<h2 class="text-xl font-semibold">
 					{ e.Encounter.Name }
-					if e.Encounter.Status == "active" {
+					if e.Encounter.Status == enum.EncounterActive {
 						<span class="ml-2 text-base font-normal text-muted-foreground" { bind("text=round")... }>{ roundLabel(e.Encounter.Round) }</span>
 					}
 				</h2>
 				if e.IsGM {
 					<div class="flex flex-wrap gap-2">
 						switch e.Encounter.Status {
-							case "preparing":
+							case enum.EncounterPreparing:
 								@button.Button(button.Props{Size: button.SizeSm, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("start")}}) {
 									Start
 								}
-							case "active":
+							case enum.EncounterActive:
 								@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": e.url("end")}}) {
 									End
 								}
-							case "ended":
+							case enum.EncounterEnded:
 								@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("start")}}) {
 									Restart
 								}
@@ -241,7 +242,7 @@ templ Encounter(e EncounterView) {
 				}
 			</div>
 			// A running fight shows this inside its turn card.
-			if e.IsGM && e.Encounter.Status != "active" && !e.initiativeSet() {
+			if e.IsGM && e.Encounter.Status != enum.EncounterActive && !e.initiativeSet() {
 				@alert.Alert(alert.Props{Class: "*:[svg]:translate-y-0 *:[svg]:self-center border-amber-500/50 bg-amber-500/10 text-amber-800 *:data-[slot=alert-description]:text-amber-800/90 dark:text-amber-300 dark:*:data-[slot=alert-description]:text-amber-300/90"}) {
 					@icon.TriangleAlert()
 					@alert.Title() {
@@ -255,7 +256,7 @@ templ Encounter(e EncounterView) {
 					}
 				}
 			}
-			if e.Encounter.Status == "active" {
+			if e.Encounter.Status == enum.EncounterActive {
 				@turnCard(e)
 			}
 			if e.IsGM {

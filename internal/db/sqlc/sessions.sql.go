@@ -9,6 +9,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"gm-session-manager/internal/enum"
 )
 
 const createSession = `-- name: CreateSession :one
@@ -19,7 +21,7 @@ RETURNING id, token_hash, role, character_id, last_seen_at, created_at
 
 type CreateSessionParams struct {
 	TokenHash   []byte
-	Role        string
+	Role        enum.Role
 	CharacterID sql.NullInt64
 }
 

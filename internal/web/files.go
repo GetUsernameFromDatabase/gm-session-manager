@@ -14,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -63,7 +63,7 @@ func (a *App) attachmentUses(ctx context.Context) (map[int64][]views.FileUse, er
 	byBlock := map[int64]views.FileUse{}
 	for _, b := range blocks {
 		u := views.FileUse{Kind: views.FileUseNote, URL: fmt.Sprintf("/notes/%d", b.NoteID), Label: b.Title}
-		if b.Visibility == string(perm.VisOwner) {
+		if b.Visibility == enum.VisOwner {
 			// The GM never reads a player's own blocks, so not even the note's title.
 			u = views.FileUse{Kind: views.FileUseNote, Private: true}
 		}
@@ -148,7 +148,7 @@ func (a *App) filesPage(c *gin.Context) {
 			ID: f.ID, Name: f.Name, CampaignID: f.CampaignID, Campaign: f.CampaignName, Size: f.Size, CreatedAt: f.CreatedAt,
 			IsImage: slices.Contains(inlineTypes, f.Mime),
 			// The GM never reads a player's own blocks, so not even the name.
-			Private: f.BlockVisibility.String == string(perm.VisOwner),
+			Private: f.BlockVisibility == enum.VisOwner,
 			Uses:    uses[f.ID],
 		})
 	}

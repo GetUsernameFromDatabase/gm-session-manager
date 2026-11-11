@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"gm-session-manager/internal/enum"
 )
 
 // This file reads one 5etools book folder (5etools-<id>): flat files in
@@ -109,7 +111,7 @@ func (p *ftBook) fluff(file, key string) (map[string]string, error) {
 // add stores an entry unless its kind and slug came first; text is the
 // search body before tokens become labels. It returns the stored entry, or
 // nil when skipped.
-func (p *ftBook) add(kind Kind, name string, data any, text string) *Entry {
+func (p *ftBook) add(kind enum.CompendiumKind, name string, data any, text string) *Entry {
 	slug := Slugify(name)
 	if slug == "" || p.seen[string(kind)+"/"+slug] {
 		return nil
@@ -153,7 +155,7 @@ func (p *ftBook) monsters() error {
 	return each(p, "bestiary.json", "monster", func(m ftMonster) {
 		d := m.data()
 		d.Desc = fluff[strings.ToLower(m.Name+"|"+m.Source)]
-		if e := p.add(KindMonster, m.Name, d, joinText(d.searchText(), d.Desc)); e != nil {
+		if e := p.add(enum.KindMonster, m.Name, d, joinText(d.searchText(), d.Desc)); e != nil {
 			e.Habitats = habitatsFrom(m.Environment)
 		}
 	})
@@ -261,7 +263,7 @@ func (p *ftBook) spells() error {
 			durs = append(durs, ftDuration(du.Type, du.Duration, du.Concentration, du.Ends))
 		}
 		d.Duration = strings.Join(durs, " or ")
-		p.add(KindSpell, s.Name, d, joinText(d.School, d.Desc, d.HigherLevel))
+		p.add(enum.KindSpell, s.Name, d, joinText(d.School, d.Desc, d.HigherLevel))
 	})
 }
 
@@ -443,7 +445,7 @@ func (p *ftBook) items() error {
 	norm := func(it ftItem) {
 		d := ftItemData(it)
 		d.Desc = joinNonEmpty("\n\n", d.Desc, fluff[it.key()])
-		p.add(KindItem, it.Name, d, joinText(d.Category, d.Rarity, d.Desc))
+		p.add(enum.KindItem, it.Name, d, joinText(d.Category, d.Rarity, d.Desc))
 	}
 	// The book's own base items (mundane gear) first, then its items.
 	for _, r := range all {
@@ -513,7 +515,7 @@ func (p *ftBook) magicVariants() error {
 		if applies := ftRequires(v.Requires); applies != "" {
 			d.Desc = joinNonEmpty("\n\n", "Applies to: "+applies, d.Desc)
 		}
-		p.add(KindItem, v.Name, d, joinText(d.Category, d.Rarity, d.Desc))
+		p.add(enum.KindItem, v.Name, d, joinText(d.Category, d.Rarity, d.Desc))
 	})
 }
 
@@ -656,7 +658,7 @@ func (p *ftBook) species() error {
 		}
 		d := link
 		d.Desc, d.Parts = joinNonEmpty("\n\n", desc, cmp.Or(fluff[strings.ToLower(name+"|"+r.Source)], fluff[fluffKey])), append(typed, parts...)
-		p.add(KindSpecies, name, d, joinText(d.Desc, partsText(d.Parts)))
+		p.add(enum.KindSpecies, name, d, joinText(d.Desc, partsText(d.Parts)))
 	}
 	recs, err := p.records("races.json", "race")
 	if err != nil {
@@ -866,7 +868,7 @@ func (p *ftBook) backgrounds() error {
 	return each(p, "backgrounds.json", "background", func(b ftNamed) {
 		desc, parts := ftParts(b.Entries)
 		d := TextData{Desc: joinNonEmpty("\n\n", desc, fluff[b.key()]), Parts: parts}
-		p.add(KindBackground, b.Name, d, joinText(d.Desc, partsText(d.Parts)))
+		p.add(enum.KindBackground, b.Name, d, joinText(d.Desc, partsText(d.Parts)))
 	})
 }
 
@@ -890,7 +892,7 @@ func (p *ftBook) feats() error {
 			parts = append(parts, NameDesc{Name: asi, Desc: inc})
 		}
 		d := TextData{Desc: desc, Parts: parts, Prerequisite: ftPrerequisite(f.Prerequisite), Category: cmp.Or(ftFeatCategories[f.Category], f.Category)}
-		p.add(KindFeat, f.Name, d, joinText(d.Desc, partsText(d.Parts)))
+		p.add(enum.KindFeat, f.Name, d, joinText(d.Desc, partsText(d.Parts)))
 	})
 }
 
@@ -1017,8 +1019,8 @@ func ftPrerequisite(opts []map[string]json.RawMessage) string {
 func (p *ftBook) conditions() error {
 	for _, c := range []struct {
 		key, category string
-		kind          Kind
-	}{{"condition", "", KindCondition}, {"status", "Status", KindCondition}, {"disease", "Disease", KindRule}} {
+		kind          enum.CompendiumKind
+	}{{"condition", "", enum.KindCondition}, {"status", "Status", enum.KindCondition}, {"disease", "Disease", enum.KindRule}} {
 		if err := each(p, "conditionsdiseases.json", c.key, func(n ftNamed) {
 			d := TextData{Desc: ftEntries(n.Entries), Category: c.category}
 			p.add(c.kind, n.Name, d, d.Desc)
@@ -1037,7 +1039,7 @@ func (p *ftBook) rules() error {
 		RuleType string `json:"ruleType"`
 	}) {
 		d := TextData{Desc: ftEntries(r.Entries), Category: ftRuleTypes[r.RuleType]}
-		p.add(KindRule, r.Name, d, d.Desc)
+		p.add(enum.KindRule, r.Name, d, d.Desc)
 	}); err != nil {
 		return err
 	}
@@ -1045,7 +1047,7 @@ func (p *ftBook) rules() error {
 	return each(p, "items-base.json", "itemMastery", func(m ftNamed) {
 		if strings.EqualFold(m.Source, p.id) {
 			d := TextData{Desc: ftEntries(m.Entries), Category: masteryCategory}
-			p.add(KindRule, m.Name, d, d.Desc)
+			p.add(enum.KindRule, m.Name, d, d.Desc)
 		}
 	})
 }

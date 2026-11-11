@@ -19,6 +19,7 @@ import (
 
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 // The GM imports single pages of a few known sites by link. The link's
@@ -40,7 +41,7 @@ type Site struct {
 	// kind ("" when no parser knows it: the GM picks it in the preview),
 	// link is the id's page for people.
 	page  func(u *url.URL) string
-	check func(page string) (Kind, error)
+	check func(page string) (enum.CompendiumKind, error)
 	link  func(page string) string
 	// load fetches and parses a page: the book it names, its picture.
 	load    func(ctx context.Context, page string) (book, image string, e Entry, err error)
@@ -62,7 +63,7 @@ type Page struct {
 func (p Page) URL() string { return p.Site.link(p.ID) }
 
 // Kind is the kind of entry the page holds, "" when the GM picks it.
-func (p Page) Kind() Kind {
+func (p Page) Kind() enum.CompendiumKind {
 	k, _ := p.Site.check(p.ID)
 	return k
 }

@@ -9,6 +9,8 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+
+	"gm-session-manager/internal/enum"
 )
 
 const addHabitatByName = `-- name: AddHabitatByName :execrows
@@ -132,7 +134,7 @@ ORDER BY e.kind
 `
 
 type CountCompendiumRow struct {
-	Kind string
+	Kind enum.CompendiumKind
 	N    int64
 }
 
@@ -220,7 +222,7 @@ type CountSharedByKindParams struct {
 }
 
 type CountSharedByKindRow struct {
-	Kind string
+	Kind enum.CompendiumKind
 	N    int64
 }
 
@@ -304,7 +306,7 @@ RETURNING id, kind, slug, name, source_key, data_json, body_text, image_url, is_
 `
 
 type CreateHomebrewParams struct {
-	Kind             string
+	Kind             enum.CompendiumKind
 	Slug             string
 	Name             string
 	DataJson         string
@@ -464,7 +466,7 @@ LIMIT 1
 `
 
 type GetCompendiumEntryByNameParams struct {
-	Kind string
+	Kind enum.CompendiumKind
 	Name string
 }
 
@@ -500,7 +502,7 @@ LIMIT 1
 `
 
 type GetCompendiumEntryBySlugParams struct {
-	Kind string
+	Kind enum.CompendiumKind
 	Slug string
 }
 
@@ -536,7 +538,7 @@ LIMIT 1
 `
 
 type GetCompendiumEntryBySlugSourceParams struct {
-	Kind      string
+	Kind      enum.CompendiumKind
 	Slug      string
 	SourceKey string
 }
@@ -662,7 +664,7 @@ type ListCompendiumByKindParams struct {
 
 type ListCompendiumByKindRow struct {
 	ID         int64
-	Kind       string
+	Kind       enum.CompendiumKind
 	Slug       string
 	Name       string
 	SourceKey  string
@@ -737,7 +739,7 @@ ORDER BY e.slug
 `
 
 type ListCompendiumBySlugsParams struct {
-	Kind  string
+	Kind  enum.CompendiumKind
 	Slugs []string
 }
 
@@ -801,7 +803,7 @@ WHERE source_key = ?
 
 type ListCompendiumKeysBySourceRow struct {
 	ID   int64
-	Kind string
+	Kind enum.CompendiumKind
 	Slug string
 }
 
@@ -839,13 +841,13 @@ ORDER BY e.name
 `
 
 type ListCompendiumNamesParams struct {
-	Kind       string
+	Kind       enum.CompendiumKind
 	CampaignID int64
 }
 
 type ListCompendiumNamesRow struct {
 	ID        int64
-	Kind      string
+	Kind      enum.CompendiumKind
 	Slug      string
 	Name      string
 	SubraceOf string
@@ -959,7 +961,7 @@ ORDER BY e.scoped, s.priority, s.published DESC, e.id
 `
 
 type ListEntryCopiesParams struct {
-	Kind string
+	Kind enum.CompendiumKind
 	Slug string
 }
 
@@ -1042,7 +1044,7 @@ ORDER BY e.slug, e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') 
 `
 
 type ListEntrySourcesBySlugsParams struct {
-	Kind       string
+	Kind       enum.CompendiumKind
 	Slugs      []string
 	CampaignID int64
 }
@@ -1108,7 +1110,7 @@ ORDER BY e.scoped, e.kind, e.name
 
 type ListHomebrewRow struct {
 	ID               int64
-	Kind             string
+	Kind             enum.CompendiumKind
 	Slug             string
 	Name             string
 	Scoped           bool
@@ -1157,7 +1159,7 @@ ORDER BY kind, name
 
 type ListHomebrewByOwnerRow struct {
 	ID   int64
-	Kind string
+	Kind enum.CompendiumKind
 	Slug string
 	Name string
 }
@@ -1409,7 +1411,7 @@ type ListSharedEntriesParams struct {
 
 type ListSharedEntriesRow struct {
 	ID         int64
-	Kind       string
+	Kind       enum.CompendiumKind
 	Slug       string
 	Name       string
 	SourceKey  string
@@ -1488,7 +1490,7 @@ type ListSharedOrderParams struct {
 }
 
 type ListSharedOrderRow struct {
-	Kind      string
+	Kind      enum.CompendiumKind
 	Slug      string
 	SourceKey string
 }
@@ -1853,7 +1855,7 @@ type SearchCompendiumParams struct {
 
 type SearchCompendiumRow struct {
 	ID         int64
-	Kind       string
+	Kind       enum.CompendiumKind
 	Slug       string
 	Name       string
 	SourceKey  string
@@ -2011,7 +2013,7 @@ WHERE compendium_entries.content_hash <> excluded.content_hash
 `
 
 type UpsertCompendiumEntryParams struct {
-	Kind        string
+	Kind        enum.CompendiumKind
 	Slug        string
 	Name        string
 	SourceKey   string

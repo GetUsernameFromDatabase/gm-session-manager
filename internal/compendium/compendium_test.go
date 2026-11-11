@@ -9,6 +9,7 @@ import (
 
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 func newStore(t *testing.T) *db.Store {
@@ -95,9 +96,9 @@ func TestNormalizedShapes(t *testing.T) {
 	importOnce(t, store, dir)
 	ctx := t.Context()
 
-	get := func(kind Kind, slug string) any {
+	get := func(kind enum.CompendiumKind, slug string) any {
 		t.Helper()
-		row, err := store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(kind), Slug: slug})
+		row, err := store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug})
 		if err != nil {
 			t.Fatalf("%s %s: %v", kind, slug, err)
 		}
@@ -108,7 +109,7 @@ func TestNormalizedShapes(t *testing.T) {
 		return d
 	}
 
-	m := get(KindMonster, "goblin-warrior").(*MonsterData)
+	m := get(enum.KindMonster, "goblin-warrior").(*MonsterData)
 	if m.AC != 15 || m.HP != 10 || m.CR != "1/4" || m.Speed["walk"] != 30 || m.Abilities["dex"] != 15 || m.Skills["stealth"] != 6 {
 		t.Errorf("monster %+v", m)
 	}
@@ -119,12 +120,12 @@ func TestNormalizedShapes(t *testing.T) {
 		t.Errorf("senses %q", m.Senses)
 	}
 
-	s := get(KindSpell, "fire-bolt").(*SpellData)
+	s := get(enum.KindSpell, "fire-bolt").(*SpellData)
 	if s.Level != 0 || s.Components != "V, S" || len(s.Classes) != 2 || s.Classes[1] != "wizard" {
 		t.Errorf("spell %+v", s)
 	}
 
-	c := get(KindClass, "wizard").(*ClassData)
+	c := get(enum.KindClass, "wizard").(*ClassData)
 	if c.HitDie != 6 || c.Caster != "full" || c.Table["Cantrips"][4] != "4" || len(c.Features) != 3 {
 		t.Errorf("class %+v", c)
 	}
@@ -135,7 +136,7 @@ func TestNormalizedShapes(t *testing.T) {
 	if f := c.Features[2]; f.Name != "Fast Feet" || !slices.Equal(f.Levels, []int{9}) || c.Table["Fast Feet"][12] != "+15 ft." {
 		t.Errorf("column feature %+v, table %v", f, c.Table["Fast Feet"])
 	}
-	sub := get(KindSubclass, "wizard_evoker").(*ClassData)
+	sub := get(enum.KindSubclass, "wizard_evoker").(*ClassData)
 	if sub.SubclassOf != "wizard" {
 		t.Errorf("subclass %+v", sub)
 	}
@@ -285,26 +286,26 @@ func TestMonsterImageBinding(t *testing.T) {
 	importOnce(t, store, dir)
 	ctx := t.Context()
 
-	get := func(kind Kind, slug string) sqlc.CompendiumEntry {
+	get := func(kind enum.CompendiumKind, slug string) sqlc.CompendiumEntry {
 		t.Helper()
-		row, err := store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(kind), Slug: slug})
+		row, err := store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return row
 	}
-	goblin := get(KindMonster, "goblin-warrior")
+	goblin := get(enum.KindMonster, "goblin-warrior")
 	if goblin.ImageUrl.String != MonsterImagePrefix+"goblin-warrior.png" {
 		t.Fatalf("bound %q", goblin.ImageUrl.String)
 	}
-	if spell := get(KindSpell, "fire-bolt"); spell.ImageUrl.Valid {
+	if spell := get(enum.KindSpell, "fire-bolt"); spell.ImageUrl.Valid {
 		t.Errorf("spell bound %q", spell.ImageUrl.String)
 	}
 
 	// Monsters outside data folders get no guess, and keep a link the GM set.
 	var brews []int64
 	for _, slug := range []string{"goblin-boss", "goblin-hexer"} {
-		brew, err := store.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: string(KindMonster), Slug: slug, Name: slug, DataJson: "{}"})
+		brew, err := store.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: enum.KindMonster, Slug: slug, Name: slug, DataJson: "{}"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -332,7 +333,7 @@ func TestMonsterImageBinding(t *testing.T) {
 			t.Fatal(err)
 		}
 		importOnce(t, store, dir)
-		if got := get(KindMonster, "goblin-warrior").ImageUrl; !got.Valid || got.String != want {
+		if got := get(enum.KindMonster, "goblin-warrior").ImageUrl; !got.Valid || got.String != want {
 			t.Errorf("after re-import %+v, want %q", got, want)
 		}
 		copySource(t, dir)

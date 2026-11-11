@@ -11,8 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 // session is the device row behind a token.
@@ -33,8 +33,8 @@ func (e testEnv) device(t *testing.T, token string) string {
 // with what went wrong on failures; visitors and assets are not logged.
 func TestRequestLog(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
-	other := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
+	other := e.token(t, enum.RolePlayer)
 	charPath := fmt.Sprintf("/characters/%d", e.characterID)
 
 	e.do(t, http.MethodGet, charPath, player, nil, false)
@@ -79,14 +79,14 @@ func TestRequestLog(t *testing.T) {
 func TestRequestLogReusedID(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	old := e.token(t, auth.RolePlayer)
+	old := e.token(t, enum.RolePlayer)
 	oldSession := e.session(t, old)
 	e.do(t, http.MethodGet, "/notes/9999", old, nil, true)
 	if err := e.q().DeleteCharacterSessions(ctx, sql.NullInt64{Int64: e.characterID, Valid: true}); err != nil {
 		t.Fatal(err)
 	}
 
-	fresh := e.token(t, auth.RolePlayer)
+	fresh := e.token(t, enum.RolePlayer)
 	if got := e.session(t, fresh).ID; got != oldSession.ID {
 		t.Fatalf("new session got ID %d, want the reused %d", got, oldSession.ID)
 	}
@@ -131,7 +131,7 @@ func TestErrorText(t *testing.T) {
 // credentials and note blocks; a GET sends nothing.
 func TestRequestSent(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	cmd := fmt.Sprintf("/characters/%d/cmd", e.characterID)
 	e.do(t, http.MethodPost, cmd, player, url.Values{"hp_op": {"damage"}, "hp_amount": {"five"}}, true)
 	e.do(t, http.MethodPost, "/blocks/1/steps", player, url.Values{"text": {"my secret"}}, true)

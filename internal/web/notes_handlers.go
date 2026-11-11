@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
@@ -32,8 +33,8 @@ const (
 )
 
 type noteForm struct {
-	Title string `form:"title" validate:"required,max=200"`
-	Kind  string `form:"kind"  validate:"required,oneof=game_session generic"`
+	Title string        `form:"title" validate:"required,max=200"`
+	Kind  enum.NoteKind `form:"kind"  validate:"required,oneof=game_session generic"`
 }
 
 func (a *App) notesPage(c *gin.Context) {
@@ -81,9 +82,9 @@ func (a *App) createNote(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	owner, vis := int64(0), perm.VisGM
+	owner, vis := int64(0), enum.VisGM
 	if !w.isGM() {
-		owner, vis = w.viewer.CharacterID, perm.VisOwner
+		owner, vis = w.viewer.CharacterID, enum.VisOwner
 	}
 	var note sqlc.Note
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -92,7 +93,7 @@ func (a *App) createNote(c *gin.Context) {
 		if err != nil {
 			return err
 		}
-		_, err = q.CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: string(vis)})
+		_, err = q.CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: vis})
 		return err
 	})
 	if err != nil {
@@ -148,12 +149,12 @@ func (a *App) notePage(c *gin.Context) {
 		a.fail(c, http.StatusNotFound, "Not found.")
 		return
 	}
-	nv.Backlinks, err = a.backlinks(ctx, w, note.CampaignID, "note", note.ID)
+	nv.Backlinks, err = a.backlinks(ctx, w, note.CampaignID, enum.LinkNote, note.ID)
 	if err != nil {
 		a.serverError(c, err)
 		return
 	}
-	if nv.EntityLinks, err = a.entityMentions(ctx, w, "note", note.ID); err != nil {
+	if nv.EntityLinks, err = a.entityMentions(ctx, w, enum.LinkNote, note.ID); err != nil {
 		a.serverError(c, err)
 		return
 	}
@@ -162,11 +163,11 @@ func (a *App) notePage(c *gin.Context) {
 
 // entityMentions lists the NPCs whose fields link a target, as the viewer
 // may see them (revealed links of revealed NPCs for players).
-func (a *App) entityMentions(ctx context.Context, w who, targetType string, targetID int64) ([]sqlc.ListEntityFieldBacklinksRow, error) {
+func (a *App) entityMentions(ctx context.Context, w who, targetType enum.LinkTarget, targetID int64) ([]sqlc.ListEntityFieldBacklinksRow, error) {
 	return a.Store.ListEntityFieldBacklinks(ctx, sqlc.ListEntityFieldBacklinksParams{TargetType: targetType, TargetID: targetID, IsGm: w.isGM()})
 }
 
-func (a *App) backlinks(ctx context.Context, w who, campaignID int64, targetType string, targetID int64) ([]sqlc.ListBacklinksRow, error) {
+func (a *App) backlinks(ctx context.Context, w who, campaignID int64, targetType enum.LinkTarget, targetID int64) ([]sqlc.ListBacklinksRow, error) {
 	rows, err := a.Store.ListBacklinks(ctx, sqlc.ListBacklinksParams{
 		TargetType: targetType, TargetID: targetID, CampaignID: campaignID, IsGm: w.isGM(), CharacterID: w.viewer.CharacterID,
 	})
@@ -174,7 +175,7 @@ func (a *App) backlinks(ctx context.Context, w who, campaignID int64, targetType
 		return nil, err
 	}
 	// A note does not list itself as a backlink.
-	return slices.DeleteFunc(rows, func(r sqlc.ListBacklinksRow) bool { return targetType == "note" && r.ID == targetID }), nil
+	return slices.DeleteFunc(rows, func(r sqlc.ListBacklinksRow) bool { return targetType == enum.LinkNote && r.ID == targetID }), nil
 }
 
 func (a *App) renameNote(c *gin.Context) {
@@ -208,9 +209,9 @@ func (a *App) deleteNote(c *gin.Context) {
 
 // blockAccessForm is the visibility form shared by new and existing blocks.
 type blockAccessForm struct {
-	Visibility     string  `form:"visibility"       validate:"required"`
-	PlayersCanEdit bool    `form:"players_can_edit"`
-	Audience       []int64 `form:"audience"`
+	Visibility     enum.Visibility `form:"visibility"       validate:"required"`
+	PlayersCanEdit bool            `form:"players_can_edit"`
+	Audience       []int64         `form:"audience"`
 }
 
 // readAccessForm validates the form against what the viewer may set.
@@ -219,15 +220,15 @@ func (a *App) readAccessForm(c *gin.Context, w who, note sqlc.Note) (blockAccess
 	if !a.bindForm(c, &form) {
 		return form, false
 	}
-	vis := perm.Visibility(form.Visibility)
-	if !perm.ValidBlockVisibility(w.viewer, note.OwnerCharacterID.Int64, note.Kind == views.KindGameSession, vis) {
+	vis := form.Visibility
+	if !perm.ValidBlockVisibility(w.viewer, note.OwnerCharacterID.Int64, note.Kind == enum.NoteGameSession, vis) {
 		a.fail(c, http.StatusUnprocessableEntity, "You cannot give a block that visibility here.")
 		return form, false
 	}
-	if vis != perm.VisPlayers {
+	if vis != enum.VisPlayers {
 		form.PlayersCanEdit = false
 	}
-	if vis != perm.VisListed {
+	if vis != enum.VisListed {
 		form.Audience = nil
 	}
 	return form, true
@@ -288,7 +289,7 @@ func (a *App) loadBlock(ctx context.Context, id int64) (sqlc.GetBlockRow, perm.B
 		return b, perm.Block{}, err
 	}
 	return b, perm.Block{
-		Visibility: perm.Visibility(b.Visibility), PlayersCanEdit: b.PlayersCanEdit,
+		Visibility: b.Visibility, PlayersCanEdit: b.PlayersCanEdit,
 		NoteOwnerID: b.OwnerCharacterID.Int64, Audience: audience, AuthorID: b.AuthorCharacterID.Int64,
 	}, nil
 }
@@ -585,8 +586,8 @@ type snapshotBody struct {
 	Doc     json.RawMessage `json:"doc"     validate:"required"`
 	Text    string          `json:"text"    validate:"max=1000000"`
 	Links   []struct {
-		Type string `json:"type" validate:"oneof=note entity image"`
-		ID   int64  `json:"id"   validate:"min=1"`
+		Type enum.LinkTarget `json:"type" validate:"oneof=note entity image"`
+		ID   int64           `json:"id"   validate:"min=1"`
 	} `json:"links" validate:"max=1000,dive"`
 }
 
@@ -623,7 +624,7 @@ func (a *App) blockSnapshot(c *gin.Context) {
 			return err
 		}
 		for _, l := range body.Links {
-			if l.Type == linkImage && !w.isGM() && !slices.Contains(images, l.ID) {
+			if l.Type == enum.LinkImage && !w.isGM() && !slices.Contains(images, l.ID) {
 				continue
 			}
 			if err := q.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetType: l.Type, TargetID: l.ID}); err != nil {
@@ -854,13 +855,13 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 			items = append(items, views.LinkItem{ID: fmt.Sprintf("entity:%d", e.ID), Label: e.Name, Kind: "npc", URL: fmt.Sprintf("/entities/%d", e.ID)})
 		}
 	}
-	if w.isGM() && (kind == "" || kind == linkImage) {
+	if image := string(enum.LinkImage); w.isGM() && (kind == "" || kind == image) {
 		imgs, err := a.Store.ListImages(ctx, sqlc.ListImagesParams{CampaignID: campaignID, Q: q})
 		if err != nil {
 			return nil, err
 		}
 		for _, img := range imgs {
-			items = append(items, views.LinkItem{ID: fmt.Sprintf("%s:%d", linkImage, img.ID), Label: img.Name, Kind: linkImage, URL: fmt.Sprintf("/images/%d", img.ID)})
+			items = append(items, views.LinkItem{ID: fmt.Sprintf("%s:%d", image, img.ID), Label: img.Name, Kind: image, URL: fmt.Sprintf("/images/%d", img.ID)})
 		}
 	}
 	return items[:min(len(items), 20)], nil

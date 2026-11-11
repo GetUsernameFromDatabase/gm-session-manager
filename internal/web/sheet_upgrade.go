@@ -11,6 +11,7 @@ import (
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 )
 
 // UpgradeSheets catches saved sheets up with what the app has learned since
@@ -104,14 +105,14 @@ func upgradeSpecies(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet) ([]
 	if sheet.Species == "" {
 		return nil, nil
 	}
-	row, _, err := entryFor(ctx, q, compendium.KindSpecies, compendium.Slugify(sheet.Species), sheet.SpeciesSource)
+	row, _, err := entryFor(ctx, q, enum.KindSpecies, compendium.Slugify(sheet.Species), sheet.SpeciesSource)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	d, err := compendium.DecodeData(compendium.KindSpecies, row.DataJson)
+	d, err := compendium.DecodeData(enum.KindSpecies, row.DataJson)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +167,7 @@ func catchUpCasters(ctx context.Context, q *sqlc.Queries, s *dnd5e.Sheet) (bool,
 		if slug == "" {
 			continue
 		}
-		row, _, err := entryFor(ctx, q, compendium.KindSubclass, slug, pin)
+		row, _, err := entryFor(ctx, q, enum.KindSubclass, slug, pin)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
@@ -198,13 +199,13 @@ func catchUpMasteries(ctx context.Context, q *sqlc.Queries, items map[string]str
 		slug := compendium.Slugify(dnd5e.WeaponKind(w.Name))
 		mastery, ok := items[slug]
 		if !ok {
-			row, _, err := entryFor(ctx, q, compendium.KindItem, slug, "")
+			row, _, err := entryFor(ctx, q, enum.KindItem, slug, "")
 			switch {
 			case errors.Is(err, sql.ErrNoRows):
 			case err != nil:
 				return false, err
 			default:
-				d, err := compendium.DecodeData(compendium.KindItem, row.DataJson)
+				d, err := compendium.DecodeData(enum.KindItem, row.DataJson)
 				if err != nil {
 					return false, err
 				}

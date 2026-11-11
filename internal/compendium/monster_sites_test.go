@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"gm-session-manager/internal/enum"
 )
 
 // The fixtures copy each site's markup or data shape; the text is placeholder.
@@ -43,7 +45,7 @@ func TestParseAidedd(t *testing.T) {
 			{Name: "Snap", Desc: "Snap text.", Type: "reaction"},
 		},
 	}
-	if e.Name != "Howler" || e.Kind != KindMonster || !reflect.DeepEqual(e.Data, want) {
+	if e.Name != "Howler" || e.Kind != enum.KindMonster || !reflect.DeepEqual(e.Data, want) {
 		t.Errorf("%s\n got %+v\nwant %+v", e.Name, e.Data, want)
 	}
 	if image != "https://www.aidedd.org/dnd/images/howler.jpg" {

@@ -11,6 +11,7 @@ import (
 
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 var noLinks = Links{Mention: func(string) string { return "" }, Image: func(string) string { return "" }}
@@ -66,7 +67,7 @@ func TestCampaignExcludesOwnerBlocks(t *testing.T) {
 	private, _ := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "Alice diary", OwnerCharacterID: owner})
 	mixed, _ := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "Alice shared", OwnerCharacterID: owner})
 
-	addBlock := func(noteID int64, vis, text string) {
+	addBlock := func(noteID int64, vis enum.Visibility, text string) {
 		t.Helper()
 		b, err := q.CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: noteID, Visibility: vis})
 		if err != nil {

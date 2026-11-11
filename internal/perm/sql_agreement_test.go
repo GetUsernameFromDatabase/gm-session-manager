@@ -8,6 +8,7 @@ import (
 
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 // TestSQLAgreesWithCanReadBlock runs blockCases through the readable-block
@@ -43,10 +44,10 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 				t.Fatal(err)
 			}
 			block, err := q.CreateBlock(ctx, sqlc.CreateBlockParams{
-				NoteID: note.ID, Visibility: string(tt.block.Visibility), PlayersCanEdit: tt.block.PlayersCanEdit,
+				NoteID: note.ID, Visibility: tt.block.Visibility, PlayersCanEdit: tt.block.PlayersCanEdit,
 				AuthorCharacterID: nullID(tt.block.AuthorID),
 			})
-			if len(tt.readers) == 0 && tt.block.Visibility != VisListed {
+			if len(tt.readers) == 0 && tt.block.Visibility != enum.VisListed {
 				// Blocks nobody may read must be refused by the schema itself.
 				if err == nil {
 					t.Fatalf("schema accepted an unreadable %q block", tt.block.Visibility)

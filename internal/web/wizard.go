@@ -20,6 +20,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
 )
@@ -65,7 +66,7 @@ var stepNeeds = map[string][]string{
 func (a *App) missingSteps(ctx context.Context, sh dnd5e.Sheet, step string, campaignID int64) ([]views.WizardStep, error) {
 	has := map[string]bool{"class": len(sh.Classes) > 0, "species": sh.Species != "", "background": sh.Background != ""}
 	if !has["background"] && slices.Contains(stepNeeds[step], "background") {
-		names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(compendium.KindBackground), CampaignID: campaignID})
+		names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: enum.KindBackground, CampaignID: campaignID})
 		if err != nil {
 			return nil, err
 		}
@@ -94,14 +95,14 @@ func (a *App) backgroundChoice(ctx context.Context, sh dnd5e.Sheet) (*views.Wiza
 	if sh.Background == "" {
 		return nil, nil
 	}
-	row, _, err := entryFor(ctx, a.Store.Queries, compendium.KindBackground, compendium.Slugify(sh.Background), sh.BackgroundSource)
+	row, _, err := entryFor(ctx, a.Store.Queries, enum.KindBackground, compendium.Slugify(sh.Background), sh.BackgroundSource)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	data, err := compendium.DecodeData(compendium.KindBackground, row.DataJson)
+	data, err := compendium.DecodeData(enum.KindBackground, row.DataJson)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +219,7 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 		v.LegacyBackground = legacyBackground(s.C.Sheet)
 		return v, err
 	}
-	kind := map[string]compendium.Kind{"class": compendium.KindClass, "species": compendium.KindSpecies, "background": compendium.KindBackground}[step]
+	kind := map[string]enum.CompendiumKind{"class": enum.KindClass, "species": enum.KindSpecies, "background": enum.KindBackground}[step]
 	if kind == "" {
 		switch step {
 		case "equipment":
@@ -230,7 +231,7 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 		}
 		return v, err
 	}
-	names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(kind), CampaignID: ch.CampaignID})
+	names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: ch.CampaignID})
 	if err != nil {
 		return v, err
 	}
@@ -285,11 +286,11 @@ func (a *App) speciesVariant(ctx context.Context, v *views.WizardView, e sqlc.Co
 	if v.Variant != "" || !slices.ContainsFunc(subs, func(s sqlc.ListSubracesOfRow) bool { return s.Slug == variant }) {
 		return e, data, nil
 	}
-	sub, err := a.entryBySlug(ctx, compendium.KindSpecies, variant, campaignID)
+	sub, err := a.entryBySlug(ctx, enum.KindSpecies, variant, campaignID)
 	if err != nil {
 		return e, data, err
 	}
-	d, err := compendium.DecodeData(compendium.KindSpecies, sub.DataJson)
+	d, err := compendium.DecodeData(enum.KindSpecies, sub.DataJson)
 	if err == nil {
 		v.Variant = variant
 	}
@@ -377,14 +378,14 @@ func (a *App) backgroundSkillPick(ctx context.Context, sh dnd5e.Sheet, bgSkills 
 	if len(kept) == len(picks) {
 		return nil, nil
 	}
-	row, _, err := entryFor(ctx, a.Store.Queries, compendium.KindClass, cl.Slug, cl.Source)
+	row, _, err := entryFor(ctx, a.Store.Queries, enum.KindClass, cl.Slug, cl.Source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	data, err := compendium.DecodeData(compendium.KindClass, row.DataJson)
+	data, err := compendium.DecodeData(enum.KindClass, row.DataJson)
 	if err != nil {
 		return nil, err
 	}
@@ -438,11 +439,11 @@ func abilityKeys(list string) []string {
 // equipment options.
 func (a *App) equipmentChoices(ctx context.Context, sh dnd5e.Sheet) ([]views.EquipmentChoice, error) {
 	var out []views.EquipmentChoice
-	add := func(kind compendium.Kind, slug string, text func(any) string) error {
+	add := func(kind enum.CompendiumKind, slug string, text func(any) string) error {
 		if slug == "" {
 			return nil
 		}
-		e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(kind), Slug: slug})
+		e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug})
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -459,13 +460,13 @@ func (a *App) equipmentChoices(ctx context.Context, sh dnd5e.Sheet) ([]views.Equ
 		return nil
 	}
 	if len(sh.Classes) > 0 {
-		if err := add(compendium.KindClass, sh.Classes[0].Slug, func(d any) string {
+		if err := add(enum.KindClass, sh.Classes[0].Slug, func(d any) string {
 			return compendium.CoreTraits(d.(*compendium.ClassData).Desc)["Starting Equipment"]
 		}); err != nil {
 			return nil, err
 		}
 	}
-	err := add(compendium.KindBackground, compendium.Slugify(sh.Background), func(d any) string {
+	err := add(enum.KindBackground, compendium.Slugify(sh.Background), func(d any) string {
 		for _, p := range d.(*compendium.TextData).Parts {
 			if p.Type == "equipment" {
 				return p.Desc
@@ -710,7 +711,7 @@ func (a *App) speciesParts(ctx context.Context, sh dnd5e.Sheet) ([]compendium.Na
 	if sh.Species == "" {
 		return nil, nil
 	}
-	td, _, err := a.textEntrySource(ctx, compendium.KindSpecies, compendium.Slugify(sh.Species), sh.SpeciesSource)
+	td, _, err := a.textEntrySource(ctx, enum.KindSpecies, compendium.Slugify(sh.Species), sh.SpeciesSource)
 	if err != nil || td == nil {
 		return nil, err
 	}
@@ -807,7 +808,7 @@ func spellAbilityChoice(key, from string, slugs map[string]bool, species bool) c
 // originFeatChoice offers the compendium's Origin feats (Human Versatile),
 // each with its own choices.
 func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dnd5e.Sheet, campaignID int64) (choiceGroup, bool, error) {
-	names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(compendium.KindFeat), CampaignID: campaignID})
+	names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: enum.KindFeat, CampaignID: campaignID})
 	if err != nil {
 		return choiceGroup{}, false, err
 	}
@@ -816,7 +817,7 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 		slugs[i] = n.Slug
 	}
 	// One query for every feat's priority copy, as entryFor picks unpinned.
-	rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: string(compendium.KindFeat), Slugs: slugs})
+	rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: enum.KindFeat, Slugs: slugs})
 	if err != nil {
 		return choiceGroup{}, false, err
 	}
@@ -833,7 +834,7 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 		if !ok {
 			continue
 		}
-		d, err := compendium.DecodeData(compendium.KindFeat, row.DataJson)
+		d, err := compendium.DecodeData(enum.KindFeat, row.DataJson)
 		if err != nil {
 			return choiceGroup{}, false, err
 		}
@@ -864,14 +865,14 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 
 // textEntry is the compendium species, background or feat with this slug;
 // nil when it has none.
-func (a *App) textEntry(ctx context.Context, kind compendium.Kind, slug string) (*compendium.TextData, error) {
+func (a *App) textEntry(ctx context.Context, kind enum.CompendiumKind, slug string) (*compendium.TextData, error) {
 	td, _, err := a.textEntrySource(ctx, kind, slug, "")
 	return td, err
 }
 
 // textEntrySource is textEntry for a ref pinned to pin (see entryFor), with
 // the entry's source key, for pinning.
-func (a *App) textEntrySource(ctx context.Context, kind compendium.Kind, slug, pin string) (*compendium.TextData, string, error) {
+func (a *App) textEntrySource(ctx context.Context, kind enum.CompendiumKind, slug, pin string) (*compendium.TextData, string, error) {
 	row, _, err := entryFor(ctx, a.Store.Queries, kind, slug, pin)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, "", nil
@@ -910,7 +911,7 @@ func (a *App) backgroundFeatChoices(ctx context.Context, sh dnd5e.Sheet, campaig
 	if sh.Background == "" {
 		return nil, nil
 	}
-	bg, _, err := a.textEntrySource(ctx, compendium.KindBackground, compendium.Slugify(sh.Background), sh.BackgroundSource)
+	bg, _, err := a.textEntrySource(ctx, enum.KindBackground, compendium.Slugify(sh.Background), sh.BackgroundSource)
 	if err != nil || bg == nil {
 		return nil, err
 	}
@@ -921,7 +922,7 @@ func (a *App) backgroundFeatChoices(ctx context.Context, sh dnd5e.Sheet, campaig
 		}
 		name, list := featList(full)
 		slug := compendium.Slugify(name)
-		td, _, err := a.textEntrySource(ctx, compendium.KindFeat, slug, sh.FeatSources[slug])
+		td, _, err := a.textEntrySource(ctx, enum.KindFeat, slug, sh.FeatSources[slug])
 		if err != nil || td == nil {
 			return nil, err
 		}
@@ -1369,14 +1370,14 @@ func (a *App) cantripData(ctx context.Context, spells []dnd5e.Spell, campaignID 
 		if sp.Level != 0 || sp.Feat != "" || sp.Ability != "" {
 			continue
 		}
-		row, err := a.entryBySlug(ctx, compendium.KindSpell, sp.Slug, campaignID)
+		row, err := a.entryBySlug(ctx, enum.KindSpell, sp.Slug, campaignID)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		d, err := compendium.DecodeData(compendium.KindSpell, row.DataJson)
+		d, err := compendium.DecodeData(enum.KindSpell, row.DataJson)
 		if err != nil {
 			return nil, err
 		}
@@ -1719,7 +1720,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if err != nil || sheet.SetUp(step) {
 			return nil, err // chosen already: the skills would be ignored
 		}
-		row, err := a.wizardPick(ctx, compendium.KindClass, pick, ch.CampaignID)
+		row, err := a.wizardPick(ctx, enum.KindClass, pick, ch.CampaignID)
 		if err != nil {
 			return nil, err
 		}
@@ -1727,7 +1728,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if err != nil {
 			return nil, err
 		}
-		data, _ := compendium.DecodeData(compendium.KindClass, row.DataJson)
+		data, _ := compendium.DecodeData(enum.KindClass, row.DataJson)
 		choice := wizardChoice(row, data)
 		skills := postedSkills(c)
 		if err := checkSkillPick(classSkillPick(sheet, choice.Skills, choice.SkillCount, nil), skills); err != nil {
@@ -1747,7 +1748,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if pick == "" {
 			return nil, nil
 		}
-		kind := compendium.Kind(step)
+		kind := enum.CompendiumKind(step)
 		row, err := a.wizardPick(ctx, kind, pick, ch.CampaignID)
 		if err != nil {
 			return nil, err
@@ -1949,7 +1950,7 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 
 // wizardPick is the posted pick's entry, refused as a user error when the
 // character's campaign cannot see it.
-func (a *App) wizardPick(ctx context.Context, kind compendium.Kind, pick string, campaignID int64) (sqlc.CompendiumEntry, error) {
+func (a *App) wizardPick(ctx context.Context, kind enum.CompendiumKind, pick string, campaignID int64) (sqlc.CompendiumEntry, error) {
 	row, err := a.entryBySlug(ctx, kind, pick, campaignID)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = userError{fmt.Errorf("that %s is not in the compendium", kind)}
@@ -2057,7 +2058,7 @@ func (a *App) originFeat(ctx context.Context, d *compendium.TextData) (*dnd5e.Fe
 			continue
 		}
 		name, _, _ := strings.Cut(p.Desc, " (")
-		td, source, err := a.textEntrySource(ctx, compendium.KindFeat, compendium.Slugify(name), "")
+		td, source, err := a.textEntrySource(ctx, enum.KindFeat, compendium.Slugify(name), "")
 		if err != nil {
 			return nil, "", err
 		}
@@ -2115,7 +2116,7 @@ func (a *App) gearFor(ctx context.Context, picked []compendium.EquipmentOption) 
 				return g, err
 			}
 			g.names[it.Name] = e.Name
-			d, err := compendium.DecodeData(compendium.KindItem, e.DataJson)
+			d, err := compendium.DecodeData(enum.KindItem, e.DataJson)
 			if err != nil {
 				return g, err
 			}
@@ -2138,12 +2139,12 @@ func (a *App) gearFor(ctx context.Context, picked []compendium.EquipmentOption) 
 // "Pouches").
 func (a *App) findItem(ctx context.Context, name string) (sqlc.CompendiumEntry, error) {
 	slug := compendium.Slugify(name)
-	e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindItem), Slug: slug})
+	e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: enum.KindItem, Slug: slug})
 	for _, suffix := range []string{"s", "es"} {
 		if !errors.Is(err, sql.ErrNoRows) || !strings.HasSuffix(slug, suffix) {
 			break
 		}
-		e, err = a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(compendium.KindItem), Slug: strings.TrimSuffix(slug, suffix)})
+		e, err = a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: enum.KindItem, Slug: strings.TrimSuffix(slug, suffix)})
 	}
 	return e, err
 }

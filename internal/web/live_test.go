@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
@@ -135,7 +135,7 @@ func TestLiveVisibility(t *testing.T) {
 // TestLiveRefetchStrips checks the HTML a view refetches with, as a player.
 func TestLiveRefetchStrips(t *testing.T) {
 	f := newLiveFixture(t)
-	player := f.token(t, auth.RolePlayer)
+	player := f.token(t, enum.RolePlayer)
 	get := func(view string) *httptest.ResponseRecorder {
 		return f.do(t, http.MethodGet, "/live?v="+url.QueryEscape(view), player, nil, true)
 	}
@@ -219,7 +219,7 @@ func TestLiveSourcesAlert(t *testing.T) {
 	if !f.app.Affects(view, []hub.Topic{{Kind: hub.TopicCompendium}}) {
 		t.Error("a compendium change does not refetch the sheet")
 	}
-	for name, cookie := range map[string]string{"owner": f.token(t, auth.RolePlayer), "GM": f.token(t, auth.RoleAdmin)} {
+	for name, cookie := range map[string]string{"owner": f.token(t, enum.RolePlayer), "GM": f.token(t, enum.RoleAdmin)} {
 		b := f.do(t, http.MethodGet, "/live?v="+url.QueryEscape(view), cookie, nil, true).Body.String()
 		if !strings.Contains(b, "1 source to review") || !strings.Contains(b, "Review sources") {
 			t.Errorf("%s misses the alert: %s", name, b)
@@ -242,8 +242,8 @@ var (
 func TestLiveBindsMatchState(t *testing.T) {
 	f := newLiveFixture(t)
 	f.outrankPin(t) // the sheets show the sources alert, which binds nothing
-	player := f.token(t, auth.RolePlayer)
-	gm := f.token(t, auth.RoleAdmin)
+	player := f.token(t, enum.RolePlayer)
+	gm := f.token(t, enum.RoleAdmin)
 	for _, c := range []string{"maxhp =12", "hp =0", "temp 3", "slot max 1 2", "exhaustion +1", "toggle prone", "deathsave fail", "feature add Lucky", "feature set Lucky uses=prof"} {
 		if w := f.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", f.characterID), player, url.Values{"cmd": {c}}, true); w.Code != http.StatusOK {
 			t.Fatalf("%s: %d %s", c, w.Code, w.Body)

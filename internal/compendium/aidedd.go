@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	"gm-session-manager/internal/enum"
+
 	"golang.org/x/net/html"
 )
 
@@ -32,10 +34,10 @@ var aideddSite = Site{
 		}
 		return strings.TrimPrefix(u.Path, "/") + cutEmpty("?", u.RawQuery)
 	},
-	check: func(page string) (Kind, error) {
+	check: func(page string) (enum.CompendiumKind, error) {
 		switch {
 		case reSlug.MatchString(page):
-			return KindMonster, nil
+			return enum.KindMonster, nil
 		case reAideddPath.MatchString(page):
 			return "", nil
 		}
@@ -135,7 +137,7 @@ func ParseAidedd(body []byte) (Entry, string, error) {
 			}
 		}
 	}
-	return Entry{Kind: KindMonster, Slug: Slugify(name), Name: name, Data: d, Text: d.searchText()}, image, nil
+	return Entry{Kind: enum.KindMonster, Slug: Slugify(name), Name: name, Data: d, Text: d.searchText()}, image, nil
 }
 
 // aideddLabels are the statblock lines a monster has before its traits.

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
 )
 
@@ -92,7 +92,7 @@ func TestRollInitiative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	for range 20 {
 		if w := e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/initiative", cb.ID), gm, url.Values{"roll": {"1"}}, true); w.Code != http.StatusOK {
 			t.Fatalf("roll: %d %s", w.Code, w.Body)
@@ -140,7 +140,7 @@ func TestRollAllInitiative(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/roll", enc.ID), e.token(t, auth.RoleAdmin), nil, true); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/roll", enc.ID), e.token(t, enum.RoleAdmin), nil, true); w.Code != http.StatusOK {
 		t.Fatalf("roll: %d %s", w.Code, w.Body)
 	}
 	rows, _ := e.q().ListCombatants(ctx, enc.ID)
@@ -172,7 +172,7 @@ func TestRollAllInitiative(t *testing.T) {
 func TestCombatDefenses(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
 	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "testgoyle", Name: "Testgoyle", SourceKey: "test", ContentHash: "x",
 		DataJson: `{"ac":15,"hp":60,"resistances":"cold; bludgeoning from nonmagical attacks","immunities":"poison; poisoned","vulnerabilities":"radiant"}`}); err != nil {
 		t.Fatal(err)
@@ -285,7 +285,7 @@ func TestPlayerCombatView(t *testing.T) {
 		t.Fatal(err)
 	}
 	combat := fmt.Sprintf("/campaigns/%d/combat", e.campaignID)
-	player := e.do(t, http.MethodGet, combat, e.token(t, auth.RolePlayer), nil, false).Body.String()
+	player := e.do(t, http.MethodGet, combat, e.token(t, enum.RolePlayer), nil, false).Body.String()
 	for _, want := range []string{`name="hp_amount"`, "Ogre", "Monsters", "mini 5", `data-down="true"`} {
 		if !strings.Contains(player, want) {
 			t.Errorf("player view misses %q", want)
@@ -296,7 +296,7 @@ func TestPlayerCombatView(t *testing.T) {
 			t.Errorf("player view shows %q", leak)
 		}
 	}
-	gm := e.do(t, http.MethodGet, combat, e.token(t, auth.RoleAdmin), nil, false).Body.String()
+	gm := e.do(t, http.MethodGet, combat, e.token(t, enum.RoleAdmin), nil, false).Body.String()
 	if !strings.Contains(gm, `aria-label="Initiative"`) {
 		t.Error("GM view lost the initiative field")
 	}

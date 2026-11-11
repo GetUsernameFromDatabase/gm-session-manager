@@ -12,3 +12,25 @@ sql:
         package: sqlc
         out: internal/db/sqlc
         emit_empty_slices: true
+        # CHECK enums get their internal/enum type.
+        overrides:
+          - column: sessions.role
+            go_type: gm-session-manager/internal/enum.Role
+          - column: compendium_entries.kind
+            go_type: gm-session-manager/internal/enum.CompendiumKind
+          - column: compendium_top.kind
+            go_type: gm-session-manager/internal/enum.CompendiumKind
+          - column: campaign_top.kind
+            go_type: gm-session-manager/internal/enum.CompendiumKind
+          - column: encounters.status
+            go_type: gm-session-manager/internal/enum.EncounterStatus
+          - column: notes.kind
+            go_type: gm-session-manager/internal/enum.NoteKind
+          - column: entities.kind
+            go_type: gm-session-manager/internal/enum.EntityKind
+          - column: note_links.target_type
+            go_type: gm-session-manager/internal/enum.LinkTarget
+          - column: entity_field_links.target_type
+            go_type: gm-session-manager/internal/enum.LinkTarget
+          - column: note_blocks.visibility
+            go_type: gm-session-manager/internal/enum.Visibility

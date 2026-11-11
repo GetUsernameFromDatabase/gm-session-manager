@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"gm-session-manager/internal/enum"
 )
 
 // This file reads the Open5e data repository's v2 layout
@@ -272,7 +274,7 @@ func (n normalizer) monsters() ([]Entry, error) {
 		for _, a := range acts {
 			d.Actions = append(d.Actions, MonsterAction{Name: a.Name, Desc: a.Desc, Type: strings.ToLower(a.ActionType)})
 		}
-		out = append(out, Entry{Kind: KindMonster, Slug: n.slug(r.pk()), Name: c.Name, Data: d, Text: d.searchText()})
+		out = append(out, Entry{Kind: enum.KindMonster, Slug: n.slug(r.pk()), Name: c.Name, Data: d, Text: d.searchText()})
 	}
 	return out, nil
 }
@@ -383,7 +385,7 @@ func (n normalizer) spells() ([]Entry, error) {
 			classes = append(classes, n.slug(c))
 		}
 		out = append(out, Entry{
-			Kind: KindSpell, Slug: n.slug(r.pk()), Name: s.Name,
+			Kind: enum.KindSpell, Slug: n.slug(r.pk()), Name: s.Name,
 			Data: SpellData{
 				Level: s.Level, School: s.School, CastingTime: s.CastingTime, Range: s.RangeText,
 				Components: components, Duration: s.Duration, Concentration: s.Concentration,
@@ -513,7 +515,7 @@ func (n normalizer) items() ([]Entry, error) {
 				}
 			}
 			out = append(out, Entry{
-				Kind: KindItem, Slug: n.slug(r.pk()), Name: it.Name, Data: d,
+				Kind: enum.KindItem, Slug: n.slug(r.pk()), Name: it.Name, Data: d,
 				Text: joinText(it.Category, d.Rarity, it.Desc),
 			})
 		}
@@ -621,9 +623,9 @@ func (n normalizer) classes() ([]Entry, error) {
 			HitDie: hitDie(c.HitDice), Caster: strings.ToLower(cmp.Or(c.CasterType, "none")),
 			Saves: c.Saves, Table: map[string]map[int]string{},
 		}
-		kind := KindClass
+		kind := enum.KindClass
 		if c.SubclassOf != nil {
-			kind, d.SubclassOf = KindSubclass, n.slug(*c.SubclassOf)
+			kind, d.SubclassOf = enum.KindSubclass, n.slug(*c.SubclassOf)
 		}
 		var text []string
 		for _, f := range features[r.pk()] {
@@ -697,7 +699,7 @@ type o5eText struct {
 }
 
 // textEntries builds a TextData entry per record with child parts.
-func (n normalizer) textEntries(kind Kind, model, childModel string) ([]Entry, error) {
+func (n normalizer) textEntries(kind enum.CompendiumKind, model, childModel string) ([]Entry, error) {
 	parts, err := children(n.fx, childModel, childParent)
 	if err != nil {
 		return nil, err
@@ -724,15 +726,15 @@ func (n normalizer) textEntries(kind Kind, model, childModel string) ([]Entry, e
 }
 
 func (n normalizer) species() ([]Entry, error) {
-	return n.textEntries(KindSpecies, "species", "speciestrait")
+	return n.textEntries(enum.KindSpecies, "species", "speciestrait")
 }
 
 func (n normalizer) backgrounds() ([]Entry, error) {
-	return n.textEntries(KindBackground, "background", "backgroundbenefit")
+	return n.textEntries(enum.KindBackground, "background", "backgroundbenefit")
 }
 
 func (n normalizer) feats() ([]Entry, error) {
-	return n.textEntries(KindFeat, "feat", "featbenefit")
+	return n.textEntries(enum.KindFeat, "feat", "featbenefit")
 }
 
 type o5eDescribes struct {
@@ -751,7 +753,7 @@ func (n normalizer) conditions() ([]Entry, error) {
 		if name == "" {
 			continue
 		}
-		out = append(out, Entry{Kind: KindCondition, Slug: n.slug(r.pk()), Name: name, Data: TextData{Desc: c.Desc}, Text: c.Desc})
+		out = append(out, Entry{Kind: enum.KindCondition, Slug: n.slug(r.pk()), Name: name, Data: TextData{Desc: c.Desc}, Text: c.Desc})
 	}
 	return out, nil
 }
@@ -774,7 +776,7 @@ func (n normalizer) rules() ([]Entry, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, Entry{Kind: KindRule, Slug: n.slug(r.pk()), Name: s.Name, Data: TextData{Desc: s.Desc}, Text: s.Desc})
+		out = append(out, Entry{Kind: enum.KindRule, Slug: n.slug(r.pk()), Name: s.Name, Data: TextData{Desc: s.Desc}, Text: s.Desc})
 	}
 	for _, r := range n.fx["rule"] {
 		s, err := decode[o5eRule](r)
@@ -782,7 +784,7 @@ func (n normalizer) rules() ([]Entry, error) {
 			return nil, err
 		}
 		cat := sets[s.RuleSet].Name
-		out = append(out, Entry{Kind: KindRule, Slug: n.slug(r.pk()), Name: s.Name, Data: TextData{Desc: s.Desc, Category: cat}, Text: s.Desc})
+		out = append(out, Entry{Kind: enum.KindRule, Slug: n.slug(r.pk()), Name: s.Name, Data: TextData{Desc: s.Desc, Category: cat}, Text: s.Desc})
 	}
 	// Mastery properties are slugged by name ("sap", not "sap-mastery"), as 5etools books slug theirs.
 	for _, r := range n.fx["weaponproperty"] {
@@ -791,7 +793,7 @@ func (n normalizer) rules() ([]Entry, error) {
 			return nil, err
 		}
 		if p.mastery() {
-			out = append(out, Entry{Kind: KindRule, Slug: Slugify(p.Name), Name: p.Name, Data: TextData{Desc: p.Desc, Category: masteryCategory}, Text: p.Desc})
+			out = append(out, Entry{Kind: enum.KindRule, Slug: Slugify(p.Name), Name: p.Name, Data: TextData{Desc: p.Desc, Category: masteryCategory}, Text: p.Desc})
 		}
 	}
 	return out, nil

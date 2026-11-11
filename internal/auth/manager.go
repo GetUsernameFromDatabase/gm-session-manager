@@ -8,15 +8,7 @@ import (
 
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
-)
-
-// Role values stored in sessions.role.
-type Role string
-
-// Session roles. The GM is an admin; there is no separate GM role.
-const (
-	RolePlayer Role = "player"
-	RoleAdmin  Role = "admin"
+	"gm-session-manager/internal/enum"
 )
 
 var (
@@ -42,7 +34,7 @@ func NewManager(q *db.Store, adminUser, adminPass string) *Manager {
 
 // IssuePlayer creates a session bound to a character and returns its token.
 func (m *Manager) IssuePlayer(ctx context.Context, characterID int64) (string, sqlc.Session, error) {
-	return m.issue(ctx, RolePlayer, sql.NullInt64{Int64: characterID, Valid: true})
+	return m.issue(ctx, enum.RolePlayer, sql.NullInt64{Int64: characterID, Valid: true})
 }
 
 // LoginAdmin checks the credentials and, if they match, creates an admin
@@ -51,17 +43,17 @@ func (m *Manager) LoginAdmin(ctx context.Context, user, pass string) (string, sq
 	if !credentialsMatch(m.adminUser, m.adminPass, user, pass) {
 		return "", sqlc.Session{}, ErrBadCredentials
 	}
-	return m.issue(ctx, RoleAdmin, sql.NullInt64{})
+	return m.issue(ctx, enum.RoleAdmin, sql.NullInt64{})
 }
 
-func (m *Manager) issue(ctx context.Context, role Role, characterID sql.NullInt64) (string, sqlc.Session, error) {
+func (m *Manager) issue(ctx context.Context, role enum.Role, characterID sql.NullInt64) (string, sqlc.Session, error) {
 	token, hash, err := newToken()
 	if err != nil {
 		return "", sqlc.Session{}, fmt.Errorf("generate token: %w", err)
 	}
 	sess, err := m.q.CreateSession(ctx, sqlc.CreateSessionParams{
 		TokenHash:   hash,
-		Role:        string(role),
+		Role:        role,
 		CharacterID: characterID,
 	})
 	if err != nil {

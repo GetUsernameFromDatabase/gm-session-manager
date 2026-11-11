@@ -7,6 +7,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
@@ -290,10 +291,10 @@ templ homebrewTab(v CompendiumView) {
 	}
 }
 
-templ homebrewName(id int64, kind, name string) {
+templ homebrewName(id int64, kind enum.CompendiumKind, name string) {
 	<span class="flex min-w-0 items-center gap-2">
 		@kindIcon(kind, "")
-		<span class="sr-only">{ kind }</span>
+		<span class="sr-only">{ string(kind) }</span>
 		<a class="truncate font-medium hover:underline" href={ templ.SafeURL(entryHref(ctx, id)) }>{ name }</a>
 	</span>
 }
@@ -759,7 +760,7 @@ templ compendiumRow(r sqlc.SearchCompendiumRow, href string, order []string) {
 			@rowBadges(r)
 		}
 		{{ text, color := rowFigure(r) }}
-		{{ rarity := utils.IfElse(r.Kind == string(compendium.KindItem), r.Figure, "") }}
+		{{ rarity := utils.IfElse(r.Kind == enum.KindItem, r.Figure, "") }}
 		<span class="w-24 shrink-0 truncate text-right text-xs text-muted-foreground tabular-nums first-letter:uppercase" title={ strings.TrimPrefix(text+commaPrefixed(rarity), ", ") }>
 			<span class={ color }>{ text }</span>
 			if rarity != "" {
@@ -775,7 +776,7 @@ templ compendiumRow(r sqlc.SearchCompendiumRow, href string, order []string) {
 templ rowBadges(r sqlc.SearchCompendiumRow) {
 	<span class="flex h-5 min-w-0 grow basis-0 flex-wrap justify-end gap-1 overflow-hidden">
 		// A subclass's class is its figure, on the right.
-		if r.Kind != string(compendium.KindSubclass) {
+		if r.Kind != enum.KindSubclass {
 			@classBadges(strings.Fields(r.Classes))
 		}
 		if r.Size != "" {
@@ -795,20 +796,20 @@ templ rowBadges(r sqlc.SearchCompendiumRow) {
 // CR, a spell's level, else the category; an item's is tinted by rarity, a
 // subclass's (its class) by the class colour.
 func rowFigure(r sqlc.SearchCompendiumRow) (text, color string) {
-	switch compendium.Kind(r.Kind) {
-	case compendium.KindMonster:
+	switch r.Kind {
+	case enum.KindMonster:
 		if r.Figure == "" {
 			return "", ""
 		}
 		return "CR " + crText(r.Figure), ""
-	case compendium.KindSpell:
+	case enum.KindSpell:
 		if r.Figure == "0" {
 			return "Cantrip", ""
 		}
 		return "Level " + r.Figure, ""
-	case compendium.KindSubclass:
+	case enum.KindSubclass:
 		return r.Classes, textOnly(classColors[r.Classes])
-	case compendium.KindItem:
+	case enum.KindItem:
 		return strings.ReplaceAll(r.Category, "-", " "), rarityColors[strings.ToLower(r.Figure)]
 	}
 	return strings.ReplaceAll(r.Category, "-", " "), ""
@@ -860,7 +861,7 @@ templ kindCounts(v CompendiumView) {
 		}
 		<div class={ chipRow }>
 			for _, c := range v.Counts {
-				{{ on := slices.Contains(kindSet(v.Kind), c.Kind) }}
+				{{ on := slices.Contains(kindSet(v.Kind), string(c.Kind)) }}
 				@badge.Badge(badge.Props{Href: kindHref(v.kindBase(), c.Kind, v.Kind, v.Campaign), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "h-7 gap-1.5 px-2.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on)}}) {
 					@kindIcon(c.Kind, utils.IfElse(on, "text-current", ""))
 					@kindName(c.Kind)
@@ -869,7 +870,7 @@ templ kindCounts(v CompendiumView) {
 			}
 		</div>
 		// The shared list has no habitat filter.
-		if v.Kind == string(compendium.KindMonster) && v.Shared == "" {
+		if v.Kind == string(enum.KindMonster) && v.Shared == "" {
 			@habitatCounts(v)
 		}
 	</div>
@@ -975,7 +976,7 @@ func CompendiumRest(path string) string {
 
 // habitatHref toggles habitat in the monster filter, in Habitats order.
 func habitatHref(query, habitat, current string, campaign int64) string {
-	q := url.Values{"kind": {string(compendium.KindMonster)}}
+	q := url.Values{"kind": {string(enum.KindMonster)}}
 	if query != "" {
 		q.Set("q", query)
 	}
@@ -993,12 +994,12 @@ func habitatHref(query, habitat, current string, campaign int64) string {
 }
 
 // kindHref toggles kind in the filter, on top of q (a fresh copy, see kindBase).
-func kindHref(q url.Values, kind, current string, campaign int64) string {
+func kindHref(q url.Values, kind enum.CompendiumKind, current string, campaign int64) string {
 	set := kindSet(current)
 	var next []string
 	for _, k := range compendium.Kinds {
 		// Kinds order keeps URLs stable however the badges were clicked.
-		if (string(k) == kind) != slices.Contains(set, string(k)) {
+		if (k == kind) != slices.Contains(set, string(k)) {
 			next = append(next, string(k))
 		}
 	}
@@ -1062,16 +1063,16 @@ templ classBadges(slugs []string) {
 }
 
 // kindSelect picks a homebrew kind; players write spells and items only.
-templ kindSelect(current string, isGM bool) {
+templ kindSelect(current enum.CompendiumKind, isGM bool) {
 	{{ kinds := compendium.Kinds }}
 	if !isGM {
-		{{ kinds = []compendium.Kind{compendium.KindSpell, compendium.KindItem} }}
+		{{ kinds = compendium.PlayerKinds }}
 	}
-	{{ items := selectItems(kinds, func(k compendium.Kind) string { return string(k) }, func(k compendium.Kind) string { return string(k) }) }}
-	@formSelect("", "kind", items, current, "", "")
+	{{ items := selectItems(kinds, func(k enum.CompendiumKind) string { return string(k) }, func(k enum.CompendiumKind) string { return string(k) }) }}
+	@formSelect("", "kind", items, string(current), "", "")
 }
 
-templ kindBadge(kind string, homebrew bool) {
+templ kindBadge(kind enum.CompendiumKind, homebrew bool) {
 	<span class="flex gap-1">
 		@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Class: "gap-1"}) {
 			@kindIcon(kind, "")
@@ -1084,8 +1085,8 @@ templ kindBadge(kind string, homebrew bool) {
 }
 
 // kindName is a kind as a chip label, capitalized like other labels.
-templ kindName(kind string) {
-	<span class="first-letter:uppercase">{ kind }</span>
+templ kindName(kind enum.CompendiumKind) {
+	<span class="first-letter:uppercase">{ string(kind) }</span>
 }
 
 templ homebrewBadge() {
@@ -1096,40 +1097,40 @@ templ homebrewBadge() {
 }
 
 // kindColors tint each kind's icon; literal so Tailwind finds them.
-var kindColors = map[string]string{
-	"monster":    "text-rose-600 dark:text-rose-400",
-	"spell":      "text-violet-600 dark:text-violet-400",
-	"item":       "text-amber-600 dark:text-amber-400",
-	"class":      "text-blue-600 dark:text-blue-400",
-	"subclass":   "text-blue-600 dark:text-blue-400",
-	"species":    "text-emerald-600 dark:text-emerald-400",
-	"background": "text-stone-600 dark:text-stone-400",
-	"feat":       "text-yellow-600 dark:text-yellow-400",
-	"condition":  "text-orange-600 dark:text-orange-400",
-	"rule":       "text-slate-600 dark:text-slate-400",
+var kindColors = map[enum.CompendiumKind]string{
+	enum.KindMonster:    "text-rose-600 dark:text-rose-400",
+	enum.KindSpell:      "text-violet-600 dark:text-violet-400",
+	enum.KindItem:       "text-amber-600 dark:text-amber-400",
+	enum.KindClass:      "text-blue-600 dark:text-blue-400",
+	enum.KindSubclass:   "text-blue-600 dark:text-blue-400",
+	enum.KindSpecies:    "text-emerald-600 dark:text-emerald-400",
+	enum.KindBackground: "text-stone-600 dark:text-stone-400",
+	enum.KindFeat:       "text-yellow-600 dark:text-yellow-400",
+	enum.KindCondition:  "text-orange-600 dark:text-orange-400",
+	enum.KindRule:       "text-slate-600 dark:text-slate-400",
 }
 
 // kindIcon marks an entry's kind; callers add the kind as text for readers.
-templ kindIcon(kind, class string) {
+templ kindIcon(kind enum.CompendiumKind, class string) {
 	{{ p := icon.Props{Size: 16, Class: utils.CN("shrink-0", kindColors[kind], class), Attributes: templ.Attributes{"aria-hidden": "true"}} }}
-	switch compendium.Kind(kind) {
-		case compendium.KindMonster:
+	switch kind {
+		case enum.KindMonster:
 			@icon.Skull(p)
-		case compendium.KindSpell:
+		case enum.KindSpell:
 			@icon.Sparkles(p)
-		case compendium.KindItem:
+		case enum.KindItem:
 			@icon.Gem(p)
-		case compendium.KindClass:
+		case enum.KindClass:
 			@icon.Shield(p)
-		case compendium.KindSubclass:
+		case enum.KindSubclass:
 			@icon.ShieldHalf(p)
-		case compendium.KindSpecies:
+		case enum.KindSpecies:
 			@icon.Footprints(p)
-		case compendium.KindBackground:
+		case enum.KindBackground:
 			@icon.Scroll(p)
-		case compendium.KindFeat:
+		case enum.KindFeat:
 			@icon.Award(p)
-		case compendium.KindCondition:
+		case enum.KindCondition:
 			@icon.HeartCrack(p)
 		default:
 			@icon.BookOpen(p)
@@ -1259,7 +1260,7 @@ type EntryView struct {
 
 templ EntryPage(l Layout, v EntryView) {
 	@Page(l) {
-		{{ pictured := v.Entry.Kind == string(compendium.KindMonster) && v.Entry.ImageUrl.String != "" }}
+		{{ pictured := v.Entry.Kind == enum.KindMonster && v.Entry.ImageUrl.String != "" }}
 		<div class="mb-4 flex flex-wrap items-center gap-2">
 			@button.Button(button.Props{Href: cmp.Or(v.Back, CompendiumPath(ctx, "")), Variant: button.VariantGhost, Size: button.SizeSm, Class: "-ml-2.5"}) {
 				@icon.ArrowLeft()
@@ -1287,7 +1288,7 @@ templ EntryPage(l Layout, v EntryView) {
 				@entryBody(v.Data)
 				@MonsterHabitats(v.Entry, v.Habitats, v.IsGM, v.HabitatCopies)
 			</article>
-			if !pictured && v.IsGM && v.Entry.Kind == string(compendium.KindMonster) {
+			if !pictured && v.IsGM && v.Entry.Kind == enum.KindMonster {
 				<div class="mt-4">
 					@monsterPicture(v.Entry, true, "")
 				</div>
@@ -1399,7 +1400,7 @@ type HabitatCopy struct {
 // MonsterHabitats is a monster's habitat line; for the GM, while it has none,
 // a button per copy that has some takes them over (redrawing this line).
 templ MonsterHabitats(e sqlc.CompendiumEntry, habitats []string, gm bool, copies []HabitatCopy) {
-	if e.Kind == string(compendium.KindMonster) && (len(habitats) > 0 || gm) {
+	if e.Kind == enum.KindMonster && (len(habitats) > 0 || gm) {
 		<div id="monster-habitats">
 			@rule()
 			<p>
@@ -1445,7 +1446,7 @@ func inHabitatOrder(habitats []string) string {
 // For the GM, clicking it (or its failing to load) reveals the link form.
 // class sizes the picture.
 templ monsterPicture(e sqlc.CompendiumEntry, editable bool, class string) {
-	if e.Kind == string(compendium.KindMonster) {
+	if e.Kind == enum.KindMonster {
 		{{ imgClass := utils.CN("rounded-lg border bg-muted object-contain", class) }}
 		if !editable {
 			if e.ImageUrl.String != "" {
@@ -1701,12 +1702,12 @@ templ MasteryLinks(mastery string) {
 		if i > 0 {
 			{ ", " }
 		}
-		<a class="underline" href={ templ.SafeURL(compendiumFindURL(ctx, compendium.KindRule, compendium.Slugify(m))) }>{ m }</a>
+		<a class="underline" href={ templ.SafeURL(compendiumFindURL(ctx, enum.KindRule, compendium.Slugify(m))) }>{ m }</a>
 	}
 }
 
 // compendiumFindURL opens the entry of kind and slug the viewer would see.
-func compendiumFindURL(ctx context.Context, kind compendium.Kind, slug string) string {
+func compendiumFindURL(ctx context.Context, kind enum.CompendiumKind, slug string) string {
 	return CompendiumPath(ctx, fmt.Sprintf("/find/%s/%s", kind, url.PathEscape(slug)))
 }
 
@@ -1843,7 +1844,7 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 				if v.ID == 0 && (v.Page.ID == "" || v.Page.Kind() == "") {
 					@kindSelect(v.Input.Kind, v.IsGM)
 				} else {
-					<input type="hidden" name="kind" value={ v.Input.Kind }/>
+					<input type="hidden" name="kind" value={ string(v.Input.Kind) }/>
 					@kindBadge(v.Input.Kind, true)
 				}
 				@input.Input(input.Props{Name: "name", Value: v.Input.Name, Placeholder: "Name", Required: true, Class: "max-w-sm"})

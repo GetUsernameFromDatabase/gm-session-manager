@@ -16,6 +16,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -28,8 +29,8 @@ func TestPagesRender(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.allowEntrySources(t)
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 
 	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "game_session", Title: "Session 1"})
 	if _, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players"}); err != nil {
@@ -189,8 +190,8 @@ func TestMonsterImageLink(t *testing.T) {
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	goblin, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
 	spell, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "spell", Slug: "fire-bolt"})
 	page := fmt.Sprintf("/campaigns/%d/compendium/entries/%d", e.campaignID, goblin.ID)
@@ -239,8 +240,8 @@ func TestMonsterHabitats(t *testing.T) {
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	goblin, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
 	spell, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "spell", Slug: "fire-bolt"})
 	giant, err := e.q().CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: "monster", Slug: "hill-giant", Name: "Hill Giant", DataJson: "{}", ContentHash: "x"})
@@ -364,8 +365,8 @@ func TestHabitatCopies(t *testing.T) {
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	srd, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
 	// A lower-ranked copy, made first so that ordering by id alone would pick it.
 	if err := e.q().UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: "old-book", Edition: "2014"}); err != nil {
@@ -485,7 +486,7 @@ func TestCompendiumHabitatFilter(t *testing.T) {
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	goblin, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
 	giant, err := e.q().CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: "monster", Slug: "hill-giant", Name: "Hill Giant", DataJson: "{}", BodyText: "giant", ContentHash: "x"})
 	if err != nil {
@@ -541,7 +542,7 @@ func TestEntryBackKeepsFilters(t *testing.T) {
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	goblin, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
 	if err != nil {
 		t.Fatal(err)

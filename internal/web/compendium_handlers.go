@@ -22,6 +22,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
@@ -203,8 +204,8 @@ func (a *App) entryVisible(ctx context.Context, e sqlc.CompendiumEntry, campaign
 
 // entryBySlug finds an entry by kind and slug that a player in campaignID
 // may see; sql.ErrNoRows otherwise.
-func (a *App) entryBySlug(ctx context.Context, kind compendium.Kind, slug string, campaignID int64) (sqlc.CompendiumEntry, error) {
-	e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: string(kind), Slug: slug})
+func (a *App) entryBySlug(ctx context.Context, kind enum.CompendiumKind, slug string, campaignID int64) (sqlc.CompendiumEntry, error) {
+	e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug})
 	if err != nil {
 		return e, err
 	}
@@ -222,7 +223,7 @@ func (a *App) decodeLinked(ctx context.Context, e sqlc.CompendiumEntry, campaign
 	if err != nil {
 		return nil, err
 	}
-	return compendium.DecodeData(compendium.Kind(e.Kind), js)
+	return compendium.DecodeData(e.Kind, js)
 }
 
 // compendiumBatch is how many rows one search or scroll step loads; the
@@ -246,7 +247,7 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) {
 	v := views.CompendiumView{Query: strings.TrimSpace(c.Query("q")), Kind: c.Query("kind"), IsGM: w.isGM(), Import: notice, Tab: c.Query("tab"), Campaign: viewerCampaign(camp)}
 	v.Import.Dir, v.Import.OnHost, v.Import.Job = a.compendiumDir(), w.id.Loopback, a.fiveTools.get()
 	// Only monsters have habitats, so the filter applies to them alone.
-	if v.Kind == string(compendium.KindMonster) {
+	if v.Kind == string(enum.KindMonster) {
 		v.Habitat = c.Query("habitat")
 	}
 	var err error
@@ -461,7 +462,7 @@ func (a *App) compendiumFind(c *gin.Context) {
 	if !ok {
 		return
 	}
-	e, err := a.entryBySlug(c.Request.Context(), compendium.Kind(c.Param("kind")), c.Param("slug"), viewerCampaign(camp))
+	e, err := a.entryBySlug(c.Request.Context(), enum.CompendiumKind(c.Param("kind")), c.Param("slug"), viewerCampaign(camp))
 	if !a.found(c, err) {
 		return
 	}
@@ -506,7 +507,7 @@ func (a *App) compendiumEntry(c *gin.Context) {
 		return
 	}
 	v := views.EntryView{Entry: e, Source: src, Data: data, IsGM: w.isGM(), Habitats: habitats, Copies: copies, CanEdit: e.IsHomebrew && perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64)}
-	if v.IsGM && e.Kind == string(compendium.KindMonster) && len(habitats) == 0 {
+	if v.IsGM && e.Kind == enum.KindMonster && len(habitats) == 0 {
 		for _, cp := range copies {
 			h, err := a.Store.ListEntryHabitats(c.Request.Context(), cp.ID)
 			if err != nil {
@@ -545,7 +546,7 @@ func (a *App) compendiumCompare(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	kind, slug := c.Param("kind"), c.Param("slug")
+	kind, slug := enum.CompendiumKind(c.Param("kind")), c.Param("slug")
 	if !compendium.ValidKind(kind) {
 		a.found(c, sql.ErrNoRows)
 		return
@@ -607,7 +608,7 @@ func (a *App) compendiumLookup(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	kind, name := c.Query("kind"), strings.TrimSpace(c.Query("name"))
+	kind, name := enum.CompendiumKind(c.Query("kind")), strings.TrimSpace(c.Query("name"))
 	var e sqlc.CompendiumEntry
 	var err error
 	if name != "" {
@@ -622,7 +623,7 @@ func (a *App) compendiumLookup(c *gin.Context) {
 			return
 		}
 	} else {
-		e, err = a.entryBySlug(ctx, compendium.Kind(kind), c.Query("slug"), viewerCampaign(camp))
+		e, err = a.entryBySlug(ctx, kind, c.Query("slug"), viewerCampaign(camp))
 		if errors.Is(err, sql.ErrNoRows) {
 			c.String(http.StatusOK, "Not in the compendium.")
 			return
@@ -704,9 +705,6 @@ func (a *App) homebrewWriter(c *gin.Context) (who, bool) {
 	return w, true
 }
 
-// playerKinds are the homebrew kinds players write.
-var playerKinds = []string{string(compendium.KindSpell), string(compendium.KindItem)}
-
 // homebrewEntry loads a homebrew entry the viewer may change.
 func (a *App) homebrewEntry(c *gin.Context) (who, sqlc.CompendiumEntry, bool) {
 	w, ok := a.homebrewWriter(c)
@@ -741,9 +739,9 @@ func (a *App) homebrewNew(c *gin.Context) {
 	if !ok {
 		return
 	}
-	kind := c.DefaultQuery("kind", string(compendium.KindMonster))
-	if !w.isGM() && !slices.Contains(playerKinds, kind) {
-		kind = string(compendium.KindSpell)
+	kind := enum.CompendiumKind(c.DefaultQuery("kind", string(enum.KindMonster)))
+	if !w.isGM() && !slices.Contains(compendium.PlayerKinds, kind) {
+		kind = enum.KindSpell
 	}
 	a.renderHomebrew(c, http.StatusOK, w, views.HomebrewView{Input: compendium.HomebrewInput{Kind: kind}, AddToSheet: c.Query("add") != ""})
 }
@@ -753,7 +751,7 @@ func (a *App) homebrewEdit(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := compendium.DecodeData(compendium.Kind(e.Kind), e.DataJson)
+	data, err := compendium.DecodeData(e.Kind, e.DataJson)
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -784,7 +782,7 @@ func (a *App) saveHomebrew(c *gin.Context, w who, id int64) {
 	var owner compendium.HomebrewOwner
 	if w.character != nil {
 		owner = compendium.HomebrewOwner{CharacterID: w.character.ID, CampaignID: w.character.CampaignID}
-		if err == nil && !slices.Contains(playerKinds, in.Kind) {
+		if err == nil && !slices.Contains(compendium.PlayerKinds, in.Kind) {
 			err = errors.New("players write homebrew spells and items")
 		}
 	}
@@ -820,7 +818,7 @@ func (a *App) addHomebrewToSheet(ctx context.Context, ch sqlc.Character, id int6
 		return err
 	}
 	line := fmt.Sprintf("item add %s", strconv.Quote(e.Name))
-	if e.Kind == string(compendium.KindSpell) {
+	if e.Kind == enum.KindSpell {
 		line = "spell add " + e.Slug
 	}
 	cmd, err := dnd5e.Parse(line)

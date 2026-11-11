@@ -8,6 +8,8 @@ package sqlc
 import (
 	"context"
 	"database/sql"
+
+	"gm-session-manager/internal/enum"
 )
 
 const addBlockAudience = `-- name: AddBlockAudience :exec
@@ -36,7 +38,7 @@ VALUES (?, ?, ?, ?)
 type AddBlockLinkParams struct {
 	SourceNoteID  int64
 	SourceBlockID int64
-	TargetType    string
+	TargetType    enum.LinkTarget
 	TargetID      int64
 }
 
@@ -126,7 +128,7 @@ RETURNING id, note_id, position, visibility, players_can_edit, doc_json, doc_ver
 
 type CreateBlockParams struct {
 	NoteID            int64
-	Visibility        string
+	Visibility        enum.Visibility
 	PlayersCanEdit    bool
 	AuthorCharacterID sql.NullInt64
 }
@@ -163,7 +165,7 @@ RETURNING id, campaign_id, kind, title, owner_character_id, created_at, updated_
 
 type CreateNoteParams struct {
 	CampaignID       int64
-	Kind             string
+	Kind             enum.NoteKind
 	Title            string
 	OwnerCharacterID sql.NullInt64
 }
@@ -245,7 +247,7 @@ type GetBlockRow struct {
 	ID                int64
 	NoteID            int64
 	Position          int64
-	Visibility        string
+	Visibility        enum.Visibility
 	PlayersCanEdit    bool
 	DocJson           string
 	DocVersion        int64
@@ -407,7 +409,7 @@ ORDER BY n.title
 `
 
 type ListBacklinksParams struct {
-	TargetType  string
+	TargetType  enum.LinkTarget
 	TargetID    int64
 	CampaignID  int64
 	IsGm        bool
@@ -560,7 +562,7 @@ type ListExportBlocksRow struct {
 	ID         int64
 	NoteID     int64
 	Position   int64
-	Visibility string
+	Visibility enum.Visibility
 	DocJson    string
 }
 
@@ -769,7 +771,7 @@ WHERE id = ?
 
 type RenameNoteParams struct {
 	Title string
-	Kind  string
+	Kind  enum.NoteKind
 	ID    int64
 }
 
@@ -940,7 +942,7 @@ WHERE id = ?
 `
 
 type UpdateBlockAccessParams struct {
-	Visibility     string
+	Visibility     enum.Visibility
 	PlayersCanEdit bool
 	ID             int64
 }

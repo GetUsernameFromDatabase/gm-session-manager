@@ -14,6 +14,7 @@ import (
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -46,8 +47,8 @@ func (e testEnv) doFile(t *testing.T, path, cookie string, fields url.Values, fi
 func TestImageAccess(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 
 	w := e.doFile(t, fmt.Sprintf("/campaigns/%d/images", e.campaignID), gm, url.Values{
 		"name": {"Red dragon"}, "url": {"https://example.com/dragon.png"}, "category": {"Monster"}, "description": {"Secret lair notes"},
@@ -128,7 +129,7 @@ func TestImageAccess(t *testing.T) {
 
 func TestImageUploadOnlyPictures(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	path := fmt.Sprintf("/campaigns/%d/images", e.campaignID)
 	if w := e.doFile(t, path, gm, url.Values{"name": {"Notes"}}, "file", "x.png", "<html>not a picture</html>"); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("html upload: %d", w.Code)
@@ -155,7 +156,7 @@ func TestImageUploadOnlyPictures(t *testing.T) {
 func TestImageFileCache(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	create := func(name, field, file, content string, form url.Values) sqlc.GetImageRow {
 		t.Helper()
 		form.Set("name", name)
@@ -241,7 +242,7 @@ func TestAssetCache(t *testing.T) {
 func TestImageImport(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	csvFile := "Title,Kind,Image\nMira,Person,https://x.test/mira.png\nOld Tom,person,https://x.test/tom.png\nThe Keep,Area,https://x.test/keep.png\nBroken,Area,not a link\n"
 	w := e.doFile(t, fmt.Sprintf("/campaigns/%d/images/import", e.campaignID), gm, nil, "file", "all.csv", csvFile)
 	if w.Code != http.StatusSeeOther {
@@ -317,7 +318,7 @@ func TestImageImportByLink(t *testing.T) {
 	}))
 	defer csvServer.Close()
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	path := fmt.Sprintf("/campaigns/%d/images/import", e.campaignID)
 	w := e.doFile(t, path, gm, url.Values{"url": {csvServer.URL + "/images.csv"}}, "", "", "")
 	if w.Code != http.StatusSeeOther {
@@ -369,7 +370,7 @@ func TestGuessMapping(t *testing.T) {
 func TestImageImportKeepOnly(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	csvFile := "Name,Link,Campaign\n" +
 		"Mira,https://x.test/0.png,Brilinta\n" +
 		"Tom,https://x.test/1.png,Other\n" +
@@ -480,8 +481,8 @@ func TestImportCategories(t *testing.T) {
 func TestImageNPCLooks(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	newImage := func(campaignID int64, name, desc string) sqlc.Image {
 		t.Helper()
 		img, err := e.q().CreateImage(ctx, sqlc.CreateImageParams{
@@ -573,8 +574,8 @@ func TestImageNPCLooks(t *testing.T) {
 func TestCharacterLooks(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
-	alice := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	alice := e.token(t, enum.RolePlayer)
 	other, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e"})
 	if err != nil {
 		t.Fatal(err)
@@ -673,7 +674,7 @@ func TestCharacterLooks(t *testing.T) {
 func TestEntityFormFields(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	npc, err := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: `{"role":{"value":"Innkeeper"}}`})
 	if err != nil {
 		t.Fatal(err)
@@ -702,8 +703,8 @@ func TestEntityFormFields(t *testing.T) {
 func TestEntityFieldLinks(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	tavern, _ := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "Tavern", Url: sql.NullString{String: "https://example.com/tavern.png", Valid: true}})
 	plans, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Secret plans"})
 	if _, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: plans.ID, Visibility: "gm"}); err != nil {
@@ -752,8 +753,8 @@ func TestEntityFieldLinks(t *testing.T) {
 func TestCombatNPCPortrait(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	npc, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: "{}"})
 	mask, _ := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "mask", Url: sql.NullString{String: "https://example.com/mask.png", Valid: true}})
 	if err := e.q().LinkEntityImage(ctx, sqlc.LinkEntityImageParams{EntityID: npc.ID, ImageID: mask.ID}); err != nil {

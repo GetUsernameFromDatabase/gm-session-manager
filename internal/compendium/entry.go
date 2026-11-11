@@ -8,41 +8,23 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
-)
 
-// Kind is compendium_entries.kind.
-type Kind string
-
-// Entry kinds.
-const (
-	KindMonster    Kind = "monster"
-	KindSpell      Kind = "spell"
-	KindItem       Kind = "item"
-	KindClass      Kind = "class"
-	KindSubclass   Kind = "subclass"
-	KindSpecies    Kind = "species"
-	KindBackground Kind = "background"
-	KindFeat       Kind = "feat"
-	KindCondition  Kind = "condition"
-	KindRule       Kind = "rule"
+	"gm-session-manager/internal/enum"
 )
 
 // Kinds lists every kind in display order.
-var Kinds = []Kind{
-	KindMonster, KindSpell, KindItem, KindClass, KindSubclass, KindSpecies,
-	KindBackground, KindFeat, KindCondition, KindRule,
+var Kinds = []enum.CompendiumKind{
+	enum.KindMonster, enum.KindSpell, enum.KindItem, enum.KindClass, enum.KindSubclass, enum.KindSpecies,
+	enum.KindBackground, enum.KindFeat, enum.KindCondition, enum.KindRule,
 }
 
+// PlayerKinds are the homebrew kinds players may write.
+var PlayerKinds = []enum.CompendiumKind{enum.KindSpell, enum.KindItem}
+
 // ValidKind reports whether k is a known kind.
-func ValidKind(k string) bool {
-	for _, x := range Kinds {
-		if string(x) == k {
-			return true
-		}
-	}
-	return false
-}
+func ValidKind(k enum.CompendiumKind) bool { return slices.Contains(Kinds, k) }
 
 // HomebrewSource is the source_key of homebrew entries.
 const HomebrewSource = "homebrew"
@@ -62,7 +44,7 @@ var Habitats = []string{
 
 // Entry is one normalized compendium entry ready to store.
 type Entry struct {
-	Kind Kind
+	Kind enum.CompendiumKind
 	Slug string
 	Name string
 	// Data is one of the *Data types below, matching Kind.
@@ -242,22 +224,22 @@ type TextData struct {
 }
 
 // dataFor returns an empty Data value of the right type for kind.
-func dataFor(kind Kind) any {
+func dataFor(kind enum.CompendiumKind) any {
 	switch kind {
-	case KindMonster:
+	case enum.KindMonster:
 		return &MonsterData{}
-	case KindSpell:
+	case enum.KindSpell:
 		return &SpellData{}
-	case KindItem:
+	case enum.KindItem:
 		return &ItemData{}
-	case KindClass, KindSubclass:
+	case enum.KindClass, enum.KindSubclass:
 		return &ClassData{}
 	}
 	return &TextData{}
 }
 
 // DecodeData parses data_json into the type for kind.
-func DecodeData(kind Kind, raw string) (any, error) {
+func DecodeData(kind enum.CompendiumKind, raw string) (any, error) {
 	d := dataFor(kind)
 	// Link tokens become their labels; the entry page resolves its links first.
 	if err := json.Unmarshal([]byte(plainText(raw)), d); err != nil {

@@ -14,6 +14,7 @@ import (
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 )
 
@@ -82,7 +83,7 @@ func TestJoinOpenCampaign(t *testing.T) {
 
 func TestClaimNeedsApproval(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 
 	claim := fmt.Sprintf("/join/%d/claim/%d", e.campaignID, e.characterID)
 	for _, player := range []string{"", "Thirteen char"} {
@@ -108,7 +109,7 @@ func TestClaimNeedsApproval(t *testing.T) {
 		t.Fatal("redeemed before approval")
 	}
 	// A player cannot approve; the GM can.
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	approve := fmt.Sprintf("/campaigns/%d/requests/%s/approve", e.campaignID, p.ID)
 	if w := e.do(t, http.MethodPost, approve, player, nil, true); w.Code != http.StatusForbidden {
 		t.Errorf("player approve: %d", w.Code)
@@ -139,7 +140,7 @@ func TestClaimNeedsApproval(t *testing.T) {
 // only the requests the GM saw, on any GM page.
 func TestJoinBurst(t *testing.T) {
 	e := newTestEnv(t)
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	if err := e.q().SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
 		t.Fatal(err)
 	}
@@ -214,8 +215,8 @@ func TestWaitingPageCarriesSecret(t *testing.T) {
 
 func TestCommandPermissions(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
-	gm := e.token(t, auth.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
 	other, err := e.q().CreateCharacter(t.Context(), sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e"})
 	if err != nil {
 		t.Fatal(err)
@@ -259,7 +260,7 @@ func TestCommandPermissions(t *testing.T) {
 // of failing as an unknown command.
 func TestHPQuickForm(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	cmdPath := fmt.Sprintf("/characters/%d/cmd", e.characterID)
 	for _, tt := range []struct {
 		name, op, amount string
@@ -294,8 +295,8 @@ func TestHPQuickForm(t *testing.T) {
 // checks that its fields become commands with free text kept as typed.
 func TestCommandBuilder(t *testing.T) {
 	e := newTestEnv(t)
-	player := e.token(t, auth.RolePlayer)
-	gm := e.token(t, auth.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
 	base := fmt.Sprintf("/characters/%d/builder?verb=", e.characterID)
 	for _, verb := range []string{"", "hp", "conditions", "rest", "abilities", "profs", "details", "weapons", "mods", "slots", "spells", "items", "coins", "features"} {
 		if w := e.do(t, http.MethodGet, base+verb, player, nil, true); w.Code != http.StatusOK {
@@ -369,7 +370,7 @@ func TestCommandBuilder(t *testing.T) {
 func TestServerSideStripping(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 
 	ent, err := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{
 		CampaignID: e.campaignID, Kind: "npc", Name: "Mira", IsRevealed: true,
@@ -412,7 +413,7 @@ func TestServerSideStripping(t *testing.T) {
 func TestCollabConflict(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
 	b, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
 	path := fmt.Sprintf("/blocks/%d/steps", b.ID)
@@ -423,7 +424,7 @@ func TestCollabConflict(t *testing.T) {
 		t.Fatalf("first submit: %d %s", w.Code, w.Body)
 	}
 	// A second client still at version 0 must rebase.
-	w = e.doJSON(t, path, e.token(t, auth.RolePlayer), map[string]any{"version": 0, "clientID": "c2", "steps": []json.RawMessage{step}})
+	w = e.doJSON(t, path, e.token(t, enum.RolePlayer), map[string]any{"version": 0, "clientID": "c2", "steps": []json.RawMessage{step}})
 	if w.Code != http.StatusConflict {
 		t.Fatalf("stale submit: %d", w.Code)
 	}
@@ -478,7 +479,7 @@ func TestCollabConflict(t *testing.T) {
 func TestPlayerBlocksInGameSession(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	alice := e.token(t, auth.RolePlayer)
+	alice := e.token(t, enum.RolePlayer)
 	other, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e"})
 	if err != nil {
 		t.Fatal(err)

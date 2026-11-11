@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 // TestConditionExpiresOnTurn checks a timed condition lasts through its
@@ -17,7 +17,7 @@ import (
 func TestConditionExpiresOnTurn(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
+	gm := e.token(t, enum.RoleAdmin)
 	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
 	for _, name := range []string{"Ana", "Bo"} {
 		ent, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: name, FieldsJson: "{}"})
@@ -43,6 +43,43 @@ func TestConditionExpiresOnTurn(t *testing.T) {
 		if got := len(conds) == 1; got != want {
 			t.Fatalf("turn %d: prone present %v, want %v", i+1, got, want)
 		}
+	}
+}
+
+// TestEncounterTransitions checks start and end only move an encounter along
+// preparing → active → ended, with a restart from ended.
+func TestEncounterTransitions(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	gm := e.token(t, enum.RoleAdmin)
+	tests := []struct {
+		from   enum.EncounterStatus
+		action string
+		want   enum.EncounterStatus // "" means refused
+	}{
+		{enum.EncounterPreparing, "start", enum.EncounterActive},
+		{enum.EncounterActive, "start", ""},
+		{enum.EncounterEnded, "start", enum.EncounterActive},
+		{enum.EncounterPreparing, "end", ""},
+		{enum.EncounterActive, "end", enum.EncounterEnded},
+		{enum.EncounterEnded, "end", ""},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.from)+" "+tt.action, func(t *testing.T) {
+			enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+			ana, _ := e.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, Name: "Ana", Initiative: sql.NullInt64{Int64: 12, Valid: true}})
+			if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: tt.from, Round: 3, ActiveCombatantID: nullID(ana.ID)}); err != nil {
+				t.Fatal(err)
+			}
+			w := e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/%s", enc.ID, tt.action), gm, nil, true)
+			got, _ := e.q().GetEncounter(ctx, enc.ID)
+			switch {
+			case tt.want == "" && (w.Code == http.StatusOK || got.Status != tt.from || got.Round != 3):
+				t.Errorf("accepted: %d, now %s round %d", w.Code, got.Status, got.Round)
+			case tt.want != "" && got.Status != tt.want:
+				t.Errorf("status %s, want %s (%d %s)", got.Status, tt.want, w.Code, w.Body)
+			}
+		})
 	}
 }
 
@@ -107,7 +144,7 @@ func TestMonsterPortrait(t *testing.T) {
 		t.Fatal(err)
 	}
 	combat := fmt.Sprintf("/campaigns/%d/combat", e.campaignID)
-	for _, role := range []auth.Role{auth.RoleAdmin, auth.RolePlayer} {
+	for _, role := range []enum.Role{enum.RoleAdmin, enum.RolePlayer} {
 		if body := e.do(t, http.MethodGet, combat, e.token(t, role), nil, false).Body.String(); !strings.Contains(body, pic) {
 			t.Errorf("%v: combat misses the monster picture", role)
 		}

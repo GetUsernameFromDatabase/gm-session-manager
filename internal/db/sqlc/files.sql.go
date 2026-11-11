@@ -9,12 +9,14 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"gm-session-manager/internal/enum"
 )
 
 const listAttachmentFiles = `-- name: ListAttachmentFiles :many
 
 SELECT a.id, a.campaign_id, a.block_id, a.path, a.name, a.mime, a.size, a.created_at,
-       c.name AS campaign_name, b.visibility AS block_visibility
+       c.name AS campaign_name, COALESCE(b.visibility, '') AS block_visibility
 FROM attachments AS a
 JOIN campaigns AS c ON c.id = a.campaign_id
 LEFT JOIN note_blocks AS b ON b.id = a.block_id
@@ -31,13 +33,14 @@ type ListAttachmentFilesRow struct {
 	Size            int64
 	CreatedAt       time.Time
 	CampaignName    string
-	BlockVisibility sql.NullString
+	BlockVisibility enum.Visibility
 }
 
 // The admin Files page: every attachment and where it is used. Uses are
 // found in Go (internal/web/files.go) from the texts below.
 // ListAttachmentFiles lists every attachment with its campaign and, for one
-// in a note block, that block's visibility.
+// in a note block, that block's visibility (” for none: a NULL would not
+// scan into the overridden enum.Visibility type).
 func (q *Queries) ListAttachmentFiles(ctx context.Context) ([]ListAttachmentFilesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAttachmentFiles)
 	if err != nil {
@@ -82,7 +85,7 @@ ORDER BY n.title, b.position
 type ListBlockDocsRow struct {
 	ID         int64
 	NoteID     int64
-	Visibility string
+	Visibility enum.Visibility
 	Title      string
 	DocJson    string
 }

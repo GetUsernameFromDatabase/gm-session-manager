@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"gm-session-manager/internal/enum"
 )
 
 // wikiPage wraps content the way dnd5e.wikidot.com lays out a page. The
@@ -18,20 +20,20 @@ func wikiPage(title, content string) []byte {
 func TestParsePageURL(t *testing.T) {
 	for _, tt := range []struct {
 		url, site, page string
-		kind            Kind
+		kind            enum.CompendiumKind
 		err             error // checked when not nil
 	}{
-		{"https://dnd5e.wikidot.com/lineage:giff", "wikidot", "lineage:giff", KindSpecies, nil},
-		{"http://dnd5e.wikidot.com/monk:mercy/", "wikidot", "monk:mercy", KindSubclass, nil},
-		{"https://dnd5e.wikidot.com/artificer", "wikidot", "artificer", KindClass, nil},
-		{"dnd5e.wikidot.com/feat:mobile", "wikidot", "feat:mobile", KindFeat, nil},
+		{"https://dnd5e.wikidot.com/lineage:giff", "wikidot", "lineage:giff", enum.KindSpecies, nil},
+		{"http://dnd5e.wikidot.com/monk:mercy/", "wikidot", "monk:mercy", enum.KindSubclass, nil},
+		{"https://dnd5e.wikidot.com/artificer", "wikidot", "artificer", enum.KindClass, nil},
+		{"dnd5e.wikidot.com/feat:mobile", "wikidot", "feat:mobile", enum.KindFeat, nil},
 		{"https://dnd5e.wikidot.com/spell:fireball", "wikidot", "spell:fireball", "", nil},
-		{"https://www.aidedd.org/dnd/monstres.php?vo=howler", "aidedd", "howler", KindMonster, nil},
-		{"www.aidedd.org/dnd/monstres.php?vo=adult-red-dragon", "aidedd", "adult-red-dragon", KindMonster, nil},
+		{"https://www.aidedd.org/dnd/monstres.php?vo=howler", "aidedd", "howler", enum.KindMonster, nil},
+		{"www.aidedd.org/dnd/monstres.php?vo=adult-red-dragon", "aidedd", "adult-red-dragon", enum.KindMonster, nil},
 		{"https://www.aidedd.org/dnd/sorts.php?vo=fireball", "aidedd", "dnd/sorts.php?vo=fireball", "", nil},
-		{"https://5e.tools/bestiary/howler-mtf.html", "5etools", "mtf/howler", KindMonster, nil},
-		{"https://5e.tools/bestiary/adult-red-dragon-mm.html", "5etools", "mm/adult-red-dragon", KindMonster, nil},
-		{"https://5e.tools/bestiary.html#adult%20red%20dragon_mm", "5etools", "mm/adult-red-dragon", KindMonster, nil},
+		{"https://5e.tools/bestiary/howler-mtf.html", "5etools", "mtf/howler", enum.KindMonster, nil},
+		{"https://5e.tools/bestiary/adult-red-dragon-mm.html", "5etools", "mm/adult-red-dragon", enum.KindMonster, nil},
+		{"https://5e.tools/bestiary.html#adult%20red%20dragon_mm", "5etools", "mm/adult-red-dragon", enum.KindMonster, nil},
 		{"asdasd", "", "", "", errNotASite},
 		{"lineage:giff", "", "", "", errNotASite},
 		{"@evil.example/feat:mobile", "", "", "", errNotASite},
@@ -98,7 +100,7 @@ func TestParseWikidotSpecies(t *testing.T) {
 		{Name: "Hippo Build", Desc: "You are strong."},
 		{Name: "Languages", Desc: "Common and one more.", Type: partLanguages},
 	}
-	if e.Kind != KindSpecies || e.Slug != "giff" || e.Name != "Giff" || d.Desc != "Flavor about the folk." || !reflect.DeepEqual(d.Parts, want) {
+	if e.Kind != enum.KindSpecies || e.Slug != "giff" || e.Name != "Giff" || d.Desc != "Flavor about the folk." || !reflect.DeepEqual(d.Parts, want) {
 		t.Errorf("%+v %+v", e, d)
 	}
 	roundTrip(t, e)
@@ -175,7 +177,7 @@ func TestParseWikidotSubclass(t *testing.T) {
 		{Name: "Hands of Healing", Desc: "At 3rd level, your touch can mend wounds.", Levels: []int{3}},
 		{Name: "Physician's Touch", Desc: "Starting at 6th level, you cure more.", Levels: []int{6}},
 	}
-	if e.Kind != KindSubclass || e.Name != "Way of Mercy" || e.Slug != "mercy" || d.SubclassOf != "monk" || d.Caster != "none" || !reflect.DeepEqual(d.Features, want) {
+	if e.Kind != enum.KindSubclass || e.Name != "Way of Mercy" || e.Slug != "mercy" || d.SubclassOf != "monk" || d.Caster != "none" || !reflect.DeepEqual(d.Features, want) {
 		t.Errorf("%+v %+v", e, d)
 	}
 	roundTrip(t, e)
@@ -276,7 +278,7 @@ func TestParseWikidotClass(t *testing.T) {
 
 func TestHomebrewTextRoundTrip(t *testing.T) {
 	in := HomebrewInput{
-		Kind: string(KindClass), Name: "Tinkerer", HitDie: 10, Caster: "half", Saves: []string{"con", "int"},
+		Kind: enum.KindClass, Name: "Tinkerer", HitDie: 10, Caster: "half", Saves: []string{"con", "int"},
 		Skills: "Choose 2: Arcana, History", Desc: "Makes things.",
 		Features: "Level 1: Tinkering\nYou tinker.\n\nLevel 3: Specialist (subclass)\nPick one.",
 		Table:    "Focus Points: -, 2, 3",
@@ -294,7 +296,7 @@ func TestHomebrewTextRoundTrip(t *testing.T) {
 		t.Errorf("%+v", back)
 	}
 
-	sp := HomebrewInput{Kind: string(KindSpecies), Name: "Giff", Speed: 30, Size: "Medium", Traits: "Hippo Build. You are strong.\n\n**Astral Spark.** Extra damage.\nMore lines."}
+	sp := HomebrewInput{Kind: enum.KindSpecies, Name: "Giff", Speed: 30, Size: "Medium", Traits: "Hippo Build. You are strong.\n\n**Astral Spark.** Extra damage.\nMore lines."}
 	e, err = sp.Entry()
 	if err != nil {
 		t.Fatal(err)

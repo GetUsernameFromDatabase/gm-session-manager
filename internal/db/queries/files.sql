@@ -2,10 +2,11 @@
 -- found in Go (internal/web/files.go) from the texts below.
 
 -- ListAttachmentFiles lists every attachment with its campaign and, for one
--- in a note block, that block's visibility.
+-- in a note block, that block's visibility ('' for none: a NULL would not
+-- scan into the overridden enum.Visibility type).
 -- name: ListAttachmentFiles :many
 SELECT a.id, a.campaign_id, a.block_id, a.path, a.name, a.mime, a.size, a.created_at,
-       c.name AS campaign_name, b.visibility AS block_visibility
+       c.name AS campaign_name, COALESCE(b.visibility, '') AS block_visibility
 FROM attachments AS a
 JOIN campaigns AS c ON c.id = a.campaign_id
 LEFT JOIN note_blocks AS b ON b.id = a.block_id

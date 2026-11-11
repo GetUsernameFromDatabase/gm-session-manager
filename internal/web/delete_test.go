@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 // TestDeleteRestoreImport: a player deletes their character, which hides it
@@ -17,8 +17,8 @@ import (
 func TestDeleteRestoreImport(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	other, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bram", System: "dnd5e"})
 	if err != nil {
 		t.Fatal(err)
@@ -81,8 +81,8 @@ func TestDeleteRestoreImport(t *testing.T) {
 func TestRenameDeleteCampaign(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	overview := fmt.Sprintf("/campaigns/%d", e.campaignID)
 	name := url.Values{"name": {"  Curse of Strahd  "}}
 

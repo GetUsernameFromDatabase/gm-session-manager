@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"gm-session-manager/internal/enum"
 )
 
 // fakeMirror is a tiny 5etools data folder: two books sharing items, races and a class file.
@@ -301,10 +303,10 @@ func TestDownloadFiveToolsSubclassTwinsAndForeignFeatures(t *testing.T) {
 		}
 		var subclasses []ClassData
 		for _, e := range entries {
-			if e.Kind == KindSubclass {
+			if e.Kind == enum.KindSubclass {
 				subclasses = append(subclasses, e.Data.(ClassData))
 			}
-			if e.Slug == "blessed-strikes" || e.Kind == KindClass {
+			if e.Slug == "blessed-strikes" || e.Kind == enum.KindClass {
 				t.Errorf("bundled record became an entry: %s/%s", e.Kind, e.Slug)
 			}
 		}

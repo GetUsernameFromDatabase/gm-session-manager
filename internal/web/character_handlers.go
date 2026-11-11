@@ -17,6 +17,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
@@ -330,14 +331,14 @@ func masteryLimit(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, skip 
 	n := sheet.MasteryLimit(classes)
 	for _, name := range sheet.Feats {
 		key := featKey(name)
-		row, _, err := entryFor(ctx, q, compendium.KindFeat, key, sheet.FeatSources[key])
+		row, _, err := entryFor(ctx, q, enum.KindFeat, key, sheet.FeatSources[key])
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
 		if err != nil {
 			return 0, err
 		}
-		d, err := compendium.DecodeData(compendium.KindFeat, row.DataJson)
+		d, err := compendium.DecodeData(enum.KindFeat, row.DataJson)
 		if err != nil {
 			return 0, err
 		}
@@ -499,14 +500,14 @@ func (a *App) characterTopics(ctx context.Context, id int64) ([]hub.Topic, error
 
 // compendiumArmor finds armor (or a shield) in the compendium by slug.
 func (a *App) compendiumArmor(ctx context.Context, slug string, campaignID int64) (dnd5e.WornArmor, bool, error) {
-	row, err := a.entryBySlug(ctx, compendium.KindItem, slug, campaignID)
+	row, err := a.entryBySlug(ctx, enum.KindItem, slug, campaignID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return dnd5e.WornArmor{}, false, fmt.Errorf("no item %q in the compendium", slug)
 	}
 	if err != nil {
 		return dnd5e.WornArmor{}, false, err
 	}
-	d, err := compendium.DecodeData(compendium.KindItem, row.DataJson)
+	d, err := compendium.DecodeData(enum.KindItem, row.DataJson)
 	if err != nil {
 		return dnd5e.WornArmor{}, false, err
 	}
@@ -521,7 +522,7 @@ func (a *App) compendiumArmor(ctx context.Context, slug string, campaignID int64
 }
 
 func (a *App) compendiumSpell(ctx context.Context, slug string, campaignID int64) (dnd5e.Spell, error) {
-	row, err := a.entryBySlug(ctx, compendium.KindSpell, slug, campaignID)
+	row, err := a.entryBySlug(ctx, enum.KindSpell, slug, campaignID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return dnd5e.Spell{}, userError{fmt.Errorf("no spell %q in the compendium", slug)}
 	}
@@ -533,7 +534,7 @@ func (a *App) compendiumSpell(ctx context.Context, slug string, campaignID int64
 
 // spellFromRow is a compendium spell as the sheet stores it.
 func spellFromRow(row sqlc.CompendiumEntry) (dnd5e.Spell, error) {
-	d, err := compendium.DecodeData(compendium.KindSpell, row.DataJson)
+	d, err := compendium.DecodeData(enum.KindSpell, row.DataJson)
 	if err != nil {
 		return dnd5e.Spell{}, err
 	}
@@ -661,7 +662,7 @@ func (a *App) deleteCondition(c *gin.Context) {
 
 // classInfo converts a compendium class for the level-up helper.
 func classInfo(row sqlc.CompendiumEntry) (dnd5e.ClassInfo, error) {
-	d, err := compendium.DecodeData(compendium.KindClass, row.DataJson)
+	d, err := compendium.DecodeData(enum.KindClass, row.DataJson)
 	if err != nil {
 		return dnd5e.ClassInfo{}, err
 	}
@@ -699,7 +700,7 @@ func (a *App) withSubclass(ctx context.Context, info *dnd5e.ClassInfo, sheet dnd
 	if err != nil || slug == "" {
 		return err
 	}
-	row, _, err := entryFor(ctx, a.Store.Queries, compendium.KindSubclass, slug, pin)
+	row, _, err := entryFor(ctx, a.Store.Queries, enum.KindSubclass, slug, pin)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -758,7 +759,7 @@ func subclassOptions(subs []sqlc.ListSubclassesOfRow) []views.Option {
 // setSubclass gives info the features and pin of the subclass row, and its
 // spellcasting when the class has none (Eldritch Knight, Arcane Trickster).
 func setSubclass(info *dnd5e.ClassInfo, row sqlc.CompendiumEntry) error {
-	d, err := compendium.DecodeData(compendium.KindSubclass, row.DataJson)
+	d, err := compendium.DecodeData(enum.KindSubclass, row.DataJson)
 	if err != nil {
 		return err
 	}
@@ -775,7 +776,7 @@ func setSubclass(info *dnd5e.ClassInfo, row sqlc.CompendiumEntry) error {
 func subclassPanels(rows []sqlc.ListSubclassesOfRow) ([]views.SubclassPanel, error) {
 	out := make([]views.SubclassPanel, 0, len(rows))
 	for _, r := range rows {
-		d, err := compendium.DecodeData(compendium.KindSubclass, r.DataJson)
+		d, err := compendium.DecodeData(enum.KindSubclass, r.DataJson)
 		if err != nil {
 			return nil, err
 		}
@@ -885,7 +886,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		classSlug = sheet.DefaultClass()
 	}
 	v := views.LevelUpView{CharacterID: ch.ID, Name: ch.Name, Level: sheet.Level(), Selected: classSlug, Sheet: sheet}
-	classes, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(compendium.KindClass), CampaignID: ch.CampaignID})
+	classes, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: enum.KindClass, CampaignID: ch.CampaignID})
 	if err != nil {
 		return v, err
 	}
@@ -897,7 +898,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	}
 	if classPin(sheet, classSlug) == "" {
 		// A new class comes from the query: only one this campaign may see.
-		if _, err := a.entryBySlug(ctx, compendium.KindClass, classSlug, ch.CampaignID); err != nil {
+		if _, err := a.entryBySlug(ctx, enum.KindClass, classSlug, ch.CampaignID); err != nil {
 			return v, err
 		}
 	}
@@ -922,7 +923,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if v.SubclassPanels, err = subclassPanels(subs); err != nil {
 		return v, err
 	}
-	feats, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: string(compendium.KindFeat), CampaignID: ch.CampaignID})
+	feats, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: enum.KindFeat, CampaignID: ch.CampaignID})
 	if err != nil {
 		return v, err
 	}
@@ -931,7 +932,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		if !plan.ASI || f.Name == dnd5e.ASIFeature {
 			continue // the form's ability selects are the ASI feat
 		}
-		td, err := a.textEntry(ctx, compendium.KindFeat, f.Slug)
+		td, err := a.textEntry(ctx, enum.KindFeat, f.Slug)
 		if err != nil {
 			return v, err
 		}
@@ -1159,7 +1160,7 @@ func (a *App) levelUp(c *gin.Context) {
 	slug := c.PostForm("class")
 	if classPin(sheet, slug) == "" {
 		// A new class: only one this campaign may see.
-		if _, err := a.entryBySlug(ctx, compendium.KindClass, slug, ch.CampaignID); !a.found(c, err) {
+		if _, err := a.entryBySlug(ctx, enum.KindClass, slug, ch.CampaignID); !a.found(c, err) {
 			return
 		}
 	}
@@ -1189,7 +1190,7 @@ func (a *App) levelUp(c *gin.Context) {
 	var featErr error
 	var featSource string
 	if slug := c.PostForm("feat"); slug != "" {
-		feat, err := a.entryBySlug(ctx, compendium.KindFeat, slug, ch.CampaignID)
+		feat, err := a.entryBySlug(ctx, enum.KindFeat, slug, ch.CampaignID)
 		switch {
 		case errors.Is(err, sql.ErrNoRows): // crafted, another campaign's, or a homebrew feat deleted since the form loaded
 			featErr = fieldError{userError{errors.New("choose a feat from the list")}, views.FieldASI}
@@ -1253,7 +1254,7 @@ func (a *App) levelUp(c *gin.Context) {
 	notFeat := len(groups)
 	if choice.Feat != "" {
 		slug := c.PostForm("feat")
-		td, err := a.textEntry(ctx, compendium.KindFeat, slug)
+		td, err := a.textEntry(ctx, enum.KindFeat, slug)
 		if err != nil {
 			a.serverError(c, err)
 			return

@@ -17,15 +17,9 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/web/views"
-)
-
-// Encounter statuses (encounters.status).
-const (
-	statusPreparing = "preparing"
-	statusActive    = "active"
-	statusEnded     = "ended"
 )
 
 func (a *App) combatPage(c *gin.Context) {
@@ -203,10 +197,10 @@ func (a *App) monsterStats(ctx context.Context, entryID int64, p *sqlc.CreateCom
 	if err != nil {
 		return err
 	}
-	if row.Kind != string(compendium.KindMonster) {
+	if row.Kind != enum.KindMonster {
 		return sql.ErrNoRows
 	}
-	d, err := compendium.DecodeData(compendium.KindMonster, row.DataJson)
+	d, err := compendium.DecodeData(enum.KindMonster, row.DataJson)
 	if err != nil {
 		return err
 	}
@@ -250,7 +244,7 @@ func initiativeMod(r sqlc.ListCombatantsRow) int {
 		return s.Initiative()
 	}
 	if r.MonsterData.Valid {
-		if d, err := compendium.DecodeData(compendium.KindMonster, r.MonsterData.String); err == nil {
+		if d, err := compendium.DecodeData(enum.KindMonster, r.MonsterData.String); err == nil {
 			return d.(*compendium.MonsterData).Initiative
 		}
 	}
@@ -264,7 +258,7 @@ func combatantDefenses(r sqlc.ListCombatantsRow, conds []sqlc.Condition) dnd5e.D
 	if s, ok := pcSheet(r); ok {
 		d = s.Defenses()
 	} else if r.MonsterData.Valid {
-		if m, err := compendium.DecodeData(compendium.KindMonster, r.MonsterData.String); err == nil {
+		if m, err := compendium.DecodeData(enum.KindMonster, r.MonsterData.String); err == nil {
 			md := m.(*compendium.MonsterData)
 			d.List = slices.Concat(dnd5e.ParseDefenses(dnd5e.DefResist, md.Resistance), dnd5e.ParseDefenses(dnd5e.DefImmune, md.Immunity), dnd5e.ParseDefenses(dnd5e.DefVulnerable, md.Vulnerability))
 		}
@@ -345,14 +339,17 @@ func (a *App) encounterAction(c *gin.Context) {
 			return nil
 		}
 		switch action := c.Param("action"); action {
-		case "start":
+		case "start": // from preparing, or again after ending
+			if enc.Status == enum.EncounterActive {
+				return userError{errors.New("the encounter is already running")}
+			}
 			if len(rows) == 0 {
 				return userError{errors.New("add combatants first")}
 			}
 			if err := needInitiative(); err != nil {
 				return err
 			}
-			next.Status, next.Round, next.ActiveCombatantID = statusActive, 1, nullID(rows[0].ID)
+			next.Status, next.Round, next.ActiveCombatantID = enum.EncounterActive, 1, nullID(rows[0].ID)
 		case "roll":
 			// Monsters and NPCs only: players say their own rolls.
 			for _, r := range rows {
@@ -364,7 +361,7 @@ func (a *App) encounterAction(c *gin.Context) {
 				}
 			}
 		case "next", "prev":
-			if enc.Status != statusActive || len(rows) == 0 {
+			if enc.Status != enum.EncounterActive || len(rows) == 0 {
 				return userError{errors.New("the encounter is not running")}
 			}
 			if err := needInitiative(); err != nil {
@@ -388,7 +385,10 @@ func (a *App) encounterAction(c *gin.Context) {
 				}
 			}
 		case "end":
-			next.Status, next.ActiveCombatantID = statusEnded, sql.NullInt64{}
+			if enc.Status != enum.EncounterActive {
+				return userError{errors.New("the encounter is not running")}
+			}
+			next.Status, next.ActiveCombatantID = enum.EncounterEnded, sql.NullInt64{}
 		default:
 			return userError{errors.New("unknown action")}
 		}

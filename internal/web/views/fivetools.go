@@ -9,6 +9,7 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 
 	"github.com/a-h/templ"
@@ -157,11 +158,11 @@ func sharedWithHref(v CompendiumView, with string) templ.SafeURL {
 }
 
 // CopyKey keys CompendiumView.CopyOrder by an entry's kind and slug.
-func CopyKey(kind, slug string) string { return kind + "/" + slug }
+func CopyKey(kind enum.CompendiumKind, slug string) string { return string(kind) + "/" + slug }
 
 // compareHref sets every copy of a kind and slug side by side.
-func compareHref(ctx context.Context, kind, slug string) string {
-	return CompendiumPath(ctx, "/compare/"+url.PathEscape(kind)+"/"+url.PathEscape(slug))
+func compareHref(ctx context.Context, kind enum.CompendiumKind, slug string) string {
+	return CompendiumPath(ctx, "/compare/"+url.PathEscape(string(kind))+"/"+url.PathEscape(slug))
 }
 
 // CompareView is every copy of one entry the campaign sees, best first.

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 )
 
 // Allow-list test sources: "on-book" is ticked in the test campaign;
@@ -118,7 +118,7 @@ func TestCampaignSourceVisibility(t *testing.T) {
 	}
 
 	// The compendium page: the campaign in the path, or every source.
-	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
 	pages := []struct {
 		name, cookie, path string
@@ -182,7 +182,7 @@ func TestSourceOverlap(t *testing.T) {
 		})
 	}
 
-	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
 	pages := []struct {
 		name, cookie, path string
@@ -230,7 +230,7 @@ func TestCompendiumAddresses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
 	tests := []struct {
 		name, cookie, path string
@@ -290,7 +290,7 @@ func TestCompendiumAddresses(t *testing.T) {
 // source, while a sheet already pinned to one still renders it.
 func TestCampaignSourcePicks(t *testing.T) {
 	e := sourcesEnv(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	path := fmt.Sprintf("/characters/%d/subclass", e.characterID)
 	tests := []struct {
 		name, sub, wantSource string
@@ -336,7 +336,7 @@ func TestSubclassPickBySlug(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	path := fmt.Sprintf("/characters/%d/subclass", e.characterID)
 	e.wizard3(t, "Evoker", "", "")
 	form := e.do(t, http.MethodGet, path+"?class=wizard", player, nil, true).Body.String()
@@ -362,7 +362,7 @@ func TestSubclassPickBySlug(t *testing.T) {
 func TestCampaignSourcesSet(t *testing.T) {
 	e := sourcesEnv(t)
 	e.wizard3(t, "Shared School", "shared-school", onBook)
-	gm, player := e.token(t, auth.RoleAdmin), e.token(t, auth.RolePlayer)
+	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
 	path := fmt.Sprintf("/campaigns/%d/sources", e.campaignID)
 	tests := []struct {
 		name   string

@@ -7,6 +7,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 )
 
 // TestUpgradeSheets: a feature saved before the parser read its uses gets
@@ -110,7 +111,7 @@ func TestUpgradeThirdCaster(t *testing.T) {
 // TestCatchUpResistances: an old sheet gets its species' fixed resistances
 // and those of the lineage it picked; one with resistances keeps them.
 func TestCatchUpResistances(t *testing.T) {
-	d, err := compendium.DecodeData(compendium.KindSpecies, `{"desc":"","parts":[
+	d, err := compendium.DecodeData(enum.KindSpecies, `{"desc":"","parts":[
 		{"name":"Draconic Ancestry","desc":"Choose the kind of dragon.\n\n| Dragon | Damage Type |\n|---|---|\n| Red | Fire |\n| White | Cold |"},
 		{"name":"Damage Resistance","desc":"You have Resistance to the damage type determined by your Draconic Ancestry trait."},
 		{"name":"Fiendish Legacy","desc":"Choose a legacy.\n\n| Legacy | Level 1 |\n|---|---|\n| Abyssal | You have Resistance to Poison damage. |\n| Infernal | You have Resistance to Fire damage. |"},

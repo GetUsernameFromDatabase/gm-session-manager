@@ -8,10 +8,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/export"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/web/views"
@@ -129,7 +129,7 @@ func (a *App) kick(c *gin.Context) {
 	if !a.found(c, err) {
 		return
 	}
-	if auth.Role(sess.Role) != auth.RolePlayer {
+	if sess.Role != enum.RolePlayer {
 		a.fail(c, http.StatusForbidden, "Admin devices log out themselves.")
 		return
 	}

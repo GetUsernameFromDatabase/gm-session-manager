@@ -10,9 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"gm-session-manager/internal/auth"
-	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 // TestPlayerHomebrew: a player's homebrew spell lands on their sheet and in
@@ -21,8 +20,8 @@ import (
 func TestPlayerHomebrew(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 	camp2, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +124,10 @@ func TestScopedHomebrewPickers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, hb := range []struct{ kind, slug, data string }{
+	for _, hb := range []struct {
+		kind       enum.CompendiumKind
+		slug, data string
+	}{
 		{"class", "riftblade", `{"hit_die":8}`},
 		{"feat", "rift-step", `{}`},
 		{"spell", "rift-bolt", `{"level":1,"classes":["wizard"]}`},
@@ -149,7 +151,7 @@ func TestScopedHomebrewPickers(t *testing.T) {
 		{"everything (GM)", 0, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			listed := func(kind, slug string) bool {
+			listed := func(kind enum.CompendiumKind, slug string) bool {
 				rows, err := e.q().ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: tt.campaign})
 				if err != nil {
 					t.Fatal(err)
@@ -164,7 +166,7 @@ func TestScopedHomebrewPickers(t *testing.T) {
 			if listed("class", "riftblade") != tt.want || listed("feat", "rift-step") != tt.want || spellListed != tt.want {
 				t.Errorf("listed: class %v feat %v spell %v, want %v", listed("class", "riftblade"), listed("feat", "rift-step"), spellListed, tt.want)
 			}
-			_, err = e.app.wizardPick(ctx, compendium.KindClass, "riftblade", tt.campaign)
+			_, err = e.app.wizardPick(ctx, enum.KindClass, "riftblade", tt.campaign)
 			var ue userError
 			if (err == nil) != tt.want || (err != nil && !errors.As(err, &ue)) {
 				t.Errorf("pick: %v, want applicable %v (as a user error otherwise)", err, tt.want)
@@ -178,8 +180,8 @@ func TestScopedHomebrewPickers(t *testing.T) {
 func TestGMHomebrewClassAndWikidot(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	gm := e.token(t, auth.RoleAdmin)
-	player := e.token(t, auth.RolePlayer)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
 
 	class := url.Values{"kind": {"class"}, "name": {"Tinkerer"}, "hit_die": {"10"}, "caster": {"half"}, "saves": {"con", "int"},
 		"features": {"Level 1: Tinkering\nYou tinker."}, "table": {"Gadgets: 2, 3"}}

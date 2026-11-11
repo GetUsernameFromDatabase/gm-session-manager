@@ -3,7 +3,11 @@
 // same way. Nothing here touches the database.
 package perm
 
-import "slices"
+import (
+	"slices"
+
+	"gm-session-manager/internal/enum"
+)
 
 // Viewer is who is looking: the GM (admin) or the player of one character.
 // The zero value is an anonymous visitor and may read nothing.
@@ -25,20 +29,9 @@ func (v Viewer) owns(characterID int64) bool {
 	return v.IsPlayer() && characterID != 0 && v.CharacterID == characterID
 }
 
-// Visibility is note_blocks.visibility.
-type Visibility string
-
-// Block visibilities.
-const (
-	VisGM      Visibility = "gm"
-	VisPlayers Visibility = "players"
-	VisListed  Visibility = "listed"
-	VisOwner   Visibility = "owner"
-)
-
 // Block is what the block rules need to know about a note block.
 type Block struct {
-	Visibility     Visibility
+	Visibility     enum.Visibility
 	PlayersCanEdit bool
 	// NoteOwnerID is the note's owner_character_id (0 for the GM's notes).
 	NoteOwnerID int64
@@ -52,14 +45,14 @@ type Block struct {
 // readable-block predicate in db/queries/notes.sql.
 func CanReadBlock(v Viewer, b Block) bool {
 	switch b.Visibility {
-	case VisGM:
+	case enum.VisGM:
 		return v.IsGM
-	case VisPlayers:
+	case enum.VisPlayers:
 		return v.IsGM || v.IsPlayer()
-	case VisListed:
+	case enum.VisListed:
 		// An empty audience means GM only: fail closed.
 		return v.IsGM || (v.IsPlayer() && slices.Contains(b.Audience, v.CharacterID))
-	case VisOwner:
+	case enum.VisOwner:
 		// The GM and admin can never read a player's own blocks.
 		return v.owns(b.NoteOwnerID)
 	}
@@ -73,11 +66,11 @@ func CanEditBlock(v Viewer, b Block) bool {
 		return true
 	}
 	switch b.Visibility {
-	case VisGM, VisListed:
+	case enum.VisGM, enum.VisListed:
 		return v.IsGM
-	case VisPlayers:
+	case enum.VisPlayers:
 		return v.IsGM || (v.IsPlayer() && b.PlayersCanEdit) || v.owns(b.NoteOwnerID)
-	case VisOwner:
+	case enum.VisOwner:
 		return v.owns(b.NoteOwnerID)
 	}
 	return false
@@ -103,22 +96,22 @@ func CanManageNote(v Viewer, noteOwnerID int64) bool {
 // note: any in a note they manage, and 'players' for a player writing in the
 // GM's game session note. Players write private blocks or blocks for the
 // table; only the GM keeps secrets from players.
-func BlockVisibilities(v Viewer, noteOwnerID int64, gameSession bool) []Visibility {
+func BlockVisibilities(v Viewer, noteOwnerID int64, gameSession bool) []enum.Visibility {
 	switch {
 	case !CanManageNote(v, noteOwnerID):
 		if v.IsPlayer() && noteOwnerID == 0 && gameSession {
-			return []Visibility{VisPlayers}
+			return []enum.Visibility{enum.VisPlayers}
 		}
 		return nil
 	case noteOwnerID == 0:
-		return []Visibility{VisGM, VisPlayers, VisListed}
+		return []enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed}
 	default:
-		return []Visibility{VisOwner, VisPlayers}
+		return []enum.Visibility{enum.VisOwner, enum.VisPlayers}
 	}
 }
 
 // ValidBlockVisibility reports whether vis is one the viewer may set.
-func ValidBlockVisibility(v Viewer, noteOwnerID int64, gameSession bool, vis Visibility) bool {
+func ValidBlockVisibility(v Viewer, noteOwnerID int64, gameSession bool, vis enum.Visibility) bool {
 	return slices.Contains(BlockVisibilities(v, noteOwnerID, gameSession), vis)
 }
 

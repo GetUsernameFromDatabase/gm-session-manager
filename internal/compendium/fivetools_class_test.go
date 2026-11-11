@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 )
 
 // fiveToolsClasses are the fixture's classes and subclasses by kind/slug.
@@ -19,7 +20,7 @@ func fiveToolsClasses(t *testing.T) map[string]Entry {
 	}
 	out := map[string]Entry{}
 	for _, e := range entries {
-		if e.Kind == KindClass || e.Kind == KindSubclass {
+		if e.Kind == enum.KindClass || e.Kind == enum.KindSubclass {
 			out[string(e.Kind)+"/"+e.Slug] = e
 		}
 	}

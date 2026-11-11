@@ -1,6 +1,9 @@
 package auth
 
-import "gm-session-manager/internal/db/sqlc"
+import (
+	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
+)
 
 // Identity is who is making a request. A device has at most one session,
 // whose role was chosen at login; switching role means logging out and in
@@ -18,7 +21,7 @@ type Identity struct {
 // that player only, so the admin and player views never mix.
 func (id Identity) IsAdmin() bool {
 	if id.Session != nil {
-		return Role(id.Session.Role) == RoleAdmin
+		return id.Session.Role == enum.RoleAdmin
 	}
 	return id.Loopback
 }

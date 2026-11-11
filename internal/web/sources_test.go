@@ -9,10 +9,9 @@ import (
 	"slices"
 	"testing"
 
-	"gm-session-manager/internal/auth"
-	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
 )
 
@@ -64,13 +63,13 @@ func TestEntryFor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			row, missing, err := entryFor(t.Context(), e.q(), compendium.KindFeat, tt.slug, tt.pin)
+			row, missing, err := entryFor(t.Context(), e.q(), enum.KindFeat, tt.slug, tt.pin)
 			if err != nil || row.SourceKey != tt.want || missing != tt.missing {
 				t.Errorf("got %q missing=%v err=%v, want %q missing=%v", row.SourceKey, missing, err, tt.want, tt.missing)
 			}
 		})
 	}
-	if _, _, err := entryFor(t.Context(), e.q(), compendium.KindFeat, "nope", oldSrc); !errors.Is(err, sql.ErrNoRows) {
+	if _, _, err := entryFor(t.Context(), e.q(), enum.KindFeat, "nope", oldSrc); !errors.Is(err, sql.ErrNoRows) {
 		t.Errorf("neither copy: %v", err)
 	}
 }
@@ -166,9 +165,9 @@ func TestSourceCommandPermissions(t *testing.T) {
 		ok               bool
 	}{
 		{"other player refused", bob, newSrc, false},
-		{"gm", e.token(t, auth.RoleAdmin), newSrc, true},
-		{"owner", e.token(t, auth.RolePlayer), oldSrc, true},
-		{"source without the feat", e.token(t, auth.RoleAdmin), "gone-src", false},
+		{"gm", e.token(t, enum.RoleAdmin), newSrc, true},
+		{"owner", e.token(t, enum.RolePlayer), oldSrc, true},
+		{"source without the feat", e.token(t, enum.RoleAdmin), "gone-src", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -247,7 +246,7 @@ func TestSourceSwitchKeepsEdits(t *testing.T) {
 		},
 	})
 	e.allowEntrySources(t)
-	player := e.token(t, auth.RolePlayer)
+	player := e.token(t, enum.RolePlayer)
 	base := fmt.Sprintf("/characters/%d/sources/preview?", e.characterID)
 	preview := url.Values{"kind": {"class"}, "slug": {"testclass"}, "source": {newSrc}}
 	if w := e.do(t, http.MethodGet, base+preview.Encode(), player, nil, false); w.Code != http.StatusOK {

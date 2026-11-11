@@ -8,6 +8,8 @@ package sqlc
 import (
 	"context"
 	"database/sql"
+
+	"gm-session-manager/internal/enum"
 )
 
 const createCombatant = `-- name: CreateCombatant :one
@@ -711,7 +713,7 @@ WHERE id = ?
 `
 
 type UpdateEncounterStateParams struct {
-	Status            string
+	Status            enum.EncounterStatus
 	Round             int64
 	ActiveCombatantID sql.NullInt64
 	ID                int64

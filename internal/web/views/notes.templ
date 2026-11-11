@@ -3,7 +3,7 @@ package views
 import (
 	"fmt"
 	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/checkbox"
@@ -16,12 +16,6 @@ import (
 	selectcomp "gm-session-manager/internal/web/components/select"
 	"slices"
 	"strings"
-)
-
-// Note kinds (notes.kind).
-const (
-	KindGameSession = "game_session"
-	KindGeneric     = "generic"
 )
 
 // NoteListView is the notes index.
@@ -102,7 +96,7 @@ templ NoteList(campaignID int64, notes []NoteItem) {
 func notesOfKind(notes []NoteItem, sessions bool) []NoteItem {
 	var out []NoteItem
 	for _, n := range notes {
-		if (n.Kind == KindGameSession) == sessions {
+		if (n.Kind == enum.NoteGameSession) == sessions {
 			out = append(out, n)
 		}
 	}
@@ -149,7 +143,7 @@ func closeDialogAfter(reset string) templ.ComponentScript {
 }
 
 // noteFields are a note's title and type, for creating or editing it.
-templ noteFields(id, title, kind string) {
+templ noteFields(id, title string, kind enum.NoteKind) {
 	@field.Group(field.GroupProps{Class: "gap-4"}) {
 		@field.Field() {
 			// Not id-title: the dialog script gives that id to the dialog's heading.
@@ -162,7 +156,7 @@ templ noteFields(id, title, kind string) {
 			@field.Label(field.LabelProps{For: id + "-kind-trigger"}) {
 				Type
 			}
-			@formSelect(id+"-kind", "kind", noteKindItems, kind, "", "")
+			@formSelect(id+"-kind", "kind", noteKindItems, string(kind), "", "")
 		}
 	}
 }
@@ -180,7 +174,7 @@ templ newNoteDialog(campaignID int64) {
 						New note
 					}
 				}
-				@noteFields("new-note", "", KindGeneric)
+				@noteFields("new-note", "", enum.NoteGeneric)
 				@dialog.Footer() {
 					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.Close(ctx)}) {
 						Cancel
@@ -232,7 +226,7 @@ templ noteEditDialog(n NoteItem) {
 // loaded by the editor from /blocks/{id}/doc.
 type BlockView struct {
 	ID             int64
-	Visibility     perm.Visibility
+	Visibility     enum.Visibility
 	PlayersCanEdit bool
 	Audience       []int64
 	// ForYou is set for non-GM readers of a secret, who are always in its audience.
@@ -271,7 +265,7 @@ type NoteView struct {
 	Note         sqlc.Note
 	Blocks       []BlockView
 	CanManage    bool
-	Visibilities []perm.Visibility
+	Visibilities []enum.Visibility
 	// Characters are the campaign's characters, for 'listed' audiences.
 	Characters  []sqlc.Character
 	Backlinks   []sqlc.ListBacklinksRow
@@ -291,15 +285,15 @@ func (v NoteView) characterNames(ids []int64) string {
 	return strings.Join(names, ", ")
 }
 
-func visibilityLabel(vis perm.Visibility) string {
+func visibilityLabel(vis enum.Visibility) string {
 	switch vis {
-	case perm.VisGM:
+	case enum.VisGM:
 		return "GM only"
-	case perm.VisPlayers:
+	case enum.VisPlayers:
 		return "Everyone"
-	case perm.VisListed:
+	case enum.VisListed:
 		return "Secret"
-	case perm.VisOwner:
+	case enum.VisOwner:
 		return "Private"
 	}
 	return string(vis)
@@ -307,11 +301,11 @@ func visibilityLabel(vis perm.Visibility) string {
 
 // visRail colours a block's left rail and its access label by visibility:
 // the colour is how a reader tells who else can read a passage.
-var visRail = map[perm.Visibility]struct{ rail, label string }{
-	perm.VisGM:      {"border-l-rose-500", "text-rose-700 dark:text-rose-300"},
-	perm.VisPlayers: {"border-l-sky-500", "text-sky-700 dark:text-sky-300"},
-	perm.VisListed:  {"border-l-amber-500", "text-amber-700 dark:text-amber-300"},
-	perm.VisOwner:   {"border-l-violet-500", "text-violet-700 dark:text-violet-300"},
+var visRail = map[enum.Visibility]struct{ rail, label string }{
+	enum.VisGM:      {"border-l-rose-500", "text-rose-700 dark:text-rose-300"},
+	enum.VisPlayers: {"border-l-sky-500", "text-sky-700 dark:text-sky-300"},
+	enum.VisListed:  {"border-l-amber-500", "text-amber-700 dark:text-amber-300"},
+	enum.VisOwner:   {"border-l-violet-500", "text-violet-700 dark:text-violet-300"},
 }
 
 templ NotePage(l Layout, v NoteView) {
@@ -350,7 +344,7 @@ templ NoteMeta(v NoteView) {
 				<h1 class="min-w-0 flex-1 text-3xl leading-tight font-semibold">{ v.Note.Title }</h1>
 			}
 			<div class="flex shrink-0 items-center gap-1 pt-2">
-				if v.Note.Kind == KindGameSession {
+				if v.Note.Kind == enum.NoteGameSession {
 					@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 						Game session
 					}
@@ -375,12 +369,12 @@ templ NoteBlocks(v NoteView) {
 					<span class={ "font-medium", visRail[b.Visibility].label }>{ visibilityLabel(b.Visibility) }</span>
 					<span class="min-w-0 truncate">
 						@authorRef(b.Author)
-						if b.Visibility == perm.VisListed && b.ForYou {
+						if b.Visibility == enum.VisListed && b.ForYou {
 							{ ", for you" }
-						} else if b.Visibility == perm.VisListed {
+						} else if b.Visibility == enum.VisListed {
 							{ ", for " + v.characterNames(b.Audience) }
 						}
-						if b.Visibility == perm.VisPlayers && b.PlayersCanEdit {
+						if b.Visibility == enum.VisPlayers && b.PlayersCanEdit {
 							{ ", players can edit" }
 						}
 					</span>
@@ -487,19 +481,19 @@ templ moveButton(blockID int64, dir string) {
 	}
 }
 
-templ visibilityFields(v NoteView, current perm.Visibility, editable bool, audience []int64) {
+templ visibilityFields(v NoteView, current enum.Visibility, editable bool, audience []int64) {
 	<div class="space-y-2" title="Read access: who can see this block" onchange={ templ.JSUnsafeFuncCall(visToggleJS) }>
-		@formSelect("", "visibility", selectItems(v.Visibilities, func(vis perm.Visibility) string { return string(vis) }, visibilityLabel), string(current), "w-full", "")
+		@formSelect("", "visibility", selectItems(v.Visibilities, func(vis enum.Visibility) string { return string(vis) }, visibilityLabel), string(current), "w-full", "")
 		// Each option below only applies to one visibility; the server drops it otherwise.
-		if slices.Contains(v.Visibilities, perm.VisPlayers) {
-			<div data-for-vis={ string(perm.VisPlayers) } hidden?={ current != perm.VisPlayers }>
+		if slices.Contains(v.Visibilities, enum.VisPlayers) {
+			<div data-for-vis={ string(enum.VisPlayers) } hidden?={ current != enum.VisPlayers }>
 				@checkField("players_can_edit", "true", editable) {
 					Players can edit
 				}
 			</div>
 		}
-		if slices.Contains(v.Visibilities, perm.VisListed) {
-			<fieldset data-for-vis={ string(perm.VisListed) } class="space-y-1" hidden?={ current != perm.VisListed }>
+		if slices.Contains(v.Visibilities, enum.VisListed) {
+			<fieldset data-for-vis={ string(enum.VisListed) } class="space-y-1" hidden?={ current != enum.VisListed }>
 				<legend class="text-muted-foreground">Shown to:</legend>
 				for _, c := range v.Characters {
 					@checkField("audience", fmt.Sprint(c.ID), slices.Contains(audience, c.ID)) {
@@ -515,7 +509,7 @@ templ visibilityFields(v NoteView, current perm.Visibility, editable bool, audie
 // chosen. It runs on the visibility fields' change events.
 const visToggleJS = `const vis = this.querySelector("[name=visibility]").value; for (const f of this.querySelectorAll("[data-for-vis]")) f.hidden = f.dataset.forVis !== vis`
 
-var noteKindItems = []selectcomp.ItemData{{Value: KindGeneric, Label: "Note"}, {Value: KindGameSession, Label: "Game session"}}
+var noteKindItems = []selectcomp.ItemData{{Value: string(enum.NoteGeneric), Label: "Note"}, {Value: string(enum.NoteGameSession), Label: "Game session"}}
 
 // checkField is a shadcn checkbox with its label.
 templ checkField(name, value string, checked bool) {
