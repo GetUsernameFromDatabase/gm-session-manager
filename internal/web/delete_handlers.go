@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin/binding"
 
 	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/export"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
@@ -150,16 +149,5 @@ func parseCharacterFile(body []byte) (export.CharacterFile, error) {
 	if err := binding.Validator.ValidateStruct(&cf); err != nil {
 		return cf, err
 	}
-	sheet, err := dnd5e.ParseSheet(string(cf.Sheet))
-	if err != nil {
-		return cf, err
-	}
-	ch := dnd5e.Character{Name: cf.Name, HP: int(cf.HP), MaxHP: int(cf.MaxHP), TempHP: int(cf.TempHP), Sheet: sheet}
-	if err := ch.Validate(); err != nil {
-		return cf, err
-	}
-	// Stored as parsed, so the row holds exactly what the app understands.
-	normalized, err := json.Marshal(sheet)
-	cf.Sheet = normalized
-	return cf, err
+	return cf, normalizeCharacterFile(&cf)
 }

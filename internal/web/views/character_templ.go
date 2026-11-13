@@ -5918,8 +5918,8 @@ func (s SheetView) actions() map[string][]actionEntry {
 	return out
 }
 
-// freeCastAction is what a lineage spell's free cast (see freeCast in
-// wizard.go) takes: its spell's casting time, or "" when that is longer.
+// freeCastAction is what a lineage spell's free cast (see dnd5e.FreeCast)
+// takes: its spell's casting time, or "" when that is longer.
 func (s SheetView) freeCastAction(name string) string {
 	spell, ok := strings.CutSuffix(name, " (free cast)")
 	if !ok {

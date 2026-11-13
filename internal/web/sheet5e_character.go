@@ -20,6 +20,103 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
+func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) (views.SheetView, error) {
+	sheet, err := dnd5e.ParseSheet(row.SheetJson)
+	if err != nil {
+		return views.SheetView{}, err
+	}
+	conds, err := a.Store.ListConditionsByCharacter(ctx, nullID(row.ID))
+	if err != nil {
+		return views.SheetView{}, err
+	}
+	rows, err := a.Store.ListCharacterImages(ctx, row.ID)
+	if err != nil {
+		return views.SheetView{}, err
+	}
+	var looks []perm.Look
+	for _, l := range rows {
+		looks = append(looks, toLook(l.ID, l.Name, l.Url, l.AttachmentID, l.IsRevealed, l.IsCurrent))
+	}
+	spells, err := a.sheetSpells(ctx, sheet)
+	if err != nil {
+		return views.SheetView{}, err
+	}
+	levelUps, err := a.Store.CountLevelUps(ctx, row.ID)
+	if err != nil {
+		return views.SheetView{}, err
+	}
+	masteries, err := masteryLimit(ctx, a.Store.Queries, sheet, "")
+	if err != nil {
+		return views.SheetView{}, err
+	}
+	canSheet := perm.CanCharacter(v, row.ID, perm.ScopeSheet)
+	canSources := perm.CanCharacter(v, row.ID, perm.ScopeSources)
+	var issues []views.SourceIssue
+	if canSources {
+		if issues, err = a.sourceIssues(ctx, sheet, row.CampaignID); err != nil {
+			return views.SheetView{}, err
+		}
+	}
+	return views.SheetView{
+		ID: row.ID, CampaignID: row.CampaignID, Conditions: conds, Looks: perm.VisibleLooks(v, row.ID, looks), SpellData: spells,
+		C:             dnd5e.Character{Name: row.Name, HP: int(row.Hp), MaxHP: int(row.MaxHp), TempHP: int(row.TempHp), Sheet: sheet},
+		CanHP:         perm.CanCharacter(v, row.ID, perm.ScopeHP),
+		CanConditions: perm.CanCharacter(v, row.ID, perm.ScopeConditions),
+		CanSheet:      canSheet,
+		CanRevert:     canSheet && levelUps > 0,
+		CanSources:    canSources,
+		SourceIssues:  issues,
+		MasteryLimit:  masteries,
+	}, nil
+}
+
+// sheetSpells are the compendium details of the sheet's spells, by slug:
+// the priority copies in one query, and a pinned copy per spell pinned to
+// another source while it exists.
+func (a *App) sheetSpells(ctx context.Context, sheet dnd5e.Sheet) (map[string]*compendium.SpellData, error) {
+	if len(sheet.Spells) == 0 {
+		return nil, nil
+	}
+	slugs := make([]string, len(sheet.Spells))
+	for i, sp := range sheet.Spells {
+		slugs[i] = sp.Slug
+	}
+	rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: enum.KindSpell, Slugs: slugs})
+	if err != nil {
+		return nil, err
+	}
+	best := map[string]sqlc.ListCompendiumBySlugsRow{}
+	for _, r := range rows {
+		best[r.Slug] = r
+	}
+	out := map[string]*compendium.SpellData{}
+	for _, sp := range sheet.Spells {
+		if _, seen := out[sp.Slug]; seen {
+			continue
+		}
+		r, ok := best[sp.Slug]
+		data := r.DataJson
+		if sp.Source != "" && sp.Source != r.SourceKey {
+			e, err := a.Store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSpell, Slug: sp.Slug, SourceKey: sp.Source})
+			switch {
+			case err == nil:
+				data, ok = e.DataJson, true
+			case !errors.Is(err, sql.ErrNoRows):
+				return nil, err
+			}
+		}
+		if !ok {
+			continue
+		}
+		d, err := compendium.Decode[compendium.SpellData](enum.KindSpell, data)
+		if err != nil {
+			return nil, err
+		}
+		out[sp.Slug] = d
+	}
+	return out, nil
+}
+
 // characterAccess loads a character the requester may view.
 func (a *App) characterAccess(c *gin.Context) (who, sqlc.Character, bool) {
 	id, ok := a.idParam(c, "character")

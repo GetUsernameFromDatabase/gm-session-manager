@@ -33,6 +33,15 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 - Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
 - Durable lessons go in the nearest folder's `CLAUDE.md`; workflows in a skill; `HANDOFF.md` holds only current state and open items.
 
+## Game systems
+
+D&D 5e (2024) is the only system, fenced in rather than abstracted:
+
+- **5e:** `internal/dnd5e` (rules), `internal/web/sheet5e_*.go` (wizard, level-up, builder, sources, sheet commands) and in `internal/web/views` the sheet, wizard, builder, level-up, sources and compendium templates, `character_live.go` and `sources.go`. The exceptions in the depguard rule `neutral` are the full list.
+- **Neutral:** everything else (combat, sessions, campaigns, notes, entities, images, files, hub, perm, export). It reaches 5e only through `internal/web/sheet5e.go` and `internal/web/views/sheet5e.go`, plain-typed functions. depguard (`.golangci.yml`, rule `neutral`) fails the lint on any other `dnd5e` import, generated `*_templ.go` included; a new 5e file must be added to its exceptions.
+- **A second system** starts as its own `sheet<sys>_*.go` beside `sheet5e`; only then is the shared interface extracted from the two. Existing hooks: `campaigns.system` and `characters.system`.
+- **Largest open question:** `internal/compendium` is 5e-shaped (statblocks, spells, classes; the `compendium_entries.kind` CHECK), and is exempt from the fence.
+
 ## Commands
 
 After cloning: `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` (both outputs gitignored). After changing sources:

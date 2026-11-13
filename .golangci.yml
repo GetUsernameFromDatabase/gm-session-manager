@@ -4,6 +4,7 @@ linters:
   default: standard
   enable:
     - bodyclose
+    - depguard
     - errorlint
     - goconst
     - gosec
@@ -15,19 +16,41 @@ linters:
     - unconvert
     - unparam
   settings:
+    depguard:
+      rules:
+        # Game systems (CLAUDE.md): neutral code reaches 5e only through
+        # sheet5e.go. Globs start with ** so they hold wherever lint runs.
+        neutral:
+          files:
+            - $all
+            - "!$test"
+            - "!**/internal/dnd5e/**"
+            - "!**/internal/compendium/**"
+            - "!**/internal/web/sheet5e*.go"
+            - "!**/internal/web/views/sheet5e.go"
+            - "!**/internal/web/views/character_live.go"
+            - "!**/internal/web/views/sources.go"
+            - "!**/internal/web/views/{builder,character,compendium,levelup,sources,wizard}_templ.go"
+          deny:
+            - pkg: gm-session-manager/internal/dnd5e
+              desc: system-neutral code; go through sheet5e.go
     goconst:
       min-len: 3
       min-occurrences: 3
       match-constant: true
   exclusions:
-    generated: lax
+    # Not lax: generated templ files must still reach depguard (rule below).
+    generated: disable
     paths:
       - internal/db/sqlc
       # Installed and updated by the shadcn-templ CLI; not edited by hand.
       - internal/web/components
       - internal/web/utils
-      - ".*_templ\\.go$"
     rules:
+      # Generated templ code answers to depguard only. A newly enabled
+      # linter goes in this list too.
+      - path: _templ\.go$
+        linters: [bodyclose, errcheck, errorlint, goconst, gosec, govet, ineffassign, misspell, noctx, revive, rowserrcheck, sqlclosecheck, staticcheck, unconvert, unparam, unused]
       - path: _test\.go
         linters: [gosec]
       # Test data repeats on purpose, and goconst matches text, not meaning.

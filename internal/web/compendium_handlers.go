@@ -21,7 +21,6 @@ import (
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
@@ -795,11 +794,7 @@ func (a *App) addHomebrewToSheet(ctx context.Context, ch sqlc.Character, id int6
 	if e.Kind == enum.KindSpell {
 		line = "spell add " + e.Slug
 	}
-	cmd, err := dnd5e.Parse(line)
-	if err != nil {
-		return err
-	}
-	return a.runCommand(ctx, ch, cmd)
+	return a.runLine(ctx, ch, line)
 }
 
 func (a *App) homebrewDelete(c *gin.Context) error {

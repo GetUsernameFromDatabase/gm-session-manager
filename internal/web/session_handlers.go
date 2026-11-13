@@ -14,7 +14,6 @@ import (
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
@@ -257,14 +256,12 @@ func (a *App) joinCreate(c *gin.Context) error {
 // returning the character's id.
 func (a *App) createAndLogin(c *gin.Context, campaignID int64, name string) (int64, error) {
 	ctx := c.Request.Context()
-	s := dnd5e.NewSheet()
-	s.EffectsVersion = dnd5e.EffectsVersion // nothing to catch up; NewSheet stays 0 for old rows
-	sheet, err := s.JSON()
+	sheet, err := newSheetJSON()
 	if err != nil {
 		return 0, err
 	}
 	ch, err := a.Store.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{
-		CampaignID: campaignID, Name: name, System: dnd5e.System, SheetJson: sheet,
+		CampaignID: campaignID, Name: name, System: gameSystem, SheetJson: sheet,
 	})
 	if err != nil {
 		return 0, err

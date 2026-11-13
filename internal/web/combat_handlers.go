@@ -16,7 +16,6 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/web/views"
@@ -127,11 +126,11 @@ func (a *App) addCombatant(c *gin.Context) error {
 		if !a.found(c, err) || !a.sameCampaign(c, ch.CampaignID, enc.CampaignID) {
 			return nil
 		}
-		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
+		ac, err := sheetArmorClass(ch.SheetJson)
 		if err != nil {
 			return err
 		}
-		p.CharacterID, p.Name, p.Ac = nullID(ch.ID), ch.Name, int64(sheet.ArmorClass())
+		p.CharacterID, p.Name, p.Ac = nullID(ch.ID), ch.Name, int64(ac)
 	case "entity":
 		e, err := a.Store.GetEntity(ctx, refID)
 		if !a.found(c, err) || !a.sameCampaign(c, e.CampaignID, enc.CampaignID) {
@@ -220,57 +219,6 @@ func uniqueName(ctx context.Context, q *sqlc.Queries, encounterID int64, name st
 			return n, nil
 		}
 	}
-}
-
-// pcSheet is a PC row's live sheet; ok is false for other combatants.
-func pcSheet(r sqlc.ListCombatantsRow) (dnd5e.Sheet, bool) {
-	if !r.SheetJson.Valid {
-		return dnd5e.Sheet{}, false
-	}
-	s, err := dnd5e.ParseSheet(r.SheetJson.String)
-	return s, err == nil
-}
-
-// initiativeMod is the bonus a combatant adds to its initiative roll: a PC's
-// from the sheet, a monster's (or a statted NPC's) from its statblock.
-func initiativeMod(r sqlc.ListCombatantsRow) int {
-	if s, ok := pcSheet(r); ok {
-		return s.Initiative()
-	}
-	if r.MonsterData.Valid {
-		if d, err := compendium.Decode[compendium.MonsterData](enum.KindMonster, r.MonsterData.String); err == nil {
-			return d.Initiative
-		}
-	}
-	return 0
-}
-
-// combatantDefenses are how a combatant takes damage: a PC's sheet or a
-// statblock's free text, all of it resisted while Petrified.
-func combatantDefenses(r sqlc.ListCombatantsRow, conds []sqlc.Condition) dnd5e.Defenses {
-	var d dnd5e.Defenses
-	if s, ok := pcSheet(r); ok {
-		d = s.Defenses()
-	} else if r.MonsterData.Valid {
-		if md, err := compendium.Decode[compendium.MonsterData](enum.KindMonster, r.MonsterData.String); err == nil {
-			d.List = slices.Concat(dnd5e.ParseDefenses(dnd5e.DefResist, md.Resistance), dnd5e.ParseDefenses(dnd5e.DefImmune, md.Immunity), dnd5e.ParseDefenses(dnd5e.DefVulnerable, md.Vulnerability))
-		}
-	}
-	d.ResistAll = petrified(conds)
-	return d
-}
-
-func petrified(conds []sqlc.Condition) bool {
-	return slices.ContainsFunc(conds, func(c sqlc.Condition) bool { return c.Slug == dnd5e.Petrified })
-}
-
-// outOfFight reports a combatant whose turn is skipped: a monster or NPC at
-// 0 HP, or a PC who failed three death saves (a PC at 0 HP still rolls them).
-func outOfFight(r sqlc.ListCombatantsRow) bool {
-	if s, ok := pcSheet(r); ok {
-		return s.DeathSaves.Failures >= dnd5e.MaxDeathSaves
-	}
-	return !r.CharacterID.Valid && r.Hp <= 0 && r.MaxHp > 0
 }
 
 // stepTurn moves the turn from index i by dir (1 or -1), past combatants out
@@ -518,14 +466,10 @@ func (a *App) combatantHP(c *gin.Context, cb sqlc.Combatant) error {
 		if heal {
 			line = fmt.Sprintf("hp +%d", n)
 		}
-		cmd, err := dnd5e.Parse(line, raw...)
-		if err != nil {
-			return userError{err}
-		}
-		return a.runCommand(ctx, ch, cmd) // the player's rules, Petrified included
+		return a.runLine(ctx, ch, line, raw...) // the player's rules, Petrified included
 	}
 	if heal {
-		return a.updateMonster(ctx, cb.ID, func(m *dnd5e.Character) { m.ApplyHP(dnd5e.Heal(int(n))) })
+		return a.updateMonster(ctx, cb.ID, healHP(int(n)))
 	}
 	r, err := a.combatantRow(ctx, cb)
 	if err != nil {
@@ -541,39 +485,7 @@ func (a *App) combatantHP(c *gin.Context, cb sqlc.Combatant) error {
 	if err != nil {
 		return err
 	}
-	return a.updateMonster(ctx, cb.ID, func(m *dnd5e.Character) { m.ApplyHP(dnd5e.Damage(d.Taken(int(n), kind, when))) })
-}
-
-// damageChoice reads the HP dialog's damage type (views.damageTypeItems):
-// "fire", or "bludgeoning@3" when conditional defense 3 holds; empty is
-// untyped.
-func damageChoice(v string, d dnd5e.Defenses) (kind string, when int, err error) {
-	kind, at, conditional := strings.Cut(v, "@")
-	if kind != "" && !slices.Contains(dnd5e.DamageTypes, kind) {
-		return "", 0, userError{fmt.Errorf("unknown damage type %q", kind)}
-	}
-	if !conditional {
-		return kind, -1, nil
-	}
-	when, err = strconv.Atoi(at)
-	if err != nil || when < 0 || when >= len(d.List) || d.List[when].When == "" || !slices.Contains(d.List[when].Types, kind) {
-		return "", 0, userError{errors.New("that defense changed; pick the damage type again")}
-	}
-	return kind, when, nil
-}
-
-// updateMonster reads, changes and writes a monster's HP in one
-// transaction, so changes sent from two devices at once both land.
-func (a *App) updateMonster(ctx context.Context, id int64, fn func(m *dnd5e.Character)) error {
-	return a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		cb, err := q.GetCombatant(ctx, id)
-		if err != nil {
-			return err
-		}
-		m := dnd5e.Character{HP: int(cb.Hp), MaxHP: int(cb.MaxHp), TempHP: int(cb.TempHp)}
-		fn(&m)
-		return q.SetCombatantHP(ctx, sqlc.SetCombatantHPParams{ID: id, Hp: int64(m.HP), MaxHp: int64(m.MaxHP), TempHp: int64(m.TempHP)})
-	})
+	return a.updateMonster(ctx, cb.ID, damageHP(int(n), d, kind, when))
 }
 
 // combatantSetHP sets the fields the HP dialog sends: only those the GM
@@ -598,42 +510,17 @@ func (a *App) combatantSetHP(c *gin.Context, cb sqlc.Combatant) error {
 	if hp == nil && maxHP == nil && temp == nil {
 		return userError{errors.New("change a value to set")}
 	}
-	set := func(dc *dnd5e.Character) {
-		if maxHP != nil {
-			if dc.MaxHP == 0 && hp == nil { // no stats yet: start at full
-				dc.HP = *maxHP
-			}
-			dc.MaxHP = *maxHP
-			dc.HP = min(dc.HP, dc.MaxHP)
-		}
-		if hp != nil {
-			dc.ApplyHP(dnd5e.Set(*hp))
-		}
-		if temp != nil {
-			dc.TempHP = *temp
-		}
-	}
+	set := setHP(hp, maxHP, temp)
 	if cb.CharacterID.Valid {
 		if maxHP != nil {
 			return userError{errors.New("a character's max HP is set on their sheet")}
 		}
-		return a.updateCharacter(c.Request.Context(), cb.CharacterID.Int64, func(_ *sqlc.Queries, dc *dnd5e.Character) error {
-			set(dc)
-			return nil
-		})
+		return a.changeCharacterHP(c.Request.Context(), cb.CharacterID.Int64, set)
 	}
 	return a.updateMonster(c.Request.Context(), cb.ID, set)
 }
 
 func (a *App) combatantCondition(c *gin.Context, cb sqlc.Combatant, enc sqlc.Encounter) error {
-	slug := c.PostForm("slug")
-	if !dnd5e.IsConditionSlug(slug) {
-		return userError{fmt.Errorf("unknown condition %q", slug)}
-	}
-	note := strings.TrimSpace(c.PostForm("note"))
-	if slug == dnd5e.TrackCustom && note == "" {
-		return userError{errors.New("describe the custom effect")}
-	}
 	var expires sql.NullInt64
 	if rounds, ok := formInt(c, "rounds"); ok && rounds > 0 {
 		expires = sql.NullInt64{Int64: max(enc.Round, 1) + rounds - 1, Valid: true}
@@ -642,12 +529,5 @@ func (a *App) combatantCondition(c *gin.Context, cb sqlc.Combatant, enc sqlc.Enc
 	if cb.CharacterID.Valid {
 		owner = condOwner{characterID: cb.CharacterID.Int64}
 	}
-	op := dnd5e.CondOp{Op: dnd5e.CondAdd, Slug: slug, Note: note}
-	if slug == dnd5e.Exhaustion {
-		op = dnd5e.CondOp{Op: dnd5e.CondExhaustion, Slug: slug, Delta: 1}
-	}
-	ctx := c.Request.Context()
-	return a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		return applyCondOps(ctx, q, owner, []dnd5e.CondOp{op}, expires)
-	})
+	return a.addCondition(c.Request.Context(), owner, c.PostForm("slug"), strings.TrimSpace(c.PostForm("note")), expires)
 }

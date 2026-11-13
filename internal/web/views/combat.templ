@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/badge"
@@ -67,7 +66,7 @@ type CombatantView struct {
 	// Marker names its piece on the physical table, GM only.
 	Marker string
 	// Defenses are how it takes damage, for the GM and the player's own row.
-	Defenses dnd5e.Defenses
+	Defenses Defenses
 }
 
 // EncounterView is the tracker for one encounter.
@@ -406,7 +405,7 @@ templ conditionsPopover(c CombatantView) {
 				for _, cond := range c.Conditions {
 					<li>
 						<span class="font-medium capitalize">{ conditionLabel(cond) }</span>
-						if tip, ok := dnd5e.ConditionSummaries[cond.Slug]; ok {
+						if tip, ok := conditionSummary(cond.Slug); ok {
 							<p class="text-xs text-muted-foreground">{ tip }</p>
 						}
 					</li>
@@ -537,7 +536,7 @@ templ downBadge(c CombatantView) {
 // custom condition has no summary: its note is the description.
 templ combatCondition(cond sqlc.Condition, removable bool) {
 	<span class={ "inline-flex items-center rounded-full border border-violet-500/40 bg-violet-500/10 text-xs capitalize", templ.KV("pr-0.5", removable) }>
-		if tip, ok := dnd5e.ConditionSummaries[cond.Slug]; ok {
+		if tip, ok := conditionSummary(cond.Slug); ok {
 			@popover.Popover(popover.Props{ID: fmt.Sprintf("condinfo-%d", cond.ID)}) {
 				@button.Button(button.Props{Variant: button.VariantGhost, Class: "h-auto rounded-full px-1.5 py-0 text-xs font-normal capitalize hover:bg-violet-500/20 dark:hover:bg-violet-500/20", Attributes: popover.Trigger(ctx)}) {
 					{ conditionLabel(cond) }
@@ -637,7 +636,7 @@ templ hpText(c CombatantView) {
 // commands: on the sheet, and on the player's own row in combat (compact).
 // A character with defenses picks the damage type. Not reset() after a
 // submit: it would put the type's value back but not its label.
-templ hpQuickForm(cmdURL string, compact bool, d dnd5e.Defenses) {
+templ hpQuickForm(cmdURL string, compact bool, d Defenses) {
 	{{ size := utils.IfElse(compact, button.SizeXs, button.SizeSm) }}
 	{{ items, typeID := damageTypeItems(d), utils.IfElse(compact, "hp-own-type", "hp-quick-type") }}
 	<form class="flex flex-wrap items-center gap-2" hx-post={ cmdURL } hx-on::after-request="if (event.detail.successful) this.hp_amount.value = ''">
@@ -660,7 +659,7 @@ templ hpQuickForm(cmdURL string, compact bool, d dnd5e.Defenses) {
 }
 
 // petrifiedNote says why damage is halved whatever its type.
-templ petrifiedNote(d dnd5e.Defenses, class string) {
+templ petrifiedNote(d Defenses, class string) {
 	if d.ResistAll {
 		<p class={ "text-xs text-muted-foreground", class }>Petrified: all damage is halved.</p>
 	}
@@ -843,7 +842,7 @@ templ hpSetField(id, name, label, value string, minimum, maximum int64, bound te
 // conditionTip is the hover summary for a condition chip's tooltip; custom
 // effects have none, their note is the description.
 templ conditionTip(slug string) {
-	if tip, ok := dnd5e.ConditionSummaries[slug]; ok {
+	if tip, ok := conditionSummary(slug); ok {
 		@tooltip.Content() {
 			{ tip }
 		}
@@ -973,21 +972,6 @@ func nameKey(name string) (string, int) {
 	return name[:i], n
 }
 
-// customToggleJS makes the note required, and says why, while "custom…" is
-// the chosen condition. It runs on the form's change events.
-var customToggleJS = fmt.Sprintf(`const custom = this.slug.value === %q; this.note.required = custom; this.querySelector("[data-custom-hint]").hidden = !custom`, dnd5e.TrackCustom)
-
-func conditionItems() []selectcomp.ItemData {
-	var items []selectcomp.ItemData
-	for _, slug := range dnd5e.Conditions {
-		items = append(items, selectcomp.ItemData{Value: slug, Label: slug})
-	}
-	return append(items,
-		selectcomp.ItemData{Value: dnd5e.TrackConcentration, Label: "concentration"},
-		selectcomp.ItemData{Value: dnd5e.TrackCustom, Label: "custom…"},
-	)
-}
-
 // quietDestructive styles the small × removes that repeat on every row or
 // chip: muted until hovered, so a list is not a wall of red.
 const quietDestructive = "text-muted-foreground hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/20"
@@ -1010,29 +994,6 @@ func selectItems[T any](xs []T, value, label func(T) string) []selectcomp.ItemDa
 
 // wideList sizes a select's list to its longest label, never narrower than its button nor wider than the screen.
 const wideList = "w-auto min-w-(--anchor-width) max-w-[calc(100vw-2rem)]"
-
-// damageTypeItems offers untyped damage first, then each type a defense
-// names, then each conditional defense's types as "<type>@<index>"
-// (damageChoice reads them back).
-func damageTypeItems(d dnd5e.Defenses) []selectcomp.ItemData {
-	d.ResistAll = false // Petrified has its own note
-	effect := map[int]string{0: "immune, none", 2: "resisted, half", 4: "resisted and vulnerable", 8: "vulnerable, double"}
-	items := []selectcomp.ItemData{{Value: " ", Label: "Other"}}
-	for _, t := range dnd5e.DamageTypes {
-		if slices.ContainsFunc(d.List, func(def dnd5e.Defense) bool { return def.When == "" && slices.Contains(def.Types, t) }) {
-			items = append(items, selectcomp.ItemData{Value: t, Label: fmt.Sprintf("%s (%s)", capitalized([]string{t})[0], effect[d.Taken(4, t, -1)])})
-		}
-	}
-	for i, def := range d.List {
-		if def.When == "" {
-			continue
-		}
-		for _, t := range def.Types {
-			items = append(items, selectcomp.ItemData{Value: fmt.Sprintf("%s@%d", t, i), Label: fmt.Sprintf("%s %s (%s)", capitalized([]string{t})[0], def.When, effect[d.Taken(4, t, i)])})
-		}
-	}
-	return items
-}
 
 // formSelect is a shadcn select that submits name, preselecting value (or
 // the first item when empty or not among items, such as a refused post's
@@ -1068,7 +1029,7 @@ func visibleTitle(on bool) string {
 
 func conditionLabel(c sqlc.Condition) string {
 	label := c.Slug
-	if c.Slug == dnd5e.TrackCustom {
+	if c.Slug == customCondition {
 		label = c.Note // a custom condition's note is its name
 	} else if c.Note != "" {
 		label += " " + c.Note

@@ -7,8 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 
@@ -67,61 +65,8 @@ func with(sets ...templ.Attributes) templ.Attributes {
 // Bound views give their hot values (Hot) and a copy with those values held
 // fixed (Shape), whose rendering is hashed to catch every other change. Hot
 // adds exactly the keys of the elements the real rendering binds, so a key
-// appearing or disappearing means the markup changed shape.
-
-// Hot adds the sheet's often-changing values.
-func (s SheetView) Hot(st hub.State) {
-	st["hp"] = fmt.Sprint(s.C.HP)
-	if s.C.TempHP > 0 {
-		st["temp"] = tempLabel(s.C.TempHP)
-	}
-	if dying(s) {
-		st["ds.s"] = fmt.Sprintf("✓ %d/3", s.C.Sheet.DeathSaves.Successes)
-		st["ds.f"] = fmt.Sprintf("✗ %d/3", s.C.Sheet.DeathSaves.Failures)
-	}
-	if s.CanSheet {
-		st["insp"] = inspirationLabel(s.C.Sheet.Inspiration)
-	}
-	st["hd"] = hitDice(s.C.Sheet)
-	for _, slug := range dnd5e.Conditions {
-		if c, on := s.condition(slug); slug != dnd5e.Exhaustion { // its level is its own chip
-			st["cond."+slug] = on
-		} else if on {
-			st["exh"] = c.Note
-		}
-	}
-	for i, sl := range s.C.Sheet.Slots {
-		if sl.Max > 0 {
-			st[fmt.Sprintf("slot.%d", i+1)] = slotLabel(sl)
-		}
-	}
-	if s.C.Sheet.Pact.Max > 0 {
-		st["pact"] = slotLabel(s.C.Sheet.Pact)
-	}
-	for i, f := range s.C.Sheet.Features {
-		if f.Uses.Limited() {
-			st[fmt.Sprintf("use.%d", i)] = s.usesLabel(f)
-		}
-	}
-}
-
-// Shape is the sheet with its hot values fixed.
-func (s SheetView) Shape() SheetView {
-	s.C.HP, s.C.TempHP = 0, 0
-	s.C.Sheet.DeathSaves = dnd5e.DeathSaves{}
-	s.C.Sheet.Inspiration = false
-	s.C.Sheet.HitDiceUsed = 0
-	for i := range s.C.Sheet.Slots { // an array: s holds its own copy
-		s.C.Sheet.Slots[i].Used = 0
-	}
-	s.C.Sheet.Pact.Used = 0
-	s.C.Sheet.Features = slices.Clone(s.C.Sheet.Features)
-	for i := range s.C.Sheet.Features {
-		s.C.Sheet.Features[i].Uses.Used = 0
-	}
-	s.Conditions = slices.DeleteFunc(slices.Clone(s.Conditions), func(c sqlc.Condition) bool { return isToggle(c.Slug) })
-	return s
-}
+// appearing or disappearing means the markup changed shape. The sheet's are
+// in character_live.go.
 
 // Hot adds the tracker's often-changing values: the round, whose turn it
 // is, and the hit points the viewer may see.
@@ -189,24 +134,9 @@ func (r Roster) Shape() Roster {
 	return r
 }
 
-func dying(s SheetView) bool { return s.C.HP <= 0 && s.C.MaxHP > 0 }
-
 func (c CombatantView) down() bool { return c.Down }
 
-func isToggle(slug string) bool { return slices.Contains(dnd5e.Conditions, slug) }
-
-func tempLabel(n int) string { return fmt.Sprintf("+%d temp", n) }
-
-func slotLabel(sl dnd5e.Slot) string { return fmt.Sprintf("%d/%d", sl.Max-sl.Used, sl.Max) }
-
 func roundLabel(n int64) string { return fmt.Sprintf("Round %d", n) }
-
-func inspirationLabel(on bool) string {
-	if on {
-		return "Inspiration ★"
-	}
-	return "Inspiration ☆"
-}
 
 func combatantKey(c CombatantView, field string) string {
 	return fmt.Sprintf("c.%d.%s", c.ID, field)

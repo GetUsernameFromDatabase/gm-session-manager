@@ -10,7 +10,6 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/export"
 	"gm-session-manager/internal/hub"
@@ -27,7 +26,7 @@ func (a *App) createCampaign(c *gin.Context) error {
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		var err error
 		camp, err = q.CreateCampaign(ctx, sqlc.CreateCampaignParams{
-			Name: strings.TrimSpace(form.Name), System: dnd5e.System, Edition: dnd5e.Edition,
+			Name: strings.TrimSpace(form.Name), System: gameSystem, Edition: gameEdition,
 		})
 		if err != nil {
 			return err

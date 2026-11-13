@@ -159,8 +159,8 @@ internal/                 every package below; not importable outside this modul
   compendium/             Open5e importer, search, homebrew
   export/                 campaign zip (notes as Markdown, characters as JSON)
   join/                   LAN addresses, TLS certificate, HTTP→HTTPS redirect on the same port, QR code
-  web/                    router, *_handlers.go, render.go (view models), live.go (live views, /live)
-  web/views/              templ pages and components; live.go holds live-view keys and binds
+  web/                    router, *_handlers.go, render.go (view models), live.go (live views, /live); sheet5e*.go is 5e
+  web/views/              templ pages and components; live.go holds live-view keys and binds; sheet5e.go is the door to 5e
   web/components/, utils/ shadcn-templ CLI output: never edit by hand
   web/assets/             js/ (app.js, live.js, notes.js, fields.js, wikilink.js), css/ (globals.css → output.css), vendor/
 data/                     DATA_DIR at runtime (database, tls, attachments, compendium); not code

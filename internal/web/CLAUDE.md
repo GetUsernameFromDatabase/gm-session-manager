@@ -10,7 +10,7 @@ A page region that updates in real time is a live view:
 
 1. Give its root `live(kind, id...)` (`views/live.go`). The page sends its `data-live` keys in the websocket hello.
 2. Add an entry to `liveKinds` in `live.go`: the topic kinds that change it (`own` for its id, `any` for any id) and a `load…Live` method (permission checks, HTML). A topic that must cross campaigns also goes in `everyCampaign` or `gmEverywhere` (`hub/hub.go`).
-3. For often-changing values, give the view model `Hot` (exactly the keys the markup binds) and `Shape` (the model with those values fixed) in `views/live.go`; mark elements with `bind("text=key")`, `bind("aria-pressed=key")`, etc. The hash of `Shape`'s markup covers everything else.
+3. For often-changing values, give the view model `Hot` (exactly the keys the markup binds) and `Shape` (the model with those values fixed) in `views/live.go` (the sheet's in `views/character_live.go`); mark elements with `bind("text=key")`, `bind("aria-pressed=key")`, etc. The hash of `Shape`'s markup covers everything else.
 4. Cover it in `TestLiveVisibility` and `TestLiveBindsMatchState` (`live_test.go`).
 
 ## Notes
