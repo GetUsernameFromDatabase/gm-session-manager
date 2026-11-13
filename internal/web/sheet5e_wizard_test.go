@@ -1205,4 +1205,9 @@ func TestWizardSpeciesVariant(t *testing.T) {
 		!slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Swim" }) {
 		t.Errorf("saved species %q from %q, speed %d, features %v", sh.Species, sh.SpeciesSource, sh.Speed, sh.Features)
 	}
+	// The finished step shows what the saved variant gave, not its base.
+	done := html.UnescapeString(e.do(t, http.MethodGet, base, player, nil, false).Body.String())
+	if !strings.Contains(done, "Already chosen: Half-Elf (Aquatic Elf Descent).") || !strings.Contains(done, "You swim.") || strings.Contains(done, "Skill Versatility") {
+		t.Error("the finished species step does not show the saved variant's card")
+	}
 }

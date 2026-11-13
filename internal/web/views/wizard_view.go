@@ -9,6 +9,7 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/web/components/combobox"
 	"gm-session-manager/internal/web/utils"
 
 	"github.com/a-h/templ"
@@ -143,6 +144,15 @@ func (v WizardView) skipped() []WizardStep {
 		}
 	}
 	return out
+}
+
+// pickItems label the picker's slugs with their names.
+func pickItems(opts []Option) []combobox.ItemData {
+	items := make([]combobox.ItemData, len(opts))
+	for i, o := range opts {
+		items[i] = combobox.ItemData{Value: o.Slug, Label: o.Name}
+	}
+	return items
 }
 
 func choiceName(c *WizardChoice) string {

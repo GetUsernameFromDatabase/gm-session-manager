@@ -9,6 +9,7 @@ import (
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
 	"gm-session-manager/internal/web/components/checkbox"
+	"gm-session-manager/internal/web/components/combobox"
 	"gm-session-manager/internal/web/components/field"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
@@ -104,7 +105,7 @@ templ stepLinks(v WizardView, steps []WizardStep, end string) {
 }
 
 // wizardDone is a step already applied: Next, and Change while the wizard
-// still holds the character from before it.
+// still holds the character from before it. Children show what it gave.
 templ wizardDone(v WizardView, msg string) {
 	<div class="mb-4 flex flex-wrap items-center gap-2 text-sm">
 		{{ _, redo := v.Sheet.C.Sheet.SetupSnapshots[v.Step] }}
@@ -124,6 +125,7 @@ templ wizardDone(v WizardView, msg string) {
 			}
 		}
 	</div>
+	{ children... }
 	<form method="post">
 		@wizardNav(v, "Next")
 	</form>
@@ -134,13 +136,34 @@ templ wizardDone(v WizardView, msg string) {
 templ wizardPick(v WizardView) {
 	if v.done(v.Step) {
 		{{ s := v.Sheet.C.Sheet }}
-		@wizardDone(v, "Already chosen: "+map[string]string{StepClass: s.ClassSummary() + " (level up for more classes)", StepSpecies: s.Species, StepBackground: s.Background}[v.Step]+".")
+		@wizardDone(v, "Already chosen: "+map[string]string{StepClass: s.ClassSummary() + " (level up for more classes)", StepSpecies: s.Species, StepBackground: s.Background}[v.Step]+".") {
+			if v.Choice != nil {
+				<div class="mb-4">
+					@wizardChoiceCard(v, v.Choice)
+				</div>
+			}
+		}
 	} else {
-		<form method="get" class="mb-6 flex flex-wrap items-center gap-2" onchange="this.submit()">
-			@label.Label(label.Props{For: "pick-trigger"}) {
+		// Only named inputs submit: the search box's own change on blur would reload mid-typing.
+		<form method="get" class="mb-6 flex flex-wrap items-center gap-2" onchange="if (event.target.name) this.submit()">
+			@label.Label(label.Props{For: "pick"}) {
 				{ map[string]string{StepClass: "Class", StepSpecies: "Species", StepBackground: "Background"}[v.Step] }
 			}
-			@formSelect("pick", "pick", optionItems("Choose…", v.Options, func(o Option) string { return o.Slug }), v.Picked, "", "")
+			@combobox.Combobox(combobox.Props{Name: "pick", DefaultValue: v.Picked, Items: pickItems(v.Options)}) {
+				@combobox.Input(combobox.InputProps{ID: "pick", Class: "w-64", Placeholder: "Type to search…"})
+				@combobox.Content() {
+					@combobox.Empty() {
+						No matches
+					}
+					@combobox.List() {
+						for _, o := range v.Options {
+							@combobox.Item(combobox.ItemProps{Value: o.Slug, Label: o.Name}) {
+								{ o.Name }
+							}
+						}
+					}
+				}
+			}
 			if len(v.Variants) > 0 {
 				@label.Label(label.Props{For: "variant-trigger"}) {
 					Variant
@@ -158,65 +181,71 @@ templ wizardPick(v WizardView) {
 		}
 		<form method="post" class="space-y-4">
 			<input type="hidden" name="pick" value={ utils.IfElse(v.Variant != "", v.Variant, v.Picked) }/>
-			if c := v.Choice; c != nil {
-				@card.Card() {
-					@card.Header() {
-						@card.Title() {
-							{ c.Name }
-						}
-					}
-					@card.Content() {
-						<div class="space-y-4 text-sm">
-							@wizardFacts(c)
-							if p := c.SkillPick; p != nil {
-								<fieldset { v.fieldErr().describedBy(FieldSkill)... } data-max-checked={ fmt.Sprint(p.Count) }>
-									<legend class="font-medium">
-										{ utils.IfElse(v.Step == StepClass, "Skills", "Class skills") }
-										<span class="font-normal text-muted-foreground">({ Choose(p.Count-len(p.Picked), len(p.Picked)+len(p.Known) > 0) })</span>
-									</legend>
-									if v.Step == StepBackground {
-										<p class="text-muted-foreground">This background gives a skill you picked with your class: pick another class skill.</p>
-									}
-									@v.fieldErr().at(FieldSkill)
-									<div class="mt-1 grid grid-cols-2 gap-1 sm:grid-cols-3">
-										for _, k := range p.Known {
-											@label.Label(label.Props{Class: "font-normal text-muted-foreground"}) {
-												@checkbox.Checkbox(checkbox.Props{DefaultChecked: true, Disabled: true})
-												{ skillName(k) } (known)
-											}
-										}
-										for _, k := range p.Options {
-											@checkField("skill", k, slices.Contains(utils.IfElse(v.Form != nil, v.Form["skill"], p.Picked), k)) {
-												{ skillName(k) }
-											}
-										}
-									</div>
-								</fieldset>
-							}
-							if len(c.Features) > 0 {
-								<div>
-									<div class="font-medium">You get</div>
-									for _, f := range c.Features {
-										<details class="mt-1">
-											<summary class="cursor-pointer">
-												{ f.Name }
-												if len(f.Effects) > 0 {
-													<span class="text-xs text-muted-foreground">{ strings.Join(f.Effects, "; ") }</span>
-												}
-											</summary>
-											<div class="mt-1 text-muted-foreground">
-												@markdown(f.Desc)
-											</div>
-										</details>
-									}
-								</div>
-							}
-						</div>
-					}
-				}
+			if v.Choice != nil {
+				@wizardChoiceCard(v, v.Choice)
 			}
 			@wizardNav(v, utils.IfElse(v.Choice != nil, "Choose "+choiceName(v.Choice), ""))
 		</form>
+	}
+}
+
+// wizardChoiceCard is what a class, species or background gives; with a
+// skill pick inside the step's form, read-only once applied.
+templ wizardChoiceCard(v WizardView, c *WizardChoice) {
+	@card.Card() {
+		@card.Header() {
+			@card.Title() {
+				{ c.Name }
+			}
+		}
+		@card.Content() {
+			<div class="space-y-4 text-sm">
+				@wizardFacts(c)
+				if p := c.SkillPick; p != nil {
+					<fieldset { v.fieldErr().describedBy(FieldSkill)... } data-max-checked={ fmt.Sprint(p.Count) }>
+						<legend class="font-medium">
+							{ utils.IfElse(v.Step == StepClass, "Skills", "Class skills") }
+							<span class="font-normal text-muted-foreground">({ Choose(p.Count-len(p.Picked), len(p.Picked)+len(p.Known) > 0) })</span>
+						</legend>
+						if v.Step == StepBackground {
+							<p class="text-muted-foreground">This background gives a skill you picked with your class: pick another class skill.</p>
+						}
+						@v.fieldErr().at(FieldSkill)
+						<div class="mt-1 grid grid-cols-2 gap-1 sm:grid-cols-3">
+							for _, k := range p.Known {
+								@label.Label(label.Props{Class: "font-normal text-muted-foreground"}) {
+									@checkbox.Checkbox(checkbox.Props{DefaultChecked: true, Disabled: true})
+									{ skillName(k) } (known)
+								}
+							}
+							for _, k := range p.Options {
+								@checkField("skill", k, slices.Contains(utils.IfElse(v.Form != nil, v.Form["skill"], p.Picked), k)) {
+									{ skillName(k) }
+								}
+							}
+						</div>
+					</fieldset>
+				}
+				if len(c.Features) > 0 {
+					<div>
+						<div class="font-medium">You get</div>
+						for _, f := range c.Features {
+							<details class="mt-1">
+								<summary class="cursor-pointer">
+									{ f.Name }
+									if len(f.Effects) > 0 {
+										<span class="text-xs text-muted-foreground">{ strings.Join(f.Effects, "; ") }</span>
+									}
+								</summary>
+								<div class="mt-1 text-muted-foreground">
+									@markdown(f.Desc)
+								</div>
+							</details>
+						}
+					</div>
+				}
+			</div>
+		}
 	}
 }
 

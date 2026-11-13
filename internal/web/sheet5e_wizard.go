@@ -100,24 +100,46 @@ func legacyBackground(sh dnd5e.Sheet) bool {
 // backgroundChoice is the sheet's background as the wizard shows it, for its
 // ability increases; nil without one in the compendium with three abilities.
 func (a *App) backgroundChoice(ctx context.Context, sh dnd5e.Sheet) (*views.WizardChoice, error) {
-	if sh.Background == "" {
+	c, err := a.chosenEntry(ctx, enum.KindBackground, sh.Background, sh.BackgroundSource)
+	if c == nil || len(c.Abilities) != 3 {
+		return nil, err
+	}
+	return c, nil
+}
+
+// chosenEntry is a class, species or background on the sheet as the wizard
+// shows it; nil when the compendium lacks it.
+func (a *App) chosenEntry(ctx context.Context, kind enum.CompendiumKind, name, pin string) (*views.WizardChoice, error) {
+	if name == "" {
 		return nil, nil
 	}
-	row, _, err := entryFor(ctx, a.Store.Queries, enum.KindBackground, compendium.Slugify(sh.Background), sh.BackgroundSource)
+	row, _, err := entryFor(ctx, a.Store.Queries, kind, compendium.Slugify(name), pin)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	data, err := compendium.DecodeData(enum.KindBackground, row.DataJson)
+	data, err := compendium.DecodeData(kind, row.DataJson)
 	if err != nil {
 		return nil, err
 	}
-	if c := wizardChoice(row, data); len(c.Abilities) == 3 {
-		return c, nil
+	return wizardChoice(row, data), nil
+}
+
+// doneChoice is what an applied class, species or background step gave: the
+// wizard's class is the sheet's first.
+func (a *App) doneChoice(ctx context.Context, sh dnd5e.Sheet, kind enum.CompendiumKind) (*views.WizardChoice, error) {
+	switch kind {
+	case enum.KindClass:
+		if len(sh.Classes) == 0 {
+			return nil, nil
+		}
+		return a.chosenEntry(ctx, kind, sh.Classes[0].Slug, sh.Classes[0].Source)
+	case enum.KindSpecies:
+		return a.chosenEntry(ctx, kind, sh.Species, sh.SpeciesSource)
 	}
-	return nil, nil
+	return a.chosenEntry(ctx, kind, sh.Background, sh.BackgroundSource)
 }
 
 // wizardChange redoes a step: the character goes back to how it was before
@@ -237,6 +259,10 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 			cr, err = a.creationChoices(ctx, s.C.Sheet, ch.CampaignID)
 			v.Choices = &cr.view
 		}
+		return v, err
+	}
+	if s.C.Sheet.SetUp(step) {
+		v.Choice, err = a.doneChoice(ctx, s.C.Sheet, kind)
 		return v, err
 	}
 	names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: ch.CampaignID})
