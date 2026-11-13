@@ -126,11 +126,10 @@ var randomIDs = regexp.MustCompile(`id-[A-Z2-7]{26}`)
 // liveHTML serves a view's fragments, for live.js to refetch a view whose
 // markup changed shape. Visitors name their request's secret instead of a
 // session.
-func (a *App) liveHTML(c *gin.Context) {
+func (a *App) liveHTML(c *gin.Context) error {
 	w, err := a.whoami(c)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	key := c.Query("v")
 	vc := viewerCtx{viewer: w.viewer, campaignID: w.campaignID()}
@@ -139,12 +138,11 @@ func (a *App) liveHTML(c *gin.Context) {
 	}
 	lv, err := a.loadLive(c.Request.Context(), vc, key)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if lv.html == nil {
 		c.Status(http.StatusNoContent)
-		return
+		return nil
 	}
 	// Compendium links follow the page's campaign: the GM's names it, a
 	// player's is always their own.
@@ -154,6 +152,7 @@ func (a *App) liveHTML(c *gin.Context) {
 	}
 	c.Request = c.Request.WithContext(views.WithCampaign(c.Request.Context(), campaign))
 	a.render(c, http.StatusOK, lv.html)
+	return nil
 }
 
 // loadLive loads a view as vc may see it. Players only get views of their

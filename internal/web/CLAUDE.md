@@ -31,6 +31,10 @@ Each note block is its own collaborative document (TipTap, `assets/js/notes.js`)
 - Narrow screens: a grid column needs `min-w-0` before a child's `max-w-full` or truncation works; in a `flex-wrap` row of icon + text + button, give the text `min-w-0 grow basis-48`.
 - `sr-only` (or any absolute) text in rows of an `overflow-*-auto` list needs a `relative` row, or the page scrolls far past the body.
 
+## Handlers
+
+A handler with an error path returns `error` and is registered as `a.h(a.x)`: a `userError` is a 422, `sql.ErrNoRows` a 404, anything else a 500. Access helpers that answer themselves (`characterAccess`, `idParam`, `bindForm`, …) stay `ok`-returning; the handler then does `return nil`. Never return a non-nil error after writing a response.
+
 ## Gotchas
 
 - `htmx.config.defaultSwapStyle` is `none`: every form that swaps HTML needs `hx-swap`. Never swap a fragment holding a `<form>` into another form.

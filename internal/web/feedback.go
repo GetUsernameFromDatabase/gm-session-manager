@@ -87,21 +87,21 @@ func (a *App) feedbackPath() string {
 	return a.feedbackDir()
 }
 
-func (a *App) sendFeedback(c *gin.Context) {
+func (a *App) sendFeedback(c *gin.Context) error {
 	key, ok := deviceKey(auth.FromContext(c))
 	if !ok {
 		a.fail(c, http.StatusForbidden, "Join a campaign to send feedback.")
-		return
+		return nil
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, views.MaxScreenshots*maxAttachmentBytes+1<<20)
 	var f feedbackForm
 	if err := c.ShouldBind(&f); err != nil {
 		if tooBig := new(http.MaxBytesError); errors.As(err, &tooBig) {
 			a.fail(c, http.StatusRequestEntityTooLarge, "The screenshots are too big. Attach smaller ones.")
-			return
+			return nil
 		}
 		a.fail(c, http.StatusBadRequest, "Give the report a title (up to 120 characters) and a description (up to 4000).")
-		return
+		return nil
 	}
 	var shots []*multipart.FileHeader
 	if form, err := c.MultipartForm(); err == nil {
@@ -109,7 +109,7 @@ func (a *App) sendFeedback(c *gin.Context) {
 	}
 	if len(shots) > views.MaxScreenshots {
 		a.fail(c, http.StatusBadRequest, fmt.Sprintf("Attach at most %d screenshots.", views.MaxScreenshots))
-		return
+		return nil
 	}
 	r := report{form: f, from: a.reporter(c, f.Player), sent: time.Now().UTC(), browser: browserName(c.Request.UserAgent())}
 	if f.Kind == views.FeedbackBug {
@@ -118,11 +118,11 @@ func (a *App) sendFeedback(c *gin.Context) {
 	}
 
 	if err := a.saveReport(r, shots); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	// Named like the dialog's button: "Send report" / "Send idea".
 	a.render(c, http.StatusOK, views.Toast(map[string]string{views.FeedbackBug: "Report sent.", views.FeedbackIdea: "Idea sent."}[f.Kind], false))
+	return nil
 }
 
 // saveReport writes r into a new folder (removed again if that fails) and

@@ -23,14 +23,14 @@ const maxCharacterFileBytes = 2 << 20
 // removeCharacter deletes a character for its player or the GM. It is only
 // hidden: its devices are logged out and it leaves combat, and the GM can
 // restore it with its notes and images.
-func (a *App) removeCharacter(c *gin.Context) {
+func (a *App) removeCharacter(c *gin.Context) error {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	if !perm.CanDeleteCharacter(w.viewer, ch.ID) {
 		a.fail(c, http.StatusForbidden, "Only the player or the GM deletes a character.")
-		return
+		return nil
 	}
 	var encounters []int64
 	err := a.Store.InTx(c.Request.Context(), func(q *sqlc.Queries) error {
@@ -47,8 +47,7 @@ func (a *App) removeCharacter(c *gin.Context) {
 		return q.DeleteCharacterCombatants(c.Request.Context(), nullID(ch.ID))
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.Hub.CloseCharacter(ch.ID)
 	topics := []hub.Topic{{Kind: hub.TopicCampaign, ID: ch.CampaignID}, {Kind: hub.TopicNotes, ID: ch.CampaignID}}
@@ -58,9 +57,10 @@ func (a *App) removeCharacter(c *gin.Context) {
 	a.Hub.Publish(ch.CampaignID, topics...)
 	if w.viewer.IsGM {
 		a.render(c, http.StatusOK, views.Flash("Deleted "+ch.Name+". You can restore it below.", false))
-		return
+		return nil
 	}
 	redirect(c, PathHome)
+	return nil
 }
 
 // deletedCharacter loads a deleted character for the GM.
@@ -73,73 +73,71 @@ func (a *App) deletedCharacter(c *gin.Context) (sqlc.Character, bool) {
 	return ch, a.found(c, err)
 }
 
-func (a *App) restoreCharacter(c *gin.Context) {
+func (a *App) restoreCharacter(c *gin.Context) error {
 	ch, ok := a.deletedCharacter(c)
 	if !ok {
-		return
+		return nil
 	}
 	if err := a.Store.RestoreCharacter(c.Request.Context(), ch.ID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.changed(c, ch.CampaignID, hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID}, hub.Topic{Kind: hub.TopicNotes, ID: ch.CampaignID})
+	return nil
 }
 
 // downloadCharacter is a character's file, in the shape the import reads.
-func (a *App) downloadCharacter(c *gin.Context) {
+func (a *App) downloadCharacter(c *gin.Context) error {
 	ch, ok := a.deletedCharacter(c)
 	if !ok {
-		return
+		return nil
 	}
 	body, err := export.NewCharacterFile(ch).JSON()
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	c.Header("Content-Disposition", `attachment; filename="`+path.Base(export.CharacterFileName(ch))+`"`)
 	c.Data(http.StatusOK, "application/json", body)
+	return nil
 }
 
 // importCharacter adds a character from a downloaded or exported file to
 // the campaign, as a new character with no devices.
-func (a *App) importCharacter(c *gin.Context) {
+func (a *App) importCharacter(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	camp, err := a.Store.GetCampaign(c.Request.Context(), id)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCharacterFileBytes+1<<20)
 	fh, err := c.FormFile("file")
 	if err != nil {
 		a.fail(c, http.StatusUnprocessableEntity, "Choose a character file (.json).")
-		return
+		return nil
 	}
 	f, err := fh.Open()
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	defer func() { _ = f.Close() }()
 	body, err := io.ReadAll(io.LimitReader(f, maxCharacterFileBytes))
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	cf, err := parseCharacterFile(body)
 	if err != nil {
 		a.fail(c, http.StatusUnprocessableEntity, "That is not a character file: "+err.Error())
-		return
+		return nil
 	}
 	if _, err := a.Store.CreateCharacterWithSheet(c.Request.Context(), sqlc.CreateCharacterWithSheetParams{
 		CampaignID: camp.ID, Name: cf.Name, System: cf.System, Hp: cf.HP, MaxHp: cf.MaxHP, TempHp: cf.TempHP, SheetJson: string(cf.Sheet),
 	}); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.changed(c, camp.ID, hub.Topic{Kind: hub.TopicCampaign, ID: camp.ID})
+	return nil
 }
 
 // parseCharacterFile reads and checks a character file: its fields and the

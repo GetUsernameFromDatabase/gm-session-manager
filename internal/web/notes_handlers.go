@@ -42,21 +42,20 @@ type noteForm struct {
 	Kind  enum.NoteKind `form:"kind"  validate:"required,oneof=game_session generic"`
 }
 
-func (a *App) notesPage(c *gin.Context) {
+func (a *App) notesPage(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	w, camp, ok := a.campaignAccess(c, id)
 	if !ok {
-		return
+		return nil
 	}
 	l := a.layout(w, "Notes", views.NavNotes, &camp, true)
 	ctx := c.Request.Context()
 	notes, err := a.noteList(ctx, w.viewer, id)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	v := views.NoteListView{CampaignID: id, Notes: notes, Query: strings.TrimSpace(c.Query("q")), CanCreate: true}
 	if v.Query != "" {
@@ -64,27 +63,27 @@ func (a *App) notesPage(c *gin.Context) {
 			CampaignID: id, Pattern: "%" + v.Query + "%", IsGm: w.isGM(), CharacterID: w.viewer.CharacterID, MaxResults: maxSearchHits,
 		})
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 	}
 	a.render(c, http.StatusOK, views.NotesPage(l, v))
+	return nil
 }
 
 // createNote makes a note with one block: GM-only for the GM, private for
 // a player. Visibility can be changed per block afterwards.
-func (a *App) createNote(c *gin.Context) {
+func (a *App) createNote(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	w, _, ok := a.campaignAccess(c, id)
 	if !ok {
-		return
+		return nil
 	}
 	var form noteForm
 	if !a.bindForm(c, &form) {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	owner, vis := int64(0), enum.VisGM
@@ -102,11 +101,11 @@ func (a *App) createNote(c *gin.Context) {
 		return err
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.Hub.Publish(id, hub.Topic{Kind: hub.TopicNotes, ID: id})
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/notes/%d", note.ID))
+	return nil
 }
 
 // noteAccess loads a note in a campaign the requester belongs to. Whether
@@ -137,33 +136,31 @@ func (a *App) manageNote(c *gin.Context) (sqlc.Note, bool) {
 	return note, true
 }
 
-func (a *App) notePage(c *gin.Context) {
+func (a *App) notePage(c *gin.Context) error {
 	w, note, camp, ok := a.noteAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	l := a.layout(w, note.Title, views.NavNotes, &camp, true)
 	l.Modules = []string{"/assets/js/notes.js"}
 	ctx := c.Request.Context()
 	nv, visible, err := a.noteView(ctx, w.viewer, note)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if !visible {
 		a.fail(c, http.StatusNotFound, "Not found.")
-		return
+		return nil
 	}
 	nv.Backlinks, err = a.backlinks(ctx, w, note.CampaignID, enum.LinkNote, note.ID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if nv.EntityLinks, err = a.entityMentions(ctx, w, enum.LinkNote, note.ID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.NotePage(l, nv))
+	return nil
 }
 
 // entityMentions lists the NPCs whose fields link a target, as the viewer
@@ -183,33 +180,33 @@ func (a *App) backlinks(ctx context.Context, w who, campaignID int64, targetType
 	return slices.DeleteFunc(rows, func(r sqlc.ListBacklinksRow) bool { return targetType == enum.LinkNote && r.ID == targetID }), nil
 }
 
-func (a *App) renameNote(c *gin.Context) {
+func (a *App) renameNote(c *gin.Context) error {
 	note, ok := a.manageNote(c)
 	if !ok {
-		return
+		return nil
 	}
 	var form noteForm
 	if !a.bindForm(c, &form) {
-		return
+		return nil
 	}
 	if err := a.Store.RenameNote(c.Request.Context(), sqlc.RenameNoteParams{ID: note.ID, Title: strings.TrimSpace(form.Title), Kind: form.Kind}); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.changed(c, note.CampaignID, hub.Topic{Kind: hub.TopicNote, ID: note.ID}, hub.Topic{Kind: hub.TopicNotes, ID: note.CampaignID})
+	return nil
 }
 
-func (a *App) deleteNote(c *gin.Context) {
+func (a *App) deleteNote(c *gin.Context) error {
 	note, ok := a.manageNote(c)
 	if !ok {
-		return
+		return nil
 	}
 	if err := a.Store.DeleteNote(c.Request.Context(), note.ID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.Hub.Publish(note.CampaignID, hub.Topic{Kind: hub.TopicNotes, ID: note.CampaignID})
 	redirect(c, fmt.Sprintf("/campaigns/%d/notes", note.CampaignID))
+	return nil
 }
 
 // blockAccessForm is the visibility form shared by new and existing blocks.
@@ -254,14 +251,14 @@ func setAudience(ctx context.Context, q *sqlc.Queries, blockID int64, audience [
 
 // addBlock is open to anyone readAccessForm lets set a visibility: the
 // note's manager, or a player in the GM's game session note.
-func (a *App) addBlock(c *gin.Context) {
+func (a *App) addBlock(c *gin.Context) error {
 	w, note, _, ok := a.noteAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	form, ok := a.readAccessForm(c, w, note)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -277,10 +274,10 @@ func (a *App) addBlock(c *gin.Context) {
 		return q.TouchNote(ctx, note.ID)
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.changed(c, note.CampaignID, hub.Topic{Kind: hub.TopicNote, ID: note.ID}, hub.Topic{Kind: hub.TopicNotes, ID: note.CampaignID})
+	return nil
 }
 
 // loadBlock reads a block with what the permission rules need.
@@ -343,18 +340,18 @@ func (a *App) blockFor(c *gin.Context, need blockAccessLevel) (who, sqlc.GetBloc
 	return w, b, pb, true
 }
 
-func (a *App) blockAccess(c *gin.Context) {
+func (a *App) blockAccess(c *gin.Context) error {
 	w, b, _, ok := a.blockFor(c, needManage)
 	if !ok {
-		return
+		return nil
 	}
 	note, err := a.Store.GetNote(c.Request.Context(), b.NoteID)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	form, ok := a.readAccessForm(c, w, note)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -364,16 +361,16 @@ func (a *App) blockAccess(c *gin.Context) {
 		return setAudience(ctx, q, b.ID, form.Audience)
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.changed(c, b.CampaignID, hub.Topic{Kind: hub.TopicNote, ID: b.NoteID}, hub.Topic{Kind: hub.TopicNotes, ID: b.CampaignID})
+	return nil
 }
 
-func (a *App) moveBlock(c *gin.Context) {
+func (a *App) moveBlock(c *gin.Context) error {
 	w, b, _, ok := a.blockFor(c, needArrange)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -399,22 +396,22 @@ func (a *App) moveBlock(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.changed(c, b.CampaignID, hub.Topic{Kind: hub.TopicNote, ID: b.NoteID})
+	return nil
 }
 
-func (a *App) deleteBlock(c *gin.Context) {
+func (a *App) deleteBlock(c *gin.Context) error {
 	_, b, _, ok := a.blockFor(c, needManage)
 	if !ok {
-		return
+		return nil
 	}
 	if err := a.Store.DeleteBlock(c.Request.Context(), b.ID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.changed(c, b.CampaignID, hub.Topic{Kind: hub.TopicNote, ID: b.NoteID}, hub.Topic{Kind: hub.TopicNotes, ID: b.CampaignID})
+	return nil
 }
 
 // stepsPayload is a run of ProseMirror steps starting after Version.
@@ -453,10 +450,10 @@ func (a *App) stepsSince(ctx context.Context, q *sqlc.Queries, b sqlc.GetBlockRo
 
 // blockDoc returns the latest snapshot plus the steps after it, so the
 // editor can rebuild the current version.
-func (a *App) blockDoc(c *gin.Context) {
+func (a *App) blockDoc(c *gin.Context) error {
 	w, b, pb, ok := a.blockFor(c, needRead)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	var steps stepsPayload
@@ -471,35 +468,36 @@ func (a *App) blockDoc(c *gin.Context) {
 		return err
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	c.JSON(http.StatusOK, gin.H{
 		keyDoc: json.RawMessage(b.DocJson), keyDocVersion: b.DocVersion, keySteps: steps.Steps,
 		keyClientIDs: steps.ClientIDs, keyEditable: perm.CanEditBlock(w.viewer, pb),
 	})
+	return nil
 }
 
 // blockSteps lets a client that missed pushes catch up.
-func (a *App) blockSteps(c *gin.Context) {
+func (a *App) blockSteps(c *gin.Context) error {
 	_, b, _, ok := a.blockFor(c, needRead)
 	if !ok {
-		return
+		return nil
 	}
 	since, err := strconv.ParseInt(c.Query("since"), 10, 64)
 	if err != nil {
 		c.Status(http.StatusBadRequest)
-		return
+		return nil
 	}
 	steps, ok, err := a.stepsSince(c.Request.Context(), a.Store.Queries, b, since)
 	switch {
 	case err != nil:
-		a.serverError(c, err)
+		return err
 	case !ok:
 		c.Status(http.StatusGone)
 	default:
 		c.JSON(http.StatusOK, steps)
 	}
+	return nil
 }
 
 type submitBody struct {
@@ -511,16 +509,16 @@ type submitBody struct {
 // submitSteps is the collab authority: steps based on the current version
 // are appended and broadcast; anything else gets 409 with the steps the
 // client is missing, so it can rebase and retry.
-func (a *App) submitSteps(c *gin.Context) {
+func (a *App) submitSteps(c *gin.Context) error {
 	_, b, _, ok := a.blockFor(c, needEdit)
 	if !ok {
-		return
+		return nil
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCollabBody)
 	var body submitBody
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{keyError: err.Error()})
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	var conflict *stepsPayload
@@ -549,14 +547,13 @@ func (a *App) submitSteps(c *gin.Context) {
 	})
 	switch {
 	case err != nil:
-		a.serverError(c, err)
-		return
+		return err
 	case gone:
 		c.Status(http.StatusGone)
-		return
+		return nil
 	case conflict != nil:
 		c.JSON(http.StatusConflict, conflict)
-		return
+		return nil
 	}
 
 	ids := make([]string, len(body.Steps))
@@ -565,6 +562,7 @@ func (a *App) submitSteps(c *gin.Context) {
 	}
 	a.broadcastSteps(ctx, b, stepsPayload{Type: "steps", Block: b.ID, Version: body.Version, Steps: body.Steps, ClientIDs: ids})
 	c.JSON(http.StatusOK, gin.H{keyVersion: body.Version + int64(len(body.Steps))})
+	return nil
 }
 
 // broadcastSteps sends steps to subscribed clients that may still read the
@@ -599,16 +597,16 @@ type snapshotBody struct {
 // blockSnapshot stores a client's full document if it is newer than the
 // stored one, trims the steps behind it and records its links. Trusting
 // the client here is accepted for a LAN of friends.
-func (a *App) blockSnapshot(c *gin.Context) {
+func (a *App) blockSnapshot(c *gin.Context) error {
 	w, b, _, ok := a.blockFor(c, needEdit)
 	if !ok {
-		return
+		return nil
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCollabBody)
 	var body snapshotBody
 	if err := c.ShouldBindJSON(&body); err != nil || !json.Valid(body.Doc) {
 		c.Status(http.StatusBadRequest)
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -639,10 +637,10 @@ func (a *App) blockSnapshot(c *gin.Context) {
 		return q.TouchNote(ctx, b.NoteID)
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // inlineTypes are served inline; everything else downloads.
@@ -872,36 +870,36 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 	return items[:min(len(items), maxLinkSuggestions)], nil
 }
 
-func (a *App) linkSuggestions(c *gin.Context) {
+func (a *App) linkSuggestions(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	w, _, ok := a.campaignAccess(c, id)
 	if !ok {
-		return
+		return nil
 	}
 	items, err := a.linkItems(c.Request.Context(), w, id, c.Query("q"))
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	c.JSON(http.StatusOK, items)
+	return nil
 }
 
-func (a *App) switcher(c *gin.Context) {
+func (a *App) switcher(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	w, _, ok := a.campaignAccess(c, id)
 	if !ok {
-		return
+		return nil
 	}
 	items, err := a.linkItems(c.Request.Context(), w, id, c.Query("q"))
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.SwitcherResults(items))
+	return nil
 }

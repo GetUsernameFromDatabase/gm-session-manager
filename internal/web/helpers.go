@@ -152,19 +152,31 @@ func (a *App) campaignAccess(c *gin.Context, campaignID int64) (who, sqlc.Campai
 	return w, camp, true
 }
 
-// found handles a single-row lookup error: false (with a response written)
-// for no rows or a real error.
-func (a *App) found(c *gin.Context, err error) bool {
+// h adapts a handler that returns an error: a userError is a 422, a
+// missing row a 404, anything else a server error.
+func (a *App) h(fn func(c *gin.Context) error) gin.HandlerFunc {
+	return func(c *gin.Context) { a.failed(c, fn(c)) }
+}
+
+// failed answers err as h does; false (nothing written) when err is nil.
+func (a *App) failed(c *gin.Context, err error) bool {
+	var ue userError
 	switch {
 	case err == nil:
-		return true
+		return false
+	case errors.As(err, &ue):
+		a.fail(c, http.StatusUnprocessableEntity, ue.Error())
 	case errors.Is(err, sql.ErrNoRows):
 		a.fail(c, http.StatusNotFound, "Not found.")
 	default:
 		a.serverError(c, err)
 	}
-	return false
+	return true
 }
+
+// found handles a single-row lookup error: false (with a response written)
+// for no rows or a real error.
+func (a *App) found(c *gin.Context, err error) bool { return !a.failed(c, err) }
 
 // idParam parses a numeric route parameter, answering 404 when malformed.
 func (a *App) idParam(c *gin.Context, name string) (int64, bool) {

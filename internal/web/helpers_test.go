@@ -1,10 +1,54 @@
 package web
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/mileusna/useragent"
 )
+
+func TestHandlerErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		status int // a plain request's; htmx gets 422 for every failure
+		body   string
+	}{
+		{"nil", nil, http.StatusOK, ""},
+		{"user", userError{errors.New("pick one")}, http.StatusUnprocessableEntity, "pick one"},
+		{"field", fieldError{userError{errors.New("too long")}, "name"}, http.StatusUnprocessableEntity, "too long"},
+		{"no rows", fmt.Errorf("load: %w", sql.ErrNoRows), http.StatusNotFound, "Not found."},
+		{"other", errors.New("disk full"), http.StatusInternalServerError, "Something went wrong"},
+	}
+	a := &App{}
+	for _, tt := range tests {
+		for _, htmx := range []bool{false, true} {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/x", nil)
+			if htmx {
+				c.Request.Header.Set("HX-Request", strTrue)
+			}
+			a.h(func(*gin.Context) error { return tt.err })(c)
+			want := tt.status
+			if htmx && tt.err != nil {
+				want = http.StatusUnprocessableEntity
+			}
+			if w.Code != want || !strings.Contains(w.Body.String(), tt.body) {
+				t.Errorf("%s (htmx %v): %d %q, want %d containing %q", tt.name, htmx, w.Code, w.Body.String(), want, tt.body)
+			}
+			if tt.err == nil && w.Body.Len() != 0 {
+				t.Errorf("%s (htmx %v): wrote %q", tt.name, htmx, w.Body.String())
+			}
+		}
+	}
+}
 
 func TestUserAgent(t *testing.T) {
 	tests := []struct {

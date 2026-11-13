@@ -19,42 +19,42 @@ import (
 // maxEntityFields bounds the editor form.
 const maxEntityFields = 100
 
-func (a *App) entitiesPage(c *gin.Context) {
+func (a *App) entitiesPage(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	w, camp, ok := a.campaignAccess(c, id)
 	if !ok {
-		return
+		return nil
 	}
 	l := a.layout(w, "NPCs", views.NavEntities, &camp, true)
 	v, err := a.entityList(c.Request.Context(), w.viewer, id)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.EntitiesPage(l, v))
+	return nil
 }
 
-func (a *App) createEntity(c *gin.Context) {
+func (a *App) createEntity(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	var form nameForm
 	if !a.bindForm(c, &form) {
-		return
+		return nil
 	}
 	e, err := a.Store.CreateEntity(c.Request.Context(), sqlc.CreateEntityParams{
 		CampaignID: id, Kind: enum.EntityNPC, Name: strings.TrimSpace(form.Name), FieldsJson: "{}",
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.Hub.Publish(id, hub.Topic{Kind: hub.TopicEntities, ID: id})
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/entities/%d", e.ID))
+	return nil
 }
 
 // entityParam loads :entity for the GM routes.
@@ -67,54 +67,52 @@ func (a *App) entityParam(c *gin.Context) (sqlc.Entity, bool) {
 	return e, a.found(c, err)
 }
 
-func (a *App) entityPage(c *gin.Context) {
+func (a *App) entityPage(c *gin.Context) error {
 	id, ok := a.idParam(c, "entity")
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	row, err := a.Store.GetEntity(ctx, id)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	w, camp, ok := a.campaignAccess(c, row.CampaignID)
 	if !ok {
-		return
+		return nil
 	}
 	ev, visible, err := a.entityView(ctx, w.viewer, id)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if !visible {
 		a.fail(c, http.StatusNotFound, "Not found.")
-		return
+		return nil
 	}
 	if ev.Backlinks, err = a.backlinks(ctx, w, row.CampaignID, enum.LinkEntity, id); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if ev.EntityLinks, err = a.entityMentions(ctx, w, enum.LinkEntity, id); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	l := a.layout(w, ev.E.Name, views.NavEntities, &camp, true)
 	if w.isGM() {
 		l.Modules = []string{"/assets/js/fields.js"}
 	}
 	a.render(c, http.StatusOK, views.EntityPage(l, ev))
+	return nil
 }
 
 // updateEntity saves the editor form. Rows without a key, and suggestion
 // rows left empty, are dropped.
-func (a *App) updateEntity(c *gin.Context) {
+func (a *App) updateEntity(c *gin.Context) error {
 	e, ok := a.entityParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	var form nameForm
 	if !a.bindForm(c, &form) {
-		return
+		return nil
 	}
 	count, _ := formInt(c, "count")
 	fields := perm.Fields{}
@@ -128,8 +126,7 @@ func (a *App) updateEntity(c *gin.Context) {
 	}
 	raw, err := json.Marshal(fields)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	ctx := c.Request.Context()
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -142,11 +139,11 @@ func (a *App) updateEntity(c *gin.Context) {
 		return saveFieldLinks(ctx, q, e.ID, fields)
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	// A toast, as the page flash is far above the Save bar.
 	a.changedWith(c, e.CampaignID, views.Toast("Saved "+strings.TrimSpace(form.Name)+".", false), entityTopics(e)...)
+	return nil
 }
 
 // saveFieldLinks replaces an NPC's field [[links]] with those in fields.
@@ -175,55 +172,54 @@ func entityTopics(e sqlc.Entity) []hub.Topic {
 	return []hub.Topic{{Kind: hub.TopicEntity, ID: e.ID}, {Kind: hub.TopicEntities, ID: e.CampaignID}}
 }
 
-func (a *App) deleteEntity(c *gin.Context) {
+func (a *App) deleteEntity(c *gin.Context) error {
 	e, ok := a.entityParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	if err := a.Store.DeleteEntity(c.Request.Context(), e.ID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.Hub.Publish(e.CampaignID, entityTopics(e)...)
 	redirect(c, fmt.Sprintf("/campaigns/%d/entities", e.CampaignID))
+	return nil
 }
 
 // imageToEntity makes the image a look of the chosen character or NPC, or
 // of a new NPC named after the image with its description as a hidden field.
-func (a *App) imageToEntity(c *gin.Context) {
+func (a *App) imageToEntity(c *gin.Context) error {
 	img, ok := a.imageParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	if id, ok := formInt(c, "character"); ok {
 		ch, err := a.Store.GetCharacter(ctx, id)
-		if !a.found(c, err) {
-			return
+		if err != nil {
+			return err
 		}
-		if a.commandFailed(c, linkCharacterLook(ctx, a.Store.Queries, ch, img.CampaignID, img.ID)) {
-			return
+		if err := linkCharacterLook(ctx, a.Store.Queries, ch, img.CampaignID, img.ID); err != nil {
+			return err
 		}
 		topics, err := a.characterTopics(ctx, ch.ID)
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		a.Hub.Publish(ch.CampaignID, topics...)
 		redirect(c, fmt.Sprintf("/images/%d", img.ID))
-		return
+		return nil
 	}
 	if id, ok := formInt(c, "entity"); ok {
 		e, err := a.Store.GetEntity(ctx, id)
-		if !a.found(c, err) {
-			return
+		if err != nil {
+			return err
 		}
-		if a.commandFailed(c, linkEntityLook(ctx, a.Store.Queries, e, img.CampaignID, img.ID)) {
-			return
+		if err := linkEntityLook(ctx, a.Store.Queries, e, img.CampaignID, img.ID); err != nil {
+			return err
 		}
 		a.Hub.Publish(e.CampaignID, hub.Topic{Kind: hub.TopicEntity, ID: e.ID})
 		redirect(c, fmt.Sprintf("/images/%d", img.ID))
-		return
+		return nil
 	}
 	fields := perm.Fields{}
 	if d := strings.TrimSpace(img.Description.String); d != "" {
@@ -231,8 +227,7 @@ func (a *App) imageToEntity(c *gin.Context) {
 	}
 	raw, err := json.Marshal(fields)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	var e sqlc.Entity
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -242,29 +237,31 @@ func (a *App) imageToEntity(c *gin.Context) {
 		}
 		return linkEntityLook(ctx, q, e, img.CampaignID, img.ID)
 	})
-	if a.commandFailed(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	a.Hub.Publish(img.CampaignID, hub.Topic{Kind: hub.TopicEntities, ID: img.CampaignID})
 	redirect(c, fmt.Sprintf("/entities/%d", e.ID))
+	return nil
 }
 
 // addEntityLook links an image of the campaign to the NPC.
-func (a *App) addEntityLook(c *gin.Context) {
+func (a *App) addEntityLook(c *gin.Context) error {
 	e, ok := a.entityParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	id, _ := formInt(c, "image")
 	img, err := a.Store.GetImage(ctx, id)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
-	if a.commandFailed(c, linkEntityLook(ctx, a.Store.Queries, e, img.CampaignID, img.ID)) {
-		return
+	if err := linkEntityLook(ctx, a.Store.Queries, e, img.CampaignID, img.ID); err != nil {
+		return err
 	}
 	a.entityChanged(c, e)
+	return nil
 }
 
 // linkEntityLook links an image to an NPC of the same campaign.
@@ -277,14 +274,14 @@ func linkEntityLook(ctx context.Context, q *sqlc.Queries, e sqlc.Entity, imageCa
 
 // entityLook makes a look current, toggles whether players see it, or
 // unlinks it.
-func (a *App) entityLook(c *gin.Context) {
+func (a *App) entityLook(c *gin.Context) error {
 	e, ok := a.entityParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	imageID, ok := a.idParam(c, "image")
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	key := struct{ EntityID, ImageID int64 }{e.ID, imageID}
@@ -298,36 +295,37 @@ func (a *App) entityLook(c *gin.Context) {
 		},
 		unlink: func(q *sqlc.Queries) error { return q.UnlinkEntityImage(ctx, sqlc.UnlinkEntityImageParams(key)) },
 	})
-	if a.commandFailed(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	a.entityChanged(c, e)
+	return nil
 }
 
 // linkEntity sets or clears the compendium statblock behind an NPC.
-func (a *App) linkEntity(c *gin.Context) {
+func (a *App) linkEntity(c *gin.Context) error {
 	e, ok := a.entityParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	ref, _ := formInt(c, "entry")
 	ctx := c.Request.Context()
 	if ref != 0 {
 		entry, err := a.Store.GetCompendiumEntry(ctx, ref)
-		if !a.found(c, err) {
-			return
+		if err != nil {
+			return err
 		}
 		if entry.Kind != enum.KindMonster {
 			a.fail(c, http.StatusUnprocessableEntity, "Link a monster statblock.")
-			return
+			return nil
 		}
 	}
 	err := a.Store.UpdateEntity(ctx, sqlc.UpdateEntityParams{
 		ID: e.ID, Name: e.Name, IsRevealed: e.IsRevealed, FieldsJson: e.FieldsJson, CompendiumRef: nullID(ref),
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.entityChanged(c, e)
+	return nil
 }

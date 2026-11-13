@@ -111,31 +111,27 @@ func inCampaign(camp *sqlc.Campaign, f sqlc.ListAttachmentFilesRow) bool {
 	return camp == nil || f.CampaignID == camp.ID
 }
 
-func (a *App) filesPage(c *gin.Context) {
+func (a *App) filesPage(c *gin.Context) error {
 	w, err := a.whoami(c)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	camp, ok := a.filesCampaign(c)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	uses, err := a.attachmentUses(ctx)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	files, err := a.Store.ListAttachmentFiles(ctx)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	campaigns, err := a.Store.ListCampaigns(ctx)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	l := a.layout(w, "Files", views.NavFiles, camp, false)
 	l.Switch = &views.CampaignSwitch{Campaigns: campaigns, Base: views.FilesBase, All: "All campaigns"}
@@ -153,46 +149,44 @@ func (a *App) filesPage(c *gin.Context) {
 		})
 	}
 	a.render(c, http.StatusOK, views.FilesPage(l, v))
+	return nil
 }
 
 // deleteFile deletes one attachment, if nothing uses it any more.
-func (a *App) deleteFile(c *gin.Context) {
+func (a *App) deleteFile(c *gin.Context) error {
 	id, ok := a.idParam(c, "attachment")
 	if !ok {
-		return
+		return nil
 	}
-	a.deleteUnused(c, func(f sqlc.ListAttachmentFilesRow) bool { return f.ID == id })
+	return a.deleteUnused(c, func(f sqlc.ListAttachmentFilesRow) bool { return f.ID == id })
 }
 
-func (a *App) deleteUnusedFiles(c *gin.Context) {
-	a.deleteUnused(c, func(sqlc.ListAttachmentFilesRow) bool { return true })
+func (a *App) deleteUnusedFiles(c *gin.Context) error {
+	return a.deleteUnused(c, func(sqlc.ListAttachmentFilesRow) bool { return true })
 }
 
 // deleteUnused deletes the unused attachments of the path's campaign that
 // pick chooses, row and file, then reloads the Files page. A file used again
 // since the page was shown is kept.
-func (a *App) deleteUnused(c *gin.Context, pick func(sqlc.ListAttachmentFilesRow) bool) {
+func (a *App) deleteUnused(c *gin.Context, pick func(sqlc.ListAttachmentFilesRow) bool) error {
 	camp, ok := a.filesCampaign(c)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	files, err := a.unusedAttachments(ctx)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	for _, f := range files {
 		if !inCampaign(camp, f) || !pick(f) {
 			continue
 		}
 		if err := a.Store.DeleteAttachment(ctx, f.ID); err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		if err := os.Remove(filepath.Join(a.attachmentsDir(), filepath.Base(f.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
-			a.serverError(c, err)
-			return
+			return err
 		}
 	}
 	// Back to the tab the delete came from; Delete unused only shows in Unused.
@@ -201,4 +195,5 @@ func (a *App) deleteUnused(c *gin.Context, pick func(sqlc.ListAttachmentFilesRow
 		tab = views.FilesTabAll
 	}
 	redirect(c, views.FilesBase(viewerCampaign(camp))+"?tab="+tab)
+	return nil
 }

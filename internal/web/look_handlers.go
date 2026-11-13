@@ -89,19 +89,19 @@ func (a *App) lookOwner(c *gin.Context) (sqlc.Character, bool) {
 
 // addCharacterLook stores a player's upload or link as a campaign image and
 // makes it a look of their character.
-func (a *App) addCharacterLook(c *gin.Context) {
+func (a *App) addCharacterLook(c *gin.Context) error {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAttachmentBytes+1<<20)
 	ch, ok := a.lookOwner(c)
 	if !ok {
-		return
+		return nil
 	}
 	var form lookForm
 	if !a.bindForm(c, &form) {
-		return
+		return nil
 	}
 	url, attachment, ok := a.imageSource(c, form.URL, sqlc.GetImageRow{CampaignID: ch.CampaignID})
 	if !ok {
-		return
+		return nil
 	}
 	name := strings.TrimSpace(form.Name)
 	if name == "" {
@@ -115,22 +115,23 @@ func (a *App) addCharacterLook(c *gin.Context) {
 		}
 		return linkCharacterLook(ctx, q, ch, img.CampaignID, img.ID)
 	})
-	if a.commandFailed(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	a.characterChanged(c, ch)
+	return nil
 }
 
 // characterLook makes one of a character's looks current, reveals or hides
 // it, or unlinks it (the image stays among the campaign's images).
-func (a *App) characterLook(c *gin.Context) {
+func (a *App) characterLook(c *gin.Context) error {
 	ch, ok := a.lookOwner(c)
 	if !ok {
-		return
+		return nil
 	}
 	imageID, ok := a.idParam(c, "image")
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	key := struct{ CharacterID, ImageID int64 }{ch.ID, imageID}
@@ -146,10 +147,11 @@ func (a *App) characterLook(c *gin.Context) {
 			return q.UnlinkCharacterImage(ctx, sqlc.UnlinkCharacterImageParams(key))
 		},
 	})
-	if a.commandFailed(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	a.characterChanged(c, ch)
+	return nil
 }
 
 // toLook converts a look row, an NPC's or a character's.

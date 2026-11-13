@@ -42,22 +42,22 @@ func (a *App) characterAccess(c *gin.Context) (who, sqlc.Character, bool) {
 	return w, ch, a.found(c, err)
 }
 
-func (a *App) characterPage(c *gin.Context) {
+func (a *App) characterPage(c *gin.Context) error {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	camp, err := a.Store.GetCampaign(c.Request.Context(), ch.CampaignID)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	l := a.layout(w, ch.Name, views.NavCharacter, &camp, true)
 	s, err := a.sheetView(c.Request.Context(), w.viewer, ch)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.CharacterPage(l, s))
+	return nil
 }
 
 // commandText builds the command from the sheet's forms: a typed command,
@@ -172,48 +172,47 @@ func parseCommand(c *gin.Context) (dnd5e.Command, error) {
 }
 
 // commandBuilder renders one form of the command builder dialog.
-func (a *App) commandBuilder(c *gin.Context) {
+func (a *App) commandBuilder(c *gin.Context) error {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	if !perm.CanCharacter(w.viewer, ch.ID, perm.ScopeSheet) {
 		a.fail(c, http.StatusForbidden, "Only the player changes their character.")
-		return
+		return nil
 	}
 	s, err := a.sheetView(c.Request.Context(), w.viewer, ch)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	x, err := a.builderExtra(c, ch.CampaignID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.CommandBuilder(s, c.Query("verb"), c.Query("op"), c.Query(argSubject), x))
+	return nil
 }
 
 // characterCommand applies one command in a transaction and pushes the
 // result to everyone who can see the character.
-func (a *App) characterCommand(c *gin.Context) {
+func (a *App) characterCommand(c *gin.Context) error {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	cmd, err := parseCommand(c)
 	if err != nil {
-		a.fail(c, http.StatusUnprocessableEntity, err.Error())
-		return
+		return userError{err}
 	}
 	if !perm.CanCharacter(w.viewer, ch.ID, cmd.Scope) {
 		a.fail(c, http.StatusForbidden, "The GM may change HP and conditions only.")
-		return
+		return nil
 	}
-	if a.commandFailed(c, a.runCommand(c.Request.Context(), ch, cmd)) {
-		return
+	if err := a.runCommand(c.Request.Context(), ch, cmd); err != nil {
+		return err
 	}
 	a.characterChanged(c, ch)
+	return nil
 }
 
 // runCommand looks up what cmd needs from the compendium and applies it to
@@ -452,19 +451,6 @@ func formErrors(err error, draws func(string) bool) (string, views.FieldErrors) 
 	return strings.Join(top, "\n"), fields
 }
 
-func (a *App) commandFailed(c *gin.Context, err error) bool {
-	var ue userError
-	switch {
-	case err == nil:
-		return false
-	case errors.As(err, &ue):
-		a.fail(c, http.StatusUnprocessableEntity, ue.Error())
-	default:
-		a.serverError(c, err)
-	}
-	return true
-}
-
 // updateCharacter reads, changes and writes a character in one transaction.
 func (a *App) updateCharacter(ctx context.Context, id int64, fn func(q *sqlc.Queries, dc *dnd5e.Character) error) error {
 	return a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -623,54 +609,52 @@ func applyCondOps(ctx context.Context, q *sqlc.Queries, o condOwner, ops []dnd5e
 
 // deleteCondition removes one condition: the GM anywhere, a player on
 // their own character.
-func (a *App) deleteCondition(c *gin.Context) {
+func (a *App) deleteCondition(c *gin.Context) error {
 	id, ok := a.idParam(c, "condition")
 	if !ok {
-		return
+		return nil
 	}
 	w, err := a.whoami(c)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	ctx := c.Request.Context()
 	cond, err := a.Store.GetCondition(ctx, id)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	if cond.CharacterID.Valid {
 		if !perm.CanCharacter(w.viewer, cond.CharacterID.Int64, perm.ScopeConditions) {
 			a.fail(c, http.StatusForbidden, "Not your character.")
-			return
+			return nil
 		}
 		ch, err := a.Store.GetCharacter(ctx, cond.CharacterID.Int64)
-		if !a.found(c, err) {
-			return
+		if err != nil {
+			return err
 		}
 		if err := a.Store.DeleteCondition(ctx, id); err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		a.characterChanged(c, ch)
-		return
+		return nil
 	}
 	if !w.isGM() {
 		a.fail(c, http.StatusForbidden, "Only the GM changes monsters.")
-		return
+		return nil
 	}
 	cb, err := a.Store.GetCombatant(ctx, cond.CombatantID.Int64)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	enc, err := a.Store.GetEncounter(ctx, cb.EncounterID)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	if err := a.Store.DeleteCondition(ctx, id); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.changed(c, enc.CampaignID, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
+	return nil
 }
 
 // classInfo converts a compendium class for the level-up helper.
@@ -822,70 +806,67 @@ func (a *App) subclassOwner(c *gin.Context) (sqlc.Character, bool) {
 
 // subclassChangeForm renders the subclass picker for one class into the
 // command builder dialog.
-func (a *App) subclassChangeForm(c *gin.Context) {
+func (a *App) subclassChangeForm(c *gin.Context) error {
 	ch, ok := a.subclassOwner(c)
 	if !ok {
-		return
+		return nil
 	}
 	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	i := slices.IndexFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == c.Query("class") })
 	if i < 0 || sheet.Classes[i].Subclass == "" {
 		a.fail(c, http.StatusNotFound, "That class has no subclass to change.")
-		return
+		return nil
 	}
 	cl := sheet.Classes[i]
 	subs, err := a.Store.ListSubclassesOf(c.Request.Context(), sqlc.ListSubclassesOfParams{ClassSlug: cl.Slug, CampaignID: ch.CampaignID})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	v := views.SubclassChangeView{
 		CharacterID: ch.ID, Class: cl.Slug, ClassName: cl.Name, Level: cl.Level, Subclasses: subclassOptions(subs),
 		Current: cl.Subclass, CurrentSlug: cmp.Or(cl.SubclassSlug, compendium.Slugify(cl.Subclass)),
 	}
 	if v.Panels, err = subclassPanels(subs); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.SubclassChange(v))
+	return nil
 }
 
 // changeSubclass resolves the picked name to a compendium copy and runs
 // change-subclass with it.
-func (a *App) changeSubclass(c *gin.Context) {
+func (a *App) changeSubclass(c *gin.Context) error {
 	ch, ok := a.subclassOwner(c)
 	if !ok {
-		return
+		return nil
 	}
 	var f subclassForm
 	if c.ShouldBind(&f) != nil {
 		a.fail(c, http.StatusUnprocessableEntity, "Choose a subclass.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	subs, err := a.Store.ListSubclassesOf(ctx, sqlc.ListSubclassesOfParams{ClassSlug: f.Class, CampaignID: ch.CampaignID})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	i := subclassIndex(subs, f.Subclass)
 	if i < 0 {
 		a.fail(c, http.StatusUnprocessableEntity, "Choose a subclass from the list.")
-		return
+		return nil
 	}
 	cmd, err := dnd5e.Parse("change-subclass", f.Class, subs[i].Slug, subs[i].SourceKey)
 	if err != nil {
-		a.fail(c, http.StatusUnprocessableEntity, err.Error())
-		return
+		return userError{err}
 	}
-	if a.commandFailed(c, a.runCommand(ctx, ch, cmd)) {
-		return
+	if err := a.runCommand(ctx, ch, cmd); err != nil {
+		return err
 	}
 	a.characterChanged(c, ch)
+	return nil
 }
 
 // levelUpView previews a level in classSlug; with pickDefault it picks the
@@ -1130,14 +1111,14 @@ func addClassSpells(s *dnd5e.Sheet, spells []dnd5e.Spell) error {
 	return nil
 }
 
-func (a *App) levelUpForm(c *gin.Context) {
+func (a *App) levelUpForm(c *gin.Context) error {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	if !perm.CanCharacter(w.viewer, ch.ID, perm.ScopeSheet) {
 		a.fail(c, http.StatusForbidden, "Only the player levels up their character.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	slug, picked := c.GetQuery("class")
@@ -1145,51 +1126,50 @@ func (a *App) levelUpForm(c *gin.Context) {
 	if errors.Is(err, sql.ErrNoRows) {
 		v.Error = "That class is not in the compendium."
 	} else if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	camp, err := a.Store.GetCampaign(ctx, ch.CampaignID)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	a.render(c, http.StatusOK, views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v))
+	return nil
 }
 
-func (a *App) levelUp(c *gin.Context) {
+func (a *App) levelUp(c *gin.Context) error {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	if !perm.CanCharacter(w.viewer, ch.ID, perm.ScopeSheet) {
 		a.fail(c, http.StatusForbidden, "Only the player levels up their character.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	slug := c.PostForm("class")
 	if classPin(sheet, slug) == "" {
 		// A new class: only one this campaign may see.
-		if _, err := a.entryBySlug(ctx, enum.KindClass, slug, ch.CampaignID); !a.found(c, err) {
-			return
+		if _, err := a.entryBySlug(ctx, enum.KindClass, slug, ch.CampaignID); err != nil {
+			return err
 		}
 	}
 	info, _, err := classEntry(ctx, a.Store.Queries, slug, classPin(sheet, slug))
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	choice := dnd5e.LevelUpChoice{Class: info, Subclass: strings.TrimSpace(c.PostForm("subclass"))}
 	// The form's level; a second submit (a double click, another device) finds it taken.
 	level, checkLevel := formInt(c, "level")
-	if a.commandFailed(c, a.withSubclass(ctx, &choice.Class, sheet, choice.Subclass, ch.CampaignID)) {
-		return
+	if err := a.withSubclass(ctx, &choice.Class, sheet, choice.Subclass, ch.CampaignID); err != nil {
+		return err
 	}
 	if choice.Subclass != "" && choice.Class.SubclassName == "" {
 		a.fail(c, http.StatusUnprocessableEntity, "Choose a subclass from the list.") // gone since the form loaded
-		return
+		return nil
 	}
 	choice.Subclass = choice.Class.SubclassName // the sheet keeps the name, not the picked slug
 	if roll, ok := formInt(c, "hp_roll"); ok {
@@ -1207,8 +1187,8 @@ func (a *App) levelUp(c *gin.Context) {
 		switch {
 		case errors.Is(err, sql.ErrNoRows): // crafted, another campaign's, or a homebrew feat deleted since the form loaded
 			featErr = fieldError{userError{errors.New("choose a feat from the list")}, views.FieldASI}
-		case !a.found(c, err):
-			return
+		case err != nil:
+			return err
 		default:
 			choice.Feat, choice.FeatDesc = feat.Name, feat.BodyText
 			featSource = feat.SourceKey
@@ -1219,8 +1199,7 @@ func (a *App) levelUp(c *gin.Context) {
 	// The class list does not offer the lineage's spells of this level.
 	lineage, err := a.lineageSpells(ctx, sheet, plan.NewLevel, ch.CampaignID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	var spells []dnd5e.Spell
 	var spellErr error
@@ -1228,14 +1207,12 @@ func (a *App) levelUp(c *gin.Context) {
 	if planErr == nil { // else LevelUp refuses (level 20) and plan is empty
 		offered, err := a.classSpellOptions(ctx, info.Slug, plan.Slots, plan.PactLevel, sheet, lineage, ch.CampaignID)
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		// A refusal waits for readPicks, so the page re-renders as for any other.
 		spells, spellErr = a.classSpellPicks(c, info.Slug, offered, spellNeed(info, plan.ClassLevel, sheet, offered), ch.CampaignID)
 		if spellErr != nil && !errors.As(spellErr, &ue) {
-			a.serverError(c, spellErr)
-			return
+			return spellErr
 		}
 	}
 	// The class picks go in after the feats' (addClassSpells), so a clash is refused.
@@ -1244,24 +1221,20 @@ func (a *App) levelUp(c *gin.Context) {
 	// Spell Change and the feat's own choices apply after LevelUp has added the feat.
 	changes, err := a.featSpellChanges(ctx, sheet, lineage, ch.CampaignID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	cantrips, err := a.optionCantrips(ctx, sheet, choice.Class, plan.ClassLevel, ch.CampaignID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	// The cantrips the sheet will know, for checkNewOptions.
 	learned, err := a.cantripData(ctx, slices.Concat(sheet.Spells, lineage, spells), ch.CampaignID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	mastery, err := a.masteryGroups(ctx, sheet, choice.Class, plan.ClassLevel, ch.CampaignID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	groups := slices.Concat(classOptionGroups(choice.Class, plan.ClassLevel, plan.ClassLevel-1, sheet, cantrips), mastery, changes)
 	notFeat := len(groups)
@@ -1269,16 +1242,14 @@ func (a *App) levelUp(c *gin.Context) {
 		slug := c.PostForm("feat")
 		td, err := a.textEntry(ctx, enum.KindFeat, slug)
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		if planErr == nil && !meetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel, nil) {
 			featErr = fieldError{userError{fmt.Errorf("%s needs %s", choice.Feat, td.Prerequisite)}, views.FieldASI}
 		}
 		fg, err := a.featChoices(ctx, "feat_"+slug, choice.Feat, td, "", sheet, ch.CampaignID)
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		groups = append(groups, fg...)
 	}
@@ -1324,33 +1295,32 @@ func (a *App) levelUp(c *gin.Context) {
 	if errors.As(err, &ue) {
 		v, verr := a.levelUpView(ctx, ch, info.Slug, false)
 		if verr != nil {
-			a.serverError(c, verr)
-			return
+			return verr
 		}
 		v.Error, v.Errors = formErrors(err, v.DrawsField)
 		v.Form = c.Request.PostForm
 		camp, _ := a.Store.GetCampaign(ctx, ch.CampaignID)
 		a.render(c, http.StatusUnprocessableEntity, views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v))
-		return
+		return nil
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.Hub.Publish(ch.CampaignID, hub.Topic{Kind: hub.TopicCharacter, ID: ch.ID})
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/characters/%d", ch.ID))
+	return nil
 }
 
 // revertLevelUp puts back the sheet and max HP from before the latest
 // level-up. Current HP is kept, up to that max.
-func (a *App) revertLevelUp(c *gin.Context) {
+func (a *App) revertLevelUp(c *gin.Context) error {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	if !perm.CanCharacter(w.viewer, ch.ID, perm.ScopeSheet) {
 		a.fail(c, http.StatusForbidden, "Only the player reverts a level-up.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	err := a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
@@ -1368,8 +1338,9 @@ func (a *App) revertLevelUp(c *gin.Context) {
 		dc.HP = min(dc.HP, dc.MaxHP)
 		return q.DeleteLevelUp(ctx, snap.ID)
 	})
-	if a.commandFailed(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	a.characterChanged(c, ch)
+	return nil
 }

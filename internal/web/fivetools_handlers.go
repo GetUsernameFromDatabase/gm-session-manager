@@ -56,23 +56,23 @@ func (a *App) fiveToolsView(ctx context.Context, msg string, failed bool) (views
 	return v, nil
 }
 
-func (a *App) renderFiveTools(c *gin.Context, msg string, failed bool) {
+func (a *App) renderFiveTools(c *gin.Context, msg string, failed bool) error {
 	v, err := a.fiveToolsView(c.Request.Context(), msg, failed)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.FiveToolsPicker(v))
+	return nil
 }
 
 // fiveToolsList is the picker, loaded when its tab is first shown. A plain
 // visit (a reload after an import posted here) gets the whole page.
-func (a *App) fiveToolsList(c *gin.Context) {
+func (a *App) fiveToolsList(c *gin.Context) error {
 	if !isHTMX(c) {
 		c.Redirect(http.StatusSeeOther, compendiumPath(c, "?import="+views.ImportTabFiveTools))
-		return
+		return nil
 	}
-	a.renderFiveTools(c, "", false)
+	return a.renderFiveTools(c, "", false)
 }
 
 // fiveToolsForm is the checked books.
@@ -82,26 +82,23 @@ type fiveToolsForm struct {
 
 // fiveToolsImport starts downloading the checked books and importing every
 // folder in the background; the import tab shows its progress.
-func (a *App) fiveToolsImport(c *gin.Context) {
+func (a *App) fiveToolsImport(c *gin.Context) error {
 	ctx := c.Request.Context()
 	notice := views.ImportNotice{Tab: views.ImportTabFiveTools}
 	var f fiveToolsForm
 	if c.ShouldBind(&f) != nil {
 		notice.Msg, notice.Failed = "Pick at least one book.", true
-		a.renderCompendium(c, notice)
-		return
+		return a.renderCompendium(c, notice)
 	}
 	if a.fiveTools.get().Running { // before the book list's download; start checks again
 		notice.Msg, notice.Failed = errImportRunning, true
-		a.renderCompendium(c, notice)
-		return
+		return a.renderCompendium(c, notice)
 	}
 	dir := a.compendiumDir()
 	all, err := compendium.FiveToolsBooks(ctx, dir)
 	if err != nil {
 		notice.Msg, notice.Failed = "Could not load the book list: "+err.Error(), true
-		a.renderCompendium(c, notice)
-		return
+		return a.renderCompendium(c, notice)
 	}
 	var picked []compendium.Book
 	for _, b := range all {
@@ -111,12 +108,12 @@ func (a *App) fiveToolsImport(c *gin.Context) {
 	}
 	if !a.fiveTools.start(len(picked)) {
 		notice.Msg, notice.Failed = errImportRunning, true
-		a.renderCompendium(c, notice)
-		return
+		return a.renderCompendium(c, notice)
 	}
 	// The import outlives the request.
 	go a.runFiveTools(context.WithoutCancel(ctx), dir, picked)
 	c.Redirect(http.StatusSeeOther, compendiumPath(c, "?import="+views.ImportTabFiveTools))
+	return nil
 }
 
 // autoRedownloadForm is the GM's "download again automatically" switch.
@@ -125,29 +122,28 @@ type autoRedownloadForm struct {
 }
 
 // fiveToolsAuto stores whether stale books download again at startup.
-func (a *App) fiveToolsAuto(c *gin.Context) {
+func (a *App) fiveToolsAuto(c *gin.Context) error {
 	var f autoRedownloadForm
 	if c.ShouldBind(&f) != nil {
 		c.Status(http.StatusBadRequest)
-		return
+		return nil
 	}
 	if err := a.setAutoRedownload(f.On); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	c.Status(http.StatusNoContent)
+	return nil
 }
 
 // errImportRunning refuses a second import, or a removal under the running one.
 const errImportRunning = "An import is running; wait for it to finish."
 
 // fiveToolsRemove deletes a book's entries and source, then its folder.
-func (a *App) fiveToolsRemove(c *gin.Context) {
+func (a *App) fiveToolsRemove(c *gin.Context) error {
 	ctx := c.Request.Context()
 	id := c.Param("book")
 	if a.fiveTools.get().Running {
-		a.renderFiveTools(c, errImportRunning, true)
-		return
+		return a.renderFiveTools(c, errImportRunning, true)
 	}
 	key := fiveToolsKey(id)
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -165,8 +161,7 @@ func (a *App) fiveToolsRemove(c *gin.Context) {
 	})
 	var used *sourceUsedError
 	if errors.As(err, &used) {
-		a.renderFiveTools(c, sourceInUseMsg(key, used.users), true)
-		return
+		return a.renderFiveTools(c, sourceInUseMsg(key, used.users), true)
 	}
 	if err == nil {
 		err = compendium.RemoveFiveTools(a.compendiumDir(), id)
@@ -175,11 +170,10 @@ func (a *App) fiveToolsRemove(c *gin.Context) {
 		err = a.refreshStale()
 	}
 	if err != nil {
-		a.renderFiveTools(c, "Could not remove "+id+": "+err.Error(), true)
-		return
+		return a.renderFiveTools(c, "Could not remove "+id+": "+err.Error(), true)
 	}
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
-	a.renderFiveTools(c, "Removed "+id+".", false)
+	return a.renderFiveTools(c, "Removed "+id+".", false)
 }
 
 // sourceMoveForm moves a source one place in the priority order.
@@ -188,23 +182,23 @@ type sourceMoveForm struct {
 }
 
 // sourceMove reorders the priority list and answers with the card.
-func (a *App) sourceMove(c *gin.Context) {
+func (a *App) sourceMove(c *gin.Context) error {
 	var f sourceMoveForm
 	if c.ShouldBind(&f) != nil {
 		a.fail(c, http.StatusBadRequest, "Move a source up or down.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	err := compendium.MoveSource(ctx, a.Store, c.Param("key"), f.Dir == views.SourceUp)
 	if errors.Is(err, compendium.ErrNoSource) {
 		a.fail(c, http.StatusNotFound, "That source is not imported.")
-		return
+		return nil
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.sourcesChanged(c)
+	return nil
 }
 
 // sourceOrderForm is every source key in the new order (a drag).
@@ -213,22 +207,22 @@ type sourceOrderForm struct {
 }
 
 // sourceOrder sets the order a drag left and answers with the card.
-func (a *App) sourceOrder(c *gin.Context) {
+func (a *App) sourceOrder(c *gin.Context) error {
 	var f sourceOrderForm
 	if c.ShouldBind(&f) != nil {
 		a.fail(c, http.StatusBadRequest, "Send every source in its new order.")
-		return
+		return nil
 	}
 	err := compendium.SetSourceOrder(c.Request.Context(), a.Store, f.Keys)
 	if errors.Is(err, compendium.ErrNoSource) {
 		a.fail(c, http.StatusConflict, "The sources changed meanwhile: reload the page and drag again.")
-		return
+		return nil
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.sourcesChanged(c)
+	return nil
 }
 
 // sourcesChanged tells every page and answers with the priority card.

@@ -70,64 +70,61 @@ func (a *App) habitatView(ctx context.Context, filter string) (views.HabitatView
 
 // habitatsPage is the GM's monsters × habitats grid; typing in the filter
 // swaps the grid alone.
-func (a *App) habitatsPage(c *gin.Context) {
+func (a *App) habitatsPage(c *gin.Context) error {
 	w, err := a.whoami(c)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	v, err := a.habitatView(c.Request.Context(), strings.TrimSpace(c.Query("q")))
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if isHTMX(c) && c.GetHeader("HX-Target") == views.HabitatGridID {
 		a.render(c, http.StatusOK, views.HabitatGrid(v))
-		return
+		return nil
 	}
 	l, err := a.compendiumLayout(c, w, "Habitats", pathCampaign(c))
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.HabitatsPage(l, v))
+	return nil
 }
 
 // habitatCell saves one box of the grid.
-func (a *App) habitatCell(c *gin.Context) {
+func (a *App) habitatCell(c *gin.Context) error {
 	var f habitatCellForm
 	if err := c.ShouldBind(&f); err != nil {
 		a.fail(c, http.StatusUnprocessableEntity, "Pick a monster and a known habitat.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	if !f.On {
 		if err := a.Store.RemoveMonsterHabitat(ctx, sqlc.RemoveMonsterHabitatParams{EntryID: f.EntryID, Habitat: f.Habitat}); err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		a.render(c, http.StatusOK, views.Flash("", false))
-		return
+		return nil
 	}
 	n, err := a.Store.AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: f.EntryID, Habitat: f.Habitat})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if n == 0 {
 		a.fail(c, http.StatusUnprocessableEntity, "Only monsters have habitats.")
-		return
+		return nil
 	}
 	a.render(c, http.StatusOK, views.Flash("", false))
+	return nil
 }
 
 // habitatAny gives a monster every habitat ("Habitat: Any"), or clears them
 // all when it has every one, then redraws its row.
-func (a *App) habitatAny(c *gin.Context) {
+func (a *App) habitatAny(c *gin.Context) error {
 	var f habitatAnyForm
 	if err := c.ShouldBind(&f); err != nil {
 		a.fail(c, http.StatusUnprocessableEntity, "Pick a monster.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	has := map[string]bool{}
@@ -157,80 +154,75 @@ func (a *App) habitatAny(c *gin.Context) {
 	})
 	if errors.Is(err, errNotMonster) {
 		a.fail(c, http.StatusUnprocessableEntity, "Only monsters have habitats.")
-		return
+		return nil
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	e, err := a.Store.GetCompendiumEntry(ctx, f.EntryID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.HabitatRow(sqlc.ListMonstersByNameRow{ID: e.ID, Name: e.Name}, has))
+	return nil
 }
 
 // habitatFill gives every match with no habitats those of its best copy, then
 // redraws the grid.
-func (a *App) habitatFill(c *gin.Context) {
+func (a *App) habitatFill(c *gin.Context) error {
 	var f habitatFillForm
 	if err := c.ShouldBind(&f); err != nil {
 		a.fail(c, http.StatusUnprocessableEntity, "That filter is too long.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	filter := strings.TrimSpace(f.Filter)
 	n, err := a.Store.FillHabitatsFromCopies(ctx, filter)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	v, err := a.habitatView(ctx, filter)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, templ.Join(views.HabitatGrid(v), views.Toast(fmt.Sprintf("Added %d habitats from other sources' copies.", n), false)))
+	return nil
 }
 
 // habitatCopy gives a monster with no habitats those of FromID, then redraws
 // its habitat line.
-func (a *App) habitatCopy(c *gin.Context) {
+func (a *App) habitatCopy(c *gin.Context) error {
 	var f habitatCopyForm
 	if err := c.ShouldBind(&f); err != nil {
 		a.fail(c, http.StatusUnprocessableEntity, "Pick a monster and a copy.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	from, err := a.Store.ListEntryHabitats(ctx, f.FromID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if err := compendium.SeedHabitats(ctx, a.Store.Queries, f.EntryID, from); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	e, err := a.Store.GetCompendiumEntry(ctx, f.EntryID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	has, err := a.Store.ListEntryHabitats(ctx, f.EntryID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.MonsterHabitats(e, has, true, nil))
+	return nil
 }
 
 // habitatBatch adds or removes a habitat for every match, then redraws the grid.
-func (a *App) habitatBatch(c *gin.Context) {
+func (a *App) habitatBatch(c *gin.Context) error {
 	var f habitatBatchForm
 	if err := c.ShouldBind(&f); err != nil {
 		a.fail(c, http.StatusUnprocessableEntity, "Pick a known habitat.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	f.Filter = strings.TrimSpace(f.Filter)
@@ -241,13 +233,12 @@ func (a *App) habitatBatch(c *gin.Context) {
 		_, err = a.Store.RemoveHabitatByName(ctx, sqlc.RemoveHabitatByNameParams{Habitat: f.Habitat, Filter: f.Filter})
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	v, err := a.habitatView(ctx, f.Filter)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.HabitatGrid(v))
+	return nil
 }

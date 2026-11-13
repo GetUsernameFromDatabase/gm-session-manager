@@ -522,41 +522,40 @@ func (a *App) importParam(c *gin.Context) (int64, string, csvImport, bool) {
 	return id, token, imp, ok
 }
 
-func (a *App) importReviewPage(c *gin.Context) {
+func (a *App) importReviewPage(c *gin.Context) error {
 	id, token, imp, ok := a.importParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	w, camp, ok := a.campaignAccess(c, id)
 	if !ok {
-		return
+		return nil
 	}
 	cats, err := a.Store.ListImageCategories(c.Request.Context(), id)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	v := views.ImportView{CampaignID: id, Token: token, Categories: cats}
 	buildReview(c, imp, &v)
 	if isHTMX(c) {
 		a.render(c, http.StatusOK, views.ImportReview(v))
-		return
+		return nil
 	}
 	a.render(c, http.StatusOK, views.ImportReviewPage(a.layout(w, "Import images", views.NavImages, &camp, false), v))
+	return nil
 }
 
 // importCommit creates the ticked rows, each in the category its value
 // was mapped to (none for an empty target).
-func (a *App) importCommit(c *gin.Context) {
+func (a *App) importCommit(c *gin.Context) error {
 	id, token, imp, ok := a.importParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	cats, err := a.Store.ListImageCategories(ctx, id)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	v := views.ImportView{Categories: cats}
 	buildReview(c, imp, &v)
@@ -580,9 +579,9 @@ func (a *App) importCommit(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.imports.drop(token)
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/campaigns/%d/images?imported=%d", id, n))
+	return nil
 }

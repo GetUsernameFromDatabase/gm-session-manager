@@ -114,14 +114,14 @@ func (a *App) backgroundChoice(ctx context.Context, sh dnd5e.Sheet) (*views.Wiza
 
 // wizardChange redoes a step: the character goes back to how it was before
 // it, which also undoes every step saved after it.
-func (a *App) wizardChange(c *gin.Context) {
+func (a *App) wizardChange(c *gin.Context) error {
 	_, ch, step, ok := a.wizardAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	if step != c.Param("step") { // wizardAccess falls back to the first step
 		a.fail(c, http.StatusNotFound, "There is no such step.")
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	err := a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, cc *dnd5e.Character) error {
@@ -146,16 +146,16 @@ func (a *App) wizardChange(c *gin.Context) {
 		// Level-ups taken since were undone too: Revert would bring back the old sheet.
 		return q.DeleteLevelUps(ctx, ch.ID)
 	})
-	if a.commandFailed(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	topics, err := a.characterTopics(ctx, ch.ID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.Hub.Publish(ch.CampaignID, topics...)
 	redirect(c, wizardPath(ch.ID, step))
+	return nil
 }
 
 // wizardAccess loads the character for its player, with the step asked for.
@@ -181,25 +181,25 @@ func (a *App) wizardStart(c *gin.Context) {
 	}
 }
 
-func (a *App) wizardPage(c *gin.Context) {
+func (a *App) wizardPage(c *gin.Context) error {
 	w, ch, step, ok := a.wizardAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	v, err := a.wizardView(c.Request.Context(), w, ch, step, c.Query("pick"), c.Query("variant"))
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
-	a.renderWizard(c, http.StatusOK, w, ch, v)
+	return a.renderWizard(c, http.StatusOK, w, ch, v)
 }
 
-func (a *App) renderWizard(c *gin.Context, status int, w who, ch sqlc.Character, v views.WizardView) {
+func (a *App) renderWizard(c *gin.Context, status int, w who, ch sqlc.Character, v views.WizardView) error {
 	camp, err := a.Store.GetCampaign(c.Request.Context(), ch.CampaignID)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	a.render(c, status, views.WizardPage(a.layout(w, "Create "+ch.Name, views.NavCharacter, &camp, false), v))
+	return nil
 }
 
 // wizardView builds a step's page; pick is the class, species or
@@ -1638,10 +1638,10 @@ func (a *App) spellsNamed(ctx context.Context, names []string, campaignID int64)
 }
 
 // wizardSave applies a step and moves to the next.
-func (a *App) wizardSave(c *gin.Context) {
+func (a *App) wizardSave(c *gin.Context) error {
 	w, ch, step, ok := a.wizardAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	cmd, err := a.wizardCommand(c, ch, step)
@@ -1652,25 +1652,22 @@ func (a *App) wizardSave(c *gin.Context) {
 	if errors.As(err, &ue) {
 		v, verr := a.wizardView(ctx, w, ch, step, c.PostForm("pick"), "")
 		if verr != nil {
-			a.serverError(c, verr)
-			return
+			return verr
 		}
 		v.Error, v.Errors = formErrors(err, v.DrawsField)
 		v.Form = c.Request.PostForm
-		a.renderWizard(c, http.StatusUnprocessableEntity, w, ch, v)
-		return
+		return a.renderWizard(c, http.StatusUnprocessableEntity, w, ch, v)
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	topics, err := a.characterTopics(ctx, ch.ID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.Hub.Publish(ch.CampaignID, topics...)
 	c.Redirect(http.StatusSeeOther, nextStep(ch.ID, step))
+	return nil
 }
 
 // wizardCommand is the change a step's form asks for; nil when the step

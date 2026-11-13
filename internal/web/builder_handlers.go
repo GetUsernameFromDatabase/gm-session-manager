@@ -117,19 +117,19 @@ func textMarkdown(d *compendium.TextData) string {
 // builderPicks is the builder's compendium look-up: weapons for an attack,
 // armor to wear, or (as featurePicker's options) feats and class features.
 // Each weapon or feature pick reloads the form filled in from it.
-func (a *App) builderPicks(c *gin.Context) {
+func (a *App) builderPicks(c *gin.Context) error {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	if !perm.CanCharacter(w.viewer, ch.ID, perm.ScopeSheet) {
 		a.fail(c, http.StatusForbidden, "Only the player changes their character.")
-		return
+		return nil
 	}
 	q := strings.TrimSpace(c.Query("q"))
 	if q == "" {
 		c.Status(http.StatusOK)
-		return
+		return nil
 	}
 	var picks []views.BuilderPick
 	var err error
@@ -140,14 +140,14 @@ func (a *App) builderPicks(c *gin.Context) {
 		picks, err = a.featurePicks(c.Request.Context(), q, ch.CampaignID)
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if c.Query("format") == "combobox" {
 		a.render(c, http.StatusOK, views.BuilderPickItems(ch.ID, picks))
-		return
+		return nil
 	}
 	a.render(c, http.StatusOK, views.BuilderPicks(ch.ID, c.Query("pick"), picks))
+	return nil
 }
 
 // itemPicks are compendium weapons, or armor and shields.
@@ -222,10 +222,10 @@ func (a *App) featurePicks(ctx context.Context, q string, campaignID int64) ([]v
 
 // commandCompletions lists what the command bar's Tab offers for a
 // placeholder: names from the sheet, or spell slugs from the compendium.
-func (a *App) commandCompletions(c *gin.Context) {
+func (a *App) commandCompletions(c *gin.Context) error {
 	_, ch, ok := a.characterAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	words := strings.Fields(c.Query("words"))
 	q := strings.ToLower(c.Query("q"))
@@ -234,8 +234,7 @@ func (a *App) commandCompletions(c *gin.Context) {
 		if q != "" {
 			rows, err := a.searchRows(c.Request.Context(), q, string(enum.KindSpell), ch.CampaignID)
 			if err != nil {
-				a.serverError(c, err)
-				return
+				return err
 			}
 			for _, r := range rows {
 				out = append(out, r.Slug)
@@ -244,8 +243,7 @@ func (a *App) commandCompletions(c *gin.Context) {
 	} else {
 		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		for _, v := range dnd5e.Completions(sheet, words, c.Query("slot")) {
 			if strings.HasPrefix(strings.ToLower(v), q) {
@@ -254,6 +252,7 @@ func (a *App) commandCompletions(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, out[:min(len(out), maxPicks)])
+	return nil
 }
 
 // searchRows is a compendium search of one kind, name matches first.

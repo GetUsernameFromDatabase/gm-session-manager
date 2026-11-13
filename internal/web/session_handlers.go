@@ -37,18 +37,16 @@ type playerForm struct {
 
 // home sends everyone where they belong: the GM to the campaigns, a player
 // to their character, a visitor to the join flow.
-func (a *App) home(c *gin.Context) {
+func (a *App) home(c *gin.Context) error {
 	w, err := a.whoami(c)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	switch {
 	case w.isGM():
 		campaigns, err := a.Store.ListCampaigns(c.Request.Context())
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		a.render(c, http.StatusOK, views.GMHome(a.layout(w, "Campaigns", views.NavHome, nil, false), campaigns, a.joinInfo(0), a.feedbackPath()))
 	case w.character != nil:
@@ -56,6 +54,7 @@ func (a *App) home(c *gin.Context) {
 	default:
 		c.Redirect(http.StatusSeeOther, PathJoin)
 	}
+	return nil
 }
 
 // joinURLs are the addresses players can reach this host at, ending in path.
@@ -87,28 +86,28 @@ const queryCampaign = "campaign"
 const qrSize = 256
 
 // joinQR is the QR code for the first join address, shown on the GM page.
-func (a *App) joinQR(c *gin.Context) {
+func (a *App) joinQR(c *gin.Context) error {
 	var campaignID int64
 	if v := c.Query(queryCampaign); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || id <= 0 {
 			c.Status(http.StatusBadRequest)
-			return
+			return nil
 		}
 		campaignID = id
 	}
 	urls := a.joinURLs(joinPath(campaignID))
 	if len(urls) == 0 {
 		c.Status(http.StatusNotFound)
-		return
+		return nil
 	}
 	png, err := qrcode.Encode(urls[0], qrcode.Medium, qrSize)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	c.Header("Cache-Control", "no-cache")
 	c.Data(http.StatusOK, "image/png", png)
+	return nil
 }
 
 const titleAdminLogin = "GM login"
@@ -124,44 +123,42 @@ func (a *App) adminLoginForm(c *gin.Context) {
 // adminLogin creates an admin session for a device that knows the .env
 // credentials. A device that already has a session must log out first: a
 // device holds one session, and its role is chosen at login.
-func (a *App) adminLogin(c *gin.Context) {
+func (a *App) adminLogin(c *gin.Context) error {
 	if auth.FromContext(c).Session != nil {
 		c.AbortWithStatus(http.StatusConflict)
-		return
+		return nil
 	}
 
 	var form adminLoginForm
 	if err := c.ShouldBind(&form); err != nil {
 		a.render(c, http.StatusBadRequest, views.AdminLogin(views.Layout{Title: titleAdminLogin}, "Enter a username and password."))
-		return
+		return nil
 	}
 
 	token, _, err := a.Auth.LoginAdmin(c.Request.Context(), form.Username, form.Password)
 	if errors.Is(err, auth.ErrBadCredentials) {
 		a.render(c, http.StatusUnauthorized, views.AdminLogin(views.Layout{Title: titleAdminLogin}, "Wrong username or password."))
-		return
+		return nil
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 
 	auth.SetCookie(c, token)
 	c.Redirect(http.StatusSeeOther, PathHome)
+	return nil
 }
 
 // logout deletes this device's session row, the same thing a kick does. On
 // localhost this is also how a player switches back to admin.
-func (a *App) logout(c *gin.Context) {
+func (a *App) logout(c *gin.Context) error {
 	if sess := auth.FromContext(c).Session; sess != nil {
 		w, err := a.whoami(c)
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		if err := a.Auth.Revoke(c.Request.Context(), sess.ID); err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		a.Hub.CloseSession(sess.ID)
 		a.reqs.forget(sessionKey(*sess))
@@ -171,6 +168,7 @@ func (a *App) logout(c *gin.Context) {
 	}
 	auth.ClearCookie(c)
 	c.Redirect(http.StatusSeeOther, PathHome)
+	return nil
 }
 
 // visitorOnly refuses join actions from a device that already has a role.
@@ -182,20 +180,20 @@ func visitorOnly(c *gin.Context) bool {
 	return true
 }
 
-func (a *App) joinCampaigns(c *gin.Context) {
+func (a *App) joinCampaigns(c *gin.Context) error {
 	if !visitorOnly(c) {
-		return
+		return nil
 	}
 	campaigns, err := a.Store.ListCampaigns(c.Request.Context())
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if len(campaigns) == 1 {
 		c.Redirect(http.StatusSeeOther, joinPath(campaigns[0].ID))
-		return
+		return nil
 	}
 	a.render(c, http.StatusOK, views.JoinCampaigns(views.Layout{Title: "Join"}, campaigns))
+	return nil
 }
 
 func (a *App) joinCharacters(c *gin.Context) {
@@ -229,30 +227,30 @@ func (a *App) joinCampaign(c *gin.Context) (sqlc.Campaign, bool) {
 
 // joinCreate creates a character. With open_join the session is created at
 // once; otherwise the request waits for the GM like a claim.
-func (a *App) joinCreate(c *gin.Context) {
+func (a *App) joinCreate(c *gin.Context) error {
 	if !visitorOnly(c) {
-		return
+		return nil
 	}
 	camp, ok := a.joinCampaign(c)
 	if !ok {
-		return
+		return nil
 	}
 	var form nameForm
 	if err := c.ShouldBind(&form); err != nil {
 		a.renderJoinCharacters(c, http.StatusUnprocessableEntity, camp, "Give your character a name (up to 100 characters).")
-		return
+		return nil
 	}
 	name := strings.TrimSpace(form.Name)
 	if !camp.OpenJoin {
 		a.startRequest(c, camp, hub.PendingCreate, 0, name)
-		return
+		return nil
 	}
 	id, err := a.createAndLogin(c, camp.ID, name)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	c.Redirect(http.StatusSeeOther, wizardPath(id, wizardSteps[0].Key))
+	return nil
 }
 
 // createAndLogin creates a character and a session for it on this device,
@@ -288,27 +286,28 @@ func (a *App) login(c *gin.Context, ch sqlc.Character) error {
 	return nil
 }
 
-func (a *App) joinClaim(c *gin.Context) {
+func (a *App) joinClaim(c *gin.Context) error {
 	if !visitorOnly(c) {
-		return
+		return nil
 	}
 	camp, ok := a.joinCampaign(c)
 	if !ok {
-		return
+		return nil
 	}
 	charID, ok := a.idParam(c, "character")
 	if !ok {
-		return
+		return nil
 	}
 	ch, err := a.Store.GetCharacter(c.Request.Context(), charID)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	if ch.CampaignID != camp.ID {
 		a.fail(c, http.StatusNotFound, "Not found.")
-		return
+		return nil
 	}
 	a.startRequest(c, camp, hub.PendingClaim, ch.ID, ch.Name)
+	return nil
 }
 
 // startRequest records a pending request and shows the waiting page, whose
@@ -331,15 +330,15 @@ func (a *App) startRequest(c *gin.Context, camp sqlc.Campaign, kind hub.PendingK
 
 // completeRequest redeems an approved request: the session is created and
 // the cookie set on the device that asked.
-func (a *App) completeRequest(c *gin.Context) {
+func (a *App) completeRequest(c *gin.Context) error {
 	if auth.FromContext(c).Session != nil {
 		c.AbortWithStatus(http.StatusConflict)
-		return
+		return nil
 	}
 	p, ok := a.Hub.TakeApproved(c.PostForm("secret"))
 	if !ok {
 		a.fail(c, http.StatusNotFound, "That request is no longer waiting. Please ask again.")
-		return
+		return nil
 	}
 	var err error
 	next := PathHome
@@ -349,16 +348,16 @@ func (a *App) completeRequest(c *gin.Context) {
 		next = wizardPath(id, wizardSteps[0].Key)
 	} else {
 		ch, gerr := a.Store.GetCharacter(c.Request.Context(), p.CharacterID)
-		if !a.found(c, gerr) { // deleted while the request waited
-			return
+		if gerr != nil { // deleted while the request waited
+			return gerr
 		}
 		err = a.login(c, ch)
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	redirect(c, next)
+	return nil
 }
 
 // decideRequest is the GM's approve or deny.

@@ -308,48 +308,47 @@ type sourcePreviewForm struct {
 
 // sourcePreview lists what the source command would replace, add and keep,
 // with the command Confirm posts.
-func (a *App) sourcePreview(c *gin.Context) {
+func (a *App) sourcePreview(c *gin.Context) error {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
-		return
+		return nil
 	}
 	if !perm.CanCharacter(w.viewer, ch.ID, perm.ScopeSources) {
 		a.fail(c, http.StatusForbidden, "Only the player and the GM switch sources.")
-		return
+		return nil
 	}
 	var f sourcePreviewForm
 	if c.ShouldBindQuery(&f) != nil {
 		a.fail(c, http.StatusUnprocessableEntity, "Choose a source for the entry.")
-		return
+		return nil
 	}
 	// Parsed as the command endpoint will, so Confirm posts a valid line.
 	line := fmt.Sprintf("source %s %s %s", f.Kind, f.Slug, f.Source)
 	cmd, err := dnd5e.Parse(line)
 	if err != nil {
 		a.fail(c, http.StatusUnprocessableEntity, err.Error())
-		return
+		return nil
 	}
 	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	ctx := c.Request.Context()
 	ref := cmd.SourceRef
 	env, name, err := a.sourceEnv(ctx, a.Store.Queries, sheet, ref, ch.CampaignID)
-	if a.commandFailed(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	src, err := a.Store.GetCompendiumSource(ctx, ref.Source)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) { // homebrew may have no source row
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.SourcePreview(views.SourcePreviewView{
 		CharacterID: ch.ID, Kind: ref.Kind, Slug: ref.Slug, Source: ref.Source, Name: name,
 		SourceLabel: views.SourceLabel(ref.Source, src.Edition), Command: line,
 		Plan: dnd5e.PlanSourceSwitch(sheet, ref.Kind, ref.Slug, env.SourceOld, env.SourceNew),
 	}))
+	return nil
 }
 
 // sourceUsers names, per source key, the characters whose sheet pins it and
@@ -391,16 +390,16 @@ func sourceInUseMsg(key string, users []string) string {
 }
 
 // sourceDelete removes a source and its entries unless something uses it.
-func (a *App) sourceDelete(c *gin.Context) {
+func (a *App) sourceDelete(c *gin.Context) error {
 	ctx := c.Request.Context()
 	key := c.Param("key")
 	if key == compendium.HomebrewSource {
 		a.fail(c, http.StatusBadRequest, "Homebrew cannot be deleted.")
-		return
+		return nil
 	}
 	if a.fiveTools.get().Running {
 		a.fail(c, http.StatusConflict, errImportRunning)
-		return
+		return nil
 	}
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		users, err := sourceUsers(ctx, q, 0, key)
@@ -418,16 +417,16 @@ func (a *App) sourceDelete(c *gin.Context) {
 	var used *sourceUsedError
 	if errors.As(err, &used) {
 		a.fail(c, http.StatusConflict, sourceInUseMsg(key, used.users))
-		return
+		return nil
 	}
 	if err == nil {
 		err = compendium.RemoveSourceDir(a.compendiumDir(), key)
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.sourcesChanged(c)
+	return nil
 }
 
 // campaignSourcesView is the campaign's Sources card: every imported source
@@ -471,17 +470,17 @@ type campaignSourcesForm struct {
 
 // campaignSourcesSet changes the campaign's allow list. A source some
 // character or NPC in the campaign uses is never unticked.
-func (a *App) campaignSourcesSet(c *gin.Context) {
+func (a *App) campaignSourcesSet(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	if _, _, ok := a.campaignAccess(c, id); !ok {
-		return
+		return nil
 	}
 	var f campaignSourcesForm
 	if !a.bindForm(c, &f) {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	var usedKey string
@@ -514,20 +513,19 @@ func (a *App) campaignSourcesSet(c *gin.Context) {
 	var used *sourceUsedError
 	if errors.As(err, &used) {
 		a.fail(c, http.StatusConflict, sourceInUseMsg(usedKey, used.users))
-		return
+		return nil
 	}
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	// Every picker and list in the campaign changes; pages refetch.
 	a.Hub.Publish(id, hub.Topic{Kind: hub.TopicCompendium})
 	v, err := a.campaignSourcesView(ctx, id)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.CampaignSources(v))
+	return nil
 }
 
 // sourceUsedError carries the users out of the delete transaction.

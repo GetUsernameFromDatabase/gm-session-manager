@@ -49,14 +49,14 @@ func imageVersion(url sql.NullString, attachment sql.NullInt64) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-func (a *App) imagesPage(c *gin.Context) {
+func (a *App) imagesPage(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	w, camp, ok := a.campaignAccess(c, id)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	v := views.ImagesView{CampaignID: id, Query: strings.TrimSpace(c.Query("q"))}
@@ -64,69 +64,68 @@ func (a *App) imagesPage(c *gin.Context) {
 	v.Imported, _ = strconv.Atoi(c.Query("imported"))
 	rows, err := a.Store.ListImages(ctx, sqlc.ListImagesParams{CampaignID: id, Q: v.Query, CategoryID: v.CategoryID})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	for _, r := range rows {
 		v.Images = append(v.Images, imageItem(sqlc.GetImageRow(r)))
 	}
 	if isHTMX(c) {
 		a.render(c, http.StatusOK, views.ImageResults(v))
-		return
+		return nil
 	}
 	if v.Categories, err = a.Store.ListImageCategories(ctx, id); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.ImagesPage(a.layout(w, "Images", views.NavImages, &camp, false), v))
+	return nil
 }
 
-func (a *App) newImagePage(c *gin.Context) {
+func (a *App) newImagePage(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	w, camp, ok := a.campaignAccess(c, id)
 	if !ok {
-		return
+		return nil
 	}
 	cats, err := a.Store.ListImageCategories(c.Request.Context(), id)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	v := views.ImageView{CampaignID: id, IsGM: true, Categories: cats}
 	a.render(c, http.StatusOK, views.ImagePage(a.layout(w, "New image", views.NavImages, &camp, false), v))
+	return nil
 }
 
-func (a *App) createImage(c *gin.Context) {
+func (a *App) createImage(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
-	a.saveImage(c, sqlc.GetImageRow{CampaignID: id})
+	return a.saveImage(c, sqlc.GetImageRow{CampaignID: id})
 }
 
-func (a *App) updateImage(c *gin.Context) {
+func (a *App) updateImage(c *gin.Context) error {
 	img, ok := a.imageParam(c)
 	if !ok {
-		return
+		return nil
 	}
-	a.saveImage(c, img)
+	return a.saveImage(c, img)
 }
 
 // saveImage creates (img.ID 0) or updates an image from the editor. A new
 // file replaces the link and the old file; a link replaces the old file.
-func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) {
+func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAttachmentBytes+1<<20)
 	var form imageForm
 	if !a.bindForm(c, &form) {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	url, attachment, ok := a.imageSource(c, form.URL, img)
 	if !ok {
-		return
+		return nil
 	}
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		category, err := ensureCategory(ctx, q, img.CampaignID, form.Category)
@@ -154,10 +153,10 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) {
 		return q.DeleteUnusedImageCategories(ctx, img.CampaignID)
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/images/%d", img.ID))
+	return nil
 }
 
 // imageSource reads an image form's file or link for img (zero ID for a new
@@ -214,32 +213,29 @@ func (a *App) storeImageFile(c *gin.Context, campaignID int64, fh *multipart.Fil
 // attachmentToImage copies a picture attached to a note block into its
 // campaign's images (the GM's). The attachment stays, since other notes may
 // still show it; the Files page deletes it once nothing does.
-func (a *App) attachmentToImage(c *gin.Context) {
+func (a *App) attachmentToImage(c *gin.Context) error {
 	att, ok := a.readableAttachment(c)
 	if !ok {
-		return
+		return nil
 	}
 	if !slices.Contains(inlineTypes, att.Mime) {
 		a.fail(c, http.StatusUnprocessableEntity, "Only pictures can become campaign images.")
-		return
+		return nil
 	}
 	src, err := os.Open(filepath.Join(a.attachmentsDir(), filepath.Base(att.Path)))
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	defer func() { _ = src.Close() }()
 	ctx := c.Request.Context()
 	file, err := a.storeFile(ctx, att.CampaignID, sql.NullInt64{}, att.Name, src)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	name := cmp.Or(strings.TrimSuffix(att.Name, filepath.Ext(att.Name)), att.Name, "Picture")
 	img, err := a.Store.CreateImage(ctx, sqlc.CreateImageParams{CampaignID: att.CampaignID, Name: name, AttachmentID: nullID(file.ID)})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	// The block links the image now, not at its next snapshot, so its readers can load it as soon as the link shows.
 	if att.BlockID.Valid {
@@ -248,11 +244,11 @@ func (a *App) attachmentToImage(c *gin.Context) {
 			err = a.Store.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetType: enum.LinkImage, TargetID: img.ID})
 		}
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{keyID: img.ID, keyName: img.Name})
+	return nil
 }
 
 // ensureCategory returns the category named name exactly, creating it,
@@ -280,32 +276,29 @@ func (a *App) imageParam(c *gin.Context) (sqlc.GetImageRow, bool) {
 	return img, a.found(c, err)
 }
 
-func (a *App) deleteImage(c *gin.Context) {
+func (a *App) deleteImage(c *gin.Context) error {
 	img, ok := a.imageParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	// Whoever wears it as a look loses it.
 	var topics []hub.Topic
 	npcs, err := a.Store.ListImageEntities(ctx, img.ID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	for _, e := range npcs {
 		topics = append(topics, hub.Topic{Kind: hub.TopicEntity, ID: e.ID})
 	}
 	pcs, err := a.Store.ListImageCharacters(ctx, img.ID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	for _, ch := range pcs {
 		more, err := a.characterTopics(ctx, ch.ID)
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		topics = append(topics, more...)
 	}
@@ -322,11 +315,11 @@ func (a *App) deleteImage(c *gin.Context) {
 		return q.DeleteUnusedImageCategories(ctx, img.CampaignID)
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.Hub.Publish(img.CampaignID, topics...)
 	redirect(c, fmt.Sprintf("/campaigns/%d/images", img.CampaignID))
+	return nil
 }
 
 // readableImage loads :image for anyone who may see it: the GM, or a
@@ -376,65 +369,59 @@ func (a *App) readableImage(c *gin.Context) (who, sqlc.GetImageRow, bool) {
 	return w, img, true
 }
 
-func (a *App) imagePage(c *gin.Context) {
+func (a *App) imagePage(c *gin.Context) error {
 	w, img, ok := a.readableImage(c)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	camp, err := a.Store.GetCampaign(ctx, img.CampaignID)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	v := views.ImageView{CampaignID: img.CampaignID, IsGM: w.isGM()}
 	if !v.IsGM {
 		// Players get the picture and its name, nothing else.
 		v.Image = views.ImageItem{ID: img.ID, Name: img.Name, Version: imageVersion(img.Url, img.AttachmentID)}
 		a.render(c, http.StatusOK, views.ImagePage(a.layout(w, img.Name, views.NavNotes, &camp, false), v))
-		return
+		return nil
 	}
 	v.Image = imageItem(img)
 	if v.Categories, err = a.Store.ListImageCategories(ctx, img.CampaignID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if v.Backlinks, err = a.backlinks(ctx, w, img.CampaignID, enum.LinkImage, img.ID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if v.EntityLinks, err = a.entityMentions(ctx, w, enum.LinkImage, img.ID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if v.NPCs, err = a.Store.ListImageEntities(ctx, img.ID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	all, err := a.Store.ListEntitiesByCampaign(ctx, img.CampaignID)
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	v.NPCChoices = slices.DeleteFunc(all, func(e sqlc.Entity) bool {
 		return slices.ContainsFunc(v.NPCs, func(n sqlc.ListImageEntitiesRow) bool { return n.ID == e.ID })
 	})
 	if v.Characters, err = a.Store.ListImageCharacters(ctx, img.ID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	if v.CharacterChoices, err = a.Store.ListCharactersByCampaign(ctx, img.CampaignID); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.render(c, http.StatusOK, views.ImagePage(a.layout(w, img.Name, views.NavImages, &camp, false), v))
+	return nil
 }
 
 // imageFile serves an uploaded image, or redirects to the external link,
 // for anyone who may see the image.
-func (a *App) imageFile(c *gin.Context) {
+func (a *App) imageFile(c *gin.Context) error {
 	_, img, ok := a.readableImage(c)
 	if !ok {
-		return
+		return nil
 	}
 	// Only the current version is cached for good; without it the GM may
 	// change the link or file behind the same URL.
@@ -446,26 +433,28 @@ func (a *App) imageFile(c *gin.Context) {
 		}
 		c.Header("Cache-Control", cache)
 		c.Redirect(http.StatusFound, img.Url.String)
-		return
+		return nil
 	}
 	att, err := a.Store.GetAttachment(c.Request.Context(), img.AttachmentID.Int64)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	cache := cacheAttachment
 	if current {
 		cache = cacheForever
 	}
 	a.serveAttachment(c, att, cache)
+	return nil
 }
 
-func (a *App) displayPage(c *gin.Context) {
+func (a *App) displayPage(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
-	if _, err := a.Store.GetCampaign(c.Request.Context(), id); !a.found(c, err) {
-		return
+	if _, err := a.Store.GetCampaign(c.Request.Context(), id); err != nil {
+		return err
 	}
 	a.render(c, http.StatusOK, views.DisplayPage(id))
+	return nil
 }

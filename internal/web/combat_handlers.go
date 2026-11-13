@@ -22,14 +22,14 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
-func (a *App) combatPage(c *gin.Context) {
+func (a *App) combatPage(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	w, camp, ok := a.campaignAccess(c, id)
 	if !ok {
-		return
+		return nil
 	}
 	l := a.layout(w, "Combat", views.NavCombat, &camp, true)
 	ctx := c.Request.Context()
@@ -39,47 +39,45 @@ func (a *App) combatPage(c *gin.Context) {
 	if !w.isGM() {
 		v.Want = want
 		if v.Encounters, v.Current, err = a.playerCombat(ctx, w.viewer, id, want); err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		a.render(c, http.StatusOK, views.CombatPage(l, v))
-		return
+		return nil
 	}
 
 	if v.Encounters, err = a.Store.ListEncountersByCampaign(ctx, id); err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	for _, e := range v.Encounters {
 		// The list is ordered active first, so the default is the live fight.
 		if e.ID == want || (want == 0 && v.Current == nil) {
 			ev, err := a.encounterView(ctx, w.viewer, e)
 			if err != nil {
-				a.serverError(c, err)
-				return
+				return err
 			}
 			v.Current = &ev
 		}
 	}
 	a.render(c, http.StatusOK, views.CombatPage(l, v))
+	return nil
 }
 
-func (a *App) createEncounter(c *gin.Context) {
+func (a *App) createEncounter(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
-		return
+		return nil
 	}
 	var form nameForm
 	if !a.bindForm(c, &form) {
-		return
+		return nil
 	}
 	enc, err := a.Store.CreateEncounter(c.Request.Context(), sqlc.CreateEncounterParams{CampaignID: id, Name: strings.TrimSpace(form.Name)})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.Hub.Publish(id, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
 	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/campaigns/%d/combat?encounter=%d", id, enc.ID))
+	return nil
 }
 
 func (a *App) encounterParam(c *gin.Context) (sqlc.Encounter, bool) {
@@ -106,19 +104,19 @@ type addCombatantForm struct {
 }
 
 // addCombatant adds a PC, an NPC entity, or one or more compendium monsters.
-func (a *App) addCombatant(c *gin.Context) {
+func (a *App) addCombatant(c *gin.Context) error {
 	enc, ok := a.encounterParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	refID, ok := formInt(c, "id")
 	if !ok {
 		a.fail(c, http.StatusUnprocessableEntity, "Choose who to add.")
-		return
+		return nil
 	}
 	var form addCombatantForm
 	if !a.bindForm(c, &form) {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	p := sqlc.CreateCombatantParams{EncounterID: enc.ID, Ac: 10, HpVisible: form.HPVisible}
@@ -127,39 +125,36 @@ func (a *App) addCombatant(c *gin.Context) {
 	case "pc":
 		ch, err := a.Store.GetCharacter(ctx, refID)
 		if !a.found(c, err) || !a.sameCampaign(c, ch.CampaignID, enc.CampaignID) {
-			return
+			return nil
 		}
 		sheet, err := dnd5e.ParseSheet(ch.SheetJson)
 		if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		p.CharacterID, p.Name, p.Ac = nullID(ch.ID), ch.Name, int64(sheet.ArmorClass())
 	case "entity":
 		e, err := a.Store.GetEntity(ctx, refID)
 		if !a.found(c, err) || !a.sameCampaign(c, e.CampaignID, enc.CampaignID) {
-			return
+			return nil
 		}
 		p.EntityID, p.Name = nullID(e.ID), e.Name
 		if e.CompendiumRef.Valid {
 			if err := a.monsterStats(ctx, e.CompendiumRef.Int64, &p); err != nil {
-				a.serverError(c, err)
-				return
+				return err
 			}
 			p.Name = e.Name
 		}
 	case "monster":
 		if err := a.monsterStats(ctx, refID, &p); errors.Is(err, sql.ErrNoRows) {
 			a.fail(c, http.StatusNotFound, "No such monster.")
-			return
+			return nil
 		} else if err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		count = max(form.Count, 1)
 	default:
 		a.fail(c, http.StatusUnprocessableEntity, "Unknown combatant kind.")
-		return
+		return nil
 	}
 	base := p.Name
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -177,10 +172,10 @@ func (a *App) addCombatant(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		a.serverError(c, err)
-		return
+		return err
 	}
 	a.encounterChanged(c, enc)
+	return nil
 }
 
 func (a *App) sameCampaign(c *gin.Context, got, want int64) bool {
@@ -305,20 +300,19 @@ func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int) (int, 
 }
 
 // encounterAction runs start, roll, next, prev, end and delete.
-func (a *App) encounterAction(c *gin.Context) {
+func (a *App) encounterAction(c *gin.Context) error {
 	enc, ok := a.encounterParam(c)
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	if c.Param("action") == "delete" {
 		if err := a.Store.DeleteEncounter(ctx, enc.ID); err != nil {
-			a.serverError(c, err)
-			return
+			return err
 		}
 		a.Hub.Publish(enc.CampaignID, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
 		redirect(c, fmt.Sprintf("/campaigns/%d/combat", enc.CampaignID))
-		return
+		return nil
 	}
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		// Re-read inside the transaction, so turns sent from two devices
@@ -394,10 +388,11 @@ func (a *App) encounterAction(c *gin.Context) {
 		}
 		return q.UpdateEncounterState(ctx, next)
 	})
-	if a.commandFailed(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	a.encounterNotice(c, enc, "", a.pcTopics(ctx, enc.ID)...)
+	return nil
 }
 
 // pcTopics lists the characters in an encounter, whose sheets show
@@ -417,19 +412,19 @@ func (a *App) pcTopics(ctx context.Context, encounterID int64) []hub.Topic {
 }
 
 // combatantAction runs initiative, hp, marker, visible, condition and delete.
-func (a *App) combatantAction(c *gin.Context) {
+func (a *App) combatantAction(c *gin.Context) error {
 	id, ok := a.idParam(c, "combatant")
 	if !ok {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	cb, err := a.Store.GetCombatant(ctx, id)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	enc, err := a.Store.GetEncounter(ctx, cb.EncounterID)
-	if !a.found(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	var extra []hub.Topic
 	if cb.CharacterID.Valid {
@@ -465,10 +460,11 @@ func (a *App) combatantAction(c *gin.Context) {
 	default:
 		err = userError{errors.New("unknown action")}
 	}
-	if a.commandFailed(c, err) {
-		return
+	if err != nil {
+		return err
 	}
 	a.encounterChanged(c, enc, extra...)
+	return nil
 }
 
 // rollInitiative rolls d20 plus the combatant's initiative bonus: the one
