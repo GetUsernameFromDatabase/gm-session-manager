@@ -45,7 +45,8 @@ func (s SheetView) Hot(st hub.State) {
 	}
 }
 
-// Shape is the sheet with its hot values fixed.
+// Shape is the sheet with its hot values fixed, hashed as JSON: the sheet's
+// markup must read nothing outside SheetView.
 func (s SheetView) Shape() SheetView {
 	s.C.HP, s.C.TempHP = 0, 0
 	s.C.Sheet.DeathSaves = dnd5e.DeathSaves{}

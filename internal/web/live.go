@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"hash/fnv"
 	"net/http"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/a-h/templ"
 	"github.com/gin-gonic/gin"
@@ -28,6 +29,9 @@ type liveView struct {
 	// shape is html with the bound values held fixed, hashed to notice
 	// every other change; nil means html.
 	shape templ.Component
+	// model, when set, is hashed as JSON instead of rendering shape (about
+	// three quarters of a publish): shape's markup must read nothing else.
+	model any
 	hot   func(hub.State)
 	// ok is false when the viewer may not see the view (any more) or it is
 	// gone; html may still clear what the page showed.
@@ -100,26 +104,80 @@ func (a *App) State(ctx context.Context, c *hub.Client, view string) (hub.State,
 }
 
 func (lv liveView) state(ctx context.Context) (hub.State, bool, error) {
-	shape := lv.shape
-	if shape == nil {
-		shape = lv.html
+	buf := shapeBufs.Get().(*bytes.Buffer)
+	defer shapeBufs.Put(buf)
+	buf.Reset()
+	var hash string
+	if lv.model != nil {
+		if err := json.NewEncoder(buf).Encode(lv.model); err != nil {
+			return nil, false, err
+		}
+		// No random ids here, only user text that may look like one.
+		h := fnv.New64a()
+		_, _ = h.Write(buf.Bytes()) // fnv never fails
+		hash = strconv.FormatUint(h.Sum64(), 36)
+	} else {
+		shape := lv.shape
+		if shape == nil {
+			shape = lv.html
+		}
+		if err := shape.Render(ctx, buf); err != nil {
+			return nil, false, err
+		}
+		hash = shapeHash(buf.Bytes())
 	}
-	var buf bytes.Buffer
-	if err := shape.Render(ctx, &buf); err != nil {
-		return nil, false, err
-	}
-	h := fnv.New64a()
-	_, _ = h.Write(randomIDs.ReplaceAll(buf.Bytes(), nil)) // fnv never fails
-	st := hub.State{hub.HashKey: strconv.FormatUint(h.Sum64(), 36)}
+	st := hub.State{hub.HashKey: hash}
 	if lv.hot != nil {
 		lv.hot(st)
 	}
 	return st, true, nil
 }
 
-// randomIDs matches utils.RandomID ("id-" + rand.Text()), which components
-// use for unnamed elements: new on every render, so not part of the shape.
-var randomIDs = regexp.MustCompile(`id-[A-Z2-7]{26}`)
+// shapeBufs keeps render buffers between publishes: a sheet is ~1 MB of markup.
+var shapeBufs = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
+// randomIDPrefix and randomIDLen describe utils.RandomID ("id-" +
+// rand.Text()), which components use for unnamed elements: new on every
+// render, so not part of the shape.
+const (
+	randomIDPrefix = "id-"
+	randomIDLen    = 26
+)
+
+// shapeHash hashes markup without its random ids, in place: a regexp
+// replace copied the whole markup on every publish.
+func shapeHash(b []byte) string {
+	h := fnv.New64a()
+	for {
+		i := bytes.Index(b, []byte(randomIDPrefix))
+		if i < 0 {
+			break
+		}
+		end := i + len(randomIDPrefix)
+		if isRandomID(b[end:]) {
+			_, _ = h.Write(b[:i]) // fnv never fails
+			b = b[end+randomIDLen:]
+			continue
+		}
+		_, _ = h.Write(b[:end])
+		b = b[end:]
+	}
+	_, _ = h.Write(b)
+	return strconv.FormatUint(h.Sum64(), 36)
+}
+
+// isRandomID reports whether b starts with rand.Text's base32 characters.
+func isRandomID(b []byte) bool {
+	if len(b) < randomIDLen {
+		return false
+	}
+	for _, r := range b[:randomIDLen] {
+		if (r < 'A' || r > 'Z') && (r < '2' || r > '7') {
+			return false
+		}
+	}
+	return true
+}
 
 // liveHTML serves a view's fragments, for live.js to refetch a view whose
 // markup changed shape. Visitors name their request's secret instead of a
@@ -219,7 +277,7 @@ func (a *App) loadCharacterLive(ctx context.Context, vc viewerCtx, k liveKey) (l
 	if err != nil {
 		return liveView{}, err
 	}
-	return liveView{html: views.CharacterSheet(s), shape: views.CharacterSheet(s.Shape()), hot: s.Hot, ok: true}, nil
+	return liveView{html: views.CharacterSheet(s), model: s.Shape(), hot: s.Hot, ok: true}, nil
 }
 
 func (a *App) loadEncountersLive(ctx context.Context, vc viewerCtx, k liveKey) (liveView, error) {
@@ -246,7 +304,7 @@ func (a *App) loadEncounterLive(ctx context.Context, vc viewerCtx, k liveKey) (l
 	if err != nil {
 		return liveView{}, err
 	}
-	return liveView{html: views.Encounter(ev), shape: views.Encounter(ev.Shape()), hot: ev.Hot, ok: true}, nil
+	return liveView{html: views.Encounter(ev), model: ev.Shape(), hot: ev.Hot, ok: true}, nil
 }
 
 func (a *App) loadPlayerCombatLive(ctx context.Context, vc viewerCtx, k liveKey) (liveView, error) {

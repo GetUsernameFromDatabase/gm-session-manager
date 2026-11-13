@@ -3,11 +3,14 @@ package web
 import (
 	"database/sql"
 	"fmt"
+	"hash/fnv"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -342,5 +345,101 @@ func TestLiveBindsMatchState(t *testing.T) {
 				t.Errorf("bound %v\nstate %v", bound, hot)
 			}
 		})
+	}
+}
+
+// TestShapeHashSkipsRandomIDs pins shapeHash to hashing the markup with
+// every utils.RandomID removed, as the regexp it replaced did.
+func TestShapeHashSkipsRandomIDs(t *testing.T) {
+	ids := regexp.MustCompile(`id-[A-Z2-7]{26}`)
+	id := "id-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	for _, in := range []string{
+		"",
+		"no ids",
+		`<div id="` + id + `">x</div>`,
+		id + id,
+		"id-id-" + id,
+		"id-ABC",
+		"id-abcdefghijklmnopqrstuvwxyz",
+		`aria-labelledby="` + id + `" data-x="id-2345672345672345672345672"`,
+		"id-ABCDEFGHIJKLMNOPQRSTUVWXY1",
+	} {
+		h := fnv.New64a()
+		_, _ = h.Write(ids.ReplaceAll([]byte(in), nil))
+		if got, want := shapeHash([]byte(in)), strconv.FormatUint(h.Sum64(), 36); got != want {
+			t.Errorf("shapeHash(%q) = %s, want %s", in, got, want)
+		}
+	}
+}
+
+// TestLiveHotKeepsHash checks that changes the page patches in place leave
+// the hash alone (else every hp change would refetch the whole view), and
+// that a change the page cannot patch moves it.
+func TestLiveHotKeepsHash(t *testing.T) {
+	f := newLiveFixture(t)
+	player := f.token(t, enum.RolePlayer)
+	gm := f.token(t, enum.RoleAdmin)
+	sheetCmd := func(c string) {
+		if w := f.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", f.characterID), player, url.Values{"cmd": {c}}, true); w.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", c, w.Code, w.Body)
+		}
+	}
+	post := func(path string, form url.Values) {
+		if w := f.do(t, http.MethodPost, path, gm, form, true); w.Code >= http.StatusBadRequest {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
+		}
+	}
+	for _, c := range []string{"maxhp =12", "slot max 1 2", "feature add Lucky", "feature set Lucky uses=prof"} {
+		sheetCmd(c)
+	}
+	rows, err := f.q().ListCombatants(t.Context(), f.encounter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range rows { // turns need everyone's initiative
+		if err := f.q().SetCombatantInitiative(t.Context(), sqlc.SetCombatantInitiativeParams{ID: r.ID, Initiative: sql.NullInt64{Int64: int64(10 + i), Valid: true}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	watched := map[string]perm.Viewer{
+		views.LiveKey(views.LiveCharacter, f.characterID): perm.Player(f.characterID),
+		views.LiveKey(views.LiveEncounter, f.encounter):   perm.GM,
+	}
+	hashes := func() map[string]any {
+		out := map[string]any{}
+		for view, v := range watched {
+			st, _ := f.state(t, v, f.campaignID, view)
+			out[view] = st[hub.HashKey]
+		}
+		return out
+	}
+	before := hashes()
+	for name, step := range map[string]func(){
+		"hp":        func() { sheetCmd("hp -3") },
+		"temp":      func() { sheetCmd("temp 2") },
+		"slot":      func() { sheetCmd("slot use 1") },
+		"use":       func() { sheetCmd("use Lucky") },
+		"insp":      func() { sheetCmd("inspiration") },
+		"next turn": func() { post(fmt.Sprintf("/encounters/%d/next", f.encounter), nil) },
+		"ogre hp":   func() { post(fmt.Sprintf("/combatants/%d/hp", f.ogre), url.Values{"amount": {"5"}}) },
+	} {
+		step()
+		if after := hashes(); !maps.Equal(before, after) {
+			t.Errorf("%s moved the hash: %v → %v", name, before, after)
+			before = after
+		}
+	}
+	// A toggled condition is bound on the sheet, but the tracker's rows list it.
+	sheet := views.LiveKey(views.LiveCharacter, f.characterID)
+	sheetCmd("toggle prone")
+	if after := hashes(); after[sheet] != before[sheet] {
+		t.Errorf("prone moved the sheet hash")
+	}
+	sheetCmd("item add Rope")
+	post(fmt.Sprintf("/combatants/%d/marker", f.ogre), url.Values{"marker": {"red"}})
+	for view, h := range hashes() {
+		if h == before[view] {
+			t.Errorf("%s: a new item or marker left the hash unchanged", view)
+		}
 	}
 }
