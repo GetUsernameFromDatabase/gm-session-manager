@@ -1,5 +1,7 @@
 # internal/compendium
 
+- This package imports `dnd5e`, so `dnd5e` never imports it back: rule code there takes plain values (`dnd5e.Cantrip`, not `SpellData`) and gets `Slugify` passed in. 5e text helpers (`SplitList`, `Squash`, `CountWords`) live in `dnd5e`.
+- A caller that knows the kind's type decodes with `Decode[T]`; `DecodeData` is for code that really wants `any`.
 - Imported entries use our types (`entry.go`). Text a player sees holds no source codes (`LA|XPHB`, `SCF`, `{@…}`): map codes to words or drop them. Keep each entry's license and attribution (the 2024 SRD is CC-BY 4.0).
 - Parser changes: bump `normalizeVersion` (`importer.go`); it salts the source hash of data folders (5etools, Open5e). Wikidot/aidedd pages are not hashed: re-import them by hand.
 - Changes to what a 5etools download writes (bundled records, rewritten links): bump `DownloadVersion` (`fivetools_books.go`). Older books then show the GM a "download again" banner, or download again at start if the GM turned that on.

@@ -68,27 +68,6 @@ func TestSpellNeed(t *testing.T) {
 	}
 }
 
-// TestSpellbook reads a spellbook's size from the class's features.
-func TestSpellbook(t *testing.T) {
-	wizard := dnd5e.ClassInfo{Features: []dnd5e.ClassFeature{{Name: "Spellcasting", Description: "The book contains the level 1+ spells you know. It starts with six level 1 Wizard spells of your choice.\n\nWhenever you gain a Wizard level after 1, add two Wizard spells of your choice to your spellbook."}}}
-	lock := dnd5e.ClassInfo{Features: []dnd5e.ClassFeature{{Name: "Pact Magic", Description: "You know two Warlock cantrips of your choice."}}}
-	for _, tt := range []struct {
-		name  string
-		info  dnd5e.ClassInfo
-		level int
-		want  int
-	}{
-		{"wizard 1", wizard, 1, 6},
-		{"wizard 2", wizard, 2, 8},
-		{"wizard 5", wizard, 5, 14},
-		{"no spellbook", lock, 5, 0},
-	} {
-		if got := spellbook(tt.info, tt.level); got != tt.want {
-			t.Errorf("%s: %d, want %d", tt.name, got, tt.want)
-		}
-	}
-}
-
 // TestSpellCounts: creation and level-up refuse cantrips the class table
 // does not leave, too few cantrips, more prepared spells than it allows and
 // spells off the list, keeping the picks; fewer prepared spells are fine,

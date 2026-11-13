@@ -112,11 +112,11 @@ func upgradeSpecies(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet) ([]
 	if err != nil {
 		return nil, err
 	}
-	d, err := compendium.DecodeData(enum.KindSpecies, row.DataJson)
+	d, err := compendium.Decode[compendium.TextData](enum.KindSpecies, row.DataJson)
 	if err != nil {
 		return nil, err
 	}
-	return d.(*compendium.TextData).Parts, nil
+	return d.Parts, nil
 }
 
 // catchUpResistances adds the resistances creation would have: those the
@@ -126,7 +126,7 @@ func catchUpResistances(s *dnd5e.Sheet, parts []compendium.NameDesc) bool {
 	before := len(s.Resistances)
 	addAll := func(text string) {
 		for _, m := range reResistance.FindAllStringSubmatch(text, -1) {
-			addResistance(s, m[1])
+			dnd5e.AddResistance(s, m[1])
 		}
 	}
 	for _, p := range parts {
@@ -145,7 +145,7 @@ func catchUpResistances(s *dnd5e.Sheet, parts []compendium.NameDesc) bool {
 			}
 			addAll(o.Desc)
 			if resistsPick(parts, p) {
-				addResistance(s, o.Desc)
+				dnd5e.AddResistance(s, o.Desc)
 			}
 		}
 	}
@@ -205,11 +205,11 @@ func catchUpMasteries(ctx context.Context, q *sqlc.Queries, items map[string]str
 			case err != nil:
 				return false, err
 			default:
-				d, err := compendium.DecodeData(enum.KindItem, row.DataJson)
+				d, err := compendium.Decode[compendium.ItemData](enum.KindItem, row.DataJson)
 				if err != nil {
 					return false, err
 				}
-				mastery = d.(*compendium.ItemData).Mastery
+				mastery = d.Mastery
 			}
 			items[slug] = mastery
 		}

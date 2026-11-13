@@ -148,11 +148,10 @@ func TestImportFiveToolsBook(t *testing.T) {
 // link resolution, so they get the labels, never the tokens.
 func TestTokensReadAsLabels(t *testing.T) {
 	raw := `{"desc":"The target is [[compendium:condition/prone|Prone]].","actions":[{"name":"Shove","desc":"It falls [[compendium:condition/prone|prone]].","type":"action"}]}`
-	d, err := DecodeData(enum.KindMonster, raw)
+	m, err := Decode[MonsterData](enum.KindMonster, raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := d.(*MonsterData)
 	if m.Desc != "The target is Prone." || m.Actions[0].Desc != "It falls prone." {
 		t.Errorf("decoded %q / %q", m.Desc, m.Actions[0].Desc)
 	}

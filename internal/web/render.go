@@ -188,11 +188,11 @@ func (a *App) sheetSpells(ctx context.Context, sheet dnd5e.Sheet) (map[string]*c
 		if !ok {
 			continue
 		}
-		d, err := compendium.DecodeData(enum.KindSpell, data)
+		d, err := compendium.Decode[compendium.SpellData](enum.KindSpell, data)
 		if err != nil {
 			return nil, err
 		}
-		out[sp.Slug] = d.(*compendium.SpellData)
+		out[sp.Slug] = d
 	}
 	return out, nil
 }

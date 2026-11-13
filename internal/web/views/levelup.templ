@@ -144,19 +144,11 @@ func sortedColumns(m map[string]string) []string {
 func spellCounts(cols map[string]string) string {
 	var out []string
 	for _, k := range sortedColumns(cols) {
-		if cantrips, spells := SpellColumn(k); cantrips || spells {
+		if cantrips, spells := dnd5e.SpellColumn(k); cantrips || spells {
 			out = append(out, k+" "+cols[k])
 		}
 	}
 	return strings.Join(out, " · ")
-}
-
-// SpellColumn tells whether a class table column is its cantrip total
-// ("Cantrips Known") or its level 1+ spell total ("Prepared Spells").
-func SpellColumn(name string) (cantrips, spells bool) {
-	lk := strings.ToLower(name)
-	cantrips = strings.Contains(lk, "cantrip")
-	return cantrips, !cantrips && strings.Contains(lk, "spells")
 }
 
 // SpellNeed is how many class spells a step asks for: exactly, or at most

@@ -195,11 +195,10 @@ func (a *App) monsterStats(ctx context.Context, entryID int64, p *sqlc.CreateCom
 	if row.Kind != enum.KindMonster {
 		return sql.ErrNoRows
 	}
-	d, err := compendium.DecodeData(enum.KindMonster, row.DataJson)
+	m, err := compendium.Decode[compendium.MonsterData](enum.KindMonster, row.DataJson)
 	if err != nil {
 		return err
 	}
-	m := d.(*compendium.MonsterData)
 	p.MonsterRef, p.Name, p.Ac, p.Hp, p.MaxHp = nullID(row.ID), row.Name, int64(m.AC), int64(m.HP), int64(m.HP)
 	return nil
 }
@@ -239,8 +238,8 @@ func initiativeMod(r sqlc.ListCombatantsRow) int {
 		return s.Initiative()
 	}
 	if r.MonsterData.Valid {
-		if d, err := compendium.DecodeData(enum.KindMonster, r.MonsterData.String); err == nil {
-			return d.(*compendium.MonsterData).Initiative
+		if d, err := compendium.Decode[compendium.MonsterData](enum.KindMonster, r.MonsterData.String); err == nil {
+			return d.Initiative
 		}
 	}
 	return 0
@@ -253,8 +252,7 @@ func combatantDefenses(r sqlc.ListCombatantsRow, conds []sqlc.Condition) dnd5e.D
 	if s, ok := pcSheet(r); ok {
 		d = s.Defenses()
 	} else if r.MonsterData.Valid {
-		if m, err := compendium.DecodeData(enum.KindMonster, r.MonsterData.String); err == nil {
-			md := m.(*compendium.MonsterData)
+		if md, err := compendium.Decode[compendium.MonsterData](enum.KindMonster, r.MonsterData.String); err == nil {
 			d.List = slices.Concat(dnd5e.ParseDefenses(dnd5e.DefResist, md.Resistance), dnd5e.ParseDefenses(dnd5e.DefImmune, md.Immunity), dnd5e.ParseDefenses(dnd5e.DefVulnerable, md.Vulnerability))
 		}
 	}

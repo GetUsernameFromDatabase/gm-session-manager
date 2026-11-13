@@ -39,9 +39,6 @@ func TestSkillChoice(t *testing.T) {
 			t.Errorf("%q: %d %q", tt.in, n, list)
 		}
 	}
-	if got := SplitList("Insight and Religion"); !reflect.DeepEqual(got, []string{"Insight", "Religion"}) {
-		t.Errorf("SplitList: %q", got)
-	}
 }
 
 func TestOptions(t *testing.T) {
@@ -97,8 +94,5 @@ func TestEquipmentOptions(t *testing.T) {
 	bg := EquipmentOptions("*Choose A or B:* (A) Calligrapher's Supplies, Book (prayers), 8 GP; or (B) 50 GP")
 	if len(bg) != 2 || bg[0].GP != 8 || len(bg[0].Items) != 2 || bg[1].GP != 50 {
 		t.Errorf("background: %+v", bg)
-	}
-	if Squash("In sight") != "insight" {
-		t.Error("squash")
 	}
 }

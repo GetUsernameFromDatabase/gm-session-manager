@@ -202,11 +202,11 @@ func (a *App) subclassChangeEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5
 	if err != nil {
 		return nil, dnd5e.ClassInfo{}, err
 	}
-	d, err := compendium.DecodeData(enum.KindSubclass, row.DataJson)
+	d, err := compendium.Decode[compendium.ClassData](enum.KindSubclass, row.DataJson)
 	if err != nil {
 		return nil, dnd5e.ClassInfo{}, err
 	}
-	if d.(*compendium.ClassData).SubclassOf != ref.Class {
+	if d.SubclassOf != ref.Class {
 		return nil, dnd5e.ClassInfo{}, userError{fmt.Errorf("%s is not a %s subclass", row.Name, sheet.Classes[i].Name)}
 	}
 	cl := sheet.Classes[i]

@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"gm-session-manager/internal/dnd5e"
 )
 
 // CoreTraits reads a class's core traits table, whose rows are
@@ -33,22 +35,7 @@ func SkillChoice(s string) (int, []string) {
 	if !ok {
 		return n, nil
 	}
-	return n, SplitList(list)
-}
-
-// SplitList splits "A, B, and C" (or "A and B", "A, or B") into its items.
-func SplitList(s string) []string {
-	var out []string
-	for _, part := range strings.Split(s, ",") {
-		for _, item := range strings.Split(part, " and ") {
-			item = strings.TrimSpace(item)
-			item = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(item, "or "), "and "))
-			if item != "" {
-				out = append(out, item)
-			}
-		}
-	}
-	return out
+	return n, dnd5e.SplitList(list)
 }
 
 // EquipmentItem is one line of a starting equipment option.
@@ -85,7 +72,7 @@ func EquipmentOptions(s string) []EquipmentOption {
 		body := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s[m[1]:end]), "or"))
 		body = strings.TrimSuffix(body, ";")
 		o := EquipmentOption{Letter: s[m[2]:m[3]]}
-		for _, item := range SplitList(body) {
+		for _, item := range dnd5e.SplitList(body) {
 			if g := gpAmount.FindStringSubmatch(item); g != nil {
 				o.GP, _ = strconv.Atoi(g[1])
 				continue
@@ -205,13 +192,7 @@ func OptionPrerequisite(desc string) string {
 func Cantrips(text string) []string {
 	var out []string
 	for _, m := range knownCantrip.FindAllStringSubmatch(text, -1) {
-		out = append(out, SplitList(strings.ReplaceAll(m[1], "*", ""))...)
+		out = append(out, dnd5e.SplitList(strings.ReplaceAll(m[1], "*", ""))...)
 	}
 	return out
-}
-
-// Squash lowercases s and drops spaces, so names split by the source's
-// PDF extraction ("In sight", "Ar mor") still match.
-func Squash(s string) string {
-	return strings.ToLower(strings.Join(strings.Fields(s), ""))
 }

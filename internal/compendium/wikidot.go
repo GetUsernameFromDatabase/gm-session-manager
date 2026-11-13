@@ -384,9 +384,6 @@ var (
 	reOrdinal  = regexp.MustCompile(`^(\d+)(?:st|nd|rd|th)$`)
 )
 
-// CountWords are the spelled-out counts source texts use ("two cantrips").
-var CountWords = map[string]string{"one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6"}
-
 // featuresUnder reads features from headings: the prose before the first
 // feature is the description, and each heading starts a feature whose level
 // is levels[name] or the first "Nth level" in its text. levels, when set,
@@ -460,7 +457,7 @@ func wikidotClass(page string, blocks []block) ClassData {
 				d.HitDie, _ = strconv.Atoi(m[1])
 			}
 		case b.Label == LabelSavingThrows:
-			for _, s := range SplitList(b.Text) {
+			for _, s := range dnd5e.SplitList(b.Text) {
 				for _, a := range dnd5e.Abilities {
 					if strings.HasPrefix(strings.ToLower(s), a) {
 						d.Saves = append(d.Saves, a)
@@ -476,7 +473,7 @@ func wikidotClass(page string, blocks []block) ClassData {
 		case b.Label == LabelSkills:
 			traits[classTraits[0]] = b.Text
 			if m := reChoose.FindStringSubmatch(b.Text); m != nil {
-				traits[classTraits[0]] = "Choose " + cmp.Or(CountWords[strings.ToLower(m[1])], m[1]) + ": " + m[2]
+				traits[classTraits[0]] = "Choose " + cmp.Or(dnd5e.CountWords[strings.ToLower(m[1])], m[1]) + ": " + m[2]
 			}
 		case b.Rows != nil && !table:
 			table = classTable(&d, levels, b.Rows)

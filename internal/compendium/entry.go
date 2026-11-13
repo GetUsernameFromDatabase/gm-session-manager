@@ -248,6 +248,20 @@ func DecodeData(kind enum.CompendiumKind, raw string) (any, error) {
 	return d, nil
 }
 
+// Decode is DecodeData for a caller that knows kind's type: an error when
+// kind's type is not T.
+func Decode[T any](kind enum.CompendiumKind, raw string) (*T, error) {
+	d, err := DecodeData(kind, raw)
+	if err != nil {
+		return nil, err
+	}
+	t, ok := d.(*T)
+	if !ok {
+		return nil, fmt.Errorf("compendium %s data is %T, not %T", kind, d, t)
+	}
+	return t, nil
+}
+
 // encode returns data_json and the content hash covering everything stored.
 func (e Entry) encode(src Source) (data, hash string, err error) {
 	b, err := json.Marshal(e.Data)

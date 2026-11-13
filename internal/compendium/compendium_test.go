@@ -89,6 +89,16 @@ func TestImportIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestDecode: the kind's type decodes, any other type is an error.
+func TestDecode(t *testing.T) {
+	if d, err := Decode[SpellData](enum.KindSpell, `{"level":2}`); err != nil || d.Level != 2 {
+		t.Errorf("spell: %+v %v", d, err)
+	}
+	if _, err := Decode[ClassData](enum.KindSpell, `{"level":2}`); err == nil {
+		t.Error("a spell decoded as a class")
+	}
+}
+
 func TestNormalizedShapes(t *testing.T) {
 	store := newStore(t)
 	dir := t.TempDir()

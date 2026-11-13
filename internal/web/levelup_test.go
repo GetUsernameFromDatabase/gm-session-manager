@@ -154,7 +154,7 @@ func TestLevelUpInvocations(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := meetsPrerequisite(prereq, dnd5e.Sheet{}, 2, cs); got != want {
+		if got := dnd5e.MeetsPrerequisite(prereq, dnd5e.Sheet{}, 2, cs, compendium.Slugify); got != want {
 			t.Errorf("taught by %q: %v, want %v", class, got, want)
 		}
 	}
@@ -305,7 +305,7 @@ func TestLevelUpFeats(t *testing.T) {
 				{Slug: "light", Name: "Light", Ability: "int", Feat: "Magic Initiate (Wizard)"},
 				{Slug: "magic-missile", Name: "Magic Missile", Level: 1, Prepared: true, Ability: "int", Feat: "Magic Initiate (Wizard)"},
 			}
-			sh.Features = append(sh.Features, freeCast(sh.Spells[1], "Magic Initiate (Wizard)"))
+			sh.Features = append(sh.Features, dnd5e.FreeCast(sh.Spells[1], "Magic Initiate (Wizard)"))
 			raw, _ := sh.JSON()
 			if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
 				t.Fatal(err)
@@ -447,6 +447,26 @@ func TestLevelUpEpicBoon(t *testing.T) {
 	ch, _ = e.q().GetCharacter(ctx, e.characterID)
 	if sh, err := dnd5e.ParseSheet(ch.SheetJson); err != nil || sh.Level() != 19 || !slices.Contains(sh.Feats, "Boon of Fate") || sh.Scores["cha"] != 21 {
 		t.Errorf("sheet: %v %s", err, ch.SheetJson)
+	}
+}
+
+// TestLevelUpPageAtTwenty: at level 20 the page says so instead of failing;
+// the offer is still built from an empty plan.
+func TestLevelUpPageAtTwenty(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	loadFeatFixtures(t, e)
+	ch, _ := e.q().GetCharacter(ctx, e.characterID)
+	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
+	sh.Classes = []dnd5e.ClassLevel{{Slug: "wizard", Name: "Wizard", Level: dnd5e.MaxLevel, HitDie: 6, Caster: "full"}}
+	raw, _ := sh.JSON()
+	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, enum.RolePlayer)
+	w := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/levelup?class=wizard", e.characterID), player, nil, false)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "already level 20") {
+		t.Errorf("level 20 page: %d %s", w.Code, w.Body)
 	}
 }
 
