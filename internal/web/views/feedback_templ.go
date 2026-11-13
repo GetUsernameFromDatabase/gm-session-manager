@@ -20,29 +20,6 @@ import (
 	"gm-session-manager/internal/web/components/textarea"
 )
 
-// PathFeedback takes bug reports and ideas; they are saved as files on the host.
-const PathFeedback = "/feedback"
-
-// Report kinds: a person picks a bug or an idea; the server writes error
-// reports itself for a 500.
-const (
-	FeedbackBug   = "bug"
-	FeedbackIdea  = "idea"
-	FeedbackError = "error"
-)
-
-// MaxScreenshots is how many pictures one report may carry.
-const MaxScreenshots = 3
-
-// Classes that show an element for one kind only, keyed on the form's
-// checked kind, so switching keeps everything typed.
-const (
-	bugOnly  = "group-has-[[name=kind][value=idea]:checked]/feedback:hidden"
-	ideaOnly = "hidden group-has-[[name=kind][value=idea]:checked]/feedback:inline"
-)
-
-const feedbackLabel = "Report a bug or suggest an idea"
-
 // feedbackDialog is the navbar's button and form for a bug report or an idea.
 func feedbackDialog() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -138,7 +115,7 @@ func feedbackDialog() templ.Component {
 						var templ_7745c5c3_Var7 string
 						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(feedbackLabel)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 50, Col: 20}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 27, Col: 20}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 						if templ_7745c5c3_Err != nil {
@@ -228,7 +205,7 @@ func feedbackForm() templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templruntime.NewAttributeExpression(PathFeedback).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 68, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 45, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
@@ -815,7 +792,7 @@ func feedbackKind(value, title, hint string, ic func(...icon.Props) templ.Compon
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templruntime.NewAttributeExpression("feedback-kind-" + value).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 124, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 101, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 		if templ_7745c5c3_Err != nil {
@@ -844,7 +821,7 @@ func feedbackKind(value, title, hint string, ic func(...icon.Props) templ.Compon
 		var templ_7745c5c3_Var38 string
 		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 131, Col: 11}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 108, Col: 11}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 		if templ_7745c5c3_Err != nil {
@@ -857,7 +834,7 @@ func feedbackKind(value, title, hint string, ic func(...icon.Props) templ.Compon
 		var templ_7745c5c3_Var39 string
 		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(hint)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 133, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 110, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 		if templ_7745c5c3_Err != nil {
@@ -905,7 +882,7 @@ func screenshotPicker() templ.Component {
 		var templ_7745c5c3_Var41 string
 		templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("(up to %d)", MaxScreenshots))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 148, Col: 82}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 125, Col: 82}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 		if templ_7745c5c3_Err != nil {
@@ -918,7 +895,7 @@ func screenshotPicker() templ.Component {
 		var templ_7745c5c3_Var42 string
 		templ_7745c5c3_Var42, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(MaxScreenshots)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 151, Col: 145}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 128, Col: 145}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 		if templ_7745c5c3_Err != nil {
@@ -1067,7 +1044,7 @@ func feedbackField(id, label string) templ.Component {
 				var templ_7745c5c3_Var49 string
 				templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 177, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/feedback.templ`, Line: 154, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 				if templ_7745c5c3_Err != nil {

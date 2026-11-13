@@ -37,7 +37,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 
 D&D 5e (2024) is the only system, fenced in rather than abstracted:
 
-- **5e:** `internal/dnd5e` (rules), `internal/web/sheet5e_*.go` (wizard, level-up, builder, sources, sheet commands) and in `internal/web/views` the sheet, wizard, builder, level-up, sources and compendium templates, `character_live.go` and `sources.go`. The exceptions in the depguard rule `neutral` are the full list.
+- **5e:** `internal/dnd5e` (rules), `internal/web/sheet5e_*.go` (wizard, level-up, builder, sources, sheet commands) and in `internal/web/views` the sheet, wizard, builder, level-up, sources and compendium templates (`.templ`, `_view.go`) and `character_live.go`. The exceptions in the depguard rule `neutral` are the full list.
 - **Neutral:** everything else (combat, sessions, campaigns, notes, entities, images, files, hub, perm, export). It reaches 5e only through `internal/web/sheet5e.go` and `internal/web/views/sheet5e.go`, plain-typed functions. depguard (`.golangci.yml`, rule `neutral`) fails the lint on any other `dnd5e` import, generated `*_templ.go` included; a new 5e file must be added to its exceptions.
 - **A second system** starts as its own `sheet<sys>_*.go` beside `sheet5e`; only then is the shared interface extracted from the two. Existing hooks: `campaigns.system` and `characters.system`.
 - **Largest open question:** `internal/compendium` is 5e-shaped (statblocks, spells, classes; the `compendium_entries.kind` CHECK), and is exempt from the fence.

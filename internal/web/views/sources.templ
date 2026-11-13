@@ -10,10 +10,6 @@ import (
 	"gm-session-manager/internal/web/components/icon"
 )
 
-func (i SourceIssue) previewID(s SheetView) string {
-	return fmt.Sprintf("source-%d-%s-%s", s.ID, i.Kind, i.Slug)
-}
-
 // sourcesAlert warns that pinned compendium copies are missing or outranked,
 // and opens the dialog that switches them.
 templ sourcesAlert(s SheetView) {

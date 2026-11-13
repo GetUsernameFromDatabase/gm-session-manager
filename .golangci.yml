@@ -29,8 +29,7 @@ linters:
             - "!**/internal/web/sheet5e*.go"
             - "!**/internal/web/views/sheet5e.go"
             - "!**/internal/web/views/character_live.go"
-            - "!**/internal/web/views/sources.go"
-            - "!**/internal/web/views/{builder,character,compendium,levelup,sources,wizard}_templ.go"
+            - "!**/internal/web/views/{builder,character,compendium,levelup,sources,wizard}_{templ,view}.go"
           deny:
             - pkg: gm-session-manager/internal/dnd5e
               desc: system-neutral code; go through sheet5e.go

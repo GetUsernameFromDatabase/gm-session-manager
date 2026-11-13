@@ -19,10 +19,6 @@ import (
 	"gm-session-manager/internal/web/components/icon"
 )
 
-func (i SourceIssue) previewID(s SheetView) string {
-	return fmt.Sprintf("source-%d-%s-%s", s.ID, i.Kind, i.Slug)
-}
-
 // sourcesAlert warns that pinned compendium copies are missing or outranked,
 // and opens the dialog that switches them.
 func sourcesAlert(s SheetView) templ.Component {
@@ -79,7 +75,7 @@ func sourcesAlert(s SheetView) templ.Component {
 					var templ_7745c5c3_Var4 string
 					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d sources to review", len(s.SourceIssues)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 26, Col: 63}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 22, Col: 63}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 					if templ_7745c5c3_Err != nil {
@@ -306,7 +302,7 @@ func sourceRow(s SheetView, i SourceIssue) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("/characters/%d/sources/preview", s.ID)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 63, Col: 86}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 59, Col: 86}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 		if templ_7745c5c3_Err != nil {
@@ -319,7 +315,7 @@ func sourceRow(s SheetView, i SourceIssue) templ.Component {
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templruntime.NewAttributeExpression("#" + id).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 63, Col: 109}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 59, Col: 109}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 		if templ_7745c5c3_Err != nil {
@@ -332,7 +328,7 @@ func sourceRow(s SheetView, i SourceIssue) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templruntime.NewAttributeExpression(i.Kind).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 64, Col: 50}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 60, Col: 50}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 		if templ_7745c5c3_Err != nil {
@@ -345,7 +341,7 @@ func sourceRow(s SheetView, i SourceIssue) templ.Component {
 		var templ_7745c5c3_Var17 string
 		templ_7745c5c3_Var17, templ_7745c5c3_Err = templruntime.NewAttributeExpression(i.Slug).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 65, Col: 50}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 61, Col: 50}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 		if templ_7745c5c3_Err != nil {
@@ -358,7 +354,7 @@ func sourceRow(s SheetView, i SourceIssue) templ.Component {
 		var templ_7745c5c3_Var18 string
 		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(i.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 67, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 63, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 		if templ_7745c5c3_Err != nil {
@@ -383,7 +379,7 @@ func sourceRow(s SheetView, i SourceIssue) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(i.Kind)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 69, Col: 13}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 65, Col: 13}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -403,7 +399,7 @@ func sourceRow(s SheetView, i SourceIssue) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(i.Pinned + " is missing")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 74, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 70, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -417,7 +413,7 @@ func sourceRow(s SheetView, i SourceIssue) templ.Component {
 				var templ_7745c5c3_Var22 string
 				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(" (no copy left)")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 76, Col: 25}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 72, Col: 25}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 				if templ_7745c5c3_Err != nil {
@@ -428,7 +424,7 @@ func sourceRow(s SheetView, i SourceIssue) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(i.Pinned + " → " + i.Best)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 79, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 75, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
@@ -482,7 +478,7 @@ func sourceRow(s SheetView, i SourceIssue) templ.Component {
 		var templ_7745c5c3_Var25 string
 		templ_7745c5c3_Var25, templ_7745c5c3_Err = templruntime.NewAttributeExpression(id).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 91, Col: 14}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 87, Col: 14}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
@@ -521,7 +517,7 @@ func SourcePreview(v SourcePreviewView) templ.Component {
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs("Switch " + v.Name + " to " + v.SourceLabel)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 98, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 94, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -575,7 +571,7 @@ func SourcePreview(v SourcePreviewView) templ.Component {
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("/characters/%d/cmd", v.CharacterID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 112, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 108, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
 			if templ_7745c5c3_Err != nil {
@@ -610,7 +606,7 @@ func SourcePreview(v SourcePreviewView) templ.Component {
 		var templ_7745c5c3_Var29 string
 		templ_7745c5c3_Var29, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.Command).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 117, Col: 52}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 113, Col: 52}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 		if templ_7745c5c3_Err != nil {
@@ -684,7 +680,7 @@ func switchList(title string, fs []dnd5e.SwitchFeature, label string) templ.Comp
 			var templ_7745c5c3_Var32 string
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 131, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 127, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
@@ -702,7 +698,7 @@ func switchList(title string, fs []dnd5e.SwitchFeature, label string) templ.Comp
 				var templ_7745c5c3_Var33 string
 				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 135, Col: 14}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 131, Col: 14}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {
@@ -716,7 +712,7 @@ func switchList(title string, fs []dnd5e.SwitchFeature, label string) templ.Comp
 					var templ_7745c5c3_Var34 string
 					templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf(" (level %d)", f.Level))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 137, Col: 44}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 133, Col: 44}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 					if templ_7745c5c3_Err != nil {
@@ -731,7 +727,7 @@ func switchList(title string, fs []dnd5e.SwitchFeature, label string) templ.Comp
 					var templ_7745c5c3_Var35 string
 					templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(" (not in " + label + ", removed)")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 140, Col: 43}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 136, Col: 43}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 					if templ_7745c5c3_Err != nil {
@@ -746,7 +742,7 @@ func switchList(title string, fs []dnd5e.SwitchFeature, label string) templ.Comp
 					var templ_7745c5c3_Var36 string
 					templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(" (edited, kept)")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 143, Col: 26}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/sources.templ`, Line: 139, Col: 26}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 					if templ_7745c5c3_Err != nil {

@@ -3,10 +3,7 @@ package views
 import (
 	"cmp"
 	"fmt"
-	"gm-session-manager/internal/compendium"
-	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
-	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
@@ -20,60 +17,11 @@ import (
 	"gm-session-manager/internal/web/components/spinner"
 	"gm-session-manager/internal/web/components/tooltip"
 	"gm-session-manager/internal/web/utils"
-	"maps"
 	"net/url"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 )
-
-// SheetView is a character as one viewer sees it.
-type SheetView struct {
-	ID         int64
-	CampaignID int64
-	C          dnd5e.Character
-	Conditions []sqlc.Condition
-	// Looks are the character's images the viewer may see (perm.VisibleLooks).
-	Looks []perm.Look
-	// What the viewer may change (see perm.CanCharacter).
-	CanHP, CanConditions, CanSheet bool
-	// CanRevert is set while a level-up can be undone.
-	CanRevert bool
-	// SpellData are the compendium details of the sheet's spells, by slug.
-	SpellData map[string]*compendium.SpellData
-	// CanSources lets the viewer switch sources; SourceIssues are only
-	// computed then.
-	CanSources   bool
-	SourceIssues []SourceIssue
-	// MasteryLimit is how many weapon kinds the classes let the character
-	// master (dnd5e.Sheet.MasteryLimit).
-	MasteryLimit int
-}
-
-func (s SheetView) cmdURL() string { return fmt.Sprintf("/characters/%d/cmd", s.ID) }
-
-func (s SheetView) condition(slug string) (sqlc.Condition, bool) {
-	i := slices.IndexFunc(s.Conditions, func(c sqlc.Condition) bool { return c.Slug == slug })
-	if i < 0 {
-		return sqlc.Condition{}, false
-	}
-	return s.Conditions[i], true
-}
-
-// defenses are the sheet's, resisting all damage while Petrified.
-func (s SheetView) defenses() dnd5e.Defenses {
-	d := s.C.Sheet.Defenses()
-	_, d.ResistAll = s.condition(dnd5e.Petrified)
-	return d
-}
-
-// tapSize lifts small sheet controls to 32px on phones.
-const tapSize = "max-sm:h-8 max-sm:px-3"
-
-func cmdVals(cmd string) string {
-	return fmt.Sprintf(`{"cmd":%q}`, cmd)
-}
 
 templ CharacterPage(l Layout, s SheetView) {
 	@Page(l) {
@@ -104,7 +52,7 @@ templ CharacterSheet(s SheetView) {
 		<div class="flex flex-wrap items-end justify-between gap-3">
 			<div>
 				<h1 class="text-3xl leading-tight font-semibold">
-					@editable(s, edit{"details", "set-name", ""}, "Change name", "") {
+					@editable(s, edit{verbDetails, opSetName, ""}, "Change name", "") {
 						{ s.C.Name }
 					}
 				</h1>
@@ -148,7 +96,7 @@ templ CharacterSheet(s SheetView) {
 								@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: with(dialog.TriggerFor(builderID), templ.Attributes{
 									"data-menu-item": "",
 									"hx-get":         fmt.Sprintf("/characters/%d/subclass?class=%s", s.ID, url.QueryEscape(cl.Slug)),
-									"hx-target":      "#builder",
+									"hx-target":      builderTarget,
 									"hx-swap":        "innerHTML",
 								})}) {
 									@icon.Shuffle()
@@ -242,23 +190,6 @@ templ characterLooks(s SheetView) {
 	}
 }
 
-// subtitlePart is one piece of the line under the name.
-type subtitlePart struct {
-	text, what string
-	to         edit
-}
-
-// subtitle is species, background and classes, leaving out empty ones;
-// classes change through levelling up.
-func (s SheetView) subtitle() []subtitlePart {
-	parts := []subtitlePart{
-		{s.C.Sheet.Species, "species", edit{"details", "set-species", ""}},
-		{s.C.Sheet.Background, "background", edit{"details", "set-background", ""}},
-		{s.C.Sheet.ClassSummary(), "classes", edit{}},
-	}
-	return slices.DeleteFunc(parts, func(p subtitlePart) bool { return p.text == "" })
-}
-
 // vitalsStrip stays pinned under the nav (top-12 is the nav's height): HP
 // as a figure and a bar, then AC, initiative and speed, with the HP form
 // one tap away so the strip stays one row on a phone.
@@ -268,30 +199,30 @@ templ vitalsStrip(s SheetView) {
 			<div>
 				<div class="text-xs text-muted-foreground">HP</div>
 				<div class="text-4xl leading-none font-semibold tabular-nums">
-					@editable(s, edit{"hp", "hp-set", ""}, "Change hit points", "") {
-						@editName(s, edit{"hp", "hp-set", ""}, "Change hit points")
+					@editable(s, edit{verbHP, opHPSet, ""}, "Change hit points", "") {
+						@editName(s, edit{verbHP, opHPSet, ""}, "Change hit points")
 						<span { bind("text=hp")... }>{ fmt.Sprint(s.C.HP) }</span>
 					}
-					@editable(s, edit{"hp", "hp-max", ""}, "Change max hit points", "") {
-						@editName(s, edit{"hp", "hp-max", ""}, "Change max hit points")
+					@editable(s, edit{verbHP, opHPMax, ""}, "Change max hit points", "") {
+						@editName(s, edit{verbHP, opHPMax, ""}, "Change max hit points")
 						<span class="text-xl text-muted-foreground">/{ fmt.Sprint(s.C.MaxHP) }</span>
 					}
 				</div>
 				if s.C.TempHP > 0 {
-					@editable(s, edit{"hp", "hp-temp", ""}, "Change temporary hit points", "") {
-						@editName(s, edit{"hp", "hp-temp", ""}, "Change temporary hit points")
+					@editable(s, edit{verbHP, opHPTemp, ""}, "Change temporary hit points", "") {
+						@editName(s, edit{verbHP, opHPTemp, ""}, "Change temporary hit points")
 						<span class="text-xs text-sky-600 dark:text-sky-400" { bind("text=temp")... }>{ tempLabel(s.C.TempHP) }</span>
 					}
 				}
 			</div>
 			<dl class="flex flex-1 gap-x-4 text-sm">
-				@stat(s, "AC", fmt.Sprint(s.C.Sheet.ArmorClass()), "", edit{"details", "set-ac", ""}) {
+				@stat(s, statAC, fmt.Sprint(s.C.Sheet.ArmorClass()), "", edit{verbDetails, opSetAC, ""}) {
 					@modWarn(s, "ac", dnd5e.ModAC)
 				}
-				@stat(s, "Init", dnd5e.Signed(s.C.Sheet.Initiative()), "", edit{"mods", "mod-add", dnd5e.ModInit}) {
+				@stat(s, statInit, dnd5e.Signed(s.C.Sheet.Initiative()), "", edit{verbMods, opModAdd, dnd5e.ModInit}) {
 					@modWarn(s, "init", dnd5e.ModInit, dnd5e.Dex)
 				}
-				@stat(s, "Speed", fmt.Sprint(s.C.Sheet.WalkSpeed()), "", edit{"details", "set-speed", ""}) {
+				@stat(s, statSpeed, fmt.Sprint(s.C.Sheet.WalkSpeed()), "", edit{verbDetails, opSetSpeed, ""}) {
 					@modWarn(s, "speed", dnd5e.ModSpeed)
 				}
 			</dl>
@@ -345,20 +276,20 @@ templ statsCard(s SheetView) {
 	@card.Card() {
 		@card.Content() {
 			<dl class="grid grid-cols-3 gap-x-6 gap-y-2 text-sm lg:grid-cols-6">
-				@stat(s, "Prof", dnd5e.Signed(s.C.Sheet.ProficiencyBonus()), "", edit{})
-				@stat(s, "Passive Perception", fmt.Sprint(s.C.Sheet.PassivePerception()), "", edit{"mods", "mod-add", dnd5e.ModPassive}) {
+				@stat(s, statProf, dnd5e.Signed(s.C.Sheet.ProficiencyBonus()), "", edit{})
+				@stat(s, statPassive, fmt.Sprint(s.C.Sheet.PassivePerception()), "", edit{verbMods, opModAdd, dnd5e.ModPassive}) {
 					@modWarn(s, "passive", dnd5e.ModPassive, "skill.perception", dnd5e.Wis)
 				}
-				@stat(s, "Hit dice", hitDice(s.C.Sheet), "hd", edit{"rest", "hitdie-use", ""})
-				@stat(s, "Size", cmp.Or(s.C.Sheet.Size, "—"), "", edit{"details", "set-size", ""})
-				@stat(s, "Vision", cmp.Or(s.C.Sheet.Vision, "Normal"), "", edit{"details", "set-vision", ""})
-				@stat(s, "Resistances", cmp.Or(strings.Join(capitalized(s.C.Sheet.Resistances), ", "), "None"), "", edit{"profs", "res-add", ""})
+				@stat(s, statHitDice, hitDice(s.C.Sheet), "hd", edit{verbRest, opHitdieUse, ""})
+				@stat(s, statSize, cmp.Or(s.C.Sheet.Size, "—"), "", edit{verbDetails, opSetSize, ""})
+				@stat(s, statVision, cmp.Or(s.C.Sheet.Vision, "Normal"), "", edit{verbDetails, opSetVision, ""})
+				@stat(s, statResistances, cmp.Or(strings.Join(capitalized(s.C.Sheet.Resistances), ", "), labelNone), "", edit{verbProfs, opResAdd, ""})
 				// Rare, so shown only when set; the builder's tabs add them.
 				if len(s.C.Sheet.Immunities) > 0 {
-					@stat(s, "Immunities", strings.Join(capitalized(s.C.Sheet.Immunities), ", "), "", edit{"profs", "imm-add", ""})
+					@stat(s, statImmunities, strings.Join(capitalized(s.C.Sheet.Immunities), ", "), "", edit{verbProfs, opImmAdd, ""})
 				}
 				if len(s.C.Sheet.Vulnerabilities) > 0 {
-					@stat(s, "Vulnerabilities", strings.Join(capitalized(s.C.Sheet.Vulnerabilities), ", "), "", edit{"profs", "vuln-add", ""})
+					@stat(s, statVulnerabilities, strings.Join(capitalized(s.C.Sheet.Vulnerabilities), ", "), "", edit{verbProfs, opVulnAdd, ""})
 				}
 			</dl>
 			if s.CanSheet {
@@ -380,28 +311,6 @@ templ statsCard(s SheetView) {
 		}
 	}
 }
-
-func hitDice(s dnd5e.Sheet) string {
-	total := s.Level()
-	if total == 0 {
-		return "–"
-	}
-	dice := s.HitDice()
-	sizes := slices.Sorted(maps.Keys(dice))
-	slices.Reverse(sizes)
-	parts := make([]string, len(sizes))
-	for i, d := range sizes {
-		if len(sizes) == 1 {
-			parts[i] = fmt.Sprintf("d%d", d)
-		} else {
-			parts[i] = fmt.Sprintf("%dd%d", dice[d], d)
-		}
-	}
-	return fmt.Sprintf("%d/%d %s", total-s.HitDiceUsed, total, strings.Join(parts, " + "))
-}
-
-// edit names the builder form a value opens; the zero edit opens none.
-type edit struct{ verb, op, subject string }
 
 // editable lets the owner tap its children to open the form that changes
 // them; everyone else just sees the children. It keeps the text's look.
@@ -457,9 +366,6 @@ templ stat(s SheetView, name, value, key string, to edit) {
 	</div>
 }
 
-// statWhy are the stats with a breakdown (dnd5e.Sheet.Explain target).
-var statWhy = map[string]string{"AC": dnd5e.ModAC, "Speed": dnd5e.ModSpeed, "Init": dnd5e.ModInit, "Passive Perception": dnd5e.ModPassive}
-
 // whyPopover opens from its children to say what a value is for and what
 // makes it up. id must be stable, so the live view's markup hash is.
 templ whyPopover(s SheetView, id, title, tip, target string) {
@@ -498,15 +404,12 @@ templ breakdown(sh dnd5e.Sheet, target string) {
 	</ul>
 }
 
-// plainTotals are the breakdown targets that are values, not bonuses.
-var plainTotals = []string{dnd5e.ModAC, dnd5e.ModSpeed, dnd5e.ModPassive, dnd5e.ExplainSpellDC}
-
 // armorCard is the armor worn and what it makes of AC, then the armor in
 // the inventory to change into.
 templ armorCard(s SheetView) {
 	{{ sh := s.C.Sheet }}
 	@card.Card() {
-		@cardTitle(s, "Armour", "armor", "")
+		@cardTitle(s, "Armour", verbArmor, "")
 		@card.Content() {
 			{{ spare := s.spareArmor() }}
 			if sh.Armor == nil && !sh.Shield && len(spare) == 0 {
@@ -564,43 +467,6 @@ templ gearRow(s SheetView, name, detail, cmd, verb string, on bool) {
 	</li>
 }
 
-// spareArmor is the armor and shields in the inventory not worn.
-func (s SheetView) spareArmor() []dnd5e.Item {
-	return slices.DeleteFunc(slices.Clone(s.C.Sheet.Inventory), func(it dnd5e.Item) bool {
-		return it.Armor == nil && !it.Shield || s.C.Sheet.Worn(it)
-	})
-}
-
-// spareWeapons are the weapons in the inventory not ready to attack with.
-func (s SheetView) spareWeapons() []dnd5e.Item {
-	return slices.DeleteFunc(slices.Clone(s.C.Sheet.Inventory), func(it dnd5e.Item) bool {
-		return it.Weapon == nil || s.C.Sheet.Ready(it)
-	})
-}
-
-// statTips explain the stats whose names do not say what they are for.
-var statTips = map[string]string{
-	"Passive Perception": "10 + your Perception bonus: what you notice without looking. Hidden creatures' Stealth is checked against it.",
-	"Init":               "Initiative: add it to a d20 when combat starts.",
-	"AC":                 "Armor class: an attack hits you if its roll meets or beats this.",
-	"Speed":              "How far you can move on your turn, in feet.",
-	"Prof":               "Proficiency bonus: added to the attacks, saves and skills you are proficient in.",
-	"Hit dice":           "Spend these on a short rest to heal; a long rest restores them.",
-	"Vision":             "What you can see in darkness and dim light without a light source.",
-	"Resistances":        "Damage of these types is halved.",
-	"Immunities":         "Damage of these types is ignored.",
-	"Vulnerabilities":    "Damage of these types is doubled.",
-}
-
-// capitalized are keys such as damage types as names: "fire" is "Fire".
-func capitalized(keys []string) []string {
-	out := make([]string, len(keys))
-	for i, k := range keys {
-		out[i] = strings.ToUpper(k[:1]) + k[1:]
-	}
-	return out
-}
-
 // profMark shows a proficiency level at a glance.
 templ profMark(level string) {
 	switch level {
@@ -611,11 +477,6 @@ templ profMark(level string) {
 		default:
 			<span class="text-muted-foreground" title="Not proficient">○</span>
 	}
-}
-
-// hasMods reports whether any custom modifier is on one of targets.
-func (s SheetView) hasMods(targets ...string) bool {
-	return slices.ContainsFunc(s.C.Sheet.Modifiers, func(m dnd5e.CustomMod) bool { return slices.Contains(targets, m.Target) })
 }
 
 // modWarn flags a value changed by custom modifiers; a tap lists them, and
@@ -737,9 +598,6 @@ templ exhaustionChip(s SheetView) {
 	}
 }
 
-// commandsID is the palette that explains the commands and fills one in.
-const commandsID = "command-help"
-
 // commandBar runs typed commands; its palette lists every command with an
 // example, and picking one puts the example in the bar to adjust.
 templ commandBar(s SheetView) {
@@ -782,7 +640,7 @@ templ commandBar(s SheetView) {
 
 templ abilitiesCard(s SheetView) {
 	@card.Card() {
-		@cardTitle(s, "Abilities", "abilities", "")
+		@cardTitle(s, "Abilities", verbAbilities, "")
 		@card.Content() {
 			<div class="grid grid-cols-3 gap-x-3 gap-y-4">
 				for _, a := range dnd5e.Abilities {
@@ -791,7 +649,7 @@ templ abilitiesCard(s SheetView) {
 							@button.Button(button.Props{
 								Variant:    button.VariantGhost,
 								Class:      "h-auto w-full p-0 active:not-aria-[haspopup]:translate-y-0",
-								Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "abilities", "ability", a)),
+								Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, verbAbilities, opAbility, a)),
 							}) {
 								// Not aria-label: it would hide the score and modifier from screen readers.
 								<span class="sr-only">{ "Change " + dnd5e.AbilityNames[a] + ", " }</span>
@@ -808,7 +666,7 @@ templ abilitiesCard(s SheetView) {
 							{{ saveLevel = dnd5e.ProfProficient }}
 						}
 						<div class={ "mt-3 flex items-center justify-center gap-0.5 text-xs", templ.KV("font-semibold", saveLevel != dnd5e.ProfNone) }>
-							@editable(s, edit{"profs", focusSave, a}, dnd5e.AbilityNames[a]+" save proficiency", "gap-1") {
+							@editable(s, edit{verbProfs, focusSave, a}, dnd5e.AbilityNames[a]+" save proficiency", "gap-1") {
 								@profMark(saveLevel)
 								save { dnd5e.Signed(s.C.Sheet.SaveBonus(a)) }
 							}
@@ -833,12 +691,12 @@ templ abilityFace(s SheetView, a string) {
 
 templ skillsCard(s SheetView) {
 	@card.Card() {
-		@cardTitle(s, "Skills", "profs", "")
+		@cardTitle(s, "Skills", verbProfs, "")
 		@card.Content() {
 			<ul class="grid grid-cols-2 gap-x-4 text-sm">
 				for _, sk := range dnd5e.Skills {
 					{{ level := s.C.Sheet.ProfLevel(sk.Key) }}
-					{{ to := edit{"profs", focusSkill, sk.Key} }}
+					{{ to := edit{verbProfs, focusSkill, sk.Key} }}
 					<li class="flex items-center gap-0.5">
 						@editable(s, to, sk.Name+" proficiency", "") {
 							<span class={ "flex items-center gap-1.5", templ.KV("font-semibold", level != dnd5e.ProfNone) }>
@@ -861,7 +719,7 @@ templ skillsCard(s SheetView) {
 			if len(s.C.Sheet.Languages) > 0 || s.CanSheet {
 				<p class="mt-3 text-xs text-muted-foreground">
 					<span class="font-medium text-foreground">{ "Languages " }</span>
-					@editable(s, edit{"profs", "lang-add", ""}, "Change languages", "mx-0 whitespace-normal text-left") {
+					@editable(s, edit{verbProfs, opLangAdd, ""}, "Change languages", "mx-0 whitespace-normal text-left") {
 						if len(s.C.Sheet.Languages) > 0 {
 							{ strings.Join(s.C.Sheet.Languages, ", ") }
 						} else {
@@ -872,7 +730,7 @@ templ skillsCard(s SheetView) {
 			}
 			if len(s.C.Sheet.OtherProfs) > 0 || s.CanSheet {
 				<p class="mt-3 text-xs text-muted-foreground">
-					@editable(s, edit{"profs", "other-add", ""}, "Change other proficiencies", "mx-0 whitespace-normal text-left") {
+					@editable(s, edit{verbProfs, opOtherAdd, ""}, "Change other proficiencies", "mx-0 whitespace-normal text-left") {
 						if len(s.C.Sheet.OtherProfs) > 0 {
 							{ strings.Join(s.C.Sheet.OtherProfLabels(), ", ") }
 						} else {
@@ -892,7 +750,7 @@ templ spellSlots(s SheetView) {
 			if sl.Max > 0 {
 				<div class="rounded-md border p-2 text-center">
 					<div class="text-xs text-muted-foreground">Level { fmt.Sprint(i + 1) }</div>
-					@editable(s, edit{"slots", "slot-max", fmt.Sprint(i + 1)}, "Change slot count", "") {
+					@editable(s, edit{verbSlots, opSlotMax, fmt.Sprint(i + 1)}, "Change slot count", "") {
 						<div class="font-semibold tabular-nums" { bind(fmt.Sprintf("text=slot.%d", i+1))... }>{ slotLabel(sl) }</div>
 					}
 					if s.CanSheet {
@@ -1052,12 +910,12 @@ templ spellPicker(s SheetView, id, placeholder string, autofocus bool) {
 // obvious place to change them.
 templ inventoryCard(s SheetView) {
 	@card.Card() {
-		@cardTitle(s, "Inventory", "items", "")
+		@cardTitle(s, "Inventory", verbItems, "")
 		@card.Content() {
 			<div class="mb-3 grid grid-cols-5 gap-2 text-center">
 				for _, c := range coinList(s.C.Sheet.Coins) {
 					<div class="rounded-md border py-1">
-						@editable(s, edit{"coins", "coin-edit", c.name}, "Change "+c.name, "w-full flex-col gap-0") {
+						@editable(s, edit{verbCoins, opCoinEdit, c.name}, "Change "+c.name, "w-full flex-col gap-0") {
 							<span class="text-xs text-muted-foreground uppercase">{ c.name }</span>
 							<span class="font-semibold tabular-nums">{ fmt.Sprint(c.n) }</span>
 						}
@@ -1067,7 +925,7 @@ templ inventoryCard(s SheetView) {
 			<ul class="divide-y text-sm">
 				for _, it := range s.C.Sheet.Inventory {
 					<li class="flex items-center justify-between gap-2 py-1">
-						@editable(s, edit{"items", "item-edit", it.Name}, "Change "+it.Name, "flex-col items-start gap-0 whitespace-normal text-left") {
+						@editable(s, edit{verbItems, opItemEdit, it.Name}, "Change "+it.Name, "flex-col items-start gap-0 whitespace-normal text-left") {
 							<span class="inline-flex items-center gap-1">{ it.Name } <span class="text-muted-foreground tabular-nums">{ fmt.Sprint(it.Qty) }</span> @gearMark(s, it)</span>
 							if it.Notes != "" {
 								<span class="text-xs text-muted-foreground">{ it.Notes }</span>
@@ -1143,7 +1001,7 @@ templ itemPicker(id, name, placeholder string, autofocus bool) {
 
 templ featuresCard(s SheetView) {
 	@card.Card() {
-		@cardTitle(s, "Features", "features", "")
+		@cardTitle(s, "Features", verbFeatures, "")
 		@card.Content() {
 			<div class="space-y-1 text-sm">
 				for _, f := range s.C.Sheet.Features {
@@ -1158,7 +1016,7 @@ templ featuresCard(s SheetView) {
 							@markdown(f.Description)
 						</div>
 						if s.CanSheet {
-							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeXs, Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "features", "feature-add", f.Name))}) {
+							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeXs, Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, verbFeatures, opFeatureAdd, f.Name))}) {
 								@icon.Pencil()
 								Edit
 							}
@@ -1171,155 +1029,6 @@ templ featuresCard(s SheetView) {
 			</div>
 		}
 	}
-}
-
-// actionKinds are what an action takes, in turn order.
-var actionKinds = []struct{ key, title, tip string }{
-	{dnd5e.ActionMain, "Action", "One per turn: attack, cast a spell, Dash, Dodge, Help, Hide…"},
-	{dnd5e.ActionBonus, "Bonus Action", "One per turn, only for things that say so."},
-	{dnd5e.ActionReaction, "Reaction", "One per round, even on others' turns, when its trigger happens."},
-	{actionOther, "Other", "Limited features that take no action of their own."},
-}
-
-// actionSections are the Actions card's sections: what each action is.
-var actionSections = []struct{ key, title string }{
-	{"attacks", "Attacks"}, {"spells", "Spells"}, {"features", "Features"},
-}
-
-// actionEntry is one thing the character can do, with why they can.
-type actionEntry struct {
-	Name, Detail, Why string
-	// Kind is what it takes (an actionKinds key).
-	Kind string
-	// Weapon, for attacks, breaks down the bonuses to hit and damage.
-	Weapon string
-	// OffHand marks a weapon's two-weapon fighting bonus attack.
-	OffHand bool
-	// SpellSlug opens the spell's text; FeatureIdx (with Uses) shows and
-	// spends its uses.
-	SpellSlug  string
-	FeatureIdx int
-	Uses       bool
-}
-
-var (
-	reSpellAttack = regexp.MustCompile(`(?i)make an? (?:ranged|melee) spell attack`)
-	reSpellSave   = regexp.MustCompile(`(?i)\b(strength|dexterity|constitution|intelligence|wisdom|charisma) saving throw`)
-)
-
-// actions sorts what the character can do into sections: ready weapons,
-// spells they can cast now and features, each in turn order.
-func (s SheetView) actions() map[string][]actionEntry {
-	sh := s.C.Sheet
-	out := map[string][]actionEntry{}
-	for _, w := range sh.Weapons {
-		detail := fmt.Sprintf("%s to hit · %s · %s", dnd5e.Signed(sh.AttackBonus(w)), sh.DamageLabel(w), weaponReach(w))
-		out["attacks"] = append(out["attacks"], actionEntry{Name: w.Name, Detail: detail, Why: w.Properties, Kind: dnd5e.ActionMain, Weapon: w.Name})
-	}
-	if sh.CanDualWield() {
-		for _, w := range sh.LightWeapons() {
-			detail := fmt.Sprintf("%s to hit · %s · %s", dnd5e.Signed(sh.AttackBonus(w)), sh.OffHandDamage(w), weaponReach(w))
-			out["attacks"] = append(out["attacks"], actionEntry{Name: "Off-hand: " + w.Name, Detail: detail, Why: offHandRule, Kind: dnd5e.ActionBonus, Weapon: w.Name, OffHand: true})
-		}
-	}
-	for _, sp := range sh.Spells {
-		d := s.SpellData[sp.Slug]
-		if d == nil || sp.Level > 0 && !sp.Prepared {
-			continue
-		}
-		ab := sh.SpellAbilityOf(sp)
-		kind := castingKind(d.CastingTime)
-		detail := strings.TrimSpace(d.CastingTime + " · " + d.Range)
-		if ab != "" {
-			if reSpellAttack.MatchString(d.Desc) {
-				detail += " · " + dnd5e.Signed(sh.SpellAttack(ab)) + " to hit"
-			} else if m := reSpellSave.FindStringSubmatch(d.Desc); m != nil {
-				detail += fmt.Sprintf(" · DC %d %s save", sh.SpellDC(ab), strings.ToUpper(m[1][:3]))
-			}
-		}
-		if sp.Level > 0 {
-			detail += fmt.Sprintf(" · level %d slot", sp.Level)
-		}
-		out["spells"] = append(out["spells"], actionEntry{Name: sp.Name, Detail: detail, SpellSlug: sp.Slug, Kind: kind})
-	}
-	for i, f := range sh.Features {
-		if f.Action == "" {
-			f.Action = s.freeCastAction(f.Name)
-		}
-		kind := f.Action
-		if kind == dnd5e.ActionMagic {
-			kind = dnd5e.ActionMain
-		}
-		if kind == "" {
-			if !f.Uses.Limited() {
-				continue
-			}
-			kind = actionOther
-		}
-		detail := strings.TrimSpace(dnd5e.ActionLabels[f.Action] + " · " + f.Source)
-		out["features"] = append(out["features"], actionEntry{Name: f.Name, Detail: strings.Trim(detail, " ·"), Why: f.Description, Kind: kind, FeatureIdx: i, Uses: f.Uses.Limited()})
-	}
-	for _, entries := range out {
-		slices.SortStableFunc(entries, func(a, b actionEntry) int { return kindOrder(a.Kind) - kindOrder(b.Kind) })
-	}
-	return out
-}
-
-// freeCastAction is what a lineage spell's free cast (see dnd5e.FreeCast)
-// takes: its spell's casting time, or "" when that is longer.
-func (s SheetView) freeCastAction(name string) string {
-	spell, ok := strings.CutSuffix(name, " (free cast)")
-	if !ok {
-		return ""
-	}
-	i := slices.IndexFunc(s.C.Sheet.Spells, func(sp dnd5e.Spell) bool { return sp.Name == spell })
-	if i < 0 || s.SpellData[s.C.Sheet.Spells[i].Slug] == nil {
-		return ""
-	}
-	return strings.TrimPrefix(castingKind(s.SpellData[s.C.Sheet.Spells[i].Slug].CastingTime), actionOther)
-}
-
-func kindOrder(kind string) int {
-	return slices.IndexFunc(actionKinds, func(k struct{ key, title, tip string }) bool { return k.key == kind })
-}
-
-// offHandRule is the Light property's extra attack, paraphrased from the
-// SRD 5.2 (CC-BY 4.0, Wizards of the Coast).
-const offHandRule = "Bonus Action, after you take the Attack action with a different Light weapon. No ability modifier to its damage unless it is negative."
-
-// castingKind sorts a casting time ("action", "bonus action", "reaction,
-// which you take when…", "1 minute") into an Actions card group.
-func castingKind(t string) string {
-	t = strings.ToLower(t)
-	switch {
-	case strings.HasPrefix(t, "bonus"):
-		return dnd5e.ActionBonus
-	case strings.HasPrefix(t, "reaction"):
-		return dnd5e.ActionReaction
-	case strings.HasPrefix(t, "action"), strings.HasPrefix(t, "1 action"):
-		return dnd5e.ActionMain
-	}
-	return actionOther
-}
-
-// actionOther is the Actions card group for what takes no action.
-const actionOther = "other"
-
-// weaponReach is "melee" or "ranged 80/320".
-func weaponReach(w dnd5e.Weapon) string {
-	if w.Range == "" {
-		return "melee"
-	}
-	if strings.Contains(strings.ToLower(w.Properties), "thrown") {
-		return "melee or thrown " + w.Range + " ft"
-	}
-	return "ranged " + w.Range + " ft"
-}
-
-// usesLabel is "2/3 left" for a feature's uses.
-func (s SheetView) usesLabel(f dnd5e.Feature) string {
-	n := s.C.Sheet.MaxUses(f.Uses)
-	return fmt.Sprintf("%d/%d left", max(n-f.Uses.Used, 0), n)
 }
 
 // actionsCard is what the character can do on a turn and why: attacks,
@@ -1433,7 +1142,7 @@ templ actionKindBadge(kind string) {
 // weapons in the inventory to ready.
 templ attacksCard(s SheetView) {
 	@card.Card() {
-		@cardTitle(s, "Attacks", "weapons", "")
+		@cardTitle(s, "Attacks", verbWeapons, "")
 		@card.Content() {
 			{{ spare := s.spareWeapons() }}
 			if len(s.C.Sheet.Weapons) == 0 && len(spare) == 0 {
@@ -1467,7 +1176,7 @@ templ masteryLine(s SheetView) {
 			}
 		</span>
 		if s.CanSheet {
-			@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Class: tapSize, Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "weapons", OpMastery, ""))}) {
+			@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Class: tapSize, Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, verbWeapons, OpMastery, ""))}) {
 				Choose
 			}
 		}
@@ -1480,7 +1189,7 @@ templ masteryLine(s SheetView) {
 templ weaponRow(s SheetView, id string, w dnd5e.Weapon, ready bool) {
 	<li class={ "flex items-center justify-between gap-2 py-1", templ.KV("text-muted-foreground", !ready) }>
 		<span>
-			@editable(s, utils.IfElse(ready, edit{"weapons", "weapon-add", w.Name}, edit{}), "Change "+w.Name, "") {
+			@editable(s, utils.IfElse(ready, edit{verbWeapons, opWeaponAdd, w.Name}, edit{}), "Change "+w.Name, "") {
 				<span class={ templ.KV("font-medium", ready) }>{ w.Name }</span>
 			}
 			<span class="ml-1 text-xs text-muted-foreground">{ s.weaponAbility(w) }</span>
@@ -1500,14 +1209,14 @@ templ weaponRow(s SheetView, id string, w dnd5e.Weapon, ready bool) {
 		</span>
 		<span class="flex items-center gap-3 tabular-nums">
 			<span class="flex items-center gap-0.5">
-				@editable(s, edit{"mods", "mod-add", dnd5e.ModAttack + "." + w.Name}, "Add a modifier to hit", "") {
+				@editable(s, edit{verbMods, opModAdd, dnd5e.ModAttack + "." + w.Name}, "Add a modifier to hit", "") {
 					{ dnd5e.Signed(s.C.Sheet.AttackBonus(w)) } to hit
 				}
 				@modWarn(s, "atk-"+id, attackTargets(w, dnd5e.ModAttack)...)
 			</span>
 			<span class="flex flex-col items-end text-muted-foreground">
 				<span class="flex items-center gap-0.5">
-					@editable(s, edit{"mods", "mod-add", dnd5e.ModDamage + "." + w.Name}, "Add a modifier to damage", "") {
+					@editable(s, edit{verbMods, opModAdd, dnd5e.ModDamage + "." + w.Name}, "Add a modifier to damage", "") {
 						{ s.C.Sheet.DamageLabel(w) }
 					}
 					@modWarn(s, "dmg-"+id, attackTargets(w, dnd5e.ModDamage)...)
@@ -1535,32 +1244,10 @@ templ weaponRow(s SheetView, id string, w dnd5e.Weapon, ready bool) {
 	</li>
 }
 
-// weaponAbility names the ability a weapon attacks with; finesse takes
-// the better of STR and DEX, as AttackBonus does.
-func (s SheetView) weaponAbility(w dnd5e.Weapon) string {
-	if w.Ability != dnd5e.Finesse {
-		return strings.ToUpper(w.Ability)
-	}
-	if s.C.Sheet.Mod(dnd5e.Dex) > s.C.Sheet.Mod(dnd5e.Str) {
-		return "DEX (finesse)"
-	}
-	return "STR (finesse)"
-}
-
-// attackTargets are the modifier targets that change a weapon's kind (to
-// hit or damage), including those on its ability.
-func attackTargets(w dnd5e.Weapon, kind string) []string {
-	t := []string{kind, kind + "." + w.Name}
-	if w.Ability == dnd5e.Finesse {
-		return append(t, dnd5e.Str, dnd5e.Dex)
-	}
-	return append(t, w.Ability)
-}
-
 templ modifiersCard(s SheetView) {
 	if len(s.C.Sheet.Modifiers) > 0 || s.CanSheet {
 		@card.Card() {
-			@cardTitle(s, "Custom modifiers", "mods", "")
+			@cardTitle(s, "Custom modifiers", verbMods, "")
 			@card.Content() {
 				if len(s.C.Sheet.Modifiers) == 0 {
 					<p class="text-sm text-muted-foreground">Bonuses the app does not work out itself: magic items, homebrew, house rules.</p>
@@ -1579,12 +1266,12 @@ templ modifiersCard(s SheetView) {
 templ backstoryCard(s SheetView) {
 	if s.C.Sheet.Backstory != "" || s.CanSheet {
 		@card.Card() {
-			@cardTitle(s, "Backstory", "details", "set-backstory")
+			@cardTitle(s, "Backstory", verbDetails, opSetBackstory)
 			@card.Content() {
 				if s.C.Sheet.Backstory == "" {
 					<p class="text-sm text-muted-foreground">No backstory yet.</p>
 				} else {
-					@editable(s, edit{"details", "set-backstory", ""}, "Change backstory", "block w-full whitespace-pre-line text-left") {
+					@editable(s, edit{verbDetails, opSetBackstory, ""}, "Change backstory", "block w-full whitespace-pre-line text-left") {
 						<p class="text-sm">{ s.C.Sheet.Backstory }</p>
 					}
 				}

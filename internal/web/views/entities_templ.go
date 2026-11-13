@@ -27,41 +27,7 @@ import (
 	"gm-session-manager/internal/web/components/textarea"
 	"gm-session-manager/internal/web/components/tooltip"
 	"gm-session-manager/internal/web/utils"
-	"slices"
 )
-
-// SuggestedFields are the NPC fields offered when creating or editing an
-// entity. They are a frontend recommendation only: any key may be stored.
-var SuggestedFields = []string{
-	"role", "description", "appearance", "personality", "motivation",
-	"location", "faction", "relationship to the party", "stat block", "gm notes",
-}
-
-// OrderedFieldKeys lists suggested keys first, in order, then the rest
-// alphabetically.
-func OrderedFieldKeys(f perm.Fields) []string {
-	var keys []string
-	for _, k := range SuggestedFields {
-		if _, ok := f[k]; ok {
-			keys = append(keys, k)
-		}
-	}
-	var rest []string
-	for k := range f {
-		if !slices.Contains(SuggestedFields, k) {
-			rest = append(rest, k)
-		}
-	}
-	slices.Sort(rest)
-	return append(keys, rest...)
-}
-
-// EntityListView is the NPC index.
-type EntityListView struct {
-	CampaignID int64
-	Entities   []perm.Entity
-	IsGM       bool
-}
 
 func EntitiesPage(l Layout, v EntityListView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -119,8 +85,6 @@ func EntitiesPage(l Layout, v EntityListView) templ.Component {
 		return nil
 	})
 }
-
-const newEntityID = "new-npc"
 
 func newEntityDialog(campaignID int64) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -196,7 +160,7 @@ func newEntityDialog(campaignID int64) templ.Component {
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/campaigns/%d/entities", campaignID))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 78, Col: 96}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 42, Col: 96}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 				if templ_7745c5c3_Err != nil {
@@ -582,7 +546,7 @@ func EntityList(v EntityListView) templ.Component {
 				var templ_7745c5c3_Var22 string
 				templ_7745c5c3_Var22, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/entities/%d", e.ID))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 136, Col: 187}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 100, Col: 187}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 				if templ_7745c5c3_Err != nil {
@@ -639,7 +603,7 @@ func EntityList(v EntityListView) templ.Component {
 				var templ_7745c5c3_Var24 string
 				templ_7745c5c3_Var24, templ_7745c5c3_Err = templruntime.NewAttributeExpression(e.Name).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 148, Col: 68}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 112, Col: 68}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 				if templ_7745c5c3_Err != nil {
@@ -652,7 +616,7 @@ func EntityList(v EntityListView) templ.Component {
 				var templ_7745c5c3_Var25 string
 				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(e.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 148, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 112, Col: 79}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 				if templ_7745c5c3_Err != nil {
@@ -662,7 +626,7 @@ func EntityList(v EntityListView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if role := e.Fields["role"].Value; role != "" {
+				if role := e.Fields[fieldRole].Value; role != "" {
 					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<p class=\"line-clamp-1 text-xs text-muted-foreground\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
@@ -670,7 +634,7 @@ func EntityList(v EntityListView) templ.Component {
 					var templ_7745c5c3_Var26 string
 					templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(role)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 150, Col: 68}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 114, Col: 68}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 					if templ_7745c5c3_Err != nil {
@@ -697,15 +661,6 @@ func EntityList(v EntityListView) templ.Component {
 		}
 		return nil
 	})
-}
-
-// currentLook is the look shown as the portrait.
-func currentLook(looks []perm.Look) (perm.Look, bool) {
-	i := slices.IndexFunc(looks, func(l perm.Look) bool { return l.IsCurrent })
-	if i < 0 {
-		return perm.Look{}, false
-	}
-	return looks[i], true
 }
 
 // npcPortrait is the NPC's current look, or their initials without one.
@@ -738,7 +693,7 @@ func npcPortrait(e perm.Entity, class string) templ.Component {
 				var templ_7745c5c3_Var28 string
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templruntime.NewAttributeExpression(LookItem(look).Src()).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 172, Col: 33}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 127, Col: 33}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
 				if templ_7745c5c3_Err != nil {
@@ -751,7 +706,7 @@ func npcPortrait(e perm.Entity, class string) templ.Component {
 				var templ_7745c5c3_Var29 string
 				templ_7745c5c3_Var29, templ_7745c5c3_Err = templruntime.NewAttributeExpression(e.Name).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 172, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 127, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 				if templ_7745c5c3_Err != nil {
@@ -837,7 +792,7 @@ func npcPortrait(e perm.Entity, class string) templ.Component {
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(initials(e.Name))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 174, Col: 220}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 129, Col: 220}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -851,31 +806,6 @@ func npcPortrait(e perm.Entity, class string) templ.Component {
 		return nil
 	})
 }
-
-// EntityView is one entity page.
-type EntityView struct {
-	CampaignID int64
-	E          perm.Entity
-	IsGM       bool
-	// Compendium is the linked statblock (GM only).
-	Compendium *sqlc.CompendiumEntry
-	// ActiveEncounterID lets the GM add the NPC to the running fight.
-	ActiveEncounterID int64
-	// ImageChoices are the campaign's images not yet one of its looks (GM only).
-	ImageChoices []sqlc.ListImagesRow
-	// Readable are the [[link]] targets in the fields a player may open
-	// (keys as WikiLink.Key); the others show as their label.
-	Readable    map[string]bool
-	Backlinks   []sqlc.ListBacklinksRow
-	EntityLinks []sqlc.ListEntityFieldBacklinksRow
-}
-
-func (v EntityView) canOpen(l WikiLink) bool {
-	return l.Kind != LinkCompendium && (v.IsGM || v.Readable[l.Key()])
-}
-
-// entityGrid is the page's two columns: looks, then fields or mentions.
-const entityGrid = "grid gap-6 md:grid-cols-[2fr_3fr] md:gap-8"
 
 func EntityPage(l Layout, v EntityView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -1056,7 +986,7 @@ func EntityDetail(v EntityView) templ.Component {
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("entity-%d", v.E.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 229, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 159, Col: 43}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 			if templ_7745c5c3_Err != nil {
@@ -1123,7 +1053,7 @@ func EntityDetail(v EntityView) templ.Component {
 			var templ_7745c5c3_Var45 string
 			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(v.E.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 238, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 168, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 			if templ_7745c5c3_Err != nil {
@@ -1141,7 +1071,7 @@ func EntityDetail(v EntityView) templ.Component {
 				var templ_7745c5c3_Var46 string
 				templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 242, Col: 87}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 172, Col: 87}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 				if templ_7745c5c3_Err != nil {
@@ -1308,7 +1238,7 @@ func entityLooks(v EntityView) templ.Component {
 							var templ_7745c5c3_Var53 string
 							templ_7745c5c3_Var53, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("/entities/%d/images", v.E.ID)).Resolve(ctx)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 279, Col: 106}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 209, Col: 106}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
 							if templ_7745c5c3_Err != nil {
@@ -1440,7 +1370,7 @@ func looksGrid(looks []perm.Look, base string) templ.Component {
 			var templ_7745c5c3_Var58 string
 			templ_7745c5c3_Var58, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/images/%d", img.ImageID))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 301, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 231, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var58)
 			if templ_7745c5c3_Err != nil {
@@ -1461,7 +1391,7 @@ func looksGrid(looks []perm.Look, base string) templ.Component {
 				var templ_7745c5c3_Var59 string
 				templ_7745c5c3_Var59, templ_7745c5c3_Err = templruntime.NewAttributeExpression(LookItem(img).Src()).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 302, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 232, Col: 35}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var59)
 				if templ_7745c5c3_Err != nil {
@@ -1474,7 +1404,7 @@ func looksGrid(looks []perm.Look, base string) templ.Component {
 				var templ_7745c5c3_Var60 string
 				templ_7745c5c3_Var60, templ_7745c5c3_Err = templruntime.NewAttributeExpression(img.Name).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 302, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 232, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var60)
 				if templ_7745c5c3_Err != nil {
@@ -1519,7 +1449,7 @@ func looksGrid(looks []perm.Look, base string) templ.Component {
 			var templ_7745c5c3_Var63 string
 			templ_7745c5c3_Var63, templ_7745c5c3_Err = templruntime.NewAttributeExpression(img.Name).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 304, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 234, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var63)
 			if templ_7745c5c3_Err != nil {
@@ -1532,7 +1462,7 @@ func looksGrid(looks []perm.Look, base string) templ.Component {
 			var templ_7745c5c3_Var64 string
 			templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(img.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 305, Col: 15}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 235, Col: 15}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 			if templ_7745c5c3_Err != nil {
@@ -1665,11 +1595,6 @@ func lookControls(base string, img perm.Look) templ.Component {
 	})
 }
 
-// LookItem is a look as an image to load.
-func LookItem(img perm.Look) ImageItem {
-	return ImageItem{ID: img.ImageID, Name: img.Name, Version: img.Version}
-}
-
 // EntityGone replaces an entity's page content when it is hidden or
 // deleted while a player is looking at it.
 func EntityGone(id int64) templ.Component {
@@ -1700,7 +1625,7 @@ func EntityGone(id int64) templ.Component {
 			var templ_7745c5c3_Var69 string
 			templ_7745c5c3_Var69, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("entity-%d", id)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 350, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 275, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var69)
 			if templ_7745c5c3_Err != nil {
@@ -1841,7 +1766,7 @@ func entityForm(v EntityView) templ.Component {
 		var templ_7745c5c3_Var75 string
 		templ_7745c5c3_Var75, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("/entities/%d", v.E.ID)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 366, Col: 52}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 291, Col: 52}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var75)
 		if templ_7745c5c3_Err != nil {
@@ -1918,7 +1843,7 @@ func entityForm(v EntityView) templ.Component {
 		var templ_7745c5c3_Var78 string
 		templ_7745c5c3_Var78, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(len(keys))).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 390, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 315, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var78)
 		if templ_7745c5c3_Err != nil {
@@ -2006,7 +1931,7 @@ func entityForm(v EntityView) templ.Component {
 			var templ_7745c5c3_Var81 string
 			templ_7745c5c3_Var81, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(entryHref(ctx, v.Compendium.ID))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 406, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 331, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 			if templ_7745c5c3_Err != nil {
@@ -2019,7 +1944,7 @@ func entityForm(v EntityView) templ.Component {
 			var templ_7745c5c3_Var82 string
 			templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(v.Compendium.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 406, Col: 120}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 331, Col: 120}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 			if templ_7745c5c3_Err != nil {
@@ -2141,16 +2066,6 @@ func entityForm(v EntityView) templ.Component {
 	})
 }
 
-func missingSuggestions(keys []string) []string {
-	var out []string
-	for _, k := range SuggestedFields {
-		if !slices.Contains(keys, k) {
-			out = append(out, k)
-		}
-	}
-	return out
-}
-
 // fieldRow is one stored field: its key, value and whether players see it.
 // Its rail is rose while only the GM sees it and sky once players do, as on
 // note blocks; the checkbox flips it, no script needed. app.js clones a blank
@@ -2179,7 +2094,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var87 string
 		templ_7745c5c3_Var87, templ_7745c5c3_Err = templruntime.NewAttributeExpression(key).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 458, Col: 146}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 373, Col: 146}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var87)
 		if templ_7745c5c3_Err != nil {
@@ -2202,7 +2117,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var88 string
 		templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.JoinStringErrs(key)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 460, Col: 82}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 375, Col: 82}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var88))
 		if templ_7745c5c3_Err != nil {
@@ -2293,7 +2208,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var91 string
 		templ_7745c5c3_Var91, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("key_%d", i)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 472, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 387, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var91)
 		if templ_7745c5c3_Err != nil {
@@ -2306,7 +2221,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var92 string
 		templ_7745c5c3_Var92, templ_7745c5c3_Err = templruntime.NewAttributeExpression(key).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 472, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 387, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var92)
 		if templ_7745c5c3_Err != nil {
@@ -2371,7 +2286,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var95 string
 		templ_7745c5c3_Var95, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("value_%d", i)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 485, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 400, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var95)
 		if templ_7745c5c3_Err != nil {
@@ -2384,7 +2299,7 @@ func fieldRow(i int, key string, f perm.Field) templ.Component {
 		var templ_7745c5c3_Var96 string
 		templ_7745c5c3_Var96, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.Value).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 485, Col: 74}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 400, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var96)
 		if templ_7745c5c3_Err != nil {
@@ -2430,7 +2345,7 @@ func wikiText(s string, canOpen func(WikiLink) bool) templ.Component {
 				var templ_7745c5c3_Var98 string
 				templ_7745c5c3_Var98, templ_7745c5c3_Err = templ.JoinStringErrs(p.Text)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 498, Col: 11}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 413, Col: 11}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var98))
 				if templ_7745c5c3_Err != nil {
@@ -2445,7 +2360,7 @@ func wikiText(s string, canOpen func(WikiLink) bool) templ.Component {
 				var templ_7745c5c3_Var99 string
 				templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinStringErrs(p.Link.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 502, Col: 17}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 417, Col: 17}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var99))
 				if templ_7745c5c3_Err != nil {
@@ -2482,7 +2397,7 @@ func wikiLink(l WikiLink) templ.Component {
 		var templ_7745c5c3_Var101 string
 		templ_7745c5c3_Var101, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(l.URL())).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 511, Col: 31}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 426, Col: 31}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var101)
 		if templ_7745c5c3_Err != nil {
@@ -2495,7 +2410,7 @@ func wikiLink(l WikiLink) templ.Component {
 		var templ_7745c5c3_Var102 string
 		templ_7745c5c3_Var102, templ_7745c5c3_Err = templruntime.NewAttributeExpression(l.Key()).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 512, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 427, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var102)
 		if templ_7745c5c3_Err != nil {
@@ -2513,7 +2428,7 @@ func wikiLink(l WikiLink) templ.Component {
 			var templ_7745c5c3_Var103 string
 			templ_7745c5c3_Var103, templ_7745c5c3_Err = templruntime.NewAttributeExpression(cmp.Or(l.Float, "left")).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 514, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 429, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var103)
 			if templ_7745c5c3_Err != nil {
@@ -2536,7 +2451,7 @@ func wikiLink(l WikiLink) templ.Component {
 			var templ_7745c5c3_Var104 string
 			templ_7745c5c3_Var104, templ_7745c5c3_Err = templruntime.NewAttributeExpression(ImageSrc(l.ID)).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 518, Col: 28}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 433, Col: 28}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var104)
 			if templ_7745c5c3_Err != nil {
@@ -2549,7 +2464,7 @@ func wikiLink(l WikiLink) templ.Component {
 			var templ_7745c5c3_Var105 string
 			templ_7745c5c3_Var105, templ_7745c5c3_Err = templruntime.NewAttributeExpression(l.Label).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 518, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 433, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var105)
 			if templ_7745c5c3_Err != nil {
@@ -2567,7 +2482,7 @@ func wikiLink(l WikiLink) templ.Component {
 		var templ_7745c5c3_Var106 string
 		templ_7745c5c3_Var106, templ_7745c5c3_Err = templ.JoinStringErrs(l.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 520, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 435, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var106))
 		if templ_7745c5c3_Err != nil {
@@ -2693,7 +2608,7 @@ func addFieldInput(entityID int64, keys []string) templ.Component {
 							var templ_7745c5c3_Var113 string
 							templ_7745c5c3_Var113, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 543, Col: 10}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/entities.templ`, Line: 458, Col: 10}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var113))
 							if templ_7745c5c3_Err != nil {

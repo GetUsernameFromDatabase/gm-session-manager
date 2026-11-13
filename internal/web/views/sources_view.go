@@ -1,6 +1,10 @@
 package views
 
-import "gm-session-manager/internal/dnd5e"
+import (
+	"fmt"
+
+	"gm-session-manager/internal/dnd5e"
+)
 
 // SourceIssue is a sheet ref whose pinned source is gone (Missing) or
 // outranked by a higher-priority copy (Best), for "Review sources".
@@ -30,4 +34,8 @@ type SourcePreviewView struct {
 	Name                 string
 	SourceLabel, Command string
 	Plan                 dnd5e.SwitchPlan
+}
+
+func (i SourceIssue) previewID(s SheetView) string {
+	return fmt.Sprintf("source-%d-%s-%s", s.ID, i.Kind, i.Slug)
 }

@@ -11,7 +11,6 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"fmt"
-	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/checkbox"
@@ -20,216 +19,7 @@ import (
 	"gm-session-manager/internal/web/components/label"
 	selectcomp "gm-session-manager/internal/web/components/select"
 	"gm-session-manager/internal/web/utils"
-	"slices"
-	"strings"
 )
-
-// Form fields of the import review.
-const (
-	ImportColName        = "col_name"
-	ImportColLink        = "col_link"
-	ImportColCategory    = "col_category"
-	ImportColDescription = "col_description"
-	ImportCatSource      = "cat_source"
-	ImportCatTarget      = "cat_target"
-	// ImportRowsField holds the ticked rows, encoded by app.js (see
-	// parseRowSet). Its presence marks a reviewed form.
-	ImportRowsField      = "rows"
-	ImportFilterQ        = "filter_q"
-	ImportFilterCategory = "filter_category"
-	ImportFilterStatus   = "filter_status"
-	ImportKeepCol        = "keep_col"
-	// ImportKeepVal values carry ImportKeepPrefix, so an empty CSV value is
-	// still a real checkbox value.
-	ImportKeepVal    = "keep_val"
-	ImportKeepPrefix = "="
-)
-
-// Values of the rows' category filter besides a category name.
-const (
-	importFilterAll  = "*"
-	importFilterNone = "-"
-)
-
-// ImportMapping is the CSV column of each image field (-1 for none).
-type ImportMapping struct {
-	Name, Link, Category, Description int
-}
-
-// ImportRow is one CSV row as it would be imported.
-type ImportRow struct {
-	Index       int
-	Name        string
-	Link        string
-	Host        string
-	Category    string
-	Description string
-	// Target is the category the row goes into ("" for none).
-	Target string
-	Ticked bool
-	// Problem says why the row cannot be imported ("" when it can).
-	Problem string
-}
-
-// ImportCategory is one category value of the CSV and the category it
-// becomes ("" for none). Values with the same target are merged.
-type ImportCategory struct {
-	Source string
-	Count  int
-	Target string
-}
-
-// ImportColumn describes one CSV column for the overview.
-type ImportColumn struct {
-	Header   string
-	Distinct int
-	Samples  []string
-}
-
-// ImportValue is one value of the keep-filter column.
-type ImportValue struct {
-	Value string
-	Count int
-	Kept  bool
-}
-
-// ImportView is the review step of a CSV import.
-type ImportView struct {
-	CampaignID int64
-	Token      string
-	Header     []string
-	Map        ImportMapping
-	Rows       []ImportRow
-	Cats       []ImportCategory
-	Categories []sqlc.ImageCategory
-	// The rows filter, kept across refreshes.
-	FilterQ        string
-	FilterCategory string
-	FilterStatus   string
-	// Total is the number of rows in the CSV; Rows holds the kept ones.
-	Total   int
-	Columns []ImportColumn
-	// KeepCol is the column filtering the rows (-1 for none).
-	KeepCol       int
-	KeepValues    []ImportValue
-	TooManyValues bool
-}
-
-func columnLabel(i int, header string) string {
-	if header == "" {
-		return fmt.Sprintf("Column %d", i+1)
-	}
-	return header
-}
-
-// roleOf names what column i is used for, if anything.
-func (v ImportView) roleOf(i int) string {
-	switch i {
-	case v.Map.Name:
-		return "Name"
-	case v.Map.Link:
-		return "Link"
-	case v.Map.Category:
-		return "Category"
-	case v.Map.Description:
-		return "Description"
-	}
-	return ""
-}
-
-func (v ImportView) filtering() bool {
-	return slices.ContainsFunc(v.KeepValues, func(x ImportValue) bool { return x.Kept })
-}
-
-func (v ImportView) url() string {
-	return fmt.Sprintf("/campaigns/%d/images/import/%s", v.CampaignID, v.Token)
-}
-
-func (v ImportView) columnItems(optional bool) []selectcomp.ItemData {
-	var items []selectcomp.ItemData
-	if optional {
-		items = append(items, selectcomp.ItemData{Value: "-1", Label: "None"})
-	}
-	for i, h := range v.Header {
-		items = append(items, selectcomp.ItemData{Value: fmt.Sprint(i), Label: columnLabel(i, h)})
-	}
-	return items
-}
-
-// filterItems filter the rows by the categories they will go into.
-func (v ImportView) filterItems() []selectcomp.ItemData {
-	items := []selectcomp.ItemData{{Value: importFilterAll, Label: "All categories"}, {Value: importFilterNone, Label: "No category"}}
-	var seen []string
-	for _, c := range v.Cats {
-		if c.Target != "" && !slices.Contains(seen, c.Target) {
-			seen = append(seen, c.Target)
-		}
-	}
-	slices.Sort(seen)
-	return append(items, selectItems(seen, func(s string) string { return s }, func(s string) string { return s })...)
-}
-
-// catGroups groups the category values by target, so values merged into
-// one category sit together. Groups sort by their category name (a value
-// with no category by its own name), values within a group by name.
-func (v ImportView) catGroups() [][]ImportCategory {
-	byTarget := map[string][]ImportCategory{}
-	var groups [][]ImportCategory
-	for _, c := range v.Cats {
-		if c.Target == "" {
-			groups = append(groups, []ImportCategory{c})
-			continue
-		}
-		byTarget[c.Target] = append(byTarget[c.Target], c)
-	}
-	for _, g := range byTarget {
-		slices.SortFunc(g, func(a, b ImportCategory) int {
-			return strings.Compare(strings.ToLower(a.Source), strings.ToLower(b.Source))
-		})
-		groups = append(groups, g)
-	}
-	sortKey := func(g []ImportCategory) string {
-		if g[0].Target == "" {
-			return strings.ToLower(g[0].Source)
-		}
-		return strings.ToLower(g[0].Target)
-	}
-	slices.SortFunc(groups, func(a, b []ImportCategory) int {
-		if c := strings.Compare(sortKey(a), sortKey(b)); c != 0 {
-			return c
-		}
-		return strings.Compare(a[0].Source, b[0].Source)
-	})
-	return groups
-}
-
-// importStatusItems filter rows by tick and by link-check result; app.js
-// applies them.
-func importStatusItems() []selectcomp.ItemData {
-	return []selectcomp.ItemData{
-		{Value: "any", Label: "Any status"},
-		{Value: "ticked", Label: "Ticked"},
-		{Value: "unticked", Label: "Unticked"},
-		{Value: "broken", Label: "Didn't load"},
-	}
-}
-
-// filterValue is the chosen filter, or all when it no longer exists.
-func (v ImportView) filterValue() string {
-	for _, it := range v.filterItems() {
-		if it.Value == v.FilterCategory {
-			return it.Value
-		}
-	}
-	return importFilterAll
-}
-
-func rowFilterCategory(r ImportRow) string {
-	if r.Target == "" {
-		return importFilterNone
-	}
-	return r.Target
-}
 
 func ImportUploadPage(l Layout, campaignID int64) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -271,7 +61,7 @@ func ImportUploadPage(l Layout, campaignID int64) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/campaigns/%d/images/import", campaignID))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 228, Col: 130}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 18, Col: 130}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
@@ -377,7 +167,7 @@ func importStep(n int, title string) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(n))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 246, Col: 184}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 36, Col: 184}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -390,7 +180,7 @@ func importStep(n int, title string) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(n))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 248, Col: 93}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 38, Col: 93}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -403,7 +193,7 @@ func importStep(n int, title string) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 248, Col: 111}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 38, Col: 111}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -499,7 +289,7 @@ func ImportReview(v ImportView) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(v.url())).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 264, Col: 71}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 54, Col: 71}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 		if templ_7745c5c3_Err != nil {
@@ -520,7 +310,7 @@ func ImportReview(v ImportView) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templruntime.NewAttributeExpression(ImportRowsField).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 269, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 59, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 		if templ_7745c5c3_Err != nil {
@@ -549,7 +339,7 @@ func ImportReview(v ImportView) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.url()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 274, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 64, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 			if templ_7745c5c3_Err != nil {
@@ -639,7 +429,7 @@ func ImportReview(v ImportView) templ.Component {
 				var templ_7745c5c3_Var19 string
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.url()).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 302, Col: 22}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 92, Col: 22}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 				if templ_7745c5c3_Err != nil {
@@ -666,7 +456,7 @@ func ImportReview(v ImportView) templ.Component {
 						var templ_7745c5c3_Var20 string
 						templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(group[0].Target)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 315, Col: 39}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 105, Col: 39}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 						if templ_7745c5c3_Err != nil {
@@ -679,7 +469,7 @@ func ImportReview(v ImportView) templ.Component {
 						var templ_7745c5c3_Var21 string
 						templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(len(group)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 315, Col: 67}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 105, Col: 67}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 						if templ_7745c5c3_Err != nil {
@@ -815,7 +605,7 @@ func columnOverview(v ImportView) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(columnLabel(i, col.Header))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 363, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 153, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -841,7 +631,7 @@ func columnOverview(v ImportView) templ.Component {
 					var templ_7745c5c3_Var27 string
 					templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(role)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 367, Col: 15}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 157, Col: 15}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 					if templ_7745c5c3_Err != nil {
@@ -861,7 +651,7 @@ func columnOverview(v ImportView) templ.Component {
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(col.Distinct))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 371, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 161, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -879,7 +669,7 @@ func columnOverview(v ImportView) templ.Component {
 				var templ_7745c5c3_Var29 string
 				templ_7745c5c3_Var29, templ_7745c5c3_Err = templruntime.NewAttributeExpression(s).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 374, Col: 39}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 164, Col: 39}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 				if templ_7745c5c3_Err != nil {
@@ -892,7 +682,7 @@ func columnOverview(v ImportView) templ.Component {
 				var templ_7745c5c3_Var30 string
 				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(s)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 374, Col: 45}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 164, Col: 45}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 				if templ_7745c5c3_Err != nil {
@@ -943,7 +733,7 @@ func keepSection(v ImportView) templ.Component {
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.url()).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 390, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 180, Col: 18}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 		if templ_7745c5c3_Err != nil {
@@ -1011,7 +801,7 @@ func keepSection(v ImportView) templ.Component {
 						var templ_7745c5c3_Var35 string
 						templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(val.Value)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 410, Col: 18}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 200, Col: 18}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 						if templ_7745c5c3_Err != nil {
@@ -1025,7 +815,7 @@ func keepSection(v ImportView) templ.Component {
 					var templ_7745c5c3_Var36 string
 					templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(val.Count))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 412, Col: 73}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 202, Col: 73}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 					if templ_7745c5c3_Err != nil {
@@ -1055,7 +845,7 @@ func keepSection(v ImportView) templ.Component {
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(len(v.Rows)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 418, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 208, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -1068,7 +858,7 @@ func keepSection(v ImportView) templ.Component {
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(v.Total))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 418, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 208, Col: 94}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
@@ -1111,7 +901,7 @@ func categoryRow(cat ImportCategory) templ.Component {
 		var templ_7745c5c3_Var40 string
 		templ_7745c5c3_Var40, templ_7745c5c3_Err = templruntime.NewAttributeExpression(ImportCatSource).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 425, Col: 45}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 215, Col: 45}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 		if templ_7745c5c3_Err != nil {
@@ -1124,7 +914,7 @@ func categoryRow(cat ImportCategory) templ.Component {
 		var templ_7745c5c3_Var41 string
 		templ_7745c5c3_Var41, templ_7745c5c3_Err = templruntime.NewAttributeExpression(cat.Source).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 425, Col: 66}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 215, Col: 66}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 		if templ_7745c5c3_Err != nil {
@@ -1149,7 +939,7 @@ func categoryRow(cat ImportCategory) templ.Component {
 			var templ_7745c5c3_Var43 string
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(cat.Source)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 428, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 218, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
@@ -1168,7 +958,7 @@ func categoryRow(cat ImportCategory) templ.Component {
 		var templ_7745c5c3_Var44 string
 		templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(cat.Count))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 430, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 220, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 		if templ_7745c5c3_Err != nil {
@@ -1339,7 +1129,7 @@ func importRows(v ImportView) templ.Component {
 			var templ_7745c5c3_Var50 string
 			templ_7745c5c3_Var50, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(r.Index)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 481, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 271, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var50)
 			if templ_7745c5c3_Err != nil {
@@ -1352,7 +1142,7 @@ func importRows(v ImportView) templ.Component {
 			var templ_7745c5c3_Var51 string
 			templ_7745c5c3_Var51, templ_7745c5c3_Err = templruntime.NewAttributeExpression(r.Name).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 482, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 272, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var51)
 			if templ_7745c5c3_Err != nil {
@@ -1365,7 +1155,7 @@ func importRows(v ImportView) templ.Component {
 			var templ_7745c5c3_Var52 string
 			templ_7745c5c3_Var52, templ_7745c5c3_Err = templruntime.NewAttributeExpression(rowFilterCategory(r)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 483, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 273, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var52)
 			if templ_7745c5c3_Err != nil {
@@ -1383,7 +1173,7 @@ func importRows(v ImportView) templ.Component {
 				var templ_7745c5c3_Var53 string
 				templ_7745c5c3_Var53, templ_7745c5c3_Err = templruntime.NewAttributeExpression(r.Link).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 485, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 275, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
 				if templ_7745c5c3_Err != nil {
@@ -1409,7 +1199,7 @@ func importRows(v ImportView) templ.Component {
 			var templ_7745c5c3_Var54 string
 			templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(r.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 493, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 283, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 			if templ_7745c5c3_Err != nil {
@@ -1422,7 +1212,7 @@ func importRows(v ImportView) templ.Component {
 			var templ_7745c5c3_Var55 string
 			templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(r.Target)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 494, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 284, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 			if templ_7745c5c3_Err != nil {
@@ -1440,7 +1230,7 @@ func importRows(v ImportView) templ.Component {
 				var templ_7745c5c3_Var56 string
 				templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(r.Problem)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 498, Col: 53}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 288, Col: 53}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 				if templ_7745c5c3_Err != nil {
@@ -1458,7 +1248,7 @@ func importRows(v ImportView) templ.Component {
 				var templ_7745c5c3_Var57 string
 				templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(r.Host)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 500, Col: 64}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 290, Col: 64}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 				if templ_7745c5c3_Err != nil {
@@ -1514,7 +1304,7 @@ func mappingField(text, name string, items []selectcomp.ItemData, value int) tem
 			var templ_7745c5c3_Var60 string
 			templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 521, Col: 8}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/image_import.templ`, Line: 311, Col: 8}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 			if templ_7745c5c3_Err != nil {

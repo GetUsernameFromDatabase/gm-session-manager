@@ -11,15 +11,7 @@ import (
 	"gm-session-manager/internal/web/components/label"
 	"gm-session-manager/internal/web/components/separator"
 	"gm-session-manager/internal/web/components/spinner"
-	"strings"
 )
-
-// JoinInfo is what the GM shows players so they can connect.
-type JoinInfo struct {
-	URLs        []string
-	QR          string // src of the QR code image
-	Fingerprint string
-}
 
 templ joinPanel(j JoinInfo) {
 	@card.Card() {
@@ -62,19 +54,6 @@ templ joinPanel(j JoinInfo) {
 			</div>
 		}
 	}
-}
-
-// fingerprintPairs spaces the hex fingerprint into uppercase byte pairs, as
-// Chrome's certificate viewer shows it, so it wraps and can be compared.
-func fingerprintPairs(hex string) string {
-	var b strings.Builder
-	for i := 0; i < len(hex); i += 2 {
-		if i > 0 {
-			b.WriteByte(' ')
-		}
-		b.WriteString(strings.ToUpper(hex[i:min(i+2, len(hex))]))
-	}
-	return b.String()
 }
 
 templ GMHome(l Layout, campaigns []sqlc.Campaign, j JoinInfo, feedbackDir string) {
@@ -208,13 +187,6 @@ templ JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err stri
 			@adminLink()
 		}
 	}
-}
-
-// Waiting is a visitor's join request as they see it.
-type Waiting struct {
-	Secret string
-	Name   string
-	State  string // "waiting", "approved", "denied"
 }
 
 templ JoinWaiting(l Layout, w Waiting) {

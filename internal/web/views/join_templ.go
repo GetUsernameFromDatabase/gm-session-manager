@@ -20,15 +20,7 @@ import (
 	"gm-session-manager/internal/web/components/label"
 	"gm-session-manager/internal/web/components/separator"
 	"gm-session-manager/internal/web/components/spinner"
-	"strings"
 )
-
-// JoinInfo is what the GM shows players so they can connect.
-type JoinInfo struct {
-	URLs        []string
-	QR          string // src of the QR code image
-	Fingerprint string
-}
 
 func joinPanel(j JoinInfo) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -145,7 +137,7 @@ func joinPanel(j JoinInfo) templ.Component {
 					var templ_7745c5c3_Var7 string
 					templ_7745c5c3_Var7, templ_7745c5c3_Err = templruntime.NewAttributeExpression(j.QR).ResolveURL(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 38, Col: 20}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 30, Col: 20}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 					if templ_7745c5c3_Err != nil {
@@ -174,7 +166,7 @@ func joinPanel(j JoinInfo) templ.Component {
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(u)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 46, Col: 53}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 38, Col: 53}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
@@ -228,7 +220,7 @@ func joinPanel(j JoinInfo) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(fingerprintPairs(j.Fingerprint))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 59, Col: 65}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 51, Col: 65}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -252,19 +244,6 @@ func joinPanel(j JoinInfo) templ.Component {
 		}
 		return nil
 	})
-}
-
-// fingerprintPairs spaces the hex fingerprint into uppercase byte pairs, as
-// Chrome's certificate viewer shows it, so it wraps and can be compared.
-func fingerprintPairs(hex string) string {
-	var b strings.Builder
-	for i := 0; i < len(hex); i += 2 {
-		if i > 0 {
-			b.WriteByte(' ')
-		}
-		b.WriteString(strings.ToUpper(hex[i:min(i+2, len(hex))]))
-	}
-	return b.String()
 }
 
 func GMHome(l Layout, campaigns []sqlc.Campaign, j JoinInfo, feedbackDir string) templ.Component {
@@ -369,7 +348,7 @@ func GMHome(l Layout, campaigns []sqlc.Campaign, j JoinInfo, feedbackDir string)
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(feedbackDir)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 103, Col: 128}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 82, Col: 128}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
@@ -413,7 +392,7 @@ func campaignRow(href string, c sqlc.Campaign) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(href)).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 111, Col: 30}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 90, Col: 30}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 		if templ_7745c5c3_Err != nil {
@@ -426,7 +405,7 @@ func campaignRow(href string, c sqlc.Campaign) templ.Component {
 		var templ_7745c5c3_Var17 string
 		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 113, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 92, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 		if templ_7745c5c3_Err != nil {
@@ -439,7 +418,7 @@ func campaignRow(href string, c sqlc.Campaign) templ.Component {
 		var templ_7745c5c3_Var18 string
 		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(c.System)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 114, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 93, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 		if templ_7745c5c3_Err != nil {
@@ -452,7 +431,7 @@ func campaignRow(href string, c sqlc.Campaign) templ.Component {
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(c.Edition)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 114, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 93, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
@@ -814,7 +793,7 @@ func JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err strin
 					var templ_7745c5c3_Var34 string
 					templ_7745c5c3_Var34, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/join/%d/claim/%d", c.ID, ch.ID))).ResolveURL(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 180, Col: 94}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 159, Col: 94}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var34)
 					if templ_7745c5c3_Err != nil {
@@ -827,7 +806,7 @@ func JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err strin
 					var templ_7745c5c3_Var35 string
 					templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(ch.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 182, Col: 49}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 161, Col: 49}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 					if templ_7745c5c3_Err != nil {
@@ -885,7 +864,7 @@ func JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err strin
 				var templ_7745c5c3_Var37 string
 				templ_7745c5c3_Var37, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(fmt.Sprintf("/join/%d/create", c.ID))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 193, Col: 83}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 172, Col: 83}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 				if templ_7745c5c3_Err != nil {
@@ -979,13 +958,6 @@ func JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err strin
 		}
 		return nil
 	})
-}
-
-// Waiting is a visitor's join request as they see it.
-type Waiting struct {
-	Secret string
-	Name   string
-	State  string // "waiting", "approved", "denied"
 }
 
 func JoinWaiting(l Layout, w Waiting) templ.Component {
@@ -1115,7 +1087,7 @@ func PendingStatus(w Waiting) templ.Component {
 			var templ_7745c5c3_Var44 string
 			templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(w.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 237, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 209, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 			if templ_7745c5c3_Err != nil {
@@ -1128,7 +1100,7 @@ func PendingStatus(w Waiting) templ.Component {
 			var templ_7745c5c3_Var45 string
 			templ_7745c5c3_Var45, templ_7745c5c3_Err = templruntime.NewAttributeExpression(w.Secret).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 240, Col: 56}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 212, Col: 56}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var45)
 			if templ_7745c5c3_Err != nil {
@@ -1189,7 +1161,7 @@ func PendingStatus(w Waiting) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(w.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 253, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/join.templ`, Line: 225, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {

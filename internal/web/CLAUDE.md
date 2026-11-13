@@ -20,6 +20,7 @@ Each note block is its own collaborative document (TipTap, `assets/js/notes.js`)
 ## UI conventions
 
 - shadcn-templ (shadcn-templ.com, github.com/axadrn/shadcn-templ), not templUI. Use its components for every control, never native `<select>`/`<dialog>`/hand-styled inputs; add missing ones with `go tool shadcn-templ add <name>`. Its Select and popovers portal to `<body>`, so they fail inside a native `<dialog>`: use the shadcn Dialog.
+- A `.templ` holds only imports and `templ` components: its types, consts, vars and helper funcs go in `<name>_view.go` beside it (templ copies them into `_templ.go`; `TestTemplHasNoGoDecls`).
 - Reuse the helpers: `formSelect`/`selectItems` (combat.templ), `checkField` (notes.templ), `inlineField` (compendium.templ), `removeButton`.
 - Dates: `@localTime(t)` (layout.templ), never `Format` in a template (UTC in SQLite, app.js localizes).
 - Addresses: every view state lives in the URL, so a copied address shows the same view to whoever opens it. The compendium's campaign is in the path (`/campaigns/:campaign/compendium/...`; `/compendium` is the whole one): build links with `CompendiumPath(ctx, …)`/`entryHref` in templates (`Page` and the route put the campaign on ctx) and `compendiumPath(c, …)` in handlers, never a literal `/compendium`. Files works the same way (`/campaigns/:campaign/files`, `/files` for all; `FilesBase`); both share `campaignSwitcher` (`Layout.Switch`).

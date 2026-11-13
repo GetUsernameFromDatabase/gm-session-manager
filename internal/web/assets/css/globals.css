@@ -2,6 +2,7 @@
 
 @source "../../**/*.templ";
 @source "../../components/**/*.go";
+@source "../../views/*.go";
 @source "../js/app.js";
 @source "../js/notes.js";
 @source "../js/wikilink.js";

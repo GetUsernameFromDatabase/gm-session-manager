@@ -25,142 +25,10 @@ import (
 	"gm-session-manager/internal/web/components/radiogroup"
 	"gm-session-manager/internal/web/components/textarea"
 	"gm-session-manager/internal/web/utils"
-	"maps"
 	"net/url"
 	"slices"
 	"strings"
 )
-
-// WizardStep is one step of character creation.
-type WizardStep struct {
-	Key, Title string
-}
-
-// Wizard step keys, in order. Each also marks the step done in Sheet.SetUp.
-const (
-	StepClass      = "class"
-	StepBackground = "background"
-	StepSpecies    = "species"
-	StepAbilities  = "abilities"
-	StepChoices    = "choices"
-	StepEquipment  = "equipment"
-	StepDetails    = "details"
-	StepReview     = "review"
-)
-
-// WizardView is one page of the creation wizard.
-type WizardView struct {
-	CharacterID int64
-	Step        string
-	Steps       []WizardStep
-	// Sheet is the character as it stands, read-only.
-	Sheet SheetView
-	// Error is shown at the top; Errors next to their fields.
-	Error  string
-	Errors FieldErrors
-	// Form is the refused form's values, ticked again; nil on a fresh page.
-	Form url.Values
-	// Options are the compendium's classes, species or backgrounds;
-	// Picked is the one being looked at and Choice what it gives.
-	Options []Option
-	Picked  string
-	// Variants are the picked species' subraces; Variant the one looked at.
-	Variants  []Option
-	Variant   string
-	Choice    *WizardChoice
-	Equipment []EquipmentChoice
-	Choices   *CreationChoices
-	// Missing are the earlier steps this one needs before it can be saved.
-	Missing []WizardStep
-	// LegacyBackground: the background added its increases already (a sheet
-	// started before they moved to the abilities step).
-	LegacyBackground bool
-}
-
-// CreationChoices are the picks a level-1 class and a species leave open.
-type CreationChoices struct {
-	Groups    []ChoiceGroup
-	Spells    []Option
-	SpellNeed SpellNeed
-	// Columns are the class table at level 1, for the spell totals.
-	Columns map[string]string
-}
-
-// ChoiceGroup asks for up to Count of Options (a lineage, a skill,
-// languages, invocations).
-type ChoiceGroup struct {
-	Key, Title string
-	Count      int
-	Options    []compendium.NameDesc
-	// Known are had already: shown ticked and disabled, not posted.
-	Known []string
-	// Sub are the choices an option brings, shown while it is picked.
-	Sub map[string][]ChoiceGroup
-}
-
-// WizardChoice is what a class, species or background gives.
-type WizardChoice struct {
-	Slug, Name string
-	// Traits are a class's core traits (primary ability, hit die…).
-	Traits map[string]string
-	// Facts are a species' or background's tagged parts (size, speed,
-	// ability scores…), shown as they are.
-	Facts []compendium.NameDesc
-	// Skills are the skill keys to choose SkillCount of (a class) or that
-	// come with it (a background).
-	SkillCount int
-	Skills     []string
-	// Abilities are a background's three abilities for its increases.
-	Abilities []string
-	Features  []FeaturePreview
-	// SkillPick is the class's skill choice: on the class step, and on the
-	// background step when the background grants a skill the class step
-	// picked, so the player picks another class skill instead.
-	SkillPick *SkillPick
-}
-
-// SkillPick asks for Count of a class's skill Options. Known are had
-// already (from the background), shown ticked and disabled; Picked are
-// ticked at first (the class picks a background did not overlap).
-type SkillPick struct {
-	Count                  int
-	Options, Known, Picked []string
-}
-
-// FeaturePreview is a feature as the wizard shows it, with what the sheet
-// will track for it.
-type FeaturePreview struct {
-	Name, Desc string
-	Effects    []string
-}
-
-// EquipmentChoice is a class's or background's starting equipment options.
-type EquipmentChoice struct {
-	Key, Title string
-	Options    []compendium.EquipmentOption
-}
-
-func (v WizardView) path(step string) string {
-	return fmt.Sprintf("/characters/%d/create/%s", v.CharacterID, step)
-}
-
-// done reports whether a step that adds to the sheet was applied.
-func (v WizardView) done(step string) bool { return v.Sheet.C.Sheet.SetUp(step) }
-
-// skipped are the steps before the current one that add to the sheet but
-// were not applied (details only edits; review is the end).
-func (v WizardView) skipped() []WizardStep {
-	var out []WizardStep
-	for _, st := range v.Steps {
-		if st.Key == v.Step {
-			break
-		}
-		if st.Key != StepDetails && !v.done(st.Key) {
-			out = append(out, st)
-		}
-	}
-	return out
-}
 
 func WizardPage(l Layout, v WizardView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -213,7 +81,7 @@ func WizardPage(l Layout, v WizardView) templ.Component {
 					var templ_7745c5c3_Var3 string
 					templ_7745c5c3_Var3, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(v.path(st.Key))).ResolveURL(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 164, Col: 41}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 32, Col: 41}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 					if templ_7745c5c3_Err != nil {
@@ -264,7 +132,7 @@ func WizardPage(l Layout, v WizardView) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(i + 1))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 170, Col: 24}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 38, Col: 24}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -277,7 +145,7 @@ func WizardPage(l Layout, v WizardView) templ.Component {
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(st.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 170, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 38, Col: 38}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -391,7 +259,7 @@ func wizardNav(v WizardView, submit string) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(v.path(v.Steps[i-1].Key))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 206, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 74, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 			if templ_7745c5c3_Err != nil {
@@ -414,7 +282,7 @@ func wizardNav(v WizardView, submit string) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(v.path(v.Steps[i+1].Key))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 210, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 78, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
@@ -441,7 +309,7 @@ func wizardNav(v WizardView, submit string) templ.Component {
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(submit)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 214, Col: 12}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 82, Col: 12}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
@@ -488,7 +356,7 @@ func wizardMissing(v WizardView) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs("Choose these first, since what they leave open is asked here: ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 224, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 92, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -537,7 +405,7 @@ func stepLinks(v WizardView, steps []WizardStep, end string) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(v.path(st.Key))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 234, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 102, Col: 59}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 			if templ_7745c5c3_Err != nil {
@@ -550,7 +418,7 @@ func stepLinks(v WizardView, steps []WizardStep, end string) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(st.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 234, Col: 72}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 102, Col: 72}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -563,7 +431,7 @@ func stepLinks(v WizardView, steps []WizardStep, end string) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(utils.IfElse(i+1 < len(steps), ", ", end))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 234, Col: 121}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 102, Col: 121}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -605,7 +473,7 @@ func wizardDone(v WizardView, msg string) templ.Component {
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 244, Col: 8}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 112, Col: 8}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 		if templ_7745c5c3_Err != nil {
@@ -619,7 +487,7 @@ func wizardDone(v WizardView, msg string) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(" Change it on the sheet from now on.")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 246, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 114, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -722,7 +590,7 @@ func wizardPick(v WizardView) templ.Component {
 				var templ_7745c5c3_Var25 string
 				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(map[string]string{StepClass: "Class", StepSpecies: "Species", StepBackground: "Background"}[v.Step])
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 273, Col: 105}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 141, Col: 105}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 				if templ_7745c5c3_Err != nil {
@@ -809,7 +677,7 @@ func wizardPick(v WizardView) templ.Component {
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templruntime.NewAttributeExpression(utils.IfElse(v.Variant != "", v.Variant, v.Picked)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 292, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 160, Col: 94}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
 			if templ_7745c5c3_Err != nil {
@@ -859,7 +727,7 @@ func wizardPick(v WizardView) templ.Component {
 							var templ_7745c5c3_Var32 string
 							templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 297, Col: 15}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 165, Col: 15}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 							if templ_7745c5c3_Err != nil {
@@ -917,7 +785,7 @@ func wizardPick(v WizardView) templ.Component {
 								var templ_7745c5c3_Var34 string
 								templ_7745c5c3_Var34, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(p.Count)).Resolve(ctx)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 304, Col: 100}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 172, Col: 100}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var34)
 								if templ_7745c5c3_Err != nil {
@@ -944,7 +812,7 @@ func wizardPick(v WizardView) templ.Component {
 							var templ_7745c5c3_Var35 string
 							templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(utils.IfElse(v.Step == StepClass, "Skills", "Class skills"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 306, Col: 71}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 174, Col: 71}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 							if templ_7745c5c3_Err != nil {
@@ -957,7 +825,7 @@ func wizardPick(v WizardView) templ.Component {
 							var templ_7745c5c3_Var36 string
 							templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(Choose(p.Count-len(p.Picked), len(p.Picked)+len(p.Known) > 0))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 307, Col: 122}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 175, Col: 122}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 							if templ_7745c5c3_Err != nil {
@@ -1005,7 +873,7 @@ func wizardPick(v WizardView) templ.Component {
 									var templ_7745c5c3_Var38 string
 									templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(skillName(k))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 317, Col: 26}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 185, Col: 26}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 									if templ_7745c5c3_Err != nil {
@@ -1038,7 +906,7 @@ func wizardPick(v WizardView) templ.Component {
 									var templ_7745c5c3_Var40 string
 									templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(skillName(k))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 322, Col: 26}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 190, Col: 26}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 									if templ_7745c5c3_Err != nil {
@@ -1069,7 +937,7 @@ func wizardPick(v WizardView) templ.Component {
 								var templ_7745c5c3_Var41 string
 								templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 334, Col: 20}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 202, Col: 20}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 								if templ_7745c5c3_Err != nil {
@@ -1087,7 +955,7 @@ func wizardPick(v WizardView) templ.Component {
 									var templ_7745c5c3_Var42 string
 									templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(strings.Join(f.Effects, "; "))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 336, Col: 88}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 204, Col: 88}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 									if templ_7745c5c3_Err != nil {
@@ -1146,22 +1014,6 @@ func wizardPick(v WizardView) templ.Component {
 	})
 }
 
-func choiceName(c *WizardChoice) string {
-	if c == nil {
-		return ""
-	}
-	return c.Name
-}
-
-func skillName(key string) string {
-	for _, sk := range dnd5e.Skills {
-		if sk.Key == key {
-			return sk.Name
-		}
-	}
-	return key
-}
-
 // wizardFacts are a class's core traits or a species' or background's
 // tagged parts.
 func wizardFacts(c *WizardChoice) templ.Component {
@@ -1194,7 +1046,7 @@ func wizardFacts(c *WizardChoice) templ.Component {
 				var templ_7745c5c3_Var44 string
 				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 377, Col: 41}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 229, Col: 41}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 				if templ_7745c5c3_Err != nil {
@@ -1207,7 +1059,7 @@ func wizardFacts(c *WizardChoice) templ.Component {
 				var templ_7745c5c3_Var45 string
 				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(t)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 378, Col: 11}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 230, Col: 11}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 				if templ_7745c5c3_Err != nil {
@@ -1227,7 +1079,7 @@ func wizardFacts(c *WizardChoice) templ.Component {
 			var templ_7745c5c3_Var46 string
 			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 382, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 234, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 			if templ_7745c5c3_Err != nil {
@@ -1322,7 +1174,7 @@ func backgroundAbilities(c *WizardChoice, form url.Values, fe FieldErrors) templ
 		var templ_7745c5c3_Var50 string
 		templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 396, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 248, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 		if templ_7745c5c3_Err != nil {
@@ -1519,7 +1371,7 @@ func abilityForm(v WizardView) templ.Component {
 				var templ_7745c5c3_Var57 string
 				templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(dnd5e.AbilityNames[a])
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 440, Col: 29}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 292, Col: 29}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 				if templ_7745c5c3_Err != nil {
@@ -1657,71 +1509,6 @@ func wizardChoices(v WizardView) templ.Component {
 	})
 }
 
-// Choose asks for n picks, as legends and errors say it: "choose one",
-// "choose 2", "choose 2 more" (more: on top of ones already had).
-func Choose(n int, more bool) string {
-	s := "choose " + map[int]string{0: "none", 1: "one"}[n]
-	if n > 1 {
-		s += fmt.Sprint(n)
-	}
-	if more && n > 0 {
-		s += " more"
-	}
-	return s
-}
-
-// FieldErrors are a refused form's errors, by the field they are about.
-type FieldErrors map[string]string
-
-// Error keys shared by handlers, templates and tests.
-const (
-	FieldName      = "name"
-	FieldSize      = "size"
-	FieldVision    = "vision"
-	FieldBackstory = "backstory"
-	FieldMode      = "mode"
-	FieldSkill     = "skill"
-	FieldSpell     = "spell"
-	FieldASI       = "asi"
-	// FieldMastery is the Weapon Mastery choice group's key.
-	FieldMastery = "weapon_mastery"
-)
-
-func (v WizardView) fieldErr() FieldErrors { return v.Errors }
-
-// DrawsField reports whether the page shows an error at key; the handler shows
-// one for a field it does not draw (a crafted post) at the top instead.
-func (v WizardView) DrawsField(key string) bool {
-	switch key {
-	case FieldName, FieldSize, FieldVision, FieldBackstory:
-		return v.Step == StepDetails
-	case dnd5e.Str, dnd5e.Dex, dnd5e.Con, dnd5e.Int, dnd5e.Wis, dnd5e.Cha:
-		return v.Step == StepAbilities
-	case FieldMode:
-		return v.Step == StepAbilities && v.Choice != nil && len(v.Choice.Abilities) == 3
-	case FieldSkill:
-		return v.Choice != nil && (v.Step == StepClass && v.Choice.SkillCount > 0 || v.Step == StepBackground && v.Choice.SkillPick != nil)
-	case FieldSpell:
-		return v.Choices != nil && len(v.Choices.Spells) > 0
-	}
-	return v.Choices != nil && drawsGroup(v.Choices.Groups, key)
-}
-
-// drawsGroup mirrors choiceFieldset: a group's key, then its options' own groups.
-func drawsGroup(groups []ChoiceGroup, key string) bool {
-	for _, g := range groups {
-		if g.Key == key {
-			return true
-		}
-		for _, o := range g.Options {
-			if drawsGroup(g.Sub[o.Name], key) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // at shows the error when it is about key; app.js scrolls to it.
 func (fe FieldErrors) at(key string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -1756,7 +1543,7 @@ func (fe FieldErrors) at(key string) templ.Component {
 				var templ_7745c5c3_Var62 string
 				templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 551, Col: 8}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 338, Col: 8}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
 				if templ_7745c5c3_Err != nil {
@@ -1771,26 +1558,6 @@ func (fe FieldErrors) at(key string) templ.Component {
 		}
 		return nil
 	})
-}
-
-// describedBy links a control group to the error at(key) shows; no attribute
-// when key has no error.
-func (fe FieldErrors) describedBy(key string) templ.Attributes {
-	if fe[key] == "" {
-		return nil
-	}
-	return templ.Attributes{"aria-describedby": "error-" + key}
-}
-
-// radioAttrs labels a single-pick radio group, and marks it invalid when
-// it holds an error (aria-invalid is valid on a radiogroup, not a fieldset).
-// The fieldset links the error already (describedBy), so this does not.
-func (fe FieldErrors) radioAttrs(key, label string) templ.Attributes {
-	a := templ.Attributes{"aria-label": label}
-	if fe[key] != "" {
-		a["aria-invalid"] = "true"
-	}
-	return a
 }
 
 // choiceFieldset asks for up to g.Count of its options: radios for one,
@@ -1831,7 +1598,7 @@ func choiceFieldset(g ChoiceGroup, form url.Values, fe FieldErrors) templ.Compon
 				var templ_7745c5c3_Var64 string
 				templ_7745c5c3_Var64, templ_7745c5c3_Err = templruntime.NewAttributeExpression(g.Key + "=" + o.Name).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 585, Col: 68}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 352, Col: 68}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var64)
 				if templ_7745c5c3_Err != nil {
@@ -1926,7 +1693,7 @@ func choiceOptions(g ChoiceGroup, form url.Values, fe FieldErrors) templ.Compone
 				var templ_7745c5c3_Var68 string
 				templ_7745c5c3_Var68, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(g.Count)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 600, Col: 41}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 367, Col: 41}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var68)
 				if templ_7745c5c3_Err != nil {
@@ -1954,7 +1721,7 @@ func choiceOptions(g ChoiceGroup, form url.Values, fe FieldErrors) templ.Compone
 		var templ_7745c5c3_Var69 string
 		templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 604, Col: 12}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 371, Col: 12}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var69))
 		if templ_7745c5c3_Err != nil {
@@ -1972,7 +1739,7 @@ func choiceOptions(g ChoiceGroup, form url.Values, fe FieldErrors) templ.Compone
 			var templ_7745c5c3_Var70 string
 			templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs(Choose(g.Count, len(g.Known) > 0))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 606, Col: 88}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 373, Col: 88}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 			if templ_7745c5c3_Err != nil {
@@ -2032,7 +1799,7 @@ func choiceOptions(g ChoiceGroup, form url.Values, fe FieldErrors) templ.Compone
 						var templ_7745c5c3_Var73 string
 						templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(o.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 616, Col: 15}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 383, Col: 15}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 						if templ_7745c5c3_Err != nil {
@@ -2124,7 +1891,7 @@ func choiceOptions(g ChoiceGroup, form url.Values, fe FieldErrors) templ.Compone
 					var templ_7745c5c3_Var77 string
 					templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 627, Col: 9}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 394, Col: 9}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 					if templ_7745c5c3_Err != nil {
@@ -2137,7 +1904,7 @@ func choiceOptions(g ChoiceGroup, form url.Values, fe FieldErrors) templ.Compone
 					var templ_7745c5c3_Var78 string
 					templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinStringErrs(utils.IfElse(k == "Common", "(every character knows it)", "(known)"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 627, Col: 82}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 394, Col: 82}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
 					if templ_7745c5c3_Err != nil {
@@ -2170,7 +1937,7 @@ func choiceOptions(g ChoiceGroup, form url.Values, fe FieldErrors) templ.Compone
 					var templ_7745c5c3_Var80 string
 					templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.JoinStringErrs(o.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 633, Col: 15}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 400, Col: 15}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var80))
 					if templ_7745c5c3_Err != nil {
@@ -2202,15 +1969,6 @@ func choiceOptions(g ChoiceGroup, form url.Values, fe FieldErrors) templ.Compone
 		}
 		return nil
 	})
-}
-
-// optionsGrid lays a long list of terse options (weapon masteries, skills)
-// out in columns; other lists get short, as feat texts need the width.
-func optionsGrid(opts []compendium.NameDesc, short string) string {
-	if len(opts) > 8 && !slices.ContainsFunc(opts, func(o compendium.NameDesc) bool { return len(o.Desc) > 40 }) {
-		return "grid grid-cols-2 sm:grid-cols-3"
-	}
-	return short
 }
 
 // optionDesc is an option's text: short ones as they are, long ones folded.
@@ -2310,7 +2068,7 @@ func wizardEquipment(v WizardView) templ.Component {
 				var templ_7745c5c3_Var83 string
 				templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.JoinStringErrs(ec.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 682, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 440, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var83))
 				if templ_7745c5c3_Err != nil {
@@ -2356,7 +2114,7 @@ func wizardEquipment(v WizardView) templ.Component {
 							var templ_7745c5c3_Var86 string
 							templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.JoinStringErrs(optionText(o))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 687, Col: 29}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 445, Col: 29}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var86))
 							if templ_7745c5c3_Err != nil {
@@ -2399,33 +2157,6 @@ func wizardEquipment(v WizardView) templ.Component {
 		}
 		return nil
 	})
-}
-
-// optionText is an equipment option as one line: "(A) 2 Daggers, Robe and 8 GP".
-func optionText(o compendium.EquipmentOption) string {
-	var items []string
-	for _, it := range o.Items {
-		items = append(items, strings.TrimSpace(utils.IfElse(it.Qty > 1, fmt.Sprint(it.Qty), "")+" "+it.Name))
-	}
-	if o.GP > 0 {
-		items = append(items, fmt.Sprint(o.GP, " GP"))
-	}
-	if n := len(items); n > 1 {
-		items = append(items[:n-2], items[n-2]+" and "+items[n-1])
-	}
-	return "(" + o.Letter + ") " + strings.Join(items, ", ")
-}
-
-// inputAttrs are an input's attributes, linked to its error and marked
-// invalid when key has one.
-func (fe FieldErrors) inputAttrs(key string, a templ.Attributes) templ.Attributes {
-	if fe[key] == "" {
-		return a
-	}
-	out := templ.Attributes{"aria-invalid": "true"}
-	maps.Copy(out, a)
-	maps.Copy(out, fe.describedBy(key))
-	return out
 }
 
 // wizardDetails shows what was typed after a refusal, not the saved sheet.
@@ -2730,7 +2461,7 @@ func wizardReview(v WizardView) templ.Component {
 		var templ_7745c5c3_Var96 string
 		templ_7745c5c3_Var96, templ_7745c5c3_Err = templ.JoinStringErrs(v.Sheet.C.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 782, Col: 27}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 513, Col: 27}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var96))
 		if templ_7745c5c3_Err != nil {
@@ -2748,7 +2479,7 @@ func wizardReview(v WizardView) templ.Component {
 			var templ_7745c5c3_Var97 string
 			templ_7745c5c3_Var97, templ_7745c5c3_Err = templ.JoinStringErrs(p.text)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 784, Col: 15}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/wizard.templ`, Line: 515, Col: 15}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var97))
 			if templ_7745c5c3_Err != nil {

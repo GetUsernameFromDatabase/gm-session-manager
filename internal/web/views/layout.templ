@@ -1,10 +1,7 @@
 package views
 
 import (
-	"context"
 	"fmt"
-	"gm-session-manager/internal/compendium"
-	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/web/components"
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/button"
@@ -16,83 +13,8 @@ import (
 	"gm-session-manager/internal/web/components/spinner"
 	"gm-session-manager/internal/web/components/toast"
 	"gm-session-manager/internal/web/utils"
-	"io"
 	"time"
 )
-
-// Nav keys for Layout.Active.
-const (
-	NavHome       = "home"
-	NavCharacter  = "character"
-	NavCombat     = "combat"
-	NavNotes      = "notes"
-	NavEntities   = "entities"
-	NavCompendium = "compendium"
-	NavImages     = "images"
-	NavFiles      = "files"
-)
-
-// Layout is the frame around every page.
-type Layout struct {
-	Title string
-	// IsGM shows the GM navigation.
-	IsGM bool
-	// Campaign is the campaign the page belongs to (0 for none).
-	CampaignID   int64
-	CampaignName string
-	// CharacterID is the player's character, for the player navigation.
-	CharacterID int64
-	Active      string
-	// HasSession shows the logout button.
-	HasSession bool
-	// WS connects the page to the hub; nil for pages without live updates.
-	WS *WS
-	// Modules are extra ES module scripts (the notes editor).
-	Modules []string
-	// Requests are the join requests waiting for the GM, in every campaign.
-	Requests []PendingGroup
-	// Switch is the GM's campaign switcher (compendium, files); nil elsewhere.
-	Switch *CampaignSwitch
-	// StaleBooks are the GM's 5etools books to download again (banner);
-	// AutoRedownload is the banner's switch.
-	StaleBooks     []compendium.Book
-	AutoRedownload bool
-}
-
-// CampaignSwitch opens the same page in another campaign, or in all of them.
-type CampaignSwitch struct {
-	Campaigns []sqlc.Campaign
-	// Base is the page's base address in a campaign (0: all of them).
-	Base func(campaign int64) string
-	// All names the page of every campaign.
-	All string
-	// Here is the page's path after its base, with its query.
-	Here string
-}
-
-// WS is the websocket endpoint and the hub position the page was read at.
-type WS struct {
-	URL   string
-	Epoch string
-	Seq   uint64
-}
-
-func (l Layout) title() string {
-	if l.Title == "" {
-		return "GM Session Manager"
-	}
-	return l.Title + " · GM Session Manager"
-}
-
-// Page renders its body inside l's campaign, so compendium links stay in it.
-func Page(l Layout) templ.Component {
-	return templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
-		if l.CampaignID != 0 {
-			ctx = WithCampaign(ctx, l.CampaignID)
-		}
-		return page(l).Render(ctx, w)
-	})
-}
 
 templ page(l Layout) {
 	<!DOCTYPE html>

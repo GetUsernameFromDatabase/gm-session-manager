@@ -10,7 +10,6 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
-	"cmp"
 	"fmt"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
@@ -20,73 +19,6 @@ import (
 	"gm-session-manager/internal/web/components/tooltip"
 	"strings"
 )
-
-// CampaignSourcesID is the Sources card on the campaign page, which every
-// toggle redraws.
-const CampaignSourcesID = "campaign-sources"
-
-// CampaignSource is one imported source on the campaign's Sources card.
-type CampaignSource struct {
-	Key, Edition, Attribution string
-	On                        bool
-	// Users are the characters and NPCs in the campaign that use it; a used
-	// source cannot be unticked.
-	Users []string
-}
-
-// CampaignSourcesView is the campaign's allow list, in priority order.
-// Homebrew is always allowed and not listed.
-type CampaignSourcesView struct {
-	CampaignID int64
-	Sources    []CampaignSource
-}
-
-// sourceGroup is the sources of one edition.
-type sourceGroup struct {
-	Title   string
-	Sources []CampaignSource
-}
-
-// groups splits the sources by edition, in order of first appearance.
-func (v CampaignSourcesView) groups() []sourceGroup {
-	var out []sourceGroup
-	at := map[string]int{}
-	for _, s := range v.Sources {
-		i, ok := at[s.Edition]
-		if !ok {
-			i, at[s.Edition] = len(out), len(out)
-			out = append(out, sourceGroup{Title: cmp.Or(s.Edition, "Other")})
-		}
-		out[i].Sources = append(out[i].Sources, s)
-	}
-	return out
-}
-
-func (v CampaignSourcesView) onCount() int {
-	n := 0
-	for _, s := range v.Sources {
-		if s.On {
-			n++
-		}
-	}
-	return n
-}
-
-// groupKeys are the group's keys the all (on) or none (off) button changes:
-// those not already so, and for none only unused ones.
-func (g sourceGroup) groupKeys(on bool) []string {
-	var keys []string
-	for _, s := range g.Sources {
-		if s.On != on && (on || len(s.Users) == 0) {
-			keys = append(keys, s.Key)
-		}
-	}
-	return keys
-}
-
-func (v CampaignSourcesView) postURL() string {
-	return fmt.Sprintf("/campaigns/%d/sources", v.CampaignID)
-}
 
 // CampaignSources is the GM's allow list for the campaign: pickers and lists
 // in it offer only ticked sources.
@@ -114,7 +46,7 @@ func CampaignSources(v CampaignSourcesView) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templruntime.NewAttributeExpression(CampaignSourcesID).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 85, Col: 28}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 17, Col: 28}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -189,7 +121,7 @@ func CampaignSources(v CampaignSourcesView) templ.Component {
 					var templ_7745c5c3_Var7 string
 					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d of %d on", v.onCount(), len(v.Sources)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 92, Col: 119}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 24, Col: 119}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 					if templ_7745c5c3_Err != nil {
@@ -307,7 +239,7 @@ func CampaignSources(v CampaignSourcesView) templ.Component {
 						var templ_7745c5c3_Var12 string
 						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 108, Col: 50}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 40, Col: 50}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 						if templ_7745c5c3_Err != nil {
@@ -399,7 +331,7 @@ func sourceGroupButton(v CampaignSourcesView, g sourceGroup, on bool) templ.Comp
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(strings.ToLower(what))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 136, Col: 25}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 68, Col: 25}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -446,7 +378,7 @@ func campaignSourceRow(v CampaignSourcesView, s CampaignSource) templ.Component 
 		var templ_7745c5c3_Var17 string
 		templ_7745c5c3_Var17, templ_7745c5c3_Err = templruntime.NewAttributeExpression(strings.ToLower(s.Key + " " + s.Attribution)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 144, Col: 121}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 76, Col: 121}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 		if templ_7745c5c3_Err != nil {
@@ -459,7 +391,7 @@ func campaignSourceRow(v CampaignSourcesView, s CampaignSource) templ.Component 
 		var templ_7745c5c3_Var18 string
 		templ_7745c5c3_Var18, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.postURL()).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 145, Col: 50}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 77, Col: 50}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 		if templ_7745c5c3_Err != nil {
@@ -472,7 +404,7 @@ func campaignSourceRow(v CampaignSourcesView, s CampaignSource) templ.Component 
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templruntime.NewAttributeExpression(toJSON(map[string]string{"key": s.Key})).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 145, Col: 122}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 77, Col: 122}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 		if templ_7745c5c3_Err != nil {
@@ -485,7 +417,7 @@ func campaignSourceRow(v CampaignSourcesView, s CampaignSource) templ.Component 
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templruntime.NewAttributeExpression("#" + CampaignSourcesID).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 145, Col: 160}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 77, Col: 160}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 		if templ_7745c5c3_Err != nil {
@@ -518,7 +450,7 @@ func campaignSourceRow(v CampaignSourcesView, s CampaignSource) templ.Component 
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(s.Key)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 148, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 80, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -562,7 +494,7 @@ func campaignSourceRow(v CampaignSourcesView, s CampaignSource) templ.Component 
 					var templ_7745c5c3_Var24 string
 					templ_7745c5c3_Var24, templ_7745c5c3_Err = templruntime.NewAttributeExpression("Used by " + strings.Join(s.Users, ", ")).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 153, Col: 114}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 85, Col: 114}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 					if templ_7745c5c3_Err != nil {
@@ -593,7 +525,7 @@ func campaignSourceRow(v CampaignSourcesView, s CampaignSource) templ.Component 
 				var templ_7745c5c3_Var25 string
 				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(len(s.Users)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 153, Col: 171}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 85, Col: 171}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 				if templ_7745c5c3_Err != nil {
@@ -618,7 +550,7 @@ func campaignSourceRow(v CampaignSourcesView, s CampaignSource) templ.Component 
 					var templ_7745c5c3_Var27 string
 					templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs("Used by " + strings.Join(s.Users, ", "))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 155, Col: 47}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign_sources.templ`, Line: 87, Col: 47}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 					if templ_7745c5c3_Err != nil {
@@ -643,13 +575,6 @@ func campaignSourceRow(v CampaignSourcesView, s CampaignSource) templ.Component 
 		}
 		return nil
 	})
-}
-
-func sourceRowTitle(s CampaignSource, locked bool) string {
-	if locked {
-		return s.Key + " is used by " + strings.Join(s.Users, ", ") + "; switch their sources first."
-	}
-	return cmp.Or(s.Attribution, s.Key)
 }
 
 var _ = templruntime.GeneratedTemplate

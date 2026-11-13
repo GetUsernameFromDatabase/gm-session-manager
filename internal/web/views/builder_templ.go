@@ -11,7 +11,6 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/dnd5e"
@@ -26,144 +25,9 @@ import (
 	"gm-session-manager/internal/web/components/textarea"
 	"gm-session-manager/internal/web/utils"
 	"maps"
-	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 )
-
-// builderID is the command builder dialog on the character page.
-const builderID = "command-builder"
-
-// builderOp is one form of the command builder: the command prefix it sends,
-// the sign put before its number, and (by Key) the fields it asks for. The
-// server appends the fields to the prefix as raw arguments in a fixed order:
-// subject, ability, dice, dtype, prof, n, text.
-type builderOp struct {
-	Key, Label, Prefix, Sign string
-}
-
-// builderVerb is one group of builder forms.
-type builderVerb struct {
-	Key, Label string
-	Ops        []builderOp
-}
-
-// builderVerbs lists what the sheet's owner can do, in menu order. Forms
-// that could not apply right now (no slots, no items) are left out.
-func (s SheetView) builderVerbs() []builderVerb {
-	sh := s.C.Sheet
-	slots := []builderOp{}
-	if sh.MaxSpellLevel() > 0 {
-		slots = append(slots,
-			builderOp{"slot-use", "Use slot", "slot use", ""},
-			builderOp{"slot-restore", "Restore slot", "slot restore", ""})
-	}
-	slots = append(slots, builderOp{"slot-max", "Set slot count", "slot max", ""})
-	if sh.Pact.Max > 0 {
-		slots = append(slots,
-			builderOp{"pact-use", "Use pact slot", "pact use", ""},
-			builderOp{"pact-restore", "Restore pact slot", "pact restore", ""})
-	}
-	rest := []builderOp{
-		{"rest-short", "Short rest", "rest short", ""},
-		{"rest-long", "Long rest", "rest long", ""},
-		{"hitdie-use", "Spend hit die", "hitdie use", ""},
-		{"hitdie-restore", "Regain hit die", "hitdie restore", ""},
-		{"inspiration", "Toggle inspiration", "inspiration", ""},
-	}
-	if dying(s) {
-		rest = append(rest,
-			builderOp{"ds-success", "Death save success", "deathsave success", ""},
-			builderOp{"ds-fail", "Death save failure", "deathsave fail", ""},
-			builderOp{"ds-reset", "Reset death saves", "deathsave reset", ""})
-	}
-	return []builderVerb{
-		{"hp", "Hit points", []builderOp{
-			{"hp-set", "Set HP", "hp", "="},
-			{"hp-temp", "Temp HP", "temp", ""},
-			{"hp-max", "Max HP", "maxhp", "="},
-		}},
-		{"conditions", "Conditions", []builderOp{
-			{"cond-add", "Add", "condition add", ""},
-			{"cond-remove", "Remove", "condition remove", ""},
-			{"exh-up", "More exhaustion", "exhaustion", "+"},
-			{"exh-down", "Less exhaustion", "exhaustion", "-"},
-		}},
-		{"rest", "Rest & recovery", rest},
-		{"abilities", "Ability scores", []builderOp{{"ability", "Set score", "set ability", ""}}},
-		{"profs", "Proficiencies", []builderOp{
-			{focusSkill, "Skill", "prof set skill", ""},
-			{focusSave, "Saving throw", "prof set save", ""},
-			{"skill-add", "Add skill", "prof add skill", ""},
-			{"skill-remove", "Remove skill", "prof remove skill", ""},
-			{"exp-add", "Add expertise", "prof add expertise", ""},
-			{"exp-remove", "Remove expertise", "prof remove expertise", ""},
-			{"save-add", "Add save", "prof add save", ""},
-			{"save-remove", "Remove save", "prof remove save", ""},
-			{"other-add", "Add other", "prof add other", ""},
-			{"other-remove", "Remove other", "prof remove other", ""},
-			{"lang-add", "Add language", "prof add language", ""},
-			{"res-add", "Add resistance", "prof add resistance", ""},
-			{"imm-add", "Add immunity", "prof add immunity", ""},
-			{"vuln-add", "Add vulnerability", "prof add vulnerability", ""},
-		}},
-		{"details", "Details", []builderOp{
-			{"set-name", "Name", "set name", ""},
-			{"set-species", "Species", "set species", ""},
-			{"set-background", "Background", "set background", ""},
-			{"set-backstory", "Backstory", "set backstory", ""},
-			{"set-ac", "AC bonus", "set ac", ""},
-			{"set-speed", "Base speed", "set speed", ""},
-			{"set-size", "Size", "set size", ""},
-			{"set-vision", "Vision", "set vision", ""},
-		}},
-		{"armor", "Armor", []builderOp{{"armor", "Armor", "", ""}}},
-		{"weapons", "Weapons", []builderOp{
-			{"weapon-add", "Add or replace", "weapon add", ""},
-			{"weapon-remove", "Remove", "weapon remove", ""},
-			{OpMastery, "Weapon Mastery", "", ""},
-		}},
-		{"mods", "Custom modifiers", []builderOp{
-			{"mod-add", "Add or replace", "mod add", ""},
-			{modEdit, "Save", "mod edit", ""},
-		}},
-		{"slots", "Spell slots", slots},
-		{"spells", "Spells", []builderOp{
-			{"spell-add", "Add", "", ""},
-			{"spell-prepare", "Prepare", "spell prepare", ""},
-			{"spell-unprepare", "Unprepare", "spell unprepare", ""},
-			{"spell-remove", "Remove", "spell remove", ""},
-		}},
-		{"items", "Inventory", []builderOp{
-			{"item-add", "Add", "item add", ""},
-			{"item-edit", "Change count", "item set", ""},
-			{"item-note", "Note", "item note", ""},
-		}},
-		{"coins", "Coins", []builderOp{{"coin-edit", "Coins", "", ""}}},
-		{"features", "Features", []builderOp{
-			{"feature-add", "Add or replace", "feature add", ""},
-			{"feature-remove", "Remove", "feature remove", ""},
-		}},
-	}
-}
-
-// pickBuilder finds the chosen verb and op, defaulting to the first of each.
-func (s SheetView) pickBuilder(verb, op string) ([]builderVerb, builderVerb, builderOp) {
-	verbs := s.builderVerbs()
-	v := verbs[max(slices.IndexFunc(verbs, func(b builderVerb) bool { return b.Key == verb }), 0)]
-	return verbs, v, v.Ops[max(slices.IndexFunc(v.Ops, func(b builderOp) bool { return b.Key == op }), 0)]
-}
-
-// builderURL opens a builder form, with subject preselected when not empty.
-func builderURL(s SheetView, verb, op, subject string) string {
-	return fmt.Sprintf("/characters/%d/builder?verb=%s&op=%s&subject=%s", s.ID, verb, op, url.QueryEscape(subject))
-}
-
-// builderLoad makes an element load a builder form into the dialog.
-func builderLoad(s SheetView, verb, op, subject string) templ.Attributes {
-	return templ.Attributes{"hx-get": builderURL(s, verb, op, subject), "hx-target": "#builder", "hx-swap": "innerHTML"}
-}
 
 // builderButton opens the command builder at verb and op.
 func builderButton(s SheetView, verb, op, label string) templ.Component {
@@ -344,7 +208,7 @@ func chip(s SheetView, verb, op, label string, on bool) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 190, Col: 9}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 54, Col: 9}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -363,32 +227,6 @@ func chip(s SheetView, verb, op, label string, on bool) templ.Component {
 		}
 		return nil
 	})
-}
-
-// BuilderExtra is what a builder form takes from the compendium: a weapon
-// or feature picked in its look-up, and names a field suggests.
-type BuilderExtra struct {
-	Weapon  *dnd5e.Weapon
-	Feature *dnd5e.Feature
-	// FeatureMods are Feature's stat changes, read from its text.
-	FeatureMods []dnd5e.CustomMod
-	// FeatSource is the source key of the feat Feature was picked from;
-	// saving it adds the feat to the sheet's feats, pinned.
-	FeatSource  string
-	Suggestions []string
-	// Masteries are the compendium weapons with a mastery property (as
-	// Desc), for OpMastery.
-	Masteries []compendium.NameDesc
-}
-
-// OpMastery is the builder form that chooses the weapon kinds mastered.
-const OpMastery = "mastery"
-
-// BuilderPick is one result of the builder's compendium look-up. Feature
-// names a class feature inside the class entry EntryID.
-type BuilderPick struct {
-	EntryID                     int64
-	Slug, Feature, Name, Detail string
 }
 
 // CommandBuilder picks a command with taps instead of typing: what, how,
@@ -426,7 +264,7 @@ func CommandBuilder(s SheetView, verb, op, subject string, x BuilderExtra) templ
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if v.Key == "profs" {
+		if v.Key == verbProfs {
 			templ_7745c5c3_Err = profTabs(s, o).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -459,7 +297,7 @@ func CommandBuilder(s SheetView, verb, op, subject string, x BuilderExtra) templ
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "armor":
+		case opArmor:
 			templ_7745c5c3_Err = armorForm(s).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -494,7 +332,7 @@ func CommandBuilder(s SheetView, verb, op, subject string, x BuilderExtra) templ
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if o.Key == "mod-add" {
+			if o.Key == opModAdd {
 				templ_7745c5c3_Err = modList(s).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -507,48 +345,6 @@ func CommandBuilder(s SheetView, verb, op, subject string, x BuilderExtra) templ
 		}
 		return nil
 	})
-}
-
-// Focus forms are reached by tapping one thing on the sheet, so they have no
-// chip. modEdit's subject is the modifier's index on the sheet; the others'
-// is a skill or ability key.
-const (
-	modEdit    = "mod-edit"
-	focusSkill = "skill"
-	focusSave  = "save"
-)
-
-// chips are the verb's forms that get a chip; proficiencies show only the
-// forms of cur's tab.
-func (v builderVerb) chips(cur builderOp) []builderOp {
-	return slices.DeleteFunc(slices.Clone(v.Ops), func(o builderOp) bool {
-		return slices.Contains([]string{modEdit, focusSkill, focusSave}, o.Key) || (v.Key == "profs" && opGroup(o.Key) != opGroup(cur.Key))
-	})
-}
-
-// opGroup is what a form's key changes: "skill" for skill, skill-add and
-// skill-remove.
-func opGroup(key string) string {
-	g, _, _ := strings.Cut(key, "-")
-	return g
-}
-
-// profTabGroups are the proficiency tabs by opGroup; each opens its add form.
-var profTabGroups = []struct{ Key, Label string }{
-	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"res", "Resistances"},
-	{"imm", "Immunities"}, {"vuln", "Vulnerabilities"}, {"other", "Other"},
-}
-
-// damageList is what a damage defense op edits: the command's noun, the
-// add field's label and the sheet's list.
-func (s SheetView) damageList(key string) (noun, label string, list []string) {
-	switch key {
-	case "imm-add":
-		return "immunity", "Add an immunity", s.C.Sheet.Immunities
-	case "vuln-add":
-		return "vulnerability", "Add a vulnerability", s.C.Sheet.Vulnerabilities
-	}
-	return "resistance", "Add a resistance", s.C.Sheet.Resistances
 }
 
 func profTabs(s SheetView, o builderOp) templ.Component {
@@ -608,7 +404,7 @@ func profTabs(s SheetView, o builderOp) templ.Component {
 						var templ_7745c5c3_Var16 string
 						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(t.Label)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 313, Col: 14}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 109, Col: 14}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 						if templ_7745c5c3_Err != nil {
@@ -616,7 +412,7 @@ func profTabs(s SheetView, o builderOp) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = tabs.Trigger(tabs.TriggerProps{Value: t.Key, Attributes: builderLoad(s, "profs", t.Key+"-add", "")}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var15), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = tabs.Trigger(tabs.TriggerProps{Value: t.Key, Attributes: builderLoad(s, verbProfs, t.Key+"-add", "")}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var15), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -635,34 +431,6 @@ func profTabs(s SheetView, o builderOp) templ.Component {
 		}
 		return nil
 	})
-}
-
-// pressedClass styles a toggle button by its aria-pressed state.
-const pressedClass = "aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80"
-
-// profFocus is one skill or save as its focus form shows it.
-type profFocus struct {
-	Name, Level, ModTarget string
-	Bonus                  int
-	Levels                 []string
-}
-
-func (s SheetView) profFocus(key, subject string) (profFocus, bool) {
-	sh := s.C.Sheet
-	if key == focusSave {
-		name, ok := dnd5e.AbilityNames[subject]
-		level := dnd5e.ProfNone
-		if slices.Contains(sh.SaveProfs, subject) {
-			level = dnd5e.ProfProficient
-		}
-		return profFocus{name + " save", level, "save." + subject, sh.SaveBonus(subject), []string{dnd5e.ProfNone, dnd5e.ProfProficient}}, ok
-	}
-	i := slices.IndexFunc(dnd5e.Skills, func(sk dnd5e.Skill) bool { return sk.Key == subject })
-	if i < 0 {
-		return profFocus{}, false
-	}
-	sk := dnd5e.Skills[i]
-	return profFocus{sk.Name, sh.ProfLevel(sk.Key), "skill." + sk.Key, sh.SkillBonus(sk), []string{dnd5e.ProfNone, dnd5e.ProfProficient, dnd5e.ProfExpertise}}, true
 }
 
 // profForm sets one skill's or save's proficiency with a single tap. The
@@ -702,7 +470,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templruntime.NewAttributeExpression(s.cmdURL()).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 357, Col: 23}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 125, Col: 23}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 				if templ_7745c5c3_Err != nil {
@@ -733,7 +501,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 			var templ_7745c5c3_Var19 string
 			templ_7745c5c3_Var19, templ_7745c5c3_Err = templruntime.NewAttributeExpression(o.Prefix).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 360, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 128, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 			if templ_7745c5c3_Err != nil {
@@ -746,7 +514,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templruntime.NewAttributeExpression(subject).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 361, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 129, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 			if templ_7745c5c3_Err != nil {
@@ -759,7 +527,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 363, Col: 38}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 131, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -772,7 +540,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(dnd5e.Signed(f.Bonus))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 364, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 132, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -814,7 +582,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 					var templ_7745c5c3_Var24 string
 					templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(profLabels[l])
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 371, Col: 21}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 139, Col: 21}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 					if templ_7745c5c3_Err != nil {
@@ -880,7 +648,7 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 				var templ_7745c5c3_Var27 string
 				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 383, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 151, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 				if templ_7745c5c3_Err != nil {
@@ -888,43 +656,13 @@ func profForm(s SheetView, o builderOp, subject string) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Attributes: builderLoad(s, "mods", "mod-add", f.ModTarget)}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var26), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Attributes: builderLoad(s, verbMods, opModAdd, f.ModTarget)}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var26), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		return nil
 	})
-}
-
-var profLabels = map[string]string{dnd5e.ProfNone: "Not proficient", dnd5e.ProfProficient: "Proficient", dnd5e.ProfExpertise: "Expertise"}
-
-// removeVals are the fields of the button that removes what an edit form
-// shows, or nil when the subject does not exist yet.
-func (s SheetView) removeVals(key, subject string) map[string]string {
-	switch {
-	case key == "weapon-add" && s.weapon(subject) != nil:
-		return map[string]string{"prefix": "weapon remove", "subject": subject}
-	case key == "feature-add" && s.feature(subject) != nil:
-		return map[string]string{"prefix": "feature remove", "subject": subject}
-	}
-	return nil
-}
-
-func (s SheetView) weapon(name string) *dnd5e.Weapon {
-	i := slices.IndexFunc(s.C.Sheet.Weapons, func(w dnd5e.Weapon) bool { return w.Name == name })
-	if i < 0 {
-		return nil
-	}
-	return &s.C.Sheet.Weapons[i]
-}
-
-func (s SheetView) feature(name string) *dnd5e.Feature {
-	i := slices.IndexFunc(s.C.Sheet.Features, func(f dnd5e.Feature) bool { return f.Name == name })
-	if i < 0 {
-		return nil
-	}
-	return &s.C.Sheet.Features[i]
 }
 
 // builderRemove is an edit form's Remove button. It sits inside the form,
@@ -976,15 +714,6 @@ func builderRemove(s SheetView, vals map[string]string) templ.Component {
 	})
 }
 
-// modAt is the modifier at index subject, if it is still there.
-func (s SheetView) modAt(subject string) (dnd5e.CustomMod, bool) {
-	i, err := strconv.Atoi(subject)
-	if err != nil || i < 0 || i >= len(s.C.Sheet.Modifiers) {
-		return dnd5e.CustomMod{}, false
-	}
-	return s.C.Sheet.Modifiers[i], true
-}
-
 // modEditForm changes or removes one modifier. The command names it by its
 // target and note, not its index, so another device's edit cannot redirect it.
 func modEditForm(s SheetView, subject string) templ.Component {
@@ -1010,7 +739,7 @@ func modEditForm(s SheetView, subject string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			items, _, _ := s.builderSubjects("mod-add")
+			items, _, _ := s.builderSubjects(opModAdd)
 			{
 				templ_7745c5c3_ElementWriter := templ_7745c5c3_Buffer
 				templ_7745c5c3_Buffer := templ.GetBuffer()
@@ -1022,7 +751,7 @@ func modEditForm(s SheetView, subject string) templ.Component {
 				var templ_7745c5c3_Var31 string
 				templ_7745c5c3_Var31, templ_7745c5c3_Err = templruntime.NewAttributeExpression(s.cmdURL()).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 448, Col: 23}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 177, Col: 23}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 				if templ_7745c5c3_Err != nil {
@@ -1053,7 +782,7 @@ func modEditForm(s SheetView, subject string) templ.Component {
 			var templ_7745c5c3_Var32 string
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templruntime.NewAttributeExpression(m.Target).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 452, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 181, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 			if templ_7745c5c3_Err != nil {
@@ -1066,7 +795,7 @@ func modEditForm(s SheetView, subject string) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templruntime.NewAttributeExpression(m.Note).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 453, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 182, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 			if templ_7745c5c3_Err != nil {
@@ -1110,7 +839,7 @@ func modEditForm(s SheetView, subject string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = builderRemove(s, map[string]string{"prefix": "mod remove", "subject": m.Target, "text": m.Note}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = builderRemove(s, map[string]string{fieldPrefix: "mod remove", "subject": m.Target, "text": m.Note}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1201,7 +930,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templruntime.NewAttributeExpression(s.cmdURL()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 479, Col: 22}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 208, Col: 22}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 			if templ_7745c5c3_Err != nil {
@@ -1229,7 +958,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 				var templ_7745c5c3_Var40 string
 				templ_7745c5c3_Var40, templ_7745c5c3_Err = templruntime.NewAttributeExpression(builderURL(s, verb, o.Key, "")).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 482, Col: 47}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 211, Col: 47}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 				if templ_7745c5c3_Err != nil {
@@ -1247,7 +976,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templruntime.NewAttributeExpression(toJSON(maxes)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 484, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 213, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 			if templ_7745c5c3_Err != nil {
@@ -1260,7 +989,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templruntime.NewAttributeExpression(toJSON(values)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 485, Col: 29}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 214, Col: 29}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 			if templ_7745c5c3_Err != nil {
@@ -1297,7 +1026,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 		var templ_7745c5c3_Var44 string
 		templ_7745c5c3_Var44, templ_7745c5c3_Err = templruntime.NewAttributeExpression(o.Prefix).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 488, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 217, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var44)
 		if templ_7745c5c3_Err != nil {
@@ -1310,7 +1039,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 		var templ_7745c5c3_Var45 string
 		templ_7745c5c3_Var45, templ_7745c5c3_Err = templruntime.NewAttributeExpression(o.Sign).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 489, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 218, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var45)
 		if templ_7745c5c3_Err != nil {
@@ -1397,7 +1126,7 @@ func builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) templ
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(o.submitLabel())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 503, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 232, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
@@ -1444,10 +1173,6 @@ func itemDetails() templ.Component {
 	})
 }
 
-// stayOpen are forms (op key to verb) used several times in a row: after a
-// submit they reload with the sheet's new choices instead of closing the dialog.
-var stayOpen = map[string]string{"feature-remove": "features", "lang-add": "profs", "res-add": "profs", "imm-add": "profs", "vuln-add": "profs"}
-
 // removableList shows what a form adds, each name with a button that
 // removes it at once (prefix plus the name as subject).
 func removableList(s SheetView, prefix string, names []string) templ.Component {
@@ -1479,7 +1204,7 @@ func removableList(s SheetView, prefix string, names []string) templ.Component {
 			var templ_7745c5c3_Var52 string
 			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(n)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 531, Col: 7}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 256, Col: 7}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 			if templ_7745c5c3_Err != nil {
@@ -1506,7 +1231,7 @@ func removableList(s SheetView, prefix string, names []string) templ.Component {
 			templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{
 				"aria-label": "Remove " + n, "hx-post": s.cmdURL(),
 				"hx-params":            "prefix,subject",
-				"hx-vals":              toJSON(map[string]string{"prefix": prefix, "subject": n}),
+				"hx-vals":              toJSON(map[string]string{fieldPrefix: prefix, "subject": n}),
 				"hx-on::after-request": templ.JSUnsafeFuncCall("if (event.detail.successful) this.closest('li').remove()"),
 			}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var53), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
@@ -1529,29 +1254,6 @@ func removableList(s SheetView, prefix string, names []string) templ.Component {
 		}
 		return nil
 	})
-}
-
-// builderDoneJS closes the dialog (or reloads a stayOpen form) after the
-// form's own submit, not after requests from fields inside it.
-const builderDoneJS = `if (event.detail.elt !== this || !event.detail.successful) return; if (this.dataset.reload) htmx.ajax("GET", this.dataset.reload, {target: "#builder", swap: "innerHTML"}); else this.querySelector("[data-slot=dialog-close]").click()`
-
-// submitLabel names the form's button: Save for forms that set a value,
-// whose labels name the field rather than an action.
-func (o builderOp) submitLabel() string {
-	if strings.HasPrefix(o.Prefix, "set ") {
-		return "Save"
-	}
-	return o.Label
-}
-
-// builderChangeJS sets the number field's limit (0 is none, as in
-// numberAttrs) and current value for the chosen subject, from the form's
-// data-max and data-value maps.
-const builderChangeJS = `if (event.target.name !== "subject" || !this.elements.n) return; const n = this.elements.n, k = event.target.value, m = JSON.parse(this.dataset.max), v = JSON.parse(this.dataset.value); if (m[k] > 0) n.max = m[k]; else n.removeAttribute("max"); if (k in v) n.value = v[k]`
-
-func toJSON(v any) string {
-	b, _ := json.Marshal(v)
-	return string(b)
 }
 
 func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.ItemData, maxes, values map[string]int, x BuilderExtra) templ.Component {
@@ -1578,7 +1280,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "hp-set":
+		case opHPSet:
 			templ_7745c5c3_Err = numberField("Hit points", 0, s.C.MaxHP, s.C.HP, false).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1602,7 +1304,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "ability":
+		case opAbility:
 			templ_7745c5c3_Err = subjectField("Ability", items, "").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1611,12 +1313,12 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "set-name":
+		case opSetName:
 			templ_7745c5c3_Err = textField(o.Label, s.detail(o.Key), "", true).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "set-species", "set-background":
+		case opSetSpecies, opSetBackground:
 			templ_7745c5c3_Var55 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
@@ -1644,7 +1346,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 					var templ_7745c5c3_Var57 string
 					templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(o.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 593, Col: 14}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 295, Col: 14}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 					if templ_7745c5c3_Err != nil {
@@ -1690,7 +1392,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "set-backstory":
+		case opSetBackstory:
 			templ_7745c5c3_Var59 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
@@ -1735,7 +1437,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "set-ac":
+		case opSetAC:
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "<div class=\"text-sm\"><div class=\"font-medium\">Armor class ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1743,7 +1445,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			var templ_7745c5c3_Var61 string
 			templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(s.C.Sheet.ArmorClass()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 611, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 313, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 			if templ_7745c5c3_Err != nil {
@@ -1765,12 +1467,12 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "set-speed":
+		case opSetSpeed:
 			templ_7745c5c3_Err = numberField("Base speed (ft)", 0, 500, s.C.Sheet.Speed, false).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "set-size":
+		case opSetSize:
 			templ_7745c5c3_Var62 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
@@ -1815,7 +1517,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "set-vision":
+		case opSetVision:
 			templ_7745c5c3_Err = textField("Vision", s.C.Sheet.Vision, "Darkvision 60 ft (none: normal sight)", true).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1887,7 +1589,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 					var templ_7745c5c3_Var67 string
 					templ_7745c5c3_Var67, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(CompendiumPath(ctx, "/homebrew/new?kind=item&add=1"))).ResolveURL(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 638, Col: 100}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 340, Col: 100}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var67)
 					if templ_7745c5c3_Err != nil {
@@ -1913,7 +1615,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "item-edit":
+		case opItemEdit:
 			templ_7745c5c3_Err = subjectField("Item", items, "").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1959,7 +1661,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 			var templ_7745c5c3_Var68 string
 			templ_7745c5c3_Var68, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.Source).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 657, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 359, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var68)
 			if templ_7745c5c3_Err != nil {
@@ -1977,7 +1679,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 				var templ_7745c5c3_Var69 string
 				templ_7745c5c3_Var69, templ_7745c5c3_Err = templruntime.NewAttributeExpression(x.FeatSource).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 659, Col: 64}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 361, Col: 64}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var69)
 				if templ_7745c5c3_Err != nil {
@@ -2082,7 +1784,7 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 					return templ_7745c5c3_Err
 				}
 			}
-		case "mod-add":
+		case opModAdd:
 			templ_7745c5c3_Err = subjectField("Applies to", items, "").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -2105,68 +1807,6 @@ func builderFields(s SheetView, o builderOp, subject string, items []selectcomp.
 		}
 		return nil
 	})
-}
-
-// featureToEdit is the feature the form starts from: the one on the sheet,
-// one picked in the look-up, or a new one; with its stat changes. A feature
-// with nothing automated yet gets suggestions read from its text.
-func (s SheetView) featureToEdit(subject string, x BuilderExtra) (dnd5e.Feature, []dnd5e.CustomMod, bool) {
-	if f := s.feature(subject); f != nil {
-		var mods []dnd5e.CustomMod
-		for _, m := range s.C.Sheet.Modifiers {
-			if m.Source == f.Name {
-				mods = append(mods, m)
-			}
-		}
-		if f.Action == "" && !f.Uses.Limited() && f.Unarmored == "" && len(mods) == 0 && f.Description != "" {
-			fe := *f
-			return fe, dnd5e.ParseEffects(f.Name, f.Description, nil, "").Apply(&fe), true
-		}
-		return *f, mods, false
-	}
-	if x.Feature != nil {
-		return *x.Feature, x.FeatureMods, true
-	}
-	return dnd5e.Feature{}, nil, false
-}
-
-// chooseFirst moves the item with value subject to the front, where the
-// select and the number field take their starting choice from.
-func chooseFirst(items []selectcomp.ItemData, subject string) []selectcomp.ItemData {
-	i := slices.IndexFunc(items, func(it selectcomp.ItemData) bool { return it.Value == subject })
-	if i <= 0 {
-		return items
-	}
-	return slices.Concat(items[i:i+1], items[:i], items[i+1:])
-}
-
-func firstValue(items []selectcomp.ItemData) string {
-	if len(items) == 0 {
-		return ""
-	}
-	return items[0].Value
-}
-
-func subjectLabel(key string) string {
-	switch {
-	case strings.HasPrefix(key, "cond"):
-		return "Condition"
-	case strings.HasPrefix(key, "slot"):
-		return "Slot level"
-	case strings.HasPrefix(key, "item"):
-		return "Item"
-	case strings.HasPrefix(key, "save"):
-		return "Saving throw"
-	case strings.HasPrefix(key, "spell"):
-		return "Spell"
-	case strings.HasPrefix(key, "feature"):
-		return "Feature"
-	case strings.HasPrefix(key, "weapon"):
-		return "Weapon"
-	case strings.HasPrefix(key, "other"):
-		return "Proficiency"
-	}
-	return "Skill"
 }
 
 func subjectField(label string, items []selectcomp.ItemData, class string) templ.Component {
@@ -2213,7 +1853,7 @@ func subjectField(label string, items []selectcomp.ItemData, class string) templ
 				var templ_7745c5c3_Var75 string
 				templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 762, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 402, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 				if templ_7745c5c3_Err != nil {
@@ -2292,7 +1932,7 @@ func nameField(label, value string, fixed bool) templ.Component {
 				var templ_7745c5c3_Var79 string
 				templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 777, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 417, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var79))
 				if templ_7745c5c3_Err != nil {
@@ -2386,7 +2026,7 @@ func textField(label, value, placeholder string, required bool) templ.Component 
 				var templ_7745c5c3_Var84 string
 				templ_7745c5c3_Var84, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 791, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 431, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var84))
 				if templ_7745c5c3_Err != nil {
@@ -2458,7 +2098,7 @@ func numberField(label string, lo, hi, value int, focus bool) templ.Component {
 				var templ_7745c5c3_Var88 string
 				templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 802, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 442, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var88))
 				if templ_7745c5c3_Err != nil {
@@ -2534,17 +2174,6 @@ func numberField(label string, lo, hi, value int, focus bool) templ.Component {
 		}
 		return nil
 	})
-}
-
-func numberAttrs(lo, hi int, focus bool) templ.Attributes {
-	a := templ.Attributes{"min": fmt.Sprint(lo), "inputmode": "numeric"}
-	if hi > 0 {
-		a["max"] = fmt.Sprint(hi)
-	}
-	if focus {
-		a["autofocus"] = true
-	}
-	return a
 }
 
 // weaponFields describe w; editing fixes its name.
@@ -2895,14 +2524,6 @@ func weaponFields(s SheetView, w dnd5e.Weapon, editing bool) templ.Component {
 	})
 }
 
-func weaponAbilities() []selectcomp.ItemData {
-	items := []selectcomp.ItemData{{Value: dnd5e.Finesse, Label: "Finesse (better of STR and DEX)"}}
-	for _, a := range dnd5e.Abilities {
-		items = append(items, selectcomp.ItemData{Value: a, Label: dnd5e.AbilityNames[a]})
-	}
-	return items
-}
-
 // featureEffectFields set what the sheet automates for a feature: the
 // action it takes, its uses and their reset, unarmored AC and stat changes.
 func featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, suggested bool) templ.Component {
@@ -3025,7 +2646,7 @@ func featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, s
 			var templ_7745c5c3_Var110 string
 			templ_7745c5c3_Var110, templ_7745c5c3_Err = templruntime.NewAttributeExpression(toJSON(f.Uses.ByLevel)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 914, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 535, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var110)
 			if templ_7745c5c3_Err != nil {
@@ -3038,7 +2659,7 @@ func featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, s
 			var templ_7745c5c3_Var111 string
 			templ_7745c5c3_Var111, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.Uses.Class).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 915, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 536, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var111)
 			if templ_7745c5c3_Err != nil {
@@ -3246,53 +2867,6 @@ func featureEffectFields(s SheetView, f dnd5e.Feature, mods []dnd5e.CustomMod, s
 	})
 }
 
-var actionItems = []selectcomp.ItemData{{Value: " ", Label: "Nothing special"}, {Value: dnd5e.ActionMain, Label: "An action"}, {Value: dnd5e.ActionBonus, Label: "A bonus action"}, {Value: dnd5e.ActionReaction, Label: "A reaction"}, {Value: dnd5e.ActionMagic, Label: "A Magic action"}}
-
-var sizeItems = selectItems(dnd5e.Sizes, func(s string) string { return s }, func(s string) string { return s })
-
-var resetItems = []selectcomp.ItemData{{Value: dnd5e.ResetLong, Label: "A long rest"}, {Value: dnd5e.ResetShort, Label: "A short or long rest"}, {Value: dnd5e.ResetShortOne, Label: "One on a short rest, all on a long rest"}}
-
-var whenItems = []selectcomp.ItemData{{Value: " ", Label: "Always"}, {Value: dnd5e.WhenNoHeavyArmor, Label: "Not in heavy armor"}, {Value: dnd5e.WhenUnarmored, Label: "Wearing no armor"}, {Value: dnd5e.WhenUnarmoredNoShield, Label: "No armor and no shield"}}
-
-var unarmoredItems = append([]selectcomp.ItemData{{Value: " ", Label: "Armor or base AC as usual"}},
-	selectItems(dnd5e.Abilities, func(a string) string { return a }, func(a string) string { return "10 + Dexterity + " + dnd5e.AbilityNames[a] })...)
-
-// usesItems are the choices of how often a feature can be used; the class
-// table choice shows only for a feature that has one.
-func usesItems(u dnd5e.Uses) []selectcomp.ItemData {
-	items := []selectcomp.ItemData{{Value: " ", Label: "Unlimited"}, {Value: "n", Label: "A number"}, {Value: "prof", Label: "Proficiency bonus"}}
-	for _, a := range dnd5e.Abilities {
-		items = append(items, selectcomp.ItemData{Value: a, Label: dnd5e.AbilityNames[a] + " modifier"})
-	}
-	if len(u.ByLevel) > 0 {
-		items = append(items, selectcomp.ItemData{Value: "table", Label: "By " + u.Class + " level (class table)"})
-	}
-	return items
-}
-
-func usesValue(u dnd5e.Uses) string {
-	switch {
-	case u.Fixed > 0:
-		return "n"
-	case u.Ability != "":
-		return u.Ability
-	case u.Prof:
-		return "prof"
-	case len(u.ByLevel) > 0:
-		return "table"
-	}
-	return " "
-}
-
-// modTargetItems are the modifier targets, for a select.
-func (s SheetView) modTargetItems() []selectcomp.ItemData {
-	var items []selectcomp.ItemData
-	for _, t := range s.modTargets() {
-		items = append(items, selectcomp.ItemData{Value: t, Label: modTargetLabel(t)})
-	}
-	return items
-}
-
 // modList shows the modifiers already on the sheet; tapping one edits it.
 func modList(s SheetView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -3351,7 +2925,7 @@ func modRow(s SheetView, i int, m dnd5e.CustomMod, inDialog bool) templ.Componen
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
 		if s.CanSheet {
-			load := builderLoad(s, "mods", modEdit, fmt.Sprint(i))
+			load := builderLoad(s, verbMods, modEdit, fmt.Sprint(i))
 			if !inDialog {
 				load = with(dialog.TriggerFor(builderID), load)
 			}
@@ -3427,7 +3001,7 @@ func modText(m dnd5e.CustomMod) templ.Component {
 		var templ_7745c5c3_Var123 string
 		templ_7745c5c3_Var123, templ_7745c5c3_Err = templ.JoinStringErrs(dnd5e.Signed(m.Value))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1031, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 605, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var123))
 		if templ_7745c5c3_Err != nil {
@@ -3440,7 +3014,7 @@ func modText(m dnd5e.CustomMod) templ.Component {
 		var templ_7745c5c3_Var124 string
 		templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.JoinStringErrs(modTargetLabel(m.Target))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1031, Col: 105}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 605, Col: 105}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var124))
 		if templ_7745c5c3_Err != nil {
@@ -3453,7 +3027,7 @@ func modText(m dnd5e.CustomMod) templ.Component {
 		var templ_7745c5c3_Var125 string
 		templ_7745c5c3_Var125, templ_7745c5c3_Err = templ.JoinStringErrs(m.Note)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1031, Col: 153}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 605, Col: 153}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var125))
 		if templ_7745c5c3_Err != nil {
@@ -3551,7 +3125,7 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 					var templ_7745c5c3_Var129 string
 					templ_7745c5c3_Var129, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1060, Col: 35}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 634, Col: 35}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var129))
 					if templ_7745c5c3_Err != nil {
@@ -3564,7 +3138,7 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 					var templ_7745c5c3_Var130 string
 					templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.JoinStringErrs(p.Detail)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1061, Col: 58}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 635, Col: 58}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var130))
 					if templ_7745c5c3_Err != nil {
@@ -3590,7 +3164,7 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 				var templ_7745c5c3_Var131 string
 				templ_7745c5c3_Var131, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1066, Col: 13}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 640, Col: 13}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var131))
 				if templ_7745c5c3_Err != nil {
@@ -3603,7 +3177,7 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 				var templ_7745c5c3_Var132 string
 				templ_7745c5c3_Var132, templ_7745c5c3_Err = templ.JoinStringErrs(p.Detail)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1067, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 641, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var132))
 				if templ_7745c5c3_Err != nil {
@@ -3633,7 +3207,7 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 				})
 				templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{
 					"hx-get":    pickURL(characterID, "weapons", "weapon-add", p),
-					"hx-target": "#builder",
+					"hx-target": builderTarget,
 					"hx-swap":   "innerHTML",
 				}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var133), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
@@ -3658,7 +3232,7 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 				var templ_7745c5c3_Var134 string
 				templ_7745c5c3_Var134, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(CompendiumPath(ctx, "/homebrew/new?kind=item&add=1"))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1083, Col: 104}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 657, Col: 104}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var134)
 				if templ_7745c5c3_Err != nil {
@@ -3676,11 +3250,6 @@ func BuilderPicks(characterID int64, pick string, picks []BuilderPick) templ.Com
 		}
 		return nil
 	})
-}
-
-// pickURL reloads the builder form filled in from a look-up pick.
-func pickURL(characterID int64, verb, op string, p BuilderPick) string {
-	return fmt.Sprintf("/characters/%d/builder?verb=%s&op=%s&entry=%d&feature=%s", characterID, verb, op, p.EntryID, url.QueryEscape(p.Feature))
 }
 
 // featurePicker names a new feature: feats and class features load into
@@ -3869,7 +3438,7 @@ func BuilderPickItems(characterID int64, picks []BuilderPick) templ.Component {
 				var templ_7745c5c3_Var143 string
 				templ_7745c5c3_Var143, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1129, Col: 11}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 698, Col: 11}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var143))
 				if templ_7745c5c3_Err != nil {
@@ -3882,7 +3451,7 @@ func BuilderPickItems(characterID int64, picks []BuilderPick) templ.Component {
 				var templ_7745c5c3_Var144 string
 				templ_7745c5c3_Var144, templ_7745c5c3_Err = templ.JoinStringErrs(p.Detail)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1130, Col: 57}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 699, Col: 57}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var144))
 				if templ_7745c5c3_Err != nil {
@@ -3894,7 +3463,7 @@ func BuilderPickItems(characterID int64, picks []BuilderPick) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = combobox.Item(combobox.ItemProps{Value: p.Name, Label: p.Name, Attributes: templ.Attributes{"data-builder-load": pickURL(characterID, "features", "feature-add", p)}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var142), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = combobox.Item(combobox.ItemProps{Value: p.Name, Label: p.Name, Attributes: templ.Attributes{"data-builder-load": pickURL(characterID, verbFeatures, opFeatureAdd, p)}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var142), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3913,14 +3482,6 @@ func BuilderPickItems(characterID int64, picks []BuilderPick) templ.Component {
 		}
 		return nil
 	})
-}
-
-// closeAfter makes a builder button close the dialog once its request
-// succeeds, since the sheet behind it shows the result.
-func closeAfter(a templ.Attributes) templ.Attributes {
-	// templ blanks a spread event handler unless it is a ComponentScript.
-	a["hx-on::after-request"] = templ.JSUnsafeFuncCall("if (event.detail.successful) document.querySelector('#" + builderID + " [data-slot=dialog-close]')?.click()")
-	return a
 }
 
 // masteryForm toggles each compendium weapon's kind as mastered, and reloads
@@ -3951,7 +3512,7 @@ func masteryForm(s SheetView, weapons []compendium.NameDesc) templ.Component {
 		var templ_7745c5c3_Var146 string
 		templ_7745c5c3_Var146, templ_7745c5c3_Err = templ.JoinStringErrs(dnd5e.MasteryColumn + ": " + masteryCount(s))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1152, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 713, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var146))
 		if templ_7745c5c3_Err != nil {
@@ -3988,7 +3549,7 @@ func masteryForm(s SheetView, weapons []compendium.NameDesc) templ.Component {
 					var templ_7745c5c3_Var148 string
 					templ_7745c5c3_Var148, templ_7745c5c3_Err = templ.JoinStringErrs(w.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1169, Col: 14}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 730, Col: 14}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var148))
 					if templ_7745c5c3_Err != nil {
@@ -4001,7 +3562,7 @@ func masteryForm(s SheetView, weapons []compendium.NameDesc) templ.Component {
 					var templ_7745c5c3_Var149 string
 					templ_7745c5c3_Var149, templ_7745c5c3_Err = templ.JoinStringErrs(w.Desc)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1170, Col: 47}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 731, Col: 47}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var149))
 					if templ_7745c5c3_Err != nil {
@@ -4040,18 +3601,6 @@ func masteryForm(s SheetView, weapons []compendium.NameDesc) templ.Component {
 	})
 }
 
-// masteryCount is "2/3 chosen": weapon kinds mastered of those allowed.
-func masteryCount(s SheetView) string {
-	return fmt.Sprintf("%d/%d chosen", len(s.C.Sheet.Masteries), s.MasteryLimit)
-}
-
-// reloadAfter makes a builder button load the form at url again after a
-// successful request, instead of closing the dialog.
-func reloadAfter(a templ.Attributes, url string) templ.Attributes {
-	a["hx-on::after-request"] = templ.JSUnsafeFuncCall("if (event.detail.successful) htmx.ajax('GET', '" + url + "', {target: '#builder', swap: 'innerHTML'})")
-	return a
-}
-
 // armorForm shows the armor worn, takes it off, toggles the shield and
 // looks up armor to put on.
 func armorForm(s SheetView) templ.Component {
@@ -4084,7 +3633,7 @@ func armorForm(s SheetView) templ.Component {
 			var templ_7745c5c3_Var151 string
 			templ_7745c5c3_Var151, templ_7745c5c3_Err = templ.JoinStringErrs(sh.Armor.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1198, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 747, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var151))
 			if templ_7745c5c3_Err != nil {
@@ -4097,7 +3646,7 @@ func armorForm(s SheetView) templ.Component {
 			var templ_7745c5c3_Var152 string
 			templ_7745c5c3_Var152, templ_7745c5c3_Err = templ.JoinStringErrs(sh.Armor.Type)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1198, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 747, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var152))
 			if templ_7745c5c3_Err != nil {
@@ -4214,7 +3763,7 @@ func coinForm(s SheetView, focus string) templ.Component {
 			var templ_7745c5c3_Var156 string
 			templ_7745c5c3_Var156, templ_7745c5c3_Err = templruntime.NewAttributeExpression(s.cmdURL()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1229, Col: 22}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 778, Col: 22}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var156)
 			if templ_7745c5c3_Err != nil {
@@ -4270,7 +3819,7 @@ func coinForm(s SheetView, focus string) templ.Component {
 					var templ_7745c5c3_Var159 string
 					templ_7745c5c3_Var159, templ_7745c5c3_Err = templ.JoinStringErrs(c.name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1236, Col: 14}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 785, Col: 14}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var159))
 					if templ_7745c5c3_Err != nil {
@@ -4293,7 +3842,7 @@ func coinForm(s SheetView, focus string) templ.Component {
 				var templ_7745c5c3_Var160 string
 				templ_7745c5c3_Var160, templ_7745c5c3_Err = templruntime.NewAttributeExpression("was_" + c.name).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1239, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 788, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var160)
 				if templ_7745c5c3_Err != nil {
@@ -4306,7 +3855,7 @@ func coinForm(s SheetView, focus string) templ.Component {
 				var templ_7745c5c3_Var161 string
 				templ_7745c5c3_Var161, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(c.n)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 1239, Col: 74}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/builder.templ`, Line: 788, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var161)
 				if templ_7745c5c3_Err != nil {
@@ -4410,195 +3959,6 @@ func spellSearch(s SheetView) templ.Component {
 		}
 		return nil
 	})
-}
-
-// detail is the current value a details form edits.
-func (s SheetView) detail(key string) string {
-	switch key {
-	case "set-name":
-		return s.C.Name
-	case "set-species":
-		return s.C.Sheet.Species
-	}
-	return s.C.Sheet.Background
-}
-
-// builderSubjects lists what a form can pick (nil when it picks nothing,
-// empty when there is nothing to pick right now), with the most its number
-// may be and the number to start from for each pick.
-func (s SheetView) builderSubjects(key string) ([]selectcomp.ItemData, map[string]int, map[string]int) {
-	sh := s.C.Sheet
-	items := []selectcomp.ItemData{}
-	maxes, values := map[string]int{}, map[string]int{}
-	add := func(value, label string) { items = append(items, selectcomp.ItemData{Value: value, Label: label}) }
-	skills := func(keep func(sk dnd5e.Skill) bool) {
-		for _, sk := range dnd5e.Skills {
-			if keep(sk) {
-				add(sk.Key, sk.Name)
-			}
-		}
-	}
-	abilities := func(keep func(a string) bool) {
-		for _, a := range dnd5e.Abilities {
-			if keep(a) {
-				add(a, dnd5e.AbilityNames[a])
-			}
-		}
-	}
-	has := func(list []string) func(string) bool { return func(x string) bool { return slices.Contains(list, x) } }
-	switch key {
-	case "cond-add":
-		for _, slug := range append(slices.Clone(dnd5e.Conditions), dnd5e.TrackConcentration) {
-			if _, on := s.condition(slug); !on && slug != dnd5e.Exhaustion {
-				add(slug, slug)
-			}
-		}
-		add(dnd5e.TrackCustom, "custom effect")
-	case "cond-remove":
-		for _, c := range s.Conditions {
-			if c.Slug != dnd5e.Exhaustion && !slices.ContainsFunc(items, func(it selectcomp.ItemData) bool { return it.Value == c.Slug }) {
-				add(c.Slug, strings.TrimSpace(c.Slug+" "+c.Note))
-			}
-		}
-	case "exh-up", "exh-down":
-		level := 0
-		if c, on := s.condition(dnd5e.Exhaustion); on {
-			level, _ = strconv.Atoi(c.Note)
-		}
-		maxes[""] = 6 - level
-		if key == "exh-up" {
-			return nil, maxes, values
-		}
-		maxes[""] = level
-		if level > 0 {
-			add(dnd5e.Exhaustion, dnd5e.Exhaustion)
-		}
-	case "ability":
-		abilities(func(string) bool { return true })
-		for _, a := range dnd5e.Abilities {
-			values[a] = sh.Scores[a]
-		}
-	case "skill-add":
-		skills(func(sk dnd5e.Skill) bool { return !has(sh.SkillProfs)(sk.Key) })
-	case "skill-remove":
-		skills(func(sk dnd5e.Skill) bool { return has(sh.SkillProfs)(sk.Key) })
-	case "exp-add":
-		skills(func(sk dnd5e.Skill) bool { return has(sh.SkillProfs)(sk.Key) && !has(sh.Expertise)(sk.Key) })
-	case "exp-remove":
-		skills(func(sk dnd5e.Skill) bool { return has(sh.Expertise)(sk.Key) })
-	case "save-add":
-		abilities(func(a string) bool { return !has(sh.SaveProfs)(a) })
-	case "save-remove":
-		abilities(has(sh.SaveProfs))
-	case "other-remove":
-		for _, p := range sh.OtherProfs {
-			add(p, p)
-		}
-	case "slot-use", "slot-restore", "slot-max":
-		for i, sl := range sh.Slots {
-			lvl := fmt.Sprint(i + 1)
-			if key == "slot-max" || key == "slot-use" && sl.Used < sl.Max || key == "slot-restore" && sl.Used > 0 {
-				add(lvl, fmt.Sprintf("Level %s (%s)", lvl, slotLabel(sl)))
-			}
-			values[lvl] = sl.Max
-		}
-	case "pact-use", "pact-restore":
-		if key == "pact-use" && sh.Pact.Used < sh.Pact.Max || key == "pact-restore" && sh.Pact.Used > 0 {
-			add("", "Pact slot ("+slotLabel(sh.Pact)+")")
-		}
-	case "item-edit", "item-note":
-		for _, it := range sh.Inventory {
-			add(it.Name, it.Name)
-			values[it.Name] = it.Qty
-		}
-	case "spell-prepare", "spell-unprepare", "spell-remove":
-		for _, sp := range sh.Spells {
-			if key == "spell-remove" || sp.Level > 0 && sp.Prepared == (key == "spell-unprepare") {
-				add(sp.Slug, sp.Name)
-			}
-		}
-	case "feature-remove":
-		for _, f := range sh.Features {
-			add(f.Name, f.Name)
-		}
-	case "weapon-remove":
-		for _, w := range sh.Weapons {
-			add(w.Name, w.Name)
-		}
-	case "mod-add":
-		for _, t := range s.modTargets() {
-			add(t, modTargetLabel(t))
-		}
-	default:
-		return nil, maxes, values
-	}
-	return items, maxes, values
-}
-
-type coin struct {
-	n    int
-	name string
-}
-
-func coinList(c dnd5e.Coins) []coin {
-	return []coin{{c.PP, "pp"}, {c.GP, "gp"}, {c.EP, "ep"}, {c.SP, "sp"}, {c.CP, "cp"}}
-}
-
-// modTargets lists every value a custom modifier can change.
-func (s SheetView) modTargets() []string {
-	out := []string{dnd5e.ModAC, dnd5e.ModSpeed, dnd5e.ModInit, dnd5e.ModPassive, dnd5e.ModAttack, dnd5e.ModDamage}
-	for _, w := range s.C.Sheet.Weapons {
-		out = append(out, dnd5e.ModAttack+"."+w.Name, dnd5e.ModDamage+"."+w.Name)
-	}
-	// Stowed weapons' rows link here too.
-	for _, it := range s.C.Sheet.Inventory {
-		if it.Weapon != nil && !slices.Contains(out, dnd5e.ModAttack+"."+it.Weapon.Name) {
-			out = append(out, dnd5e.ModAttack+"."+it.Weapon.Name, dnd5e.ModDamage+"."+it.Weapon.Name)
-		}
-	}
-	out = append(out, dnd5e.Abilities...)
-	for _, a := range dnd5e.Abilities {
-		out = append(out, "save."+a)
-	}
-	for _, sk := range dnd5e.Skills {
-		out = append(out, "skill."+sk.Key)
-	}
-	// A modifier on a renamed or merged weapon keeps its target selectable.
-	for _, m := range s.C.Sheet.Modifiers {
-		if m.Target != "" && !slices.Contains(out, m.Target) {
-			out = append(out, m.Target)
-		}
-	}
-	return out
-}
-
-// modTargetLabel names a modifier target for people.
-func modTargetLabel(t string) string {
-	if name, ok := dnd5e.AbilityNames[t]; ok {
-		return name + " score"
-	}
-	kind, rest, _ := strings.Cut(t, ".")
-	switch kind {
-	case "save":
-		return dnd5e.AbilityNames[rest] + " save"
-	case "skill":
-		for _, sk := range dnd5e.Skills {
-			if sk.Key == rest {
-				return sk.Name
-			}
-		}
-	case dnd5e.ModAttack:
-		if rest != "" {
-			return rest + " to hit"
-		}
-		return "All attacks to hit"
-	case dnd5e.ModDamage:
-		if rest != "" {
-			return rest + " damage"
-		}
-		return "All weapon damage"
-	}
-	return map[string]string{dnd5e.ModAC: "Armor class", dnd5e.ModSpeed: "Speed", dnd5e.ModInit: "Initiative", dnd5e.ModPassive: "Passive perception"}[t]
 }
 
 var _ = templruntime.GeneratedTemplate
