@@ -1,18 +1,23 @@
 package web
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
@@ -379,37 +384,19 @@ func TestLiveHotKeepsHash(t *testing.T) {
 	f := newLiveFixture(t)
 	player := f.token(t, enum.RolePlayer)
 	gm := f.token(t, enum.RoleAdmin)
-	sheetCmd := func(c string) {
-		if w := f.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", f.characterID), player, url.Values{"cmd": {c}}, true); w.Code != http.StatusOK {
-			t.Fatalf("%s: %d %s", c, w.Code, w.Body)
-		}
-	}
-	post := func(path string, form url.Values) {
-		if w := f.do(t, http.MethodPost, path, gm, form, true); w.Code >= http.StatusBadRequest {
-			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
-		}
-	}
+	sheetCmd := func(c string) { f.sheetCmd(t, player, c) }
+	post := func(path string, form url.Values) { f.postOK(t, gm, path, form) }
+	sh := dnd5e.NewSheet() // a class, for hit dice
+	sh.Classes = []dnd5e.ClassLevel{{Slug: "wizard", Name: "Wizard", Level: 1, HitDie: 6, Caster: dnd5e.CasterFull}}
+	f.setSheet(t, sh)
 	for _, c := range []string{"maxhp =12", "slot max 1 2", "feature add Lucky", "feature set Lucky uses=prof"} {
 		sheetCmd(c)
 	}
-	rows, err := f.q().ListCombatants(t.Context(), f.encounter)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i, r := range rows { // turns need everyone's initiative
-		if err := f.q().SetCombatantInitiative(t.Context(), sqlc.SetCombatantInitiativeParams{ID: r.ID, Initiative: sql.NullInt64{Int64: int64(10 + i), Valid: true}}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	watched := map[string]perm.Viewer{
-		views.LiveKey(views.LiveCharacter, f.characterID): perm.Player(f.characterID),
-		views.LiveKey(views.LiveEncounter, f.encounter):   perm.GM,
-	}
-	hashes := func() map[string]any {
-		out := map[string]any{}
-		for view, v := range watched {
-			st, _ := f.state(t, v, f.campaignID, view)
-			out[view] = st[hub.HashKey]
+	f.readyTurns(t)
+	hashes := func() map[string]string {
+		out := map[string]string{}
+		for view, v := range f.modelViews() {
+			_, out[view] = f.hashes(t, v, view)
 		}
 		return out
 	}
@@ -420,6 +407,7 @@ func TestLiveHotKeepsHash(t *testing.T) {
 		"slot":      func() { sheetCmd("slot use 1") },
 		"use":       func() { sheetCmd("use Lucky") },
 		"insp":      func() { sheetCmd("inspiration") },
+		"hit die":   func() { sheetCmd("hitdie use") },
 		"next turn": func() { post(fmt.Sprintf("/encounters/%d/next", f.encounter), nil) },
 		"ogre hp":   func() { post(fmt.Sprintf("/combatants/%d/hp", f.ogre), url.Values{"amount": {"5"}}) },
 	} {
@@ -435,11 +423,185 @@ func TestLiveHotKeepsHash(t *testing.T) {
 	if after := hashes(); after[sheet] != before[sheet] {
 		t.Errorf("prone moved the sheet hash")
 	}
+	// Dropping to 0 shows the death saves; from then on they are bound.
+	sheetCmd("hp =0")
+	before = hashes()
+	sheetCmd("deathsave fail")
+	sheetCmd("deathsave success")
+	if after := hashes(); after[sheet] != before[sheet] {
+		t.Errorf("death saves moved the sheet hash")
+	}
+	before = hashes()
 	sheetCmd("item add Rope")
 	post(fmt.Sprintf("/combatants/%d/marker", f.ogre), url.Values{"marker": {"red"}})
 	for view, h := range hashes() {
 		if h == before[view] {
 			t.Errorf("%s: a new item or marker left the hash unchanged", view)
+		}
+	}
+}
+
+// TestLiveModelHashFollowsMarkup checks the JSON-hashed views against their
+// markup: whenever a change shows on the page, it must move the hash too,
+// or other devices would keep the old view. The page markup includes hot
+// values, so no step may change one (TestLiveHotKeepsHash covers those).
+func TestLiveModelHashFollowsMarkup(t *testing.T) {
+	f := newLiveFixture(t)
+	player := f.token(t, enum.RolePlayer)
+	gm := f.token(t, enum.RoleAdmin)
+	f.readyTurns(t)
+	ogre := func(action string, form url.Values) func() {
+		return func() { f.postOK(t, gm, fmt.Sprintf("/combatants/%d/%s", f.ogre, action), form) }
+	}
+	steps := []struct {
+		name string
+		do   func()
+	}{
+		{"item", func() { f.sheetCmd(t, player, "item add Rope") }},
+		{"rename", func() { f.sheetCmd(t, player, "set name Alicia") }},
+		{"feature", func() { f.sheetCmd(t, player, "feature add Lucky") }},
+		{"concentration", func() { f.sheetCmd(t, player, "concentrate Bless") }},
+		{"skill", func() { f.sheetCmd(t, player, "prof add skill athletics") }},
+		{"marker", ogre("marker", url.Values{"marker": {"red"}})},
+		{"monster condition", ogre("condition", url.Values{"slug": {"blinded"}})},
+		{"hp shown", ogre("visible", nil)},
+		{"new NPC", func() {
+			if _, err := f.q().CreateEntity(t.Context(), sqlc.CreateEntityParams{CampaignID: f.campaignID, Kind: "npc", Name: "Bram", FieldsJson: "{}"}); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"new combatant", func() {
+			if _, err := f.q().CreateCombatant(t.Context(), sqlc.CreateCombatantParams{EncounterID: f.encounter, Name: "Wolf", Hp: 11, MaxHp: 11, Ac: 13}); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	type pair struct{ markup, model string }
+	snapshot := func() map[string]pair {
+		out := map[string]pair{}
+		for view, v := range f.modelViews() {
+			markup, model := f.hashes(t, v, view)
+			out[view] = pair{markup, model}
+		}
+		return out
+	}
+	shown := map[string]bool{}
+	before := snapshot()
+	for _, s := range steps {
+		s.do()
+		after := snapshot()
+		for view, a := range after {
+			b := before[view]
+			if a.markup != b.markup {
+				shown[view] = true
+				if a.model == b.model {
+					t.Errorf("%s: %s changed the page but not the hash", s.name, view)
+				}
+			}
+		}
+		before = after
+	}
+	for view := range f.modelViews() {
+		if !shown[view] {
+			t.Errorf("%s: no step changed its page", view)
+		}
+	}
+}
+
+// TestLiveModelsEncodeWhole guards the JSON-hashed models: a field JSON
+// skips would be shown but not hashed, so its changes would never refetch.
+func TestLiveModelsEncodeWhole(t *testing.T) {
+	custom := []reflect.Type{reflect.TypeFor[json.Marshaler](), reflect.TypeFor[encoding.TextMarshaler]()}
+	seen := map[reflect.Type]bool{}
+	var walk func(ty reflect.Type, path string)
+	walk = func(ty reflect.Type, path string) {
+		if seen[ty] || ty == reflect.TypeFor[time.Time]() || ty == reflect.TypeFor[json.RawMessage]() { // both encode whole
+			return
+		}
+		seen[ty] = true
+		for _, m := range custom {
+			if ty.Implements(m) || reflect.PointerTo(ty).Implements(m) {
+				t.Errorf("%s (%s) encodes itself: check that it keeps every shown value", path, ty)
+				return
+			}
+		}
+		switch ty.Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Array:
+			walk(ty.Elem(), path+"[]")
+		case reflect.Map:
+			walk(ty.Key(), path+"{key}")
+			walk(ty.Elem(), path+"{}")
+		case reflect.Struct:
+			for i := range ty.NumField() {
+				fd := ty.Field(i)
+				if !fd.IsExported() || fd.Tag.Get("json") == "-" {
+					t.Errorf("%s.%s is not encoded", path, fd.Name)
+				}
+				walk(fd.Type, path+"."+fd.Name)
+			}
+		case reflect.Func, reflect.Chan, reflect.Interface, reflect.UnsafePointer:
+			t.Errorf("%s (%s) does not encode by value", path, ty)
+		default: // numbers, strings, bools
+		}
+	}
+	walk(reflect.TypeFor[views.SheetView](), "SheetView")
+	walk(reflect.TypeFor[views.EncounterView](), "EncounterView")
+}
+
+// modelViews are the live views hashed by model (liveView.model), with the
+// viewer each test watches them as.
+func (f liveFixture) modelViews() map[string]perm.Viewer {
+	return map[string]perm.Viewer{
+		views.LiveKey(views.LiveCharacter, f.characterID): perm.Player(f.characterID),
+		views.LiveKey(views.LiveEncounter, f.encounter):   perm.GM,
+	}
+}
+
+// hashes returns a view's markup hash (as the page shows it) and its live
+// state hash.
+func (f liveFixture) hashes(t *testing.T, v perm.Viewer, view string) (markup, state string) {
+	t.Helper()
+	lv, err := f.app.loadLive(t.Context(), viewerCtx{viewer: v, campaignID: f.campaignID}, view)
+	if err != nil || !lv.ok {
+		t.Fatal(view, lv.ok, err)
+	}
+	var buf bytes.Buffer
+	if err := lv.html.Render(t.Context(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	st, _, err := lv.state(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return shapeHash(buf.Bytes()), st[hub.HashKey].(string)
+}
+
+// sheetCmd runs a sheet command on the fixture's character.
+func (f liveFixture) sheetCmd(t *testing.T, cookie, cmd string) {
+	t.Helper()
+	if w := f.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", f.characterID), cookie, url.Values{"cmd": {cmd}}, true); w.Code != http.StatusOK {
+		t.Fatalf("%s: %d %s", cmd, w.Code, w.Body)
+	}
+}
+
+// postOK posts form as htmx and fails the test on a 4xx or 5xx.
+func (f liveFixture) postOK(t *testing.T, cookie, path string, form url.Values) {
+	t.Helper()
+	if w := f.do(t, http.MethodPost, path, cookie, form, true); w.Code >= http.StatusBadRequest {
+		t.Fatalf("%s: %d %s", path, w.Code, w.Body)
+	}
+}
+
+// readyTurns gives every combatant an initiative, which turns need.
+func (f liveFixture) readyTurns(t *testing.T) {
+	t.Helper()
+	rows, err := f.q().ListCombatants(t.Context(), f.encounter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range rows {
+		if err := f.q().SetCombatantInitiative(t.Context(), sqlc.SetCombatantInitiativeParams{ID: r.ID, Initiative: sql.NullInt64{Int64: int64(10 + i), Valid: true}}); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

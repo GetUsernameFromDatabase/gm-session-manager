@@ -10,8 +10,8 @@ A page region that updates in real time is a live view:
 
 1. Give its root `live(kind, id...)` (`views/live.go`). The page sends its `data-live` keys in the websocket hello.
 2. Add an entry to `liveKinds` in `live.go`: the topic kinds that change it (`own` for its id, `any` for any id) and a `load…Live` method (permission checks, HTML). A topic that must cross campaigns also goes in `everyCampaign` or `gmEverywhere` (`hub/hub.go`).
-3. For often-changing values, give the view model `Hot` (exactly the keys the markup binds) and `Shape` (the model with those values fixed) in `views/live.go` (the sheet's in `views/character_live.go`); mark elements with `bind("text=key")`, `bind("aria-pressed=key")`, etc. The hash of `Shape`'s markup covers everything else. A heavy view (sheet, GM tracker) sets `liveView.model` instead: `Shape` is hashed as JSON, skipping the render, so its markup must read nothing outside the model, and `Shape` must also clear fields that change without the markup showing it (the tracker keeps only names in its add form), or every hot change refetches.
-4. Cover it in `TestLiveVisibility` and `TestLiveBindsMatchState` (`live_test.go`); a `model` view also in `TestLiveHotKeepsHash`.
+3. For often-changing values, give the view model `Hot` (exactly the keys the markup binds) and `Shape` (the model with those values fixed) in `views/live.go` (the sheet's in `views/character_live.go`); mark elements with `bind("text=key")`, `bind("aria-pressed=key")`, etc. The hash of `Shape`'s markup covers everything else. A heavy view (sheet, GM tracker) sets `liveView.model` instead: `Shape` is hashed as JSON, skipping the render, so its markup must read nothing outside the model, and the model should hold only what the page shows (rows offered by name are `views.Named`, not whole `sqlc` rows), or an unseen change refetches.
+4. Cover it in `TestLiveVisibility` and `TestLiveBindsMatchState` (`live_test.go`); a `model` view also in `modelViews` (`TestLiveHotKeepsHash`, `TestLiveModelHashFollowsMarkup`) and `TestLiveModelsEncodeWhole`.
 
 ## Notes
 

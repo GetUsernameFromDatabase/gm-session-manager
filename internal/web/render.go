@@ -194,11 +194,19 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 		ev.Combatants = append(ev.Combatants, cv)
 	}
 	if v.IsGM {
-		if ev.Characters, err = a.Store.ListCharactersByCampaign(ctx, enc.CampaignID); err != nil {
+		chars, err := a.Store.ListCharactersByCampaign(ctx, enc.CampaignID)
+		if err != nil {
 			return ev, err
 		}
-		if ev.Entities, err = a.Store.ListEntitiesByCampaign(ctx, enc.CampaignID); err != nil {
+		for _, ch := range chars {
+			ev.Characters = append(ev.Characters, views.Named{ID: ch.ID, Name: ch.Name})
+		}
+		ents, err := a.Store.ListEntitiesByCampaign(ctx, enc.CampaignID)
+		if err != nil {
 			return ev, err
+		}
+		for _, en := range ents {
+			ev.Entities = append(ev.Entities, views.Named{ID: en.ID, Name: en.Name})
 		}
 	}
 	return ev, nil

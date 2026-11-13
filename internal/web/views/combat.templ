@@ -75,8 +75,15 @@ type EncounterView struct {
 	Combatants []CombatantView
 	IsGM       bool
 	// Add-combatant choices, GM only.
-	Characters []sqlc.Character
-	Entities   []sqlc.Entity
+	Characters []Named
+	Entities   []Named
+}
+
+// Named is a row offered by name. It holds nothing else, so the tracker's
+// hashed model (Shape) always covers what the add form shows.
+type Named struct {
+	ID   int64
+	Name string
 }
 
 // Combatant kinds, the type of being shown on each row.

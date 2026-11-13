@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 
@@ -101,13 +100,10 @@ func (e EncounterView) Hot(st hub.State) {
 	}
 }
 
-// Shape is the tracker with its hot values fixed. It is hashed as JSON, so
-// it also keeps only what the markup reads of fields that change unseen:
-// the turn pointer (the rows' Active show it) and the add form's names.
+// Shape is the tracker with its hot values fixed, hashed as JSON; that
+// includes the turn pointer, which the rows' Active show.
 func (e EncounterView) Shape() EncounterView {
 	e.Encounter.Round, e.Encounter.ActiveCombatantID = 0, sql.NullInt64{}
-	e.Characters = namesOnly(e.Characters, func(c sqlc.Character) sqlc.Character { return sqlc.Character{ID: c.ID, Name: c.Name} })
-	e.Entities = namesOnly(e.Entities, func(en sqlc.Entity) sqlc.Entity { return sqlc.Entity{ID: en.ID, Name: en.Name} })
 	e.Combatants = slices.Clone(e.Combatants)
 	for i := range e.Combatants {
 		e.Combatants[i].HP, e.Combatants[i].TempHP, e.Combatants[i].Active, e.Combatants[i].Down = 0, 0, false, false
@@ -138,15 +134,6 @@ func (r Roster) Shape() Roster {
 		r.Characters[i] = rc
 	}
 	return r
-}
-
-// namesOnly copies rows through keep, which clears what the markup ignores.
-func namesOnly[T any](rows []T, keep func(T) T) []T {
-	out := make([]T, len(rows))
-	for i, r := range rows {
-		out[i] = keep(r)
-	}
-	return out
 }
 
 func (c CombatantView) down() bool { return c.Down }
