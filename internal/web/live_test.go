@@ -97,6 +97,7 @@ func TestLiveVisibility(t *testing.T) {
 		{"player's fight hides monster HP", player, f.campaignID, views.LiveKey(views.LivePlayerCombat, f.campaignID), true, []string{fmt.Sprintf("c.%d.on", f.ogre), fmt.Sprintf("c.%d.down", f.ogre)}, []string{ogreHP}},
 		{"player may not open the GM tracker", player, f.campaignID, views.LiveKey(views.LiveEncounter, f.encounter), false, nil, nil},
 		{"player may not see the roster", player, f.campaignID, views.LiveKey(views.LiveRoster, f.campaignID), false, nil, nil},
+		{"player may not see the encounter list", player, f.campaignID, views.LiveKey(views.LiveEncounters, f.campaignID), false, nil, nil},
 		{"GM sees join requests outside a campaign", perm.GM, 0, views.LiveKey(views.LiveRequests, 0), true, nil, nil},
 		{"player may not see join requests", player, f.campaignID, views.LiveKey(views.LiveRequests, 0), false, nil, nil},
 		{"GM sees the 5etools import", perm.GM, 0, views.LiveKey(views.LiveImport, 0), true, nil, nil},
@@ -129,6 +130,57 @@ func TestLiveVisibility(t *testing.T) {
 				}
 			}
 		})
+	}
+	// Every live view is registered and has at least one row above.
+	all := []string{
+		views.LiveRoster, views.LiveRequests, views.LiveWaiting, views.LiveCharacter,
+		views.LiveEncounters, views.LiveEncounter, views.LivePlayerCombat, views.LiveNotes,
+		views.LiveNote, views.LiveEntities, views.LiveEntity, views.LiveImport,
+	}
+	if len(liveKinds) != len(all) {
+		t.Errorf("liveKinds has %d kinds, this test lists %d", len(liveKinds), len(all))
+	}
+	covered := map[string]bool{}
+	for _, tt := range tests {
+		covered[parseLiveKey(tt.view).kind] = true
+	}
+	for _, kind := range all {
+		if _, ok := liveKinds[kind]; !ok {
+			t.Errorf("%s is not in liveKinds", kind)
+		}
+		if !covered[kind] {
+			t.Errorf("%s has no TestLiveVisibility row", kind)
+		}
+	}
+}
+
+// TestLiveAffects checks which published topics reach which views.
+func TestLiveAffects(t *testing.T) {
+	a := &App{}
+	tests := []struct {
+		name  string
+		view  string
+		topic hub.Topic
+		want  bool
+	}{
+		{"own id", views.LiveKey(views.LiveCharacter, 1), hub.Topic{Kind: hub.TopicCharacter, ID: 1}, true},
+		{"other id", views.LiveKey(views.LiveCharacter, 1), hub.Topic{Kind: hub.TopicCharacter, ID: 2}, false},
+		{"sheet on compendium", views.LiveKey(views.LiveCharacter, 1), hub.Topic{Kind: hub.TopicCompendium}, true},
+		{"roster on any campaign topic", views.LiveKey(views.LiveRoster, 1), hub.Topic{Kind: hub.TopicCampaign, ID: 9}, true},
+		{"roster on character HP", views.LiveKey(views.LiveRoster, 1), hub.Topic{Kind: hub.TopicCharacter, ID: 9}, true},
+		{"tracker on its encounter", views.LiveKey(views.LiveEncounter, 1), hub.Topic{Kind: hub.TopicEncounter, ID: 1}, true},
+		{"tracker on another encounter", views.LiveKey(views.LiveEncounter, 1), hub.Topic{Kind: hub.TopicEncounter, ID: 2}, false},
+		{"tracker on NPC portrait", views.LiveKey(views.LiveEncounter, 1), hub.Topic{Kind: hub.TopicEntity, ID: 9}, true},
+		{"player combat on NPC portrait", views.LiveKey(views.LivePlayerCombat, 1), hub.Topic{Kind: hub.TopicEntity, ID: 9}, true},
+		{"player combat on any encounter", views.LiveKey(views.LivePlayerCombat, 1), hub.Topic{Kind: hub.TopicEncounter, ID: 9}, true},
+		{"note list on a note", views.LiveKey(views.LiveNotes, 1), hub.Topic{Kind: hub.TopicNote, ID: 1}, false},
+		{"entity on another entity", views.LiveKey(views.LiveEntity, 1), hub.Topic{Kind: hub.TopicEntity, ID: 2}, false},
+		{"unknown view", "bogus:1", hub.Topic{Kind: hub.TopicCampaign, ID: 1}, false},
+	}
+	for _, tt := range tests {
+		if got := a.Affects(tt.view, []hub.Topic{tt.topic}); got != tt.want {
+			t.Errorf("%s: Affects = %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }
 
@@ -216,9 +268,6 @@ func TestLiveSourcesAlert(t *testing.T) {
 	f := newLiveFixture(t)
 	f.outrankPin(t)
 	view := views.LiveKey(views.LiveCharacter, f.characterID)
-	if !f.app.Affects(view, []hub.Topic{{Kind: hub.TopicCompendium}}) {
-		t.Error("a compendium change does not refetch the sheet")
-	}
 	for name, cookie := range map[string]string{"owner": f.token(t, enum.RolePlayer), "GM": f.token(t, enum.RoleAdmin)} {
 		b := f.do(t, http.MethodGet, "/live?v="+url.QueryEscape(view), cookie, nil, true).Body.String()
 		if !strings.Contains(b, "1 source to review") || !strings.Contains(b, "Review sources") {

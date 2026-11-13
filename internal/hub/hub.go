@@ -46,6 +46,13 @@ const (
 	TopicImport TopicKind = "import"
 )
 
+var (
+	// everyCampaign topics reach every client, whatever its campaign.
+	everyCampaign = []TopicKind{TopicCompendium}
+	// gmEverywhere topics reach the GM on whatever page they are on.
+	gmEverywhere = []TopicKind{TopicPending, TopicImport}
+)
+
 // Topic is one thing that changed.
 type Topic struct {
 	Kind TopicKind
@@ -272,13 +279,12 @@ func (h *Hub) sync(c *Client, epoch string, seq uint64, hello bool) {
 	h.enqueueLocked(c, message{topics: topics, seq: h.seq, hello: true})
 }
 
-// receives reports whether c gets an event: its own campaign's, compendium
-// changes (shared by all campaigns), and for the GM every campaign's join
-// requests, shown on whatever page they are on.
+// receives reports whether c gets an event: its own campaign's, plus the
+// everyCampaign topics and, for the GM, the gmEverywhere ones.
 func (c *Client) receives(campaignID int64, topics []Topic) bool {
 	return c.CampaignID == campaignID ||
-		slices.ContainsFunc(topics, func(t Topic) bool { return t.Kind == TopicCompendium }) ||
-		c.Viewer.IsGM && slices.ContainsFunc(topics, func(t Topic) bool { return t.Kind == TopicPending || t.Kind == TopicImport })
+		slices.ContainsFunc(topics, func(t Topic) bool { return slices.Contains(everyCampaign, t.Kind) }) ||
+		c.Viewer.IsGM && slices.ContainsFunc(topics, func(t Topic) bool { return slices.Contains(gmEverywhere, t.Kind) })
 }
 
 func (h *Hub) enqueueLocked(c *Client, m message) {
