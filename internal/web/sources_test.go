@@ -22,7 +22,7 @@ const (
 	newSrc = "new-src"
 )
 
-func (e testEnv) setSheet(t *testing.T, sh dnd5e.Sheet) {
+func (e testEnv) setSheet(t testing.TB, sh dnd5e.Sheet) {
 	t.Helper()
 	raw, err := sh.JSON()
 	if err != nil {

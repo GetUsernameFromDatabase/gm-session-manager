@@ -41,7 +41,7 @@ type testEnv struct {
 // uses: a real campaign gets every source when created, but tests fill the
 // compendium after creating theirs, often with entries of no source row.
 // Call it once after the test's compendium data is in.
-func (e testEnv) allowEntrySources(t *testing.T) {
+func (e testEnv) allowEntrySources(t testing.TB) {
 	t.Helper()
 	if _, err := e.conn.ExecContext(t.Context(), `INSERT OR IGNORE INTO campaign_sources (campaign_id, source_key)
 		SELECT DISTINCT ?, source_key FROM compendium_entries WHERE source_key <> 'homebrew'`, e.campaignID); err != nil {
@@ -49,7 +49,7 @@ func (e testEnv) allowEntrySources(t *testing.T) {
 	}
 }
 
-func newTestEnv(t *testing.T) testEnv {
+func newTestEnv(t testing.TB) testEnv {
 	t.Helper()
 	ctx := t.Context()
 	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
@@ -74,7 +74,7 @@ func newTestEnv(t *testing.T) testEnv {
 }
 
 // token issues a session of the given role, or returns "" for none.
-func (e testEnv) token(t *testing.T, role enum.Role) string {
+func (e testEnv) token(t testing.TB, role enum.Role) string {
 	t.Helper()
 	var tok string
 	var err error

@@ -29,7 +29,7 @@ type liveFixture struct {
 	outsiderCampaign                int64
 }
 
-func newLiveFixture(t *testing.T) liveFixture {
+func newLiveFixture(t testing.TB) liveFixture {
 	t.Helper()
 	e := newTestEnv(t)
 	ctx := t.Context()

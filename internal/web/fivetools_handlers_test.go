@@ -18,7 +18,7 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
-func (e testEnv) source(t *testing.T, key, edition string) {
+func (e testEnv) source(t testing.TB, key, edition string) {
 	t.Helper()
 	if err := e.q().UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: key, Edition: edition, License: "test", Attribution: key + " attribution"}); err != nil {
 		t.Fatal(err)

@@ -19,7 +19,7 @@ import (
 )
 
 // do sends a request as a device. htmx marks the request as an htmx one.
-func (e testEnv) do(t *testing.T, method, path, cookie string, form url.Values, htmx bool) *httptest.ResponseRecorder {
+func (e testEnv) do(t testing.TB, method, path, cookie string, form url.Values, htmx bool) *httptest.ResponseRecorder {
 	t.Helper()
 	var body io.Reader
 	if form != nil {
