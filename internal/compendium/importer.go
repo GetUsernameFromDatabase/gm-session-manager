@@ -67,7 +67,7 @@ func ImportProgress(ctx context.Context, store *db.Store, dir string, progress f
 		}
 		// Only data folders get the guessed picture, also when unchanged;
 		// 5etools books name their own pictures.
-		if r.Err != nil || strings.HasPrefix(d.Name(), FiveToolsPrefix) {
+		if r.Err != nil || !formatOf(d.Name()).guessImages {
 			continue
 		}
 		if err := store.BindMonsterImages(ctx, sqlc.BindMonsterImagesParams{Prefix: MonsterImagePrefix, SourceKey: d.Name()}); err != nil {
@@ -75,6 +75,28 @@ func ImportProgress(ctx context.Context, store *db.Store, dir string, progress f
 		}
 	}
 	return reports, nil
+}
+
+// sourceFormat is how one kind of data folder is parsed and finished.
+type sourceFormat struct {
+	parse func(key string, files map[string][]byte) (Source, []Entry, error)
+	// afterSave runs after a changed import (5etools books bind their own pictures).
+	afterSave func(ctx context.Context, store *db.Store, key string, files map[string][]byte) error
+	// guessImages gives the folder the guessed monster picture on every run, also when unchanged.
+	guessImages bool
+}
+
+var (
+	open5eFormat    = sourceFormat{parse: parseOpen5e, guessImages: true}
+	fiveToolsFormat = sourceFormat{parse: parseFiveToolsBook, afterSave: bindFiveToolsImages}
+)
+
+// formatOf picks a data folder's format by its name.
+func formatOf(key string) sourceFormat {
+	if strings.HasPrefix(key, FiveToolsPrefix) {
+		return fiveToolsFormat
+	}
+	return open5eFormat
 }
 
 func importSource(ctx context.Context, store *db.Store, key, path string) Report {
@@ -98,19 +120,15 @@ func importSource(ctx context.Context, store *db.Store, key, path string) Report
 		return r
 	}
 
-	fiveTools := strings.HasPrefix(key, FiveToolsPrefix)
-	parse := parseOpen5e
-	if fiveTools {
-		parse = parseFiveToolsBook
-	}
-	src, entries, err := parse(key, files)
+	f := formatOf(key)
+	src, entries, err := f.parse(key, files)
 	if err != nil {
 		r.Err = fmt.Errorf("%s: %w", key, err)
 		return r
 	}
 	r.Removed, r.Err = storeSource(ctx, store, src, path, hash, entries)
-	if r.Err == nil && fiveTools {
-		r.Err = bindFiveToolsImages(ctx, store, key, files)
+	if r.Err == nil && f.afterSave != nil {
+		r.Err = f.afterSave(ctx, store, key, files)
 	}
 	if r.Err == nil {
 		r.Entries = len(entries)
