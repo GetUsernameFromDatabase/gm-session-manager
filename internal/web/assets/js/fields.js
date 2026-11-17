@@ -1,8 +1,10 @@
 // NPC field editors. A field's value is the hidden input[data-field-value]
-// the form posts: plain text with [[kind:id|label]] tokens
+// its row form posts: plain text with [[kind:id|label]] tokens
 // (views/wikilinks.go reads them). Each row shows it in a small TipTap
 // editor that renders [[links]] as notes do, or, with the Raw text switch
-// on, as stored in its textarea[data-field-raw]. Both write to the input.
+// on, as stored in its textarea[data-field-raw]. Both write to the input,
+// and each field saves on its own: a second after typing stops, and when
+// it loses focus.
 import { Editor } from "/assets/vendor/tiptap-core.js";
 import { StarterKit } from "/assets/vendor/tiptap-starter.js";
 import { WikiLink, keepCaretBeside, linkClick, touchDrag } from "/assets/js/wikilink.js";
@@ -63,15 +65,46 @@ const extensions = [
 const editors = new Map(); // row -> Editor
 const parts = (row) => ({ value: row.querySelector("[data-field-value]"), raw: row.querySelector("[data-field-raw]") });
 
-// setValue stores a row's text in its input and keeps the empty marker.
+const SAVE_DELAY = 1000;
+const timers = new Map(); // row -> pending save
+
+// save posts a row's text if it changed since its last save (the row form
+// posts on field-save).
+function save(row) {
+  clearTimeout(timers.get(row));
+  timers.delete(row);
+  const text = parts(row).value.value;
+  if (text === row.dataset.saved) return;
+  row.dataset.saved = text;
+  htmx.trigger(row, "field-save");
+}
+
+// A failed save is sent again at the next pause or blur.
+document.addEventListener("htmx:afterRequest", (e) => {
+  const row = e.detail.elt.closest?.("[data-field-key]");
+  if (row && !e.detail.successful) delete row.dataset.saved;
+});
+
+// setValue stores a row's text in its input and saves it once typing stops.
 function setValue(row, text) {
   parts(row).value.value = text;
-  row.toggleAttribute("data-empty", text.trim() === "");
+  clearTimeout(timers.get(row));
+  timers.set(row, setTimeout(() => save(row), SAVE_DELAY));
+}
+
+// focusKey is a field just added: its row is focused once the live view
+// brings it.
+let focusKey = null;
+function focusRow(row) {
+  row.scrollIntoView({ block: "nearest" });
+  if (row.closest("[data-fields]").hasAttribute("data-raw")) parts(row).raw.focus();
+  else editors.get(row)?.commands.focus("end");
 }
 
 function mount(row) {
   const box = row.querySelector("[data-field-editor]");
   box.classList.add("field-editor");
+  row.dataset.saved = parts(row).value.value;
   const editor = new Editor({
     element: box,
     content: toDoc(parts(row).value.value),
@@ -81,13 +114,18 @@ function mount(row) {
       parts(row).raw.value = text;
       setValue(row, text);
     },
+    onBlur: () => save(row),
     onSelectionUpdate: keepCaretBeside,
   });
   editors.set(row, editor);
+  if (row.dataset.fieldKey === focusKey) {
+    focusKey = null;
+    focusRow(row);
+  }
 }
 
-// Rows come and go: added by the add-field picker, replaced by live-view
-// refetches. Mount new ones; drop editors whose row left the page.
+// Rows come and go with live-view refetches. Mount new ones; drop editors
+// whose row left the page.
 function sync() {
   document.querySelectorAll("[data-field-key]").forEach((row) => editors.has(row) || !row.querySelector("[data-field-editor]") || mount(row));
   for (const [row, editor] of editors) {
@@ -113,14 +151,32 @@ new MutationObserver(() => {
 document.addEventListener("input", (e) => {
   if (e.target.matches?.("[data-field-raw]")) setValue(e.target.closest("[data-field-key]"), e.target.value);
 });
+document.addEventListener("focusout", (e) => {
+  if (e.target.matches?.("[data-field-raw]")) save(e.target.closest("[data-field-key]"));
+});
 
-// The Raw text switch flips every field of its form between editor and text.
+// The Raw text switch flips every field between editor and text.
 document.addEventListener("change", (e) => {
   if (!e.target.closest?.("[data-raw-switch]") || e.target.type !== "checkbox") return;
-  const form = e.target.closest("form");
-  form.toggleAttribute("data-raw", e.target.checked);
+  const fields = e.target.closest("[data-fields]");
+  fields.toggleAttribute("data-raw", e.target.checked);
   if (e.target.checked) return;
-  form.querySelectorAll("[data-field-key]").forEach((row) => editors.get(row)?.commands.setContent(toDoc(parts(row).value.value), { emitUpdate: false }));
+  fields.querySelectorAll("[data-field-key]").forEach((row) => editors.get(row)?.commands.setContent(toDoc(parts(row).value.value), { emitUpdate: false }));
+});
+
+// Picking a key in the add-field combobox adds the field, or goes to the
+// row that has it; the picked item leaves the list.
+document.addEventListener("change", (e) => {
+  const picker = e.target.closest?.("[data-add-field]");
+  const key = e.target.value?.trim().toLowerCase();
+  if (!picker || e.target.getAttribute("aria-hidden") !== "true" || !key) return;
+  picker.querySelector(`[data-slot="combobox-item"][data-templ-value="${CSS.escape(key)}"]`)?.remove();
+  e.target.value = "";
+  picker.querySelector("[data-combobox-create-input]").value = "";
+  const row = document.querySelector(`[data-field-key="${CSS.escape(key)}"]`);
+  if (row) return focusRow(row);
+  focusKey = key;
+  htmx.ajax("POST", picker.dataset.addField, { values: { key }, source: picker, swap: "none" });
 });
 
 // A click on a [[link]] opens the same menu as in notes; Ctrl/Cmd-click follows it.

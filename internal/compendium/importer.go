@@ -80,8 +80,8 @@ func ImportProgress(ctx context.Context, store *db.Store, dir string, progress f
 // sourceFormat is how one kind of data folder is parsed and finished.
 type sourceFormat struct {
 	parse func(key string, files map[string][]byte) (Source, []Entry, error)
-	// afterSave runs after a changed import (5etools books bind their own pictures).
-	afterSave func(ctx context.Context, store *db.Store, key string, files map[string][]byte) error
+	// afterSave runs inside a changed import's transaction (5etools books bind their own pictures).
+	afterSave func(ctx context.Context, q *sqlc.Queries, key string, files map[string][]byte) error
 	// guessImages gives the folder the guessed monster picture on every run, also when unchanged.
 	guessImages bool
 }
@@ -126,30 +126,31 @@ func importSource(ctx context.Context, store *db.Store, key, path string) Report
 		r.Err = fmt.Errorf("%s: %w", key, err)
 		return r
 	}
-	r.Removed, r.Err = storeSource(ctx, store, src, path, hash, entries)
-	if r.Err == nil && f.afterSave != nil {
-		r.Err = f.afterSave(ctx, store, key, files)
+	var after func(q *sqlc.Queries) error
+	if f.afterSave != nil {
+		after = func(q *sqlc.Queries) error { return f.afterSave(ctx, q, key, files) }
 	}
+	r.Removed, r.Err = storeSource(ctx, store, src, path, hash, entries, after)
 	if r.Err == nil {
 		r.Entries = len(entries)
 	}
 	return r
 }
 
-func bindFiveToolsImages(ctx context.Context, store *db.Store, key string, files map[string][]byte) error {
-	return store.InTx(ctx, func(q *sqlc.Queries) error {
-		for slug, link := range FiveToolsImages(files) {
-			if err := q.BindMonsterImage(ctx, sqlc.BindMonsterImageParams{ImageUrl: sql.NullString{String: link, Valid: true}, SourceKey: key, Slug: slug}); err != nil {
-				return fmt.Errorf("%s: bind image of %s: %w", key, slug, err)
-			}
+func bindFiveToolsImages(ctx context.Context, q *sqlc.Queries, key string, files map[string][]byte) error {
+	for slug, link := range FiveToolsImages(files) {
+		if err := q.BindMonsterImage(ctx, sqlc.BindMonsterImageParams{ImageUrl: sql.NullString{String: link, Valid: true}, SourceKey: key, Slug: slug}); err != nil {
+			return fmt.Errorf("%s: bind image of %s: %w", key, slug, err)
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 // storeSource writes a source's entries, removes those it no longer has
-// and records the source; it returns how many were removed.
-func storeSource(ctx context.Context, store *db.Store, src Source, path, hash string, entries []Entry) (int, error) {
+// and records the source; it returns how many were removed. afterSave (may
+// be nil) runs in the same transaction before the hash is stored, so a
+// failure leaves the source to be imported again.
+func storeSource(ctx context.Context, store *db.Store, src Source, path, hash string, entries []Entry, afterSave func(q *sqlc.Queries) error) (int, error) {
 	removed := 0
 	err := store.InTx(ctx, func(q *sqlc.Queries) error {
 		seen := map[string]*Entry{}
@@ -173,6 +174,11 @@ func storeSource(ctx context.Context, store *db.Store, src Source, path, hash st
 					return err
 				}
 				removed++
+			}
+		}
+		if afterSave != nil {
+			if err := afterSave(q); err != nil {
+				return err
 			}
 		}
 		return q.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{

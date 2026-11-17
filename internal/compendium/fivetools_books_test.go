@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -337,6 +338,33 @@ func TestDownloadFiveToolsFailureLeavesNothing(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Errorf("left behind: %v", entries)
+	}
+}
+
+// TestDownloadFiveToolsReplacesFolder: a second download swaps the old
+// folder out and leaves no aside copy behind.
+func TestDownloadFiveToolsReplacesFolder(t *testing.T) {
+	serveMirror(t, fakeMirror, false)
+	dir := t.TempDir()
+	stale := filepath.Join(dir, FiveToolsPrefix+"xphb", "stale.json")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := DownloadFiveTools(context.Background(), dir, []Book{{ID: "XPHB"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("old file kept: %v", err)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Errorf("left behind: %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(dir, FiveToolsPrefix+"xphb", bookFile)); err != nil {
+		t.Error(err)
 	}
 }
 

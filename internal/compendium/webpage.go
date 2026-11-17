@@ -148,7 +148,7 @@ func SavePage(ctx context.Context, store *db.Store, p Page) (string, error) {
 		return "", err
 	}
 	sum := sha256.Sum256(body)
-	if _, err = storeSource(ctx, store, src, p.URL(), hex.EncodeToString(sum[:]), []Entry{e}); err != nil || p.Image == "" {
+	if _, err = storeSource(ctx, store, src, p.URL(), hex.EncodeToString(sum[:]), []Entry{e}, nil); err != nil || p.Image == "" {
 		return src.Key, err
 	}
 	rows, err := store.ListCompendiumKeysBySource(ctx, src.Key)

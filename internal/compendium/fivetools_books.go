@@ -770,11 +770,31 @@ func downloadBook(m *mirror, dir string, b Book) error {
 		return err
 	}
 	final := filepath.Join(dir, bookFolder(b.ID))
-	// final is DATA_DIR plus a book id DownloadFiveTools checked.
-	if err := os.RemoveAll(final); err != nil { //nolint:gosec // see above
+	// final is DATA_DIR plus a book id DownloadFiveTools checked. The old
+	// folder is kept aside until the new one is in place, so a failure
+	// loses nothing.
+	old := ""
+	if _, err := os.Stat(final); err == nil {
+		if old, err = os.MkdirTemp(dir, ".old-5etools-"); err != nil {
+			return err
+		}
+		old = filepath.Join(old, "book")
+		if err := os.Rename(final, old); err != nil { //nolint:gosec // see above
+			_ = os.RemoveAll(filepath.Dir(old))
+			return err
+		}
+	}
+	if err := os.Rename(tmp, final); err != nil { //nolint:gosec // see above
+		if old != "" {
+			_ = os.Rename(old, final) //nolint:gosec // see above
+			_ = os.RemoveAll(filepath.Dir(old))
+		}
 		return err
 	}
-	return os.Rename(tmp, final) //nolint:gosec // see above
+	if old != "" {
+		_ = os.RemoveAll(filepath.Dir(old))
+	}
+	return nil
 }
 
 // RemoveFiveTools deletes a book's folder.

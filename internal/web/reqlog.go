@@ -102,7 +102,7 @@ func (a *App) recordRequest(c *gin.Context) {
 	w := &errBodyWriter{ResponseWriter: c.Writer}
 	c.Writer = w
 	var sent *capReader
-	if c.Request.Method != http.MethodGet && keepsBody(path) {
+	if c.Request.Method != http.MethodGet && keepsBody(path, c.FullPath()) {
 		sent = &capReader{r: c.Request.Body}
 		c.Request.Body = sent
 	}
@@ -125,10 +125,18 @@ func (a *App) recordRequest(c *gin.Context) {
 }
 
 // keepsBody is false where a body must not reach a report: credentials,
-// and note blocks, which can be a player's private text.
-func keepsBody(path string) bool {
-	return path != PathAdminLogin && !strings.HasPrefix(path, "/blocks/")
+// note blocks and note titles, which can be a player's private text. route
+// is the matched pattern, so ids do not matter.
+func keepsBody(path, route string) bool {
+	return path != PathAdminLogin && !strings.HasPrefix(path, "/blocks/") &&
+		route != routeNoteCreate && route != routeNoteRename
 }
+
+// Routes whose body is a note title.
+const (
+	routeNoteCreate = "/campaigns/:campaign/notes"
+	routeNoteRename = "/notes/:note/rename"
+)
 
 // Bounds on what is kept of a request body.
 const (

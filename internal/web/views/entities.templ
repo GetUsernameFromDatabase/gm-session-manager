@@ -16,7 +16,6 @@ import (
 	"gm-session-manager/internal/web/components/input"
 	switchcomp "gm-session-manager/internal/web/components/switch"
 	"gm-session-manager/internal/web/components/textarea"
-	"gm-session-manager/internal/web/components/tooltip"
 	"gm-session-manager/internal/web/utils"
 )
 
@@ -168,12 +167,15 @@ templ EntityDetail(v EntityView) {
 				<h1 class="mb-6 text-2xl font-semibold">{ v.E.Name }</h1>
 				<dl class="max-w-prose space-y-5">
 					for _, k := range OrderedFieldKeys(v.E.Fields) {
-						<div>
-							<dt class="text-sm font-medium text-muted-foreground first-letter:uppercase">{ k }</dt>
-							<dd class="flow-root font-serif text-base leading-relaxed whitespace-pre-line">
-								@wikiText(v.E.Fields[k].Value, v.canOpen)
-							</dd>
-						</div>
+						// The GM may add a field before writing it.
+						if v.E.Fields[k].Value != "" {
+							<div>
+								<dt class="text-sm font-medium text-muted-foreground first-letter:uppercase">{ k }</dt>
+								<dd class="flow-root font-serif text-base leading-relaxed whitespace-pre-line">
+									@wikiText(v.E.Fields[k].Value, v.canOpen)
+								</dd>
+							</div>
+						}
 					}
 				</dl>
 			}
@@ -286,43 +288,45 @@ templ EntityGone(id int64) {
 	</div>
 }
 
+// entityForm is the GM's NPC editor. Every control saves on its own, so a
+// page open on a second GM device changes only what its GM touched.
 templ entityForm(v EntityView) {
 	{{ keys := OrderedFieldKeys(v.E.Fields) }}
-	<form hx-post={ fmt.Sprintf("/entities/%d", v.E.ID) } class="group/fields space-y-5">
+	{{ base := fmt.Sprintf("/entities/%d", v.E.ID) }}
+	<div class="group/fields space-y-5" data-fields>
 		<div class="space-y-2">
 			<div class="flex items-center gap-2">
-				@input.Input(input.Props{Name: "name", Value: v.E.Name, Required: true, Class: "-ml-2.5 h-auto min-w-0 flex-1 border-transparent py-0.5 text-2xl font-semibold shadow-none hover:border-input md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Name"}})
-				// The menu's content is portaled out of this form, so Delete never submits it.
+				<form class="contents" hx-post={ base + "/rename" } hx-trigger="change, submit">
+					@input.Input(input.Props{Name: "name", Value: v.E.Name, Required: true, Class: "-ml-2.5 h-auto min-w-0 flex-1 border-transparent py-0.5 text-2xl font-semibold shadow-none hover:border-input md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Name"}})
+				</form>
 				@moreMenu("entity-menu", "More actions") {
-					@menuDelete("Delete NPC", fmt.Sprintf("/entities/%d/delete", v.E.ID), "Delete "+v.E.Name+"?")
+					@menuDelete("Delete NPC", base+"/delete", "Delete "+v.E.Name+"?")
 				}
 			</div>
-			@checkField("revealed", "true", v.E.IsRevealed) {
-				Players can see this NPC
-			}
+			<form hx-post={ base + "/reveal" } hx-trigger="change">
+				@checkField("revealed", "true", v.E.IsRevealed) {
+					Players can see this NPC
+				}
+			</form>
 		</div>
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<p class="text-xs text-muted-foreground">
-				Players get only the fields marked <span class="text-sky-700 dark:text-sky-300">Players see</span>; the rest never reach their devices.
-				<span class="text-amber-600 dark:text-amber-500">Empty fields are not saved.</span>
+				Players get only the fields marked <span class="text-sky-700 dark:text-sky-300">Players see</span>, and only once they have text; the rest never reach their devices.
 			</p>
-			// Shows the fields as stored, [[links]] as text; it submits nothing.
+			// Shows the fields as stored, [[links]] as text; remembered, as every
+			// save refetches the editor.
 			<label class="flex items-center gap-2 text-xs text-muted-foreground" data-raw-switch>
-				@switchcomp.Switch(switchcomp.Props{Size: switchcomp.SizeSm})
+				@switchcomp.Switch(switchcomp.Props{Size: switchcomp.SizeSm, Attributes: templ.Attributes{"data-remember": "npc-raw-text"}})
 				Raw text
 			</label>
 		</div>
-		<input type="hidden" name="count" value={ fmt.Sprint(len(keys)) }/>
 		<div data-field-rows class="peer max-w-prose space-y-5">
-			for i, k := range keys {
-				@fieldRow(i, k, v.E.Fields[k])
+			for _, k := range keys {
+				@fieldRow(base, k, v.E.Fields[k])
 			}
 		</div>
 		<p class="hidden text-sm text-muted-foreground peer-empty:block">No fields yet.</p>
-		<template data-field-row>
-			@fieldRow(0, "", perm.Field{})
-		</template>
-		@addFieldInput(v.E.ID, keys)
+		@addFieldInput(v.E.ID, base+"/fields", keys)
 		<section class="space-y-1 pt-3 text-sm">
 			<h2 class={ sectionHeading }>Statblock</h2>
 			<p class="flex items-center gap-1">
@@ -345,64 +349,43 @@ templ entityForm(v EntityView) {
 			}})
 			<ul class="mt-1"></ul>
 		</section>
-		// Sticky, so a long list of fields need not be scrolled to its end to save.
-		<div class="sticky bottom-3 z-30 flex flex-wrap items-center gap-2 rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur">
-			@button.Button(button.Props{Type: button.TypeSubmit}) {
-				@icon.Save()
-				Save
+		if v.ActiveEncounterID != 0 {
+			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{
+				"hx-post": fmt.Sprintf("/encounters/%d/combatants", v.ActiveEncounterID), "hx-vals": fmt.Sprintf(`{"kind":"entity","id":"%d"}`, v.E.ID),
+			}}) {
+				@icon.Swords()
+				Add to current fight
 			}
-			if v.ActiveEncounterID != 0 {
-				@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{
-					"hx-post": fmt.Sprintf("/encounters/%d/combatants", v.ActiveEncounterID), "hx-vals": fmt.Sprintf(`{"kind":"entity","id":"%d"}`, v.E.ID),
-					// Not the surrounding form's fields (its count would fail the combatant's checks).
-					"hx-params": "kind,id",
-				}}) {
-					@icon.Swords()
-					Add to current fight
-				}
-			}
-		</div>
-	</form>
+		}
+	</div>
 }
 
 // fieldRow is one stored field: its key, value and whether players see it.
 // Its rail is rose while only the GM sees it and sky once players do, as on
-// note blocks; the checkbox flips it, no script needed. app.js clones a blank
-// one for each field added and removes rows; Save stores what is left.
-templ fieldRow(i int, key string, f perm.Field) {
-	<div class="group/field space-y-1 border-l-[3px] border-l-rose-500 pl-3 has-[[data-reveal]_[data-checked]]:border-l-sky-500" data-field-key={ key } data-empty?={ f.Value == "" }>
+// note blocks; the checkbox flips it, no script needed. Each control posts
+// its own command with the row's key: fields.js fires field-save for the
+// text, the checkbox and the remove button post on their own.
+templ fieldRow(base, key string, f perm.Field) {
+	<form class="group/field space-y-1 border-l-[3px] border-l-rose-500 pl-3 has-[[data-reveal]_[data-checked]]:border-l-sky-500" data-field-key={ key } hx-post={ base + "/fields/text" } hx-trigger="field-save">
 		<div class="flex items-center gap-2">
 			<span class="text-sm font-medium first-letter:uppercase" data-field-label>{ key }</span>
-			// Shown while the value is empty (fields.js keeps data-empty).
-			<span class="hidden group-data-[empty]/field:inline-flex">
-				@tooltip.Tooltip() {
-					<span class="inline-flex text-amber-600 dark:text-amber-500" tabindex="0" role="img" aria-label="Empty fields are not saved" { tooltip.Trigger(ctx)... }>
-						@icon.TriangleAlert(icon.Props{Size: 14})
-					</span>
-					@tooltip.Content() {
-						Fields with an empty value are not saved.
-					}
-				}
-			</span>
-			<input type="hidden" name={ fmt.Sprintf("key_%d", i) } value={ key }/>
-			<span class="ml-auto text-xs" data-reveal>
-				@checkField(fmt.Sprintf("revealed_%d", i), "true", f.IsRevealed) {
+			<input type="hidden" name="key" value={ key }/>
+			<span class="ml-auto text-xs" data-reveal hx-post={ base + "/fields/reveal" } hx-trigger="change">
+				@checkField("revealed", "true", f.IsRevealed) {
 					Players see
 				}
 			</span>
-			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-4 " + quietDestructive, Attributes: templ.Attributes{"aria-label": "Remove field", "data-remove-field": ""}}) {
-				@icon.X(icon.Props{Size: 12})
-			}
+			@removeButton(base + "/fields/remove")
 		</div>
-		// The value is the hidden input the form posts: an editor is not a
-		// form control. fields.js shows it in an editor that renders [[links]]
-		// as notes do, or with Raw text on, as stored in the textarea.
-		<input type="hidden" name={ fmt.Sprintf("value_%d", i) } value={ f.Value } data-field-value/>
+		// The value is the hidden input the text command posts: an editor is
+		// not a form control. fields.js shows it in an editor that renders
+		// [[links]] as notes do, or with Raw text on, as stored in the textarea.
+		<input type="hidden" name="value" value={ f.Value } data-field-value/>
 		<div class="font-serif group-data-[raw]/fields:hidden" data-field-editor></div>
 		<div class="hidden group-data-[raw]/fields:block">
 			@textarea.Textarea(textarea.Props{Value: f.Value, Rows: 2, Placeholder: "Value", Attributes: templ.Attributes{"aria-label": "Value as stored", "data-field-raw": ""}})
 		</div>
-	</div>
+	</form>
 }
 
 // wikiText is a field value with its [[links]] shown as in notes; a link
@@ -443,11 +426,11 @@ templ npcMentions(rows []sqlc.ListEntityFieldBacklinksRow) {
 	}
 }
 
-// addFieldInput adds a field row: pick a suggestion not in use or type any
-// key (the create button, as for image categories). It submits nothing.
-templ addFieldInput(entityID int64, keys []string) {
+// addFieldInput adds a field: pick a suggestion not in use or type any key
+// (the create button, as for image categories); app.js posts it to url.
+templ addFieldInput(entityID int64, url string, keys []string) {
 	{{ id := fmt.Sprintf("add-field-%d", entityID) }}
-	<div class="max-w-sm" data-add-field>
+	<div class="max-w-sm" data-add-field={ url }>
 		@combobox.Combobox() {
 			@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: "Add a field…", Attributes: templ.Attributes{"maxlength": "100", "aria-label": "Add a field", "data-combobox-create-input": ""}})
 			@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {

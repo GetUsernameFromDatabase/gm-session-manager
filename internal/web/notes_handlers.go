@@ -156,7 +156,7 @@ func (a *App) notePage(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	if nv.EntityLinks, err = a.entityMentions(ctx, w, enum.LinkNote, note.ID); err != nil {
+	if nv.EntityLinks, err = a.entityMentions(ctx, w, note.CampaignID, enum.LinkNote, note.ID); err != nil {
 		return err
 	}
 	a.render(c, http.StatusOK, views.NotePage(l, nv))
@@ -165,8 +165,8 @@ func (a *App) notePage(c *gin.Context) error {
 
 // entityMentions lists the NPCs whose fields link a target, as the viewer
 // may see them (revealed links of revealed NPCs for players).
-func (a *App) entityMentions(ctx context.Context, w who, targetType enum.LinkTarget, targetID int64) ([]sqlc.ListEntityFieldBacklinksRow, error) {
-	return a.Store.ListEntityFieldBacklinks(ctx, sqlc.ListEntityFieldBacklinksParams{TargetType: targetType, TargetID: targetID, IsGm: w.isGM()})
+func (a *App) entityMentions(ctx context.Context, w who, campaignID int64, targetType enum.LinkTarget, targetID int64) ([]sqlc.ListEntityFieldBacklinksRow, error) {
+	return a.Store.ListEntityFieldBacklinks(ctx, sqlc.ListEntityFieldBacklinksParams{CampaignID: campaignID, TargetType: targetType, TargetID: targetID, IsGm: w.isGM()})
 }
 
 func (a *App) backlinks(ctx context.Context, w who, campaignID int64, targetType enum.LinkTarget, targetID int64) ([]sqlc.ListBacklinksRow, error) {

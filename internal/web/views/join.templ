@@ -220,10 +220,16 @@ templ PendingStatus(w Waiting) {
 					Start over
 				}
 			default:
-				<p class="flex items-center gap-2">
+				<p class="flex items-center gap-2" data-pending-waiting>
 					@spinner.Spinner(spinner.Props{Class: "size-4 shrink-0"})
 					<span>Asked the GM for <strong>{ w.Name }</strong>. This page updates by itself.</span>
 				</p>
+				<div hidden data-pending-gone>
+					<p>This request ended.</p>
+					@button.Button(button.Props{Href: "/join", Variant: button.VariantOutline, Class: "mt-4"}) {
+						Ask again
+					}
+				</div>
 		}
 	</div>
 }

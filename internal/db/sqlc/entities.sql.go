@@ -291,13 +291,15 @@ SELECT DISTINCT e.id, e.name
 FROM entity_field_links AS l
 JOIN entities AS e ON e.id = l.entity_id
 WHERE l.target_type = ?1 AND l.target_id = ?2
-  AND (CAST(?3 AS BOOLEAN) OR (l.is_revealed AND e.is_revealed))
+  AND e.campaign_id = ?3
+  AND (CAST(?4 AS BOOLEAN) OR (l.is_revealed AND e.is_revealed))
 ORDER BY e.name COLLATE NOCASE
 `
 
 type ListEntityFieldBacklinksParams struct {
 	TargetType enum.LinkTarget
 	TargetID   int64
+	CampaignID int64
 	IsGm       bool
 }
 
@@ -309,7 +311,12 @@ type ListEntityFieldBacklinksRow struct {
 // ListEntityFieldBacklinks lists the NPCs whose fields link a target: all
 // for the GM, for players only revealed links of revealed NPCs.
 func (q *Queries) ListEntityFieldBacklinks(ctx context.Context, arg ListEntityFieldBacklinksParams) ([]ListEntityFieldBacklinksRow, error) {
-	rows, err := q.db.QueryContext(ctx, listEntityFieldBacklinks, arg.TargetType, arg.TargetID, arg.IsGm)
+	rows, err := q.db.QueryContext(ctx, listEntityFieldBacklinks,
+		arg.TargetType,
+		arg.TargetID,
+		arg.CampaignID,
+		arg.IsGm,
+	)
 	if err != nil {
 		return nil, err
 	}

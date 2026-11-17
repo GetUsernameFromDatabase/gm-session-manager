@@ -84,6 +84,7 @@ SELECT DISTINCT e.id, e.name
 FROM entity_field_links AS l
 JOIN entities AS e ON e.id = l.entity_id
 WHERE l.target_type = sqlc.arg(target_type) AND l.target_id = sqlc.arg(target_id)
+  AND e.campaign_id = sqlc.arg(campaign_id)
   AND (CAST(sqlc.arg(is_gm) AS BOOLEAN) OR (l.is_revealed AND e.is_revealed))
 ORDER BY e.name COLLATE NOCASE;
 

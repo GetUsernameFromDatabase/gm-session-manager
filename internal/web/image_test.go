@@ -173,7 +173,8 @@ func TestImageFileCache(t *testing.T) {
 	linked := create("Linked", "", "", "", url.Values{"url": {"https://example.com/a.png"}})
 	uploaded := create("Uploaded", "file", "map.png", "\x89PNG\r\n\x1a\n"+strings.Repeat("\x00", 32), url.Values{})
 	oldLink := imageVersion(linked.Url, linked.AttachmentID)
-	if w := e.doFile(t, fmt.Sprintf("/images/%d", linked.ID), gm, url.Values{"name": {"Linked"}, "url": {"https://example.com/b.png"}}, "", "", ""); w.Code != http.StatusSeeOther {
+	relink := url.Values{"name": {"Linked"}, "url": {"https://example.com/b.png"}, "was_name": {"Linked"}, "was_url": {"https://example.com/a.png"}, "was_source": {oldLink}}
+	if w := e.doFile(t, fmt.Sprintf("/images/%d", linked.ID), gm, relink, "", "", ""); w.Code != http.StatusSeeOther {
 		t.Fatalf("relink: %d", w.Code)
 	}
 	linked, _ = e.q().GetImage(ctx, linked.ID)
@@ -669,35 +670,6 @@ func TestCharacterLooks(t *testing.T) {
 	}
 }
 
-// TestEntityFormFields: the NPC editor lists only stored fields; unused
-// suggestions wait in the add-field picker, and added rows save.
-func TestEntityFormFields(t *testing.T) {
-	e := newTestEnv(t)
-	ctx := t.Context()
-	gm := e.token(t, enum.RoleAdmin)
-	npc, err := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: `{"role":{"value":"Innkeeper"}}`})
-	if err != nil {
-		t.Fatal(err)
-	}
-	page := fmt.Sprintf("/entities/%d", npc.ID)
-	body := e.do(t, http.MethodGet, page, gm, nil, false).Body.String()
-	for _, want := range []string{`name="key_0" value="role"`, `name="value_0" value="Innkeeper" data-field-value`, `name="count" value="1"`, `data-templ-value="motivation"`, `data-field-key="" data-empty`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("editor misses %s", want)
-		}
-	}
-	if strings.Contains(body, `name="key_1"`) || strings.Contains(body, `data-templ-value="role"`) {
-		t.Error("editor shows unstored fields or offers a stored key")
-	}
-	form := url.Values{"name": {"Mira"}, "count": {"2"}, "key_0": {"role"}, "value_0": {"Innkeeper"}, "key_1": {"Secret Name"}, "value_1": {"Lyra"}, "revealed_1": {"true"}}
-	if w := e.do(t, http.MethodPost, page, gm, form, true); w.Code != http.StatusOK {
-		t.Fatalf("save: %d %s", w.Code, w.Body)
-	}
-	if got, _ := e.q().GetEntity(ctx, npc.ID); !strings.Contains(got.FieldsJson, `"secret name":{"value":"Lyra","is_revealed":true}`) {
-		t.Errorf("fields %s", got.FieldsJson)
-	}
-}
-
 // TestEntityFieldLinks: [[links]] in NPC fields render as in notes, let
 // players open images a revealed field links, and show in linked mentions.
 func TestEntityFieldLinks(t *testing.T) {
@@ -712,20 +684,31 @@ func TestEntityFieldLinks(t *testing.T) {
 	}
 	npc, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: "{}"})
 	page, file := fmt.Sprintf("/entities/%d", npc.ID), fmt.Sprintf("/images/%d/file", tavern.ID)
-	save := func(revealLocation bool) {
+	post := func(path string, form url.Values) {
 		t.Helper()
-		form := url.Values{"name": {"Mira"}, "revealed": {"true"}, "count": {"2"},
-			"key_0": {"location"}, "value_0": {fmt.Sprintf("Upstairs at [[image:%d|Tavern]]", tavern.ID)},
-			"key_1": {"plots"}, "value_1": {fmt.Sprintf("See [[note:%d|Secret plans]]", plans.ID)}, "revealed_1": {"true"}}
-		if revealLocation {
-			form.Set("revealed_0", "true")
-		}
-		if w := e.do(t, http.MethodPost, page, gm, form, true); w.Code != http.StatusOK {
-			t.Fatalf("save: %d %s", w.Code, w.Body)
+		if w := e.do(t, http.MethodPost, page+path, gm, form, true); w.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
 	}
+	post("/reveal", url.Values{"revealed": {"true"}})
+	for key, value := range map[string]string{
+		"location": fmt.Sprintf("Upstairs at [[image:%d|Tavern]]", tavern.ID),
+		"plots":    fmt.Sprintf("See [[note:%d|Secret plans]]", plans.ID),
+	} {
+		post("/fields", url.Values{"key": {key}})
+		post("/fields/text", url.Values{"key": {key}, "value": {value}})
+	}
+	post("/fields/reveal", url.Values{"key": {"plots"}, "revealed": {"true"}})
+	revealLocation := func(on bool) {
+		t.Helper()
+		form := url.Values{"key": {"location"}}
+		if on {
+			form.Set("revealed", "true")
+		}
+		post("/fields/reveal", form)
+	}
 
-	save(true)
+	revealLocation(true)
 	if w := e.do(t, http.MethodGet, file, player, nil, false); w.Code != http.StatusFound {
 		t.Errorf("image from a revealed field: %d", w.Code)
 	}
@@ -742,7 +725,7 @@ func TestEntityFieldLinks(t *testing.T) {
 		}
 	}
 
-	save(false)
+	revealLocation(false)
 	if w := e.do(t, http.MethodGet, file, player, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("image from a hidden field: %d", w.Code)
 	}
@@ -794,5 +777,96 @@ func TestCombatNPCPortrait(t *testing.T) {
 				t.Errorf("portrait shown = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestImageEditorKeepsOtherChanges: the editor posts the values it opened
+// with; a save changes only what that page changed, and refuses to change a
+// value another device changed since.
+func TestImageEditorKeepsOtherChanges(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	gm := e.token(t, enum.RoleAdmin)
+	const link = "https://example.com/camp.png"
+	img, err := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "Camp", Url: nullString(link), Description: nullString("Smoky")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/images/%d", img.ID)
+	version := imageVersion(img.Url, img.AttachmentID)
+	page := e.do(t, http.MethodGet, path, gm, nil, false).Body.String()
+	for _, want := range []string{`name="was_name" value="Camp"`, `name="was_description" value="Smoky"`, `name="was_url" value="` + link + `"`, `name="was_source" value="` + version + `"`, `hx-encoding="multipart/form-data"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("editor misses %s", want)
+		}
+	}
+	// opened is the editor as a page loaded it with these stored values.
+	opened := func(name, description, source string) url.Values {
+		return url.Values{
+			"name": {name}, "url": {link}, "category": {""}, "description": {description},
+			"was_name": {name}, "was_url": {link}, "was_category": {""}, "was_description": {description}, "was_source": {source},
+		}
+	}
+	other := func(name, link, description string) {
+		t.Helper()
+		if err := e.q().UpdateImage(ctx, sqlc.UpdateImageParams{ID: img.ID, Name: name, Url: nullString(link), Description: nullString(description)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored := func() sqlc.GetImageRow {
+		got, err := e.q().GetImage(ctx, img.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	// A page opened before another device changed the description renames
+	// the image and keeps that description.
+	form := opened("Camp", "Smoky", version)
+	other("Camp", link, "Burned down")
+	form.Set("name", "Old camp")
+	if w := e.doFile(t, path, gm, form, "", "", ""); w.Code != http.StatusSeeOther {
+		t.Fatalf("rename: %d %s", w.Code, w.Body)
+	}
+	if got := stored(); got.Name != "Old camp" || got.Description.String != "Burned down" || got.Url.String != link {
+		t.Errorf("after rename %+v", got)
+	}
+
+	// Both changed the description: refused, the other device's text stays.
+	form = opened("Old camp", "Smoky", version)
+	form.Set("description", "Rebuilt")
+	if w := e.doFile(t, path, gm, form, "", "", ""); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "description") {
+		t.Errorf("description conflict: %d %s", w.Code, w.Body)
+	}
+	if got := stored(); got.Description.String != "Burned down" {
+		t.Errorf("conflict stored %q", got.Description.String)
+	}
+
+	// Another device replaced the picture: a new link from the stale page is refused.
+	other("Old camp", "https://example.com/ruins.png", "Burned down")
+	form = opened("Old camp", "Burned down", version)
+	form.Set("url", "https://example.com/tents.png")
+	if w := e.doFile(t, path, gm, form, "", "", ""); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("picture conflict: %d %s", w.Code, w.Body)
+	}
+	if got := stored(); got.Url.String != "https://example.com/ruins.png" {
+		t.Errorf("picture conflict stored %q", got.Url.String)
+	}
+
+	// A description stored with bare line breaks (the CSV import) is no
+	// conflict: browsers post every line break as \r\n.
+	other("Old camp", "https://example.com/ruins.png", "Line one\nLine two")
+	ruins := stored()
+	form = url.Values{
+		"name": {"Old camp"}, "url": {"https://example.com/ruins.png"}, "category": {""}, "description": {"Line one\r\nLine 2"},
+		"was_name": {"Old camp"}, "was_url": {"https://example.com/ruins.png"}, "was_category": {""}, "was_description": {"Line one\r\nLine two"},
+		"was_source": {imageVersion(ruins.Url, ruins.AttachmentID)},
+	}
+	if w := e.doFile(t, path, gm, form, "", "", ""); w.Code != http.StatusSeeOther {
+		t.Fatalf("multi-line description: %d %s", w.Code, w.Body)
+	}
+	if got := stored(); !strings.HasSuffix(got.Description.String, "Line 2") {
+		t.Errorf("multi-line description stored %q", got.Description.String)
 	}
 }

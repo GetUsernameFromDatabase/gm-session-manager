@@ -73,6 +73,24 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, c *Client) {
 	}
 }
 
+// ServeGone answers a visitor whose join request no longer exists: one
+// "gone" message and a normal close, which the page's websocket extension
+// does not retry (it retries every abnormal close forever).
+func (h *Hub) ServeGone(w http.ResponseWriter, r *http.Request) {
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		slog.Debug("websocket accept", "err", err)
+		return
+	}
+	defer func() { _ = conn.CloseNow() }()
+	ctx, cancel := context.WithTimeout(r.Context(), writeTimeout)
+	defer cancel()
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"`+msgGone+`"}`)); err != nil {
+		return
+	}
+	_ = conn.Close(websocket.StatusNormalClosure, "")
+}
+
 func (h *Hub) readLoop(ctx context.Context, conn *websocket.Conn, c *Client) {
 	defer c.stop()
 	for {

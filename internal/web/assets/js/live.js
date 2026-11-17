@@ -53,10 +53,16 @@
     }
   }
 
-  // typing reports whether a view shows a form with unsaved text, which a
+  // typing reports whether a view shows a form with unsaved text, or has
+  // the caret in a rich-text editor (NPC fields save as they go), which a
   // refetch would wipe (a form in a closed dialog does not count).
   const edited = (el) => el.matches("textarea, input:not([type=hidden],[type=checkbox],[type=radio],[type=file])") && el.value !== el.defaultValue;
-  const typing = (view) => [...roots(view)].some((root) => [...root.querySelectorAll("form")].some((f) => f.checkVisibility() && [...f.elements].some(edited)));
+  const typing = (view) =>
+    [...roots(view)].some(
+      (root) =>
+        (document.activeElement?.isContentEditable && root.contains(document.activeElement)) ||
+        [...root.querySelectorAll("form")].some((f) => f.checkVisibility() && [...f.elements].some(edited)),
+    );
 
   // refetch reloads a view's fragments (out-of-band swaps). A change that
   // lands while a refetch is in flight fetches again afterwards; one that

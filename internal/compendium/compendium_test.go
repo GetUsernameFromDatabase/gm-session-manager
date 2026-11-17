@@ -2,6 +2,7 @@ package compendium
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,6 +21,25 @@ func newStore(t *testing.T) *db.Store {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	return db.NewStore(conn)
+}
+
+// TestStoreSourceRollsBackOnAfterSave: when the finishing step fails nothing
+// is stored, so the next start imports the folder again.
+func TestStoreSourceRollsBackOnAfterSave(t *testing.T) {
+	store := newStore(t)
+	ctx := t.Context()
+	src := Source{Key: "5etools-test", Edition: "2024", License: "x", Attribution: "x"}
+	entries := []Entry{{Kind: enum.KindMonster, Slug: "ogre", Name: "Ogre", Data: MonsterData{Desc: "Big."}}}
+	fail := func(*sqlc.Queries) error { return errors.New("bind failed") }
+	if _, err := storeSource(ctx, store, src, "p", "h", entries, fail); err == nil {
+		t.Fatal("expected the failure")
+	}
+	if _, err := store.GetCompendiumSource(ctx, src.Key); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("source row kept: %v", err)
+	}
+	if rows, _ := store.ListCompendiumKeysBySource(ctx, src.Key); len(rows) != 0 {
+		t.Errorf("%d entries kept", len(rows))
+	}
 }
 
 // copySource copies testdata/srd-mini to dir/srd-2024 so tests can edit it.

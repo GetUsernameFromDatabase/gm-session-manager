@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"database/sql"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,5 +114,49 @@ func TestCampaignExcludesOwnerBlocks(t *testing.T) {
 		if strings.Contains(text, banned) || strings.Contains(strings.Join(names, " "), "diary") {
 			t.Errorf("archive leaks %q", banned)
 		}
+	}
+}
+
+// TestCampaignSkipsMissingAttachment: a file gone from disk does not fail
+// the export; it is listed in attachments/MISSING.txt.
+func TestCampaignSkipsMissingAttachment(t *testing.T) {
+	ctx := t.Context()
+	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	q := db.NewStore(conn)
+	camp, _ := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"})
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "here.png"), []byte("png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"here.png", "gone.png"} {
+		if _, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{CampaignID: camp.ID, Path: p, Name: p, Mime: "image/png", Size: 3}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := Campaign(ctx, &buf, q.Queries, camp.ID, dir); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, f := range zr.File {
+		rc, _ := f.Open()
+		b, _ := io.ReadAll(rc)
+		_ = rc.Close()
+		got[f.Name] = string(b)
+	}
+	if got["attachments/here.png"] != "png" {
+		t.Errorf("present file not exported: %v", got)
+	}
+	if list := got["attachments/MISSING.txt"]; !strings.Contains(list, "gone.png") || strings.Contains(list, "here.png") {
+		t.Errorf("MISSING.txt is %q", list)
 	}
 }

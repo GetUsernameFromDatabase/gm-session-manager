@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"maps"
 	"slices"
 )
@@ -55,6 +56,9 @@ type patchMessage struct {
 
 const msgPatch = "patch"
 
+// msgGone tells a visitor its join request no longer exists.
+const msgGone = "gone"
+
 // maxPatchKeys is the most changed keys one view's patch carries; beyond
 // it (a long rest, a level-up) the page refetches the view instead.
 const maxPatchKeys = 8
@@ -74,7 +78,12 @@ func (h *Hub) patch(ctx context.Context, c *Client, m message) ([]byte, error) {
 		}
 		next, ok, err := h.handler.State(ctx, c, v)
 		if err != nil {
-			return nil, err
+			// One broken view must not drop the rest: its page refetches it,
+			// and it is not recorded so the next update refetches too.
+			slog.Error("live view state", "view", v, "err", err)
+			delete(c.last, v)
+			views = append(views, viewPatch{View: v, Refetch: true})
+			continue
 		}
 		prev, had := c.last[v]
 		if !ok {

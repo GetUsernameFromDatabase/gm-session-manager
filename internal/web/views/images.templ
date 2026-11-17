@@ -304,7 +304,15 @@ templ imagePreview(img ImageItem) {
 }
 
 templ imageForm(v ImageView) {
-	<form method="post" action={ templ.SafeURL(imageAction(v)) } enctype="multipart/form-data" class="space-y-5">
+	// Posted by htmx, so a refused save keeps what was typed. The was_ values
+	// are what the page opened with: a save changes only what differs from
+	// them, and refuses where another device changed the same value since.
+	<form method="post" action={ templ.SafeURL(imageAction(v)) } enctype="multipart/form-data" hx-post={ imageAction(v) } hx-encoding="multipart/form-data" class="space-y-5">
+		<input type="hidden" name="was_name" value={ v.Image.Name }/>
+		<input type="hidden" name="was_url" value={ v.Image.URL }/>
+		<input type="hidden" name="was_category" value={ v.Image.Category }/>
+		<input type="hidden" name="was_description" value={ v.Image.Description }/>
+		<input type="hidden" name="was_source" value={ v.Image.Version }/>
 		@sourceTabs(sourceField{
 			ID: "image-source", Label: "Image", URL: v.Image.URL, Placeholder: "https://…",
 			Accept: "image/png,image/jpeg,image/gif,image/webp",

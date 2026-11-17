@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
@@ -267,7 +268,9 @@ func (a *App) createAndLogin(c *gin.Context, campaignID int64, name string) (int
 		return 0, err
 	}
 	if err := a.login(c, ch); err != nil {
-		_ = a.Store.DeleteCharacter(ctx, ch.ID)
+		if delErr := a.Store.DeleteCharacter(ctx, ch.ID); delErr != nil {
+			slog.Error("delete character after failed login", "character", ch.ID, "err", delErr)
+		}
 		return 0, err
 	}
 	return ch.ID, nil
@@ -435,8 +438,13 @@ func (a *App) websocket(c *gin.Context) {
 		client = hub.NewClient(w.character.CampaignID, w.viewer, sessionID, ua)
 	default:
 		p, ok := a.Hub.PendingBySecret(c.Query("pending"))
-		if !ok || w.id.Session != nil {
+		if w.id.Session != nil {
 			c.Status(http.StatusUnauthorized)
+			return
+		}
+		if !ok {
+			// The request was dropped with its socket; say so, so the page stops retrying.
+			a.Hub.ServeGone(c.Writer, c.Request)
 			return
 		}
 		client = hub.NewClient(p.CampaignID, perm.Viewer{}, 0, ua)

@@ -32,6 +32,48 @@ type imageForm struct {
 	URL         string `form:"url"         validate:"omitempty,http_url,max=2000"`
 	Category    string `form:"category"    validate:"max=100"`
 	Description string `form:"description" validate:"max=10000"`
+	// What the editor opened with; WasSource is the picture's version.
+	WasName        string `form:"was_name"`
+	WasURL         string `form:"was_url"`
+	WasCategory    string `form:"was_category"`
+	WasDescription string `form:"was_description"`
+	WasSource      string `form:"was_source"`
+}
+
+// mergeEditor keeps each stored value the editor did not change, so a page
+// opened before another device's save does not undo it. A value both
+// changed is a conflict, refused as a userError naming it.
+func (f *imageForm) mergeEditor(c *gin.Context, img sqlc.GetImageRow) error {
+	var conflicts []string
+	// Browsers post every line break as \r\n; a stored value may hold bare \n.
+	norm := func(s string) string { return strings.ReplaceAll(strings.TrimSpace(s), "\r\n", "\n") }
+	pick := func(label string, posted *string, loaded, stored string) {
+		*posted = strings.TrimSpace(*posted)
+		switch {
+		case norm(*posted) == norm(loaded):
+			*posted = stored
+		case norm(loaded) != norm(stored):
+			conflicts = append(conflicts, label)
+		}
+	}
+	pick("name", &f.Name, f.WasName, img.Name)
+	pick("category", &f.Category, f.WasCategory, img.Category)
+	pick("description", &f.Description, f.WasDescription, img.Description.String)
+	// Without a new link imageSource keeps the stored picture (or takes the
+	// file). The upload tab posts no link at all.
+	f.URL = strings.TrimSpace(f.URL)
+	newLink := f.URL != "" && f.URL != strings.TrimSpace(f.WasURL)
+	if !newLink {
+		f.URL = ""
+	}
+	_, fileErr := c.FormFile("file")
+	if (newLink || fileErr == nil) && img.ID != 0 && f.WasSource != imageVersion(img.Url, img.AttachmentID) {
+		conflicts = append(conflicts, "picture")
+	}
+	if len(conflicts) > 0 {
+		return userError{fmt.Errorf("another device changed the %s since this page opened: reload it to see the change, then edit again", strings.Join(conflicts, " and "))}
+	}
+	return nil
 }
 
 func imageItem(r sqlc.GetImageRow) views.ImageItem {
@@ -122,6 +164,9 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 	if !a.bindForm(c, &form) {
 		return nil
 	}
+	if err := form.mergeEditor(c, img); err != nil {
+		return err
+	}
 	ctx := c.Request.Context()
 	url, attachment, ok := a.imageSource(c, form.URL, img)
 	if !ok {
@@ -132,7 +177,7 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 		if err != nil {
 			return err
 		}
-		name, desc := strings.TrimSpace(form.Name), nullString(strings.TrimSpace(form.Description))
+		name, desc := form.Name, nullString(form.Description)
 		if img.ID == 0 {
 			created, err := q.CreateImage(ctx, sqlc.CreateImageParams{
 				CampaignID: img.CampaignID, Name: name, Url: url, AttachmentID: attachment, CategoryID: category, Description: desc,
@@ -155,7 +200,7 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 	if err != nil {
 		return err
 	}
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/images/%d", img.ID))
+	redirect(c, fmt.Sprintf("/images/%d", img.ID))
 	return nil
 }
 
@@ -393,7 +438,7 @@ func (a *App) imagePage(c *gin.Context) error {
 	if v.Backlinks, err = a.backlinks(ctx, w, img.CampaignID, enum.LinkImage, img.ID); err != nil {
 		return err
 	}
-	if v.EntityLinks, err = a.entityMentions(ctx, w, enum.LinkImage, img.ID); err != nil {
+	if v.EntityLinks, err = a.entityMentions(ctx, w, img.CampaignID, enum.LinkImage, img.ID); err != nil {
 		return err
 	}
 	if v.NPCs, err = a.Store.ListImageEntities(ctx, img.ID); err != nil {

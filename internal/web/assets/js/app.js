@@ -946,7 +946,11 @@
     const m = JSON.parse(e.detail.message);
     if (m.type === "patch") gsm.applyPatch(m);
     else if (m.type === "reload") window.location.reload();
-    else document.dispatchEvent(new CustomEvent("gsm:json", { detail: m }));
+    else if (m.type === "gone") {
+      // The join request ended while the phone slept: stop the spinner, offer a new one.
+      document.querySelector("[data-pending-waiting]")?.setAttribute("hidden", "");
+      document.querySelector("[data-pending-gone]")?.removeAttribute("hidden");
+    } else document.dispatchEvent(new CustomEvent("gsm:json", { detail: m }));
   });
 
   // A link-or-upload choice submits only the active tab's input, so a file
@@ -1183,39 +1187,6 @@
   };
   document.addEventListener("change", (e) => e.target.form?.querySelectorAll("[data-max-checked]").forEach(capChecked));
   htmx.onLoad(() => document.querySelectorAll("[data-max-checked]").forEach(capChecked));
-
-  // NPC fields: picking a key in the add-field combobox adds a row for it
-  // (or goes to the existing one); the picked item leaves the list. Rows are
-  // numbered from the form's count, which Save reads.
-  document.addEventListener("change", (e) => {
-    const picker = e.target.closest?.("[data-add-field]");
-    const key = e.target.value?.trim().toLowerCase();
-    if (!picker || e.target.getAttribute("aria-hidden") !== "true" || !key) return;
-    const form = picker.closest("form");
-    const rows = form.querySelector("[data-field-rows]");
-    let row = [...rows.children].find((r) => r.dataset.fieldKey === key);
-    if (!row) {
-      const count = form.elements.count;
-      const i = Number(count.value);
-      row = form.querySelector("template[data-field-row]").content.firstElementChild.cloneNode(true);
-      row.dataset.fieldKey = key;
-      row.querySelector("[data-field-label]").textContent = key;
-      row.querySelectorAll("[name]").forEach((el) => (el.name = el.name.replace(/_\d+$/, `_${i}`)));
-      row.querySelector('input[type="hidden"][name^="key_"]').value = key;
-      rows.append(row);
-      count.value = i + 1;
-    }
-    picker.querySelector(`[data-slot="combobox-item"][data-templ-value="${CSS.escape(key)}"]`)?.remove();
-    e.target.value = "";
-    picker.querySelector("[data-combobox-create-input]").value = "";
-    row.scrollIntoView({ block: "nearest" });
-    // fields.js mounts the row's editor first (raw mode shows the textarea).
-    requestAnimationFrame(() => {
-      const raw = form.hasAttribute("data-raw");
-      row.querySelector(raw ? "[data-field-raw]" : ".field-editor .tiptap")?.focus();
-    });
-  });
-  document.addEventListener("click", (e) => e.target.closest?.("[data-remove-field]")?.closest("[data-field-key]").remove());
 
   // The [[ picker of notes, NPCs and images to link: TipTap suggestion
   // render hooks for the editors in notes and NPC fields (wikilink.js).

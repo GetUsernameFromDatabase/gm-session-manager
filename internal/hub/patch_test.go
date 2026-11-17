@@ -169,7 +169,9 @@ func TestPatch(t *testing.T) {
 	}
 }
 
-func TestFailedPatchDeliversNothing(t *testing.T) {
+// TestFailedViewRefetches: a view that fails to render is refetched by its
+// page, now and on the next update, without dropping the other views.
+func TestFailedViewRefetches(t *testing.T) {
 	sh := &stateHandler{affects: func(string, []Topic) bool { return true }}
 	h := New(sh)
 	c := NewClient(1, perm.GM, 0, "test")
@@ -179,23 +181,30 @@ func TestFailedPatchDeliversNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// character:1 renders before character:2 fails, so the message is dropped.
-	sh.states = map[string]State{"character:1": {"hp": "3"}, "character:2": {"hp": "7"}}
-	sh.fail = "character:2"
-	if _, err := h.patch(t.Context(), c, message{topics: []Topic{{Kind: TopicCharacter, ID: 1}}}); err == nil {
-		t.Fatal("want an error")
+	patchViews := func() []viewPatch {
+		t.Helper()
+		raw, err := h.patch(t.Context(), c, message{topics: []Topic{{Kind: TopicCharacter, ID: 1}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got patchMessage
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.Views
 	}
 
+	sh.states = map[string]State{"character:1": {"hp": "3"}, "character:2": {"hp": "7"}}
+	sh.fail = "character:2"
+	got := patchViews()
+	if len(got) != 2 || got[0].View != "character:1" || got[0].Set["hp"] != "3" || got[1].View != "character:2" || !got[1].Refetch {
+		t.Errorf("views %+v, want character:1 hp 3 and a character:2 refetch", got)
+	}
+
+	// The failed view was not recorded, so it refetches again once it renders.
 	sh.fail = ""
-	raw, err := h.patch(t.Context(), c, message{topics: []Topic{{Kind: TopicCharacter, ID: 1}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got patchMessage
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Views) != 1 || got.Views[0].View != "character:1" || got.Views[0].Set["hp"] != "3" {
-		t.Errorf("views %+v, want character:1 hp 3", got.Views)
+	got = patchViews()
+	if len(got) != 1 || got[0].View != "character:2" || !got[0].Refetch {
+		t.Errorf("views %+v, want a character:2 refetch", got)
 	}
 }

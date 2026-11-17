@@ -50,6 +50,59 @@ func dial(t *testing.T, e testEnv, srv *httptest.Server, query, cookie string, w
 	return conn
 }
 
+// TestWebsocketPendingGone: a request that no longer exists (its socket
+// dropped) gets a clean "gone" close, which htmx does not retry.
+func TestWebsocketPendingGone(t *testing.T) {
+	e := newTestEnv(t)
+	// Test connections come from loopback, which is the GM: look like a phone.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.RemoteAddr = lanAddr
+		e.router.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws?pending=unknown"
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	conn, res, err := websocket.Dial(ctx, wsURL, nil)
+	if res != nil && res.Body != nil {
+		_ = res.Body.Close()
+	}
+	if err != nil {
+		t.Fatalf("a visitor with an unknown request must upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
+	_, data, err := conn.Read(ctx)
+	if err != nil || !strings.Contains(string(data), `"type":"gone"`) {
+		t.Fatalf("first message %q, %v", data, err)
+	}
+	if _, _, err := conn.Read(ctx); websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+		t.Errorf("close status %v, want normal closure", websocket.CloseStatus(err))
+	}
+}
+
+// TestWebsocketRefusesForeignOrigin: another site's page cannot open the
+// socket with the visitor's cookie.
+func TestWebsocketRefusesForeignOrigin(t *testing.T) {
+	e := newTestEnv(t)
+	srv := httptest.NewServer(e.router)
+	t.Cleanup(srv.Close)
+	h := http.Header{"Cookie": {auth.CookieName + "=" + e.token(t, enum.RolePlayer)}, "Origin": {"https://evil.example"}}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	conn, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/ws", &websocket.DialOptions{HTTPHeader: h})
+	if res != nil && res.Body != nil {
+		_ = res.Body.Close()
+	}
+	if err == nil {
+		_ = conn.CloseNow()
+		t.Fatal("a foreign origin upgraded")
+	}
+	if res == nil || res.StatusCode != http.StatusForbidden {
+		t.Errorf("response %v, want 403", res)
+	}
+}
+
 // wsMessage is what the hub sends.
 type wsMessage struct {
 	Type  string `json:"type"`

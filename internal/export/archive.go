@@ -4,8 +4,10 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -106,12 +108,24 @@ func Campaign(ctx context.Context, w io.Writer, q *sqlc.Queries, campaignID int6
 		}
 	}
 
+	var missing []string
 	for _, a := range files {
 		body, err := os.ReadFile(filepath.Join(attachmentsDir, filepath.Base(a.Path))) //nolint:gosec // our random file name, kept inside attachmentsDir by Base
+		if errors.Is(err, fs.ErrNotExist) {
+			// One lost file must not make the whole campaign unexportable.
+			missing = append(missing, a.Path)
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("attachment %d: %w", a.ID, err)
 		}
 		if err := writeFile(zw, "attachments/"+a.Path, body); err != nil {
+			return err
+		}
+	}
+	if len(missing) > 0 {
+		list := "Attached files that were not on disk, so not exported:\n" + strings.Join(missing, "\n") + "\n"
+		if err := writeFile(zw, "attachments/MISSING.txt", []byte(list)); err != nil {
 			return err
 		}
 	}

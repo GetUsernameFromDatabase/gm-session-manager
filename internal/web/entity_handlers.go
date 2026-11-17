@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -92,7 +93,7 @@ func (a *App) entityPage(c *gin.Context) error {
 	if ev.Backlinks, err = a.backlinks(ctx, w, row.CampaignID, enum.LinkEntity, id); err != nil {
 		return err
 	}
-	if ev.EntityLinks, err = a.entityMentions(ctx, w, enum.LinkEntity, id); err != nil {
+	if ev.EntityLinks, err = a.entityMentions(ctx, w, row.CampaignID, enum.LinkEntity, id); err != nil {
 		return err
 	}
 	l := a.layout(w, ev.E.Name, views.NavEntities, &camp, true)
@@ -103,47 +104,149 @@ func (a *App) entityPage(c *gin.Context) error {
 	return nil
 }
 
-// updateEntity saves the editor form. Rows without a key, and suggestion
-// rows left empty, are dropped.
-func (a *App) updateEntity(c *gin.Context) error {
-	e, ok := a.entityParam(c)
+// editEntity applies one edit command to an NPC, reading it afresh in the
+// transaction, so a stale page on another GM device changes only what it
+// sent. change gets the stored row and its fields to modify in place.
+func (a *App) editEntity(c *gin.Context, change func(e *sqlc.Entity, fields perm.Fields) error) error {
+	id, ok := a.idParam(c, "entity")
 	if !ok {
 		return nil
 	}
-	var form nameForm
-	if !a.bindForm(c, &form) {
-		return nil
-	}
-	count, _ := formInt(c, "count")
-	fields := perm.Fields{}
-	for i := range min(int(count), maxEntityFields) {
-		key := strings.ToLower(strings.TrimSpace(c.PostForm(fmt.Sprintf("key_%d", i))))
-		value := strings.TrimSpace(c.PostForm(fmt.Sprintf("value_%d", i)))
-		if key == "" || value == "" {
-			continue
-		}
-		fields[key] = perm.Field{Value: value, IsRevealed: c.PostForm(fmt.Sprintf("revealed_%d", i)) == strTrue}
-	}
-	raw, err := json.Marshal(fields)
-	if err != nil {
-		return err
-	}
 	ctx := c.Request.Context()
-	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+	var row sqlc.Entity
+	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		var err error
+		if row, err = q.GetEntity(ctx, id); err != nil {
+			return err
+		}
+		fields, err := perm.ParseFields(row.FieldsJson)
+		if err != nil {
+			return err
+		}
+		if err := change(&row, fields); err != nil {
+			return err
+		}
+		raw, err := json.Marshal(fields)
+		if err != nil {
+			return err
+		}
 		if err := q.UpdateEntity(ctx, sqlc.UpdateEntityParams{
-			ID: e.ID, Name: strings.TrimSpace(form.Name), IsRevealed: c.PostForm("revealed") == strTrue,
-			FieldsJson: string(raw), CompendiumRef: e.CompendiumRef,
+			ID: row.ID, Name: row.Name, IsRevealed: row.IsRevealed, FieldsJson: string(raw), CompendiumRef: row.CompendiumRef,
 		}); err != nil {
 			return err
 		}
-		return saveFieldLinks(ctx, q, e.ID, fields)
+		return saveFieldLinks(ctx, q, row.ID, fields)
 	})
 	if err != nil {
 		return err
 	}
-	// A toast, as the page flash is far above the Save bar.
-	a.changedWith(c, e.CampaignID, views.Toast("Saved "+strings.TrimSpace(form.Name)+".", false), entityTopics(e)...)
+	a.entityChanged(c, row)
 	return nil
+}
+
+// entityFieldForm names one NPC field; value is read only by the text command.
+type entityFieldForm struct {
+	Key   string `form:"key"   validate:"required,max=100"`
+	Value string `form:"value" validate:"max=100000"`
+}
+
+// fieldParam binds the field form, its key trimmed and lowercased.
+func (a *App) fieldParam(c *gin.Context) (entityFieldForm, bool) {
+	var form entityFieldForm
+	if !a.bindForm(c, &form) {
+		return form, false
+	}
+	form.Key = strings.ToLower(strings.TrimSpace(form.Key))
+	if form.Key == "" {
+		a.fail(c, http.StatusUnprocessableEntity, "Name the field.")
+		return form, false
+	}
+	return form, true
+}
+
+// errFieldGone refuses an edit to a field another device removed, rather
+// than bringing it back.
+var errFieldGone = userError{errors.New("this field was removed on another device")}
+
+func (a *App) renameEntity(c *gin.Context) error {
+	var form nameForm
+	if !a.bindForm(c, &form) {
+		return nil
+	}
+	return a.editEntity(c, func(e *sqlc.Entity, _ perm.Fields) error {
+		e.Name = strings.TrimSpace(form.Name)
+		return nil
+	})
+}
+
+func (a *App) revealEntity(c *gin.Context) error {
+	revealed := c.PostForm("revealed") == strTrue
+	return a.editEntity(c, func(e *sqlc.Entity, _ perm.Fields) error {
+		e.IsRevealed = revealed
+		return nil
+	})
+}
+
+// addEntityField adds an empty, hidden field; an existing one stays as it is.
+func (a *App) addEntityField(c *gin.Context) error {
+	form, ok := a.fieldParam(c)
+	if !ok {
+		return nil
+	}
+	return a.editEntity(c, func(_ *sqlc.Entity, fields perm.Fields) error {
+		if _, ok := fields[form.Key]; ok {
+			return nil
+		}
+		if len(fields) >= maxEntityFields {
+			return userError{fmt.Errorf("an NPC has at most %d fields", maxEntityFields)}
+		}
+		fields[form.Key] = perm.Field{}
+		return nil
+	})
+}
+
+func (a *App) setEntityFieldText(c *gin.Context) error {
+	form, ok := a.fieldParam(c)
+	if !ok {
+		return nil
+	}
+	return a.editEntity(c, func(_ *sqlc.Entity, fields perm.Fields) error {
+		f, ok := fields[form.Key]
+		if !ok {
+			return errFieldGone
+		}
+		f.Value = strings.TrimSpace(form.Value)
+		fields[form.Key] = f
+		return nil
+	})
+}
+
+func (a *App) revealEntityField(c *gin.Context) error {
+	form, ok := a.fieldParam(c)
+	if !ok {
+		return nil
+	}
+	revealed := c.PostForm("revealed") == strTrue
+	return a.editEntity(c, func(_ *sqlc.Entity, fields perm.Fields) error {
+		f, ok := fields[form.Key]
+		if !ok {
+			return errFieldGone
+		}
+		f.IsRevealed = revealed
+		fields[form.Key] = f
+		return nil
+	})
+}
+
+func (a *App) removeEntityField(c *gin.Context) error {
+	form, ok := a.fieldParam(c)
+	if !ok {
+		return nil
+	}
+	return a.editEntity(c, func(_ *sqlc.Entity, fields perm.Fields) error {
+		delete(fields, form.Key)
+		return nil
+	})
 }
 
 // saveFieldLinks replaces an NPC's field [[links]] with those in fields.
@@ -304,14 +407,9 @@ func (a *App) entityLook(c *gin.Context) error {
 
 // linkEntity sets or clears the compendium statblock behind an NPC.
 func (a *App) linkEntity(c *gin.Context) error {
-	e, ok := a.entityParam(c)
-	if !ok {
-		return nil
-	}
 	ref, _ := formInt(c, "entry")
-	ctx := c.Request.Context()
 	if ref != 0 {
-		entry, err := a.Store.GetCompendiumEntry(ctx, ref)
+		entry, err := a.Store.GetCompendiumEntry(c.Request.Context(), ref)
 		if err != nil {
 			return err
 		}
@@ -320,12 +418,8 @@ func (a *App) linkEntity(c *gin.Context) error {
 			return nil
 		}
 	}
-	err := a.Store.UpdateEntity(ctx, sqlc.UpdateEntityParams{
-		ID: e.ID, Name: e.Name, IsRevealed: e.IsRevealed, FieldsJson: e.FieldsJson, CompendiumRef: nullID(ref),
+	return a.editEntity(c, func(e *sqlc.Entity, _ perm.Fields) error {
+		e.CompendiumRef = nullID(ref)
+		return nil
 	})
-	if err != nil {
-		return err
-	}
-	a.entityChanged(c, e)
-	return nil
 }

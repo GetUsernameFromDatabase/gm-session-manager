@@ -136,16 +136,26 @@ func TestRequestSent(t *testing.T) {
 	e.do(t, http.MethodPost, cmd, player, url.Values{"hp_op": {"damage"}, "hp_amount": {"five"}}, true)
 	e.do(t, http.MethodPost, "/blocks/1/steps", player, url.Values{"text": {"my secret"}}, true)
 	e.do(t, http.MethodGet, cmd+"?x=1", player, nil, true)
+	e.do(t, http.MethodPost, fmt.Sprintf("/campaigns/%d/notes", e.campaignID), player, url.Values{"title": {"secret plot"}}, true)
+	note, err := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Maps"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.do(t, http.MethodPost, fmt.Sprintf("/notes/%d/rename", note.ID), player, url.Values{"title": {"secret plot"}}, true)
 
 	got := e.app.reqs.recent(e.device(t, player))
-	if len(got) != 3 {
+	if len(got) != 5 {
 		t.Fatalf("got %d entries", len(got))
 	}
-	if got[2].Sent != "hp_amount=five hp_op=damage" {
-		t.Errorf("command sent %q", got[2].Sent)
-	}
+	// A note's title is as private as its blocks.
 	if got[1].Sent != "" || got[0].Sent != "" {
-		t.Errorf("kept %q for a note block and %q for a GET", got[1].Sent, got[0].Sent)
+		t.Errorf("kept %q for note create and %q for rename", got[1].Sent, got[0].Sent)
+	}
+	if got[4].Sent != "hp_amount=five hp_op=damage" {
+		t.Errorf("command sent %q", got[4].Sent)
+	}
+	if got[3].Sent != "" || got[2].Sent != "" {
+		t.Errorf("kept %q for a note block and %q for a GET", got[3].Sent, got[2].Sent)
 	}
 }
 

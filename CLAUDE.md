@@ -16,7 +16,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 
 - **Visibility is enforced on the server.** Never send hidden data to a browser and hide it client-side. Unrevealed entity fields are stripped entirely (keys included). GM and admin queries never return `owner` note blocks. Permission tables: `internal/perm/CLAUDE.md`.
 - **Websocket data is as small as possible:** changed values as JSON, never HTML; wholesale changes send a refetch order (`internal/web/CLAUDE.md`).
-- **Commands, not saved sheets.** Clients send small delta commands (`hp -5`, `toggle prone`), never whole-object overwrites: several devices may hold one character. The server applies each in a transaction and publishes topics.
+- **Commands, not saved sheets.** Clients send small delta commands (`hp -5`, `toggle prone`, one NPC field), never whole-object overwrites: several devices may hold one character or NPC. The server applies each in a transaction and publishes topics. A whole-page editor (images) posts the values it opened with (`was_*`); the server changes only what differs and refuses a value another device changed since.
 - **Session tokens:** 32 random bytes; store only the SHA-256 hash; cookie is `HttpOnly`, `SameSite=Lax`, `Secure`.
 - **Admin:** real `RemoteAddr` is loopback (never trust `X-Forwarded-For`), or login with `ADMIN_USERNAME`/`ADMIN_PASSWORD` from `.env` (refuse to start if missing; constant-time compare; never hardcode).
 - **Identity:** players have no passwords. One role per device; logging in while holding a session is refused. Logout and kick both delete the `sessions` row. Pending join requests live in memory only. A character may have several devices, each approved separately.

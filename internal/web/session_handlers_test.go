@@ -153,7 +153,7 @@ func TestAdminLogin(t *testing.T) {
 			if c == nil {
 				return
 			}
-			if !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.MaxAge <= 0 || c.Path != "/" {
+			if !c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.MaxAge <= 0 || c.Path != "/" {
 				t.Errorf("cookie attributes: %+v", c)
 			}
 			if !e.alive(t, c.Value) {

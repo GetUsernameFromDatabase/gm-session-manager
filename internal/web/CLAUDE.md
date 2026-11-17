@@ -41,4 +41,6 @@ A handler with an error path returns `error` and is registered as `a.h(a.x)`: a 
 - `htmx.config.defaultSwapStyle` is `none`: every form that swaps HTML needs `hx-swap`. Never swap a fragment holding a `<form>` into another form.
 - templ trims the space before a component call on the next line ("uploaded26 Oct"): write `{ "Updated " }` or keep both on one line. A `{ expr }` ending a line gets a space after it: join adjacent expressions.
 - templ 0.3.1100: a spread event handler given a plain string renders blank; wrap it in `templ.JSUnsafeFuncCall(...)`.
+- templ 0.3.1100: `continue` in a template loop renders as the text "continue"; wrap the body in an `if`. `templ fmt` panics (nil pointer in `imports.containsImport`) on an unused import: remove it.
+- NPC fields save themselves (`fields.js`, `field-save`), and live.js holds a refetch while the caret is in a rich-text editor, so the GM's own save never wipes the field they moved on to.
 - `TestPagesRender` fails on `templ.FailedSanitizationJS`.
