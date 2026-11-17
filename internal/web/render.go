@@ -134,17 +134,13 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 	}
 	ev := views.EncounterView{Encounter: enc, IsGM: v.IsGM}
 	for _, r := range rows {
+		sheet := pcSheet(r) // parsed once for AC, initiative, defenses and out-of-fight
 		cv := views.CombatantView{
-			ID: r.ID, Name: r.Name, AC: r.Ac, HPVisible: r.HpVisible, CharacterID: r.CharacterID.Int64, EntityID: r.EntityID.Int64,
+			ID: r.ID, Name: r.Name, AC: combatantArmorClass(r, sheet), HPVisible: r.HpVisible, CharacterID: r.CharacterID.Int64, EntityID: r.EntityID.Int64,
 			Kind:   combatantKind(r),
 			IsOwn:  v.IsPlayer() && r.CharacterID.Int64 == v.CharacterID,
 			Active: enc.Status == enum.EncounterActive && enc.ActiveCombatantID.Int64 == r.ID,
-			Out:    outOfFight(r),
-		}
-		if r.SheetJson.Valid { // the stored AC is from when they joined
-			if ac, err := sheetArmorClass(r.SheetJson.String); err == nil {
-				cv.AC = int64(ac)
-			}
+			Out:    outOfFight(r, sheet),
 		}
 		if r.Initiative.Valid {
 			cv.Initiative = fmt.Sprint(r.Initiative.Int64)
@@ -156,7 +152,7 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 		// One without max HP has no stats, so is never down.
 		cv.Marker, cv.Down = r.Marker, r.Hp <= 0 && r.MaxHp > 0
 		if v.IsGM {
-			cv.Link, cv.InitMod = combatantLink(r, enc.CampaignID), initiativeMod(r)
+			cv.Link, cv.InitMod = combatantLink(r, enc.CampaignID), initiativeMod(r, sheet)
 		} else {
 			cv.AC, cv.Link = 0, playerCombatantLink(v, r, enc.CampaignID, cv.ShowHP)
 		}
@@ -175,21 +171,13 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 				cv.Portrait = views.LookItem(look).Src()
 			}
 		}
-		if r.CharacterID.Valid {
-			pc, err := a.Store.ListConditionsByCharacter(ctx, r.CharacterID)
-			if err != nil {
-				return views.EncounterView{}, err
-			}
-			cv.Conditions = pc
-		} else {
-			for _, c := range conds {
-				if c.CombatantID.Int64 == r.ID {
-					cv.Conditions = append(cv.Conditions, c)
-				}
+		for _, c := range conds {
+			if r.CharacterID.Valid && c.CharacterID == r.CharacterID || !r.CharacterID.Valid && c.CombatantID.Int64 == r.ID {
+				cv.Conditions = append(cv.Conditions, c)
 			}
 		}
 		if v.IsGM || cv.IsOwn { // a player never learns another combatant's defenses
-			cv.Defenses = combatantDefenses(r, cv.Conditions)
+			cv.Defenses = combatantDefenses(r, sheet, cv.Conditions)
 		}
 		ev.Combatants = append(ev.Combatants, cv)
 	}

@@ -6,9 +6,11 @@ WHERE character_id = ?
 ORDER BY slug, id;
 
 -- name: ListConditionsByEncounter :many
+-- Includes the PCs' own conditions (by character), which the tracker shows too.
 SELECT cond.* FROM conditions AS cond
-JOIN combatants AS cb ON cb.id = cond.combatant_id
+JOIN combatants AS cb ON cb.id = cond.combatant_id OR cb.character_id = cond.character_id
 WHERE cb.encounter_id = ?
+GROUP BY cond.id
 ORDER BY cond.slug, cond.id;
 
 -- name: CreateCondition :one

@@ -145,7 +145,7 @@ func TestRollAllInitiative(t *testing.T) {
 	}
 	rows, _ := e.q().ListCombatants(ctx, enc.ID)
 	for _, r := range rows {
-		switch lo := int64(1 + initiativeMod(r)); {
+		switch lo := int64(1 + initiativeMod(r, pcSheet(r))); {
 		case r.CharacterID.Valid:
 			if r.Initiative.Valid {
 				t.Errorf("%s: PC initiative %v, want unset", r.Name, r.Initiative)
@@ -155,8 +155,8 @@ func TestRollAllInitiative(t *testing.T) {
 				t.Errorf("Guard initiative %v, want 7", r.Initiative)
 			}
 		default:
-			if want, ok := bonus[r.Name]; ok && initiativeMod(r) != int(want) {
-				t.Errorf("%s: initiativeMod %d, want %d", r.Name, initiativeMod(r), want)
+			if want, ok := bonus[r.Name]; ok && initiativeMod(r, pcSheet(r)) != int(want) {
+				t.Errorf("%s: initiativeMod %d, want %d", r.Name, initiativeMod(r, pcSheet(r)), want)
 			}
 			if !r.Initiative.Valid || r.Initiative.Int64 < lo || r.Initiative.Int64 > lo+19 {
 				t.Errorf("%s: initiative %v outside %d..%d", r.Name, r.Initiative, lo, lo+19)

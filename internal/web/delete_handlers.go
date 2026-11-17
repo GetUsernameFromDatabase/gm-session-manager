@@ -43,6 +43,11 @@ func (a *App) removeCharacter(c *gin.Context) error {
 		if err := q.DeleteCharacterSessions(c.Request.Context(), nullID(ch.ID)); err != nil {
 			return err
 		}
+		for _, e := range encounters {
+			if err := passTurn(c.Request.Context(), q, e, func(r sqlc.ListCombatantsRow) bool { return r.CharacterID.Int64 == ch.ID }); err != nil {
+				return err
+			}
+		}
 		return q.DeleteCharacterCombatants(c.Request.Context(), nullID(ch.ID))
 	})
 	if err != nil {

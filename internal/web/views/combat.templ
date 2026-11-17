@@ -618,7 +618,7 @@ templ turnCard(e EncounterView) {
 
 templ turnControls(e EncounterView, prev, cur, next string) {
 	if e.IsGM {
-		@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantGhost, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("prev"), "aria-label": "Previous turn", "data-turn-button": true}}) {
+		@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantGhost, Disabled: !e.initiativeSet(), Attributes: with(templ.Attributes{"hx-post": e.url("prev"), "hx-vals": e.turnVals(), "aria-label": "Previous turn", "data-turn-button": true}, bind("hx-vals=turn.vals"))}) {
 			@icon.ChevronLeft()
 			<span class="max-sm:hidden">Previous</span>
 		}
@@ -629,7 +629,7 @@ templ turnControls(e EncounterView, prev, cur, next string) {
 		@turnSlot("Next", next, "turn.next", "text-muted-foreground")
 	</div>
 	if e.IsGM {
-		@button.Button(button.Props{Size: button.SizeLg, Disabled: !e.initiativeSet(), Attributes: templ.Attributes{"hx-post": e.url("next"), "aria-label": "Next turn", "data-turn-button": true}}) {
+		@button.Button(button.Props{Size: button.SizeLg, Disabled: !e.initiativeSet(), Attributes: with(templ.Attributes{"hx-post": e.url("next"), "hx-vals": e.turnVals(), "aria-label": "Next turn", "data-turn-button": true}, bind("hx-vals=turn.vals"))}) {
 			<span class="max-sm:hidden">Next turn</span>
 			@icon.ChevronRight()
 		}
@@ -793,10 +793,10 @@ templ addCombatants(e EncounterView) {
 			}
 		}
 		@tabs.Content(tabs.ContentProps{Value: KindPC}) {
-			@addCombatantForm(e, "pc", KindPC, "Choose a PC", "Add PC", pcs)
+			@addCombatantForm(e, KindPC, KindPC, "Choose a PC", "Add PC", pcs)
 		}
 		@tabs.Content(tabs.ContentProps{Value: KindNPC}) {
-			@addCombatantForm(e, "entity", KindNPC, "Choose an NPC", "Add NPC", npcs)
+			@addCombatantForm(e, KindEntity, KindNPC, "Choose an NPC", "Add NPC", npcs)
 		}
 		@tabs.Content(tabs.ContentProps{Value: KindMonster}) {
 			// The result buttons post this form's count and HP switch with the

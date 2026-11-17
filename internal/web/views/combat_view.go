@@ -13,7 +13,8 @@ import (
 	"github.com/a-h/templ"
 )
 
-// MaxHPInput bounds the HP dialog's numbers, well above any 5e creature.
+// MaxHPInput bounds the HP dialog's numbers, well above any 5e creature; it
+// mirrors dnd5e.MaxAmount, which the server enforces.
 const MaxHPInput = 9999
 
 // MaxMarker bounds a combatant's table marker, in characters.
@@ -74,10 +75,12 @@ type Named struct {
 	Name string
 }
 
-// Combatant kinds, the type of being shown on each row.
+// Combatant kinds, the type of being shown on each row. KindEntity is only
+// the add form's name for an NPC (a campaign entity); rows show KindNPC.
 const (
 	KindPC      = "pc"
 	KindNPC     = "npc"
+	KindEntity  = "entity"
 	KindMonster = "monster"
 )
 
@@ -109,6 +112,18 @@ func currentID(v CombatView) int64 {
 
 func (e EncounterView) url(action string) string {
 	return fmt.Sprintf("/encounters/%d/%s", e.Encounter.ID, action)
+}
+
+// The turn the tracker showed, posted with Next and Previous so a repeated
+// press is refused (encounterAction).
+const (
+	TurnActiveField = "active"
+	TurnRoundField  = "round"
+)
+
+// turnVals is the htmx payload naming the turn this tracker shows.
+func (e EncounterView) turnVals() string {
+	return fmt.Sprintf(`{%q:%d,%q:%d}`, TurnActiveField, e.Encounter.ActiveCombatantID.Int64, TurnRoundField, e.Encounter.Round)
 }
 
 func (c CombatantView) hasMeter() bool { return c.ShowHP && c.MaxHP > 0 }

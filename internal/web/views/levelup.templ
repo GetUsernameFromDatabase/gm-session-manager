@@ -143,7 +143,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 								<span class="text-muted-foreground">or feat</span>
 								@formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), v.Form.Get("feat"), "", "")
 							</div>
-							<p class="text-xs text-muted-foreground">Pick one ability for +2, two different abilities for +1 each, or a feat.</p>
+							<p class="text-xs text-muted-foreground">Pick one ability for +2, two different abilities for +1 each, or a feat. A higher Constitution modifier adds hit points for every level, earlier ones included.</p>
 							for _, f := range v.Feats {
 								if groups := v.FeatChoices[f.Slug]; len(groups) > 0 {
 									<div class="space-y-4 pt-2" data-show-for={ "feat=" + f.Slug } hidden?={ v.Form.Get("feat") != f.Slug }>

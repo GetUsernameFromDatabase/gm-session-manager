@@ -235,7 +235,7 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 	next := c.clone()
 	s := &next.Sheet
 
-	if ch.HPRoll < 0 || (ch.HPRoll > ch.Class.HitDie && ch.Class.HitDie > 0) {
+	if ch.HPRoll < 0 || ch.HPRoll > ch.Class.HitDie {
 		return fmt.Errorf("hit die roll must be 1-%d", ch.Class.HitDie)
 	}
 	gain := hpGain(*s, ch.Class.HitDie, ch.HPRoll)
@@ -250,9 +250,11 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 	s.RecomputeSlots()
 
 	if plan.ASI {
+		oldMod := s.Mod(Con)
 		if err := applyASI(s, ch); err != nil {
 			return ASIError{err}
 		}
+		next.shiftConHP(oldMod)
 	} else if len(ch.ASI) > 0 || ch.Feat != "" {
 		return errors.New("this level grants no ability score improvement")
 	}
@@ -403,6 +405,20 @@ func raise(s *Sheet, ability string, by int) error {
 	}
 	s.Scores[ability] += by
 	return nil
+}
+
+// shiftConHP applies a Constitution modifier change (from oldMod) to the
+// hit points of every level the character has.
+func (c *Character) shiftConHP(oldMod int) {
+	d := (c.Sheet.Mod(Con) - oldMod) * c.Sheet.Level()
+	if c.MaxHP == 0 || d == 0 { // no stats yet, or nothing changed
+		return
+	}
+	c.MaxHP = max(c.MaxHP+d, 1)
+	if d > 0 {
+		c.HP += d
+	}
+	c.HP = min(c.HP, c.MaxHP)
 }
 
 // hpGain is the hit point increase for a level: the full hit die at

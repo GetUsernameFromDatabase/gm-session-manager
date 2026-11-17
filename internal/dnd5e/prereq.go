@@ -13,6 +13,7 @@ var (
 	rePrereqFeature    = regexp.MustCompile(`^(.+) Feature$`)
 	rePrereqInvocation = regexp.MustCompile(`^(.+) Invocation$`)
 	rePrereqCantrip    = regexp.MustCompile(`(?i)^an? (.+?) cantrip that deals damage( via an attack roll)?$`)
+	rePrereqArmor      = regexp.MustCompile(`(?i)^(Light|Medium|Heavy|Shield)(?: Armor)? Training$`)
 	reSpellDamage      = regexp.MustCompile(`\d+d\d+ \w+ damage`)
 	reSpellRange       = regexp.MustCompile(`(?i)^(\d+)\s*(?:feet|foot|ft\b\.?|(miles?)\b)`)
 )
@@ -77,6 +78,11 @@ func MeetsPrerequisite(prereq string, sh Sheet, level int, cantrips []Cantrip, s
 			}
 		} else if m := rePrereqCantrip.FindStringSubmatch(clause); m != nil {
 			if !slices.ContainsFunc(cantrips, func(c Cantrip) bool { return CantripFits(c, slug(m[1]), m[2] != "", 0) }) {
+				return false
+			}
+		} else if m := rePrereqArmor.FindStringSubmatch(clause); m != nil {
+			// OtherProfs read "Light armor", "Shields" (see ArmorUntrained).
+			if !strings.Contains(strings.ToLower(strings.Join(sh.OtherProfs, " ")), strings.ToLower(m[1])) {
 				return false
 			}
 		}

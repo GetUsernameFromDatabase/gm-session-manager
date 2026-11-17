@@ -407,6 +407,10 @@ func parseSource(args []string) (Command, error) {
 	return cmd, nil
 }
 
+// MaxAmount bounds an HP-style number; views.MaxHPInput mirrors it for the
+// combat dialog (views must not import dnd5e).
+const MaxAmount = 9999
+
 // Amount is an HP-style change: a delta, or a set when set is true. Parse
 // builds them from "+n", "-n" and "=n".
 type Amount struct {
@@ -437,6 +441,9 @@ func parseAmount(s string, bareSets bool) (Amount, error) {
 	}
 	if set && n < 0 {
 		return Amount{}, errors.New("value cannot be negative")
+	}
+	if n > MaxAmount || n < -MaxAmount {
+		return Amount{}, fmt.Errorf("amount cannot exceed %d", MaxAmount)
 	}
 	return Amount{n: n, set: set}, nil
 }
@@ -513,7 +520,7 @@ func (c *Character) ApplyHP(a Amount) {
 		c.TempHP -= absorbed
 		c.HP -= dmg - absorbed
 	default:
-		c.HP += a.n
+		c.HP = max(c.HP, 0) + a.n // healing starts from 0, not from the overkill
 	}
 	if c.MaxHP > 0 {
 		c.HP = min(c.HP, c.MaxHP)
@@ -748,7 +755,7 @@ func parseRest(args []string) (Command, error) {
 }
 
 // LongRest restores HP and slots, clears temporary HP and death saves and
-// regains up to half the character's hit dice (minimum one).
+// regains all hit dice.
 func (c *Character) LongRest() {
 	c.HP = c.MaxHP
 	c.TempHP = 0
@@ -760,8 +767,7 @@ func (c *Character) LongRest() {
 		c.Sheet.Features[i].Uses.Used = 0
 	}
 	c.Sheet.DeathSaves = DeathSaves{}
-	regain := max(c.Sheet.Level()/2, 1)
-	c.Sheet.HitDiceUsed = max(c.Sheet.HitDiceUsed-regain, 0)
+	c.Sheet.HitDiceUsed = 0
 }
 
 func parseHitDie(args []string) (Command, error) {
@@ -987,7 +993,9 @@ func parseSet(args []string) (Command, error) {
 			return Command{}, errors.New("usage: set ability str 16")
 		}
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
+			oldMod := c.Sheet.Mod(Con)
 			c.Sheet.Scores[ab] = n
+			c.shiftConHP(oldMod)
 			return nil
 		}), nil
 	}

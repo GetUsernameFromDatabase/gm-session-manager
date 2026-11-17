@@ -80,6 +80,7 @@ func (e EncounterView) Hot(st hub.State) {
 		st["turn.prev"], st["turn.cur"], st["turn.next"] = e.turnNames()
 		if e.IsGM {
 			st["turn.skipped"] = e.turnSkipped()
+			st["turn.vals"] = e.turnVals() // the turn buttons post it; a stale one is refused
 		}
 	}
 	for _, c := range e.Combatants {

@@ -503,11 +503,13 @@ func (q *Queries) ListConditionsByCharacter(ctx context.Context, characterID sql
 
 const listConditionsByEncounter = `-- name: ListConditionsByEncounter :many
 SELECT cond.id, cond.character_id, cond.combatant_id, cond.slug, cond.note, cond.expires_round, cond.created_at FROM conditions AS cond
-JOIN combatants AS cb ON cb.id = cond.combatant_id
+JOIN combatants AS cb ON cb.id = cond.combatant_id OR cb.character_id = cond.character_id
 WHERE cb.encounter_id = ?
+GROUP BY cond.id
 ORDER BY cond.slug, cond.id
 `
 
+// Includes the PCs' own conditions (by character), which the tracker shows too.
 func (q *Queries) ListConditionsByEncounter(ctx context.Context, encounterID int64) ([]Condition, error) {
 	rows, err := q.db.QueryContext(ctx, listConditionsByEncounter, encounterID)
 	if err != nil {

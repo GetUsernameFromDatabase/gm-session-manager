@@ -441,6 +441,36 @@ func TestLiveHotKeepsHash(t *testing.T) {
 	}
 }
 
+// TestLiveTurnValsFollowTurn checks the turn buttons' bound payload: Next
+// moves the turn without a refetch, so the GM tracker's turn.vals must name
+// the new turn, or every later press would be refused as stale.
+func TestLiveTurnValsFollowTurn(t *testing.T) {
+	f := newLiveFixture(t)
+	gm := f.token(t, enum.RoleAdmin)
+	f.readyTurns(t)
+	tracker := views.LiveKey(views.LiveEncounter, f.encounter)
+	next := fmt.Sprintf("/encounters/%d/next", f.encounter)
+	vals := func() url.Values {
+		st, _ := f.state(t, perm.GM, f.campaignID, tracker)
+		s, _ := st["turn.vals"].(string)
+		var m map[string]int64
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			t.Fatalf("turn.vals %q: %v", st["turn.vals"], err)
+		}
+		form := url.Values{}
+		for k, v := range m {
+			form.Set(k, fmt.Sprint(v))
+		}
+		return form
+	}
+	first := vals()
+	f.postOK(t, gm, next, first)
+	f.postOK(t, gm, next, vals()) // the live payload, as the page now holds it
+	if w := f.do(t, http.MethodPost, next, gm, first, true); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("stale turn: %d, want %d", w.Code, http.StatusUnprocessableEntity)
+	}
+}
+
 // TestLiveModelHashFollowsMarkup checks the JSON-hashed views against their
 // markup: whenever a change shows on the page, it must move the hash too,
 // or other devices would keep the old view. The page markup includes hot

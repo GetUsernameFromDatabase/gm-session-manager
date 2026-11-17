@@ -159,6 +159,74 @@ func TestHealingFromZeroResetsDeathSaves(t *testing.T) {
 	}
 }
 
+func TestHealingFromBelowZeroStartsAtZero(t *testing.T) {
+	c := fighter()
+	c.HP = -7
+	c.Sheet.DeathSaves = DeathSaves{Successes: 1, Failures: 2}
+	c.ApplyHP(Heal(8))
+	if c.HP != 8 || c.Sheet.DeathSaves != (DeathSaves{}) {
+		t.Errorf("got hp %d saves %+v", c.HP, c.Sheet.DeathSaves)
+	}
+}
+
+func TestConIncreaseAddsHPForEarlierLevels(t *testing.T) {
+	// Con 15 -> 16 is +1 per level, retroactive.
+	c := fighter()
+	c.Sheet.Scores[Con] = 15
+	cmd, err := Parse("set ability con 16")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cmd.Apply(&c, Env{}); err != nil {
+		t.Fatal(err)
+	}
+	if c.MaxHP != 31 || c.HP != 23 {
+		t.Errorf("set ability: max %d hp %d, want 31 and 23", c.MaxHP, c.HP)
+	}
+
+	// Level 4 ASI on Con 15 -> 17: mod +2 -> +3, so +1 for each of 4 levels.
+	knight := ClassInfo{
+		Slug: "fighter", Name: "Fighter", HitDie: 10, Caster: CasterNone, Saves: []string{Str, Con},
+		Features: []ClassFeature{{Name: ASIFeature, Levels: []int{4}}},
+	}
+	c = fighter()
+	c.Sheet.Scores[Con] = 15
+	if err := c.LevelUp(LevelUpChoice{Class: knight, ASI: []string{Con}}); err != nil {
+		t.Fatal(err)
+	}
+	if want := 28 + 8 + 4; c.MaxHP != want { // 6+2 for the new level, 4 retroactive
+		t.Errorf("level up: max %d, want %d", c.MaxHP, want)
+	}
+}
+
+func TestLongRestRestoresAllHitDice(t *testing.T) {
+	c := fighter()
+	c.Sheet.HitDiceUsed = 3
+	c.LongRest()
+	if c.Sheet.HitDiceUsed != 0 {
+		t.Errorf("hit dice used = %d, want 0", c.Sheet.HitDiceUsed)
+	}
+}
+
+func TestHPRollNeedsAHitDie(t *testing.T) {
+	c := Character{Name: "Wren", Sheet: NewSheet()}
+	err := c.LevelUp(LevelUpChoice{Class: ClassInfo{Slug: "odd", Name: "Odd"}, HPRoll: 5})
+	if err == nil || !strings.Contains(err.Error(), "hit die roll") {
+		t.Errorf("err = %v, want a hit die roll refusal", err)
+	}
+}
+
+func TestParseAmountLimit(t *testing.T) {
+	for _, in := range []string{"hp -99999", "hp +10000", "hp =10000"} {
+		if _, err := Parse(in); err == nil {
+			t.Errorf("%q accepted", in)
+		}
+	}
+	if _, err := Parse("hp +9999"); err != nil {
+		t.Errorf("limit itself rejected: %v", err)
+	}
+}
+
 func TestCustomMods(t *testing.T) {
 	c := fighter()
 	for _, in := range []string{

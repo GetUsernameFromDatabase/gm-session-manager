@@ -121,7 +121,7 @@ func (a *App) addCombatant(c *gin.Context) error {
 	p := sqlc.CreateCombatantParams{EncounterID: enc.ID, Ac: 10, HpVisible: form.HPVisible}
 	count := 1
 	switch c.PostForm("kind") {
-	case "pc":
+	case views.KindPC:
 		ch, err := a.Store.GetCharacter(ctx, refID)
 		if !a.found(c, err) || !a.sameCampaign(c, ch.CampaignID, enc.CampaignID) {
 			return nil
@@ -131,7 +131,7 @@ func (a *App) addCombatant(c *gin.Context) error {
 			return err
 		}
 		p.CharacterID, p.Name, p.Ac = nullID(ch.ID), ch.Name, int64(ac)
-	case "entity":
+	case views.KindEntity:
 		e, err := a.Store.GetEntity(ctx, refID)
 		if !a.found(c, err) || !a.sameCampaign(c, e.CampaignID, enc.CampaignID) {
 			return nil
@@ -143,7 +143,7 @@ func (a *App) addCombatant(c *gin.Context) error {
 			}
 			p.Name = e.Name
 		}
-	case "monster":
+	case views.KindMonster:
 		if err := a.monsterStats(ctx, refID, &p); errors.Is(err, sql.ErrNoRows) {
 			a.fail(c, http.StatusNotFound, "No such monster.")
 			return nil
@@ -237,12 +237,42 @@ func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int) (int, 
 		if round < 1 {
 			return 0, 0, nil, userError{errors.New("this is the first turn")}
 		}
-		if !outOfFight(rows[i]) {
+		if !outOfFight(rows[i], pcSheet(rows[i])) {
 			return i, round, skipped, nil
 		}
 		skipped = append(skipped, rows[i].Name)
 	}
 	return 0, 0, nil, userError{errors.New("everyone is out of the fight")}
+}
+
+// passTurn hands the turn on before the combatants that gone matches are
+// deleted, so removing the active one neither restarts the order (the foreign
+// key would null it) nor skips anyone still in the fight. Passing the last one's turn starts the
+// next round, as Next does.
+func passTurn(ctx context.Context, q *sqlc.Queries, encounterID int64, gone func(sqlc.ListCombatantsRow) bool) error {
+	enc, err := q.GetEncounter(ctx, encounterID)
+	if err != nil || enc.Status != enum.EncounterActive || !enc.ActiveCombatantID.Valid {
+		return err
+	}
+	rows, err := q.ListCombatants(ctx, encounterID)
+	if err != nil {
+		return err
+	}
+	i := slices.IndexFunc(rows, func(r sqlc.ListCombatantsRow) bool { return r.ID == enc.ActiveCombatantID.Int64 })
+	if i < 0 || !gone(rows[i]) {
+		return nil
+	}
+	next := sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: enc.Status, Round: enc.Round}
+	for j := i + 1; j <= i+len(rows); j++ {
+		if r := rows[j%len(rows)]; !gone(r) && !outOfFight(r, pcSheet(r)) {
+			next.ActiveCombatantID = nullID(r.ID)
+			if j >= len(rows) {
+				next.Round++
+			}
+			break
+		}
+	}
+	return q.UpdateEncounterState(ctx, next)
 }
 
 // encounterAction runs start, roll, next, prev, end and delete.
@@ -306,6 +336,12 @@ func (a *App) encounterAction(c *gin.Context) error {
 			}
 			if err := needInitiative(); err != nil {
 				return err
+			}
+			// The tracker names the turn it showed; a repeated or stale press must not skip one.
+			seenActive, hasActive := formInt(c, views.TurnActiveField)
+			seenRound, hasRound := formInt(c, views.TurnRoundField)
+			if hasActive && seenActive != enc.ActiveCombatantID.Int64 || hasRound && seenRound != enc.Round {
+				return userError{errors.New("the turn already moved on")}
 			}
 			i := slices.IndexFunc(rows, func(r sqlc.ListCombatantsRow) bool { return r.ID == enc.ActiveCombatantID.Int64 })
 			dir := 1
@@ -402,7 +438,12 @@ func (a *App) combatantAction(c *gin.Context) error {
 	case "condition":
 		err = a.combatantCondition(c, cb, enc)
 	case "delete":
-		err = a.Store.DeleteCombatant(ctx, id)
+		err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+			if err := passTurn(ctx, q, enc.ID, func(r sqlc.ListCombatantsRow) bool { return r.ID == id }); err != nil {
+				return err
+			}
+			return q.DeleteCombatant(ctx, id)
+		})
 	default:
 		err = userError{errors.New("unknown action")}
 	}
@@ -425,7 +466,7 @@ func (a *App) rollInitiative(ctx context.Context, cb sqlc.Combatant) (sql.NullIn
 
 // rollFor is d20 plus the row's initiative bonus.
 func rollFor(r sqlc.ListCombatantsRow) sql.NullInt64 {
-	return sql.NullInt64{Int64: int64(rand.IntN(20) + 1 + initiativeMod(r)), Valid: true} //nolint:gosec // a game die, not a secret
+	return sql.NullInt64{Int64: int64(rand.IntN(20) + 1 + initiativeMod(r, pcSheet(r))), Valid: true} //nolint:gosec // a game die, not a secret
 }
 
 // combatantRow is cb with its character's or statblock's data.
@@ -480,7 +521,7 @@ func (a *App) combatantHP(c *gin.Context, cb sqlc.Combatant) error {
 		return err
 	}
 	conds = slices.DeleteFunc(conds, func(c sqlc.Condition) bool { return c.CombatantID.Int64 != cb.ID })
-	d := combatantDefenses(r, conds)
+	d := combatantDefenses(r, pcSheet(r), conds)
 	kind, when, err := damageChoice(kind, d)
 	if err != nil {
 		return err

@@ -826,7 +826,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</div><p class=\"text-xs text-muted-foreground\">Pick one ability for +2, two different abilities for +1 each, or a feat.</p>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</div><p class=\"text-xs text-muted-foreground\">Pick one ability for +2, two different abilities for +1 each, or a feat. A higher Constitution modifier adds hit points for every level, earlier ones included.</p>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

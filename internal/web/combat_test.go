@@ -150,3 +150,103 @@ func TestMonsterPortrait(t *testing.T) {
 		}
 	}
 }
+
+// activeFight starts an encounter of n combatants with distinct initiative
+// and walks it to the turn of number turn (1-based). The test character is
+// combatant number pc (1-based), or none for 0.
+func activeFight(t *testing.T, e testEnv, gm string, n, turn, pc int) (sqlc.Encounter, []sqlc.ListCombatantsRow) {
+	t.Helper()
+	ctx := t.Context()
+	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	for i := range n {
+		p := sqlc.CreateCombatantParams{EncounterID: enc.ID, Name: fmt.Sprint("C", i+1), Initiative: sql.NullInt64{Int64: int64(100 - i), Valid: true}}
+		if i+1 == pc {
+			p.CharacterID = nullID(e.characterID)
+		}
+		if _, err := e.q().CreateCombatant(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/start", enc.ID), gm, nil, true)
+	for range turn - 1 {
+		e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/next", enc.ID), gm, nil, true)
+	}
+	rows, _ := e.q().ListCombatants(ctx, enc.ID)
+	return enc, rows
+}
+
+// TestDeleteActiveCombatant checks removing the combatant whose turn it is
+// hands the turn to the next one, in the same round.
+func TestDeleteActiveCombatant(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	gm := e.token(t, enum.RoleAdmin)
+	enc, rows := activeFight(t, e, gm, 6, 4, 0)
+	e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/delete", rows[3].ID), gm, nil, true)
+	got, _ := e.q().GetEncounter(ctx, enc.ID)
+	if got.ActiveCombatantID.Int64 != rows[4].ID || got.Round != 1 {
+		t.Fatalf("after delete: active %d round %d, want %d round 1", got.ActiveCombatantID.Int64, got.Round, rows[4].ID)
+	}
+	e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/next", enc.ID), gm, nil, true)
+	got, _ = e.q().GetEncounter(ctx, enc.ID)
+	if got.ActiveCombatantID.Int64 != rows[5].ID || got.Round != 1 {
+		t.Errorf("next: active %d round %d, want %d round 1", got.ActiveCombatantID.Int64, got.Round, rows[5].ID)
+	}
+}
+
+// TestDeleteActiveCombatantSkipsOut checks the turn passes over a combatant
+// out of the fight, as Next does.
+func TestDeleteActiveCombatantSkipsOut(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	enc, rows := activeFight(t, e, gm, 4, 2, 0)
+	if err := e.q().SetCombatantHP(t.Context(), sqlc.SetCombatantHPParams{ID: rows[2].ID, Hp: 0, MaxHp: 7}); err != nil {
+		t.Fatal(err)
+	}
+	e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/delete", rows[1].ID), gm, nil, true)
+	got, _ := e.q().GetEncounter(t.Context(), enc.ID)
+	if got.ActiveCombatantID.Int64 != rows[3].ID || got.Round != 1 {
+		t.Errorf("active %d round %d, want %d round 1", got.ActiveCombatantID.Int64, got.Round, rows[3].ID)
+	}
+}
+
+// TestDeleteActiveCombatantLast checks the last one's turn wraps to the
+// first of the next round.
+func TestDeleteActiveCombatantLast(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	enc, rows := activeFight(t, e, gm, 3, 3, 0)
+	e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/delete", rows[2].ID), gm, nil, true)
+	got, _ := e.q().GetEncounter(t.Context(), enc.ID)
+	if got.ActiveCombatantID.Int64 != rows[0].ID || got.Round != 2 {
+		t.Errorf("active %d round %d, want %d round 2", got.ActiveCombatantID.Int64, got.Round, rows[0].ID)
+	}
+}
+
+// TestDeleteCharacterActiveCombatant checks deleting the character whose
+// turn it is hands the turn on, as deleting the combatant does.
+func TestDeleteCharacterActiveCombatant(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	enc, rows := activeFight(t, e, gm, 3, 2, 2)
+	e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/remove", e.characterID), gm, nil, true)
+	got, _ := e.q().GetEncounter(t.Context(), enc.ID)
+	if got.ActiveCombatantID.Int64 != rows[2].ID || got.Round != 1 {
+		t.Errorf("active %d round %d, want %d round 1", got.ActiveCombatantID.Int64, got.Round, rows[2].ID)
+	}
+}
+
+// TestNextTwice checks a repeated Next from a stale tracker does not skip a turn.
+func TestNextTwice(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	enc, rows := activeFight(t, e, gm, 4, 1, 0)
+	form := url.Values{"active": {fmt.Sprint(rows[0].ID)}, "round": {"1"}}
+	for range 2 {
+		e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/next", enc.ID), gm, form, true)
+	}
+	got, _ := e.q().GetEncounter(t.Context(), enc.ID)
+	if got.ActiveCombatantID.Int64 != rows[1].ID {
+		t.Errorf("active %d, want %d", got.ActiveCombatantID.Int64, rows[1].ID)
+	}
+}

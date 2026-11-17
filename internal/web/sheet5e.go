@@ -67,19 +67,32 @@ func (a *App) runLine(ctx context.Context, ch sqlc.Character, line string, raw .
 	return a.runCommand(ctx, ch, cmd)
 }
 
-// pcSheet is a PC row's live sheet; ok is false for other combatants.
-func pcSheet(r sqlc.ListCombatantsRow) (dnd5e.Sheet, bool) {
+// pcSheet is a PC row's live sheet, nil for other combatants. Parse it once
+// per row and pass it to the helpers below.
+func pcSheet(r sqlc.ListCombatantsRow) *dnd5e.Sheet {
 	if !r.SheetJson.Valid {
-		return dnd5e.Sheet{}, false
+		return nil
 	}
 	s, err := dnd5e.ParseSheet(r.SheetJson.String)
-	return s, err == nil
+	if err != nil {
+		return nil
+	}
+	return &s
+}
+
+// combatantArmorClass is a PC's AC from the sheet (the stored one is from
+// when they joined), else the row's.
+func combatantArmorClass(r sqlc.ListCombatantsRow, s *dnd5e.Sheet) int64 {
+	if s != nil {
+		return int64(s.ArmorClass())
+	}
+	return r.Ac
 }
 
 // initiativeMod is the bonus a combatant adds to its initiative roll: a PC's
 // from the sheet, a monster's (or a statted NPC's) from its statblock.
-func initiativeMod(r sqlc.ListCombatantsRow) int {
-	if s, ok := pcSheet(r); ok {
+func initiativeMod(r sqlc.ListCombatantsRow, s *dnd5e.Sheet) int {
+	if s != nil {
 		return s.Initiative()
 	}
 	if r.MonsterData.Valid {
@@ -92,9 +105,9 @@ func initiativeMod(r sqlc.ListCombatantsRow) int {
 
 // combatantDefenses are how a combatant takes damage: a PC's sheet or a
 // statblock's free text, all of it resisted while Petrified.
-func combatantDefenses(r sqlc.ListCombatantsRow, conds []sqlc.Condition) dnd5e.Defenses {
+func combatantDefenses(r sqlc.ListCombatantsRow, s *dnd5e.Sheet, conds []sqlc.Condition) dnd5e.Defenses {
 	var d dnd5e.Defenses
-	if s, ok := pcSheet(r); ok {
+	if s != nil {
 		d = s.Defenses()
 	} else if r.MonsterData.Valid {
 		if md, err := compendium.Decode[compendium.MonsterData](enum.KindMonster, r.MonsterData.String); err == nil {
@@ -111,8 +124,8 @@ func petrified(conds []sqlc.Condition) bool {
 
 // outOfFight reports a combatant whose turn is skipped: a monster or NPC at
 // 0 HP, or a PC who failed three death saves (a PC at 0 HP still rolls them).
-func outOfFight(r sqlc.ListCombatantsRow) bool {
-	if s, ok := pcSheet(r); ok {
+func outOfFight(r sqlc.ListCombatantsRow, s *dnd5e.Sheet) bool {
+	if s != nil {
 		return s.DeathSaves.Failures >= dnd5e.MaxDeathSaves
 	}
 	return !r.CharacterID.Valid && r.Hp <= 0 && r.MaxHp > 0
