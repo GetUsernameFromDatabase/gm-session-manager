@@ -91,6 +91,8 @@ variables override it.
 (`compendium/`). Back up this folder to keep your campaigns; stop the
 server first, or copy the `-wal` and `-shm` files with the database.
 
+App-wide settings changed in the app (not per campaign) are kept in `DATA_DIR/settings.json`.
+
 ## Compendium (2024 SRD)
 
 The importer reads data folders from `DATA_DIR/compendium/<source>/`. For
@@ -151,12 +153,13 @@ cmd/gm-session-manager/   main: config, DB, hub, HTTPS server
 cmd/vendorjs/             downloads pinned browser JS into internal/web/assets/vendor
 internal/                 every package below; not importable outside this module
   config/                 .env loading and fail-fast validation
+  enum/                   typed values of every SQL CHECK list (wired through sqlc overrides)
   db/                     migrations/, queries/ (sqlc input), sqlc/ (generated), Open, Migrate, Store.InTx
   auth/                   session tokens, cookie, middleware, admin and loopback checks
   perm/                   every permission and visibility rule (characters, combatants, note blocks, entities)
   hub/                    websocket hub: (epoch, seq) events, catch-up ring, live-view patches, pending join requests
   dnd5e/                  5e sheet, commands (Parse/Apply), slots, level-up
-  compendium/             Open5e importer, search, homebrew
+  compendium/             importers (Open5e, 5etools, AideDD, Wikidot, web pages), search, homebrew
   export/                 campaign zip (notes as Markdown, characters as JSON)
   join/                   LAN addresses, TLS certificate, HTTP→HTTPS redirect on the same port, QR code
   web/                    router, *_handlers.go, render.go (view models), live.go (live views, /live); sheet5e*.go is 5e

@@ -23,14 +23,14 @@ Each note block is its own collaborative document (TipTap, `assets/js/notes.js`)
 
 - shadcn-templ (shadcn-templ.com, github.com/axadrn/shadcn-templ), not templUI. Use its components for every control, never native `<select>`/`<dialog>`/hand-styled inputs; add missing ones with `go tool shadcn-templ add <name>`. Its Select and popovers portal to `<body>`, so they fail inside a native `<dialog>`: use the shadcn Dialog.
 - A `.templ` holds only imports and `templ` components: its types, consts, vars and helper funcs go in `<name>_view.go` beside it (templ copies them into `_templ.go`; `TestTemplHasNoGoDecls`).
-- Reuse the helpers: `formSelect`/`selectItems` (combat.templ), `checkField` (notes.templ), `inlineField` (compendium.templ), `removeButton`.
+- Reuse the helpers: `formSelect` (combat.templ)/`selectItems` (combat_view.go), `checkField` (notes.templ), `inlineField` (compendium.templ), `removeButton`.
 - Dates: `@localTime(t)` (layout.templ), never `Format` in a template (UTC in SQLite, app.js localizes).
 - Addresses: every view state lives in the URL, so a copied address shows the same view to whoever opens it. The compendium's campaign is in the path (`/campaigns/:campaign/compendium/...`; `/compendium` is the whole one): build links with `CompendiumPath(ctx, …)`/`entryHref` in templates (`Page` and the route put the campaign on ctx) and `compendiumPath(c, …)` in handlers, never a literal `/compendium`. Files works the same way (`/campaigns/:campaign/files`, `/files` for all; `FilesBase`); both share `campaignSwitcher` (`Layout.Switch`).
 - Toggled states: `aria-pressed:` or `data-[…]:` variants, so a live update flips one attribute.
 - Capped checkbox groups: `data-max-checked="N"` on the element holding the boxes (count 1 is a radio group instead). app.js counts its named, enabled, ticked boxes (known ones have no name, taught ones a disabled input) and at N greys the unticked out via the checkbox root's `aria-disabled`, never the input's `disabled`, which `data-hide-for` owns. Give it an `id` and `#<id>-count` shows the live count. Browser help only: the server check stays.
 - Slow forms: `data-busy` + class `group/busy` + `@busyIndicator("…")` inside; app.js sets `aria-busy` and disables submit buttons.
 - Previews fetch nothing while hidden: check `checkVisibility()` first; image lists use `loading="lazy"`.
-- Long lists and notices (books, sources, import summaries) scroll inside a capped box (`scrollBox` in `views/fivetools.go`), so the controls around them stay close together.
+- Long lists and notices (books, sources, import summaries) scroll inside a capped box (`scrollBox` in `views/import_view.go`), so the controls around them stay close together.
 - Narrow screens: a grid column needs `min-w-0` before a child's `max-w-full` or truncation works; in a `flex-wrap` row of icon + text + button, give the text `min-w-0 grow basis-48`.
 - `sr-only` (or any absolute) text in rows of an `overflow-*-auto` list needs a `relative` row, or the page scrolls far past the body.
 
@@ -38,6 +38,7 @@ Each note block is its own collaborative document (TipTap, `assets/js/notes.js`)
 
 A handler with an error path returns `error` and is registered as `a.h(a.x)`: a `userError` is a 422, `sql.ErrNoRows` a 404, anything else a 500. Access helpers that answer themselves (`characterAccess`, `idParam`, `bindForm`, …) stay `ok`-returning; the handler then does `return nil`. Never return a non-nil error after writing a response.
 
+- A command reads the row it changes inside its own transaction, never from a read made before it. A button whose meaning depends on what the page showed (combat Next/Previous) posts that state, kept current by the live view, and the server refuses a mismatch, so a repeated or stale press does nothing.
 - A refused plain form post shows a bare error page and loses what was typed: editors post through htmx (`hx-encoding="multipart/form-data"` for files) and answer with `redirect(c, …)`, not `c.Redirect`.
 - The request log keeps POST bodies except where `keepsBody` (`reqlog.go`, matched on the route pattern) says no. A new route whose body can carry a player's private text (note titles, blocks) goes there, or that text reaches the GM's reports.
 - Browsers post every line break as `\r\n`, hidden inputs included; Go's CSV reader stores `\n`. Normalize before comparing a posted value with a stored one.

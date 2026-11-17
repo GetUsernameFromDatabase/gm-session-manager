@@ -5714,7 +5714,7 @@ func spellPicker(s SheetView, id, placeholder string, autofocus bool) templ.Comp
 			}
 			ctx = templ.InitializeContext(ctx)
 			templ_7745c5c3_Err = inputgroup.Input(inputgroup.InputProps{Name: "q", Placeholder: placeholder, Attributes: templ.Attributes{
-				"hx-get":       fmt.Sprintf("/compendium/search?kind=spell&character=%d", s.ID),
+				"hx-get":       CompendiumPath(ctx, fmt.Sprintf("/search?kind=spell&character=%d", s.ID)),
 				"hx-trigger":   "input changed delay:200ms, keyup[key=='Enter']",
 				"hx-target":    "#" + id + " ul",
 				"hx-swap":      "innerHTML",
@@ -6282,7 +6282,7 @@ func itemPicker(id, name, placeholder string, autofocus bool) templ.Component {
 			ctx = templ.InitializeContext(ctx)
 			templ_7745c5c3_Err = combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: placeholder, Attributes: templ.Attributes{
 				"maxlength": "200", "autofocus": autofocus, "aria-label": "Item", "data-combobox-create-input": "",
-				"hx-get": "/compendium/search?kind=item&format=combobox", "hx-vals": "js:{q: this.value}",
+				"hx-get": CompendiumPath(ctx, "/search?kind=item&format=combobox"), "hx-vals": "js:{q: this.value}",
 				"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-list", "hx-swap": "innerHTML",
 			}}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {

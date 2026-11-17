@@ -1,0 +1,451 @@
+package views
+
+import (
+	"cmp"
+	"fmt"
+	"gm-session-manager/internal/compendium"
+	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/web/components/badge"
+	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/icon"
+	"gm-session-manager/internal/web/utils"
+	"strings"
+)
+
+templ EntryPage(l Layout, v EntryView) {
+	@Page(l) {
+		{{ pictured := v.Entry.Kind == enum.KindMonster && v.Entry.ImageUrl.String != "" }}
+		<div class="mb-4 flex flex-wrap items-center gap-2">
+			@button.Button(button.Props{Href: cmp.Or(v.Back, CompendiumPath(ctx, "")), Variant: button.VariantGhost, Size: button.SizeSm, Class: "-ml-2.5"}) {
+				@icon.ArrowLeft()
+				Compendium
+			}
+			<div class="mr-auto">
+				@campaignSwitcher(l)
+			</div>
+			if v.CanEdit {
+				@button.Button(button.Props{Href: entryHref(ctx, v.Entry.ID) + "/edit", Variant: button.VariantOutline, Size: button.SizeSm}) {
+					@icon.Pencil()
+					Edit
+				}
+			}
+		</div>
+		// Like an NPC page: the picture leads, sticky beside the stat block on desktop.
+		<div class={ utils.IfElse(pictured, "grid gap-6 md:grid-cols-[2fr_3fr] md:gap-8", "max-w-2xl") }>
+			if pictured {
+				<div class="md:sticky md:top-20 md:self-start">
+					@monsterPicture(v.Entry, v.IsGM, "max-h-[70vh] w-full")
+				</div>
+			}
+			<article class="statblock min-w-0">
+				@entryHead(v.Entry, false)
+				@entryBody(v.Data)
+				@MonsterHabitats(v.Entry, v.Habitats, v.IsGM, v.HabitatCopies)
+			</article>
+			if !pictured && v.IsGM && v.Entry.Kind == enum.KindMonster {
+				<div class="mt-4">
+					@monsterPicture(v.Entry, true, "")
+				</div>
+			}
+		</div>
+		<footer class="mt-10 max-w-2xl border-t pt-3 text-xs text-muted-foreground">
+			<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+				<dt class="font-medium">Source</dt>
+				<dd>{ v.Source.SourceKey }{ commaPrefixed(v.Source.Edition) }</dd>
+				<dt class="font-medium">License</dt>
+				<dd>{ v.Source.License }</dd>
+				if len(v.Copies) > 0 {
+					<dt class="font-medium">Also in</dt>
+					<dd>
+						for i, c := range v.Copies {
+							if i > 0 {
+								{ ", " }
+							}
+							<a class="underline underline-offset-4" href={ templ.SafeURL(entryHref(ctx, c.ID)) } title={ c.Attribution }>{ copyLabel(c) }</a>
+						}
+						if v.IsGM {
+							<a class="ml-2 underline underline-offset-4" href={ templ.SafeURL(compareHref(ctx, v.Entry.Kind, v.Entry.Slug)) }>Compare</a>
+						}
+					</dd>
+				}
+				if v.Source.Attribution != "" {
+					<dt class="font-medium">Attribution</dt>
+					<dd>{ v.Source.Attribution }</dd>
+				}
+			</dl>
+		</footer>
+	}
+}
+
+// ComparePage sets an entry's copies side by side, best first: the first is
+// the one lists show, and the priority card changes which.
+templ ComparePage(l Layout, v CompareView) {
+	@Page(l) {
+		<div class="mb-4 flex flex-wrap items-center gap-2">
+			@button.Button(button.Props{Href: CompendiumPath(ctx, "?tab="+CompendiumTabImport), Variant: button.VariantGhost, Size: button.SizeSm, Class: "-ml-2.5"}) {
+				@icon.ArrowLeft()
+				Source priority
+			}
+			<div class="mr-auto">
+				@campaignSwitcher(l)
+			</div>
+		</div>
+		<h1 class="mb-1 text-2xl font-semibold">{ v.Copies[0].Entry.Name }</h1>
+		<p class="mb-4 text-sm text-muted-foreground">
+			{ fmt.Sprintf("%d %s, in priority order. Lists show the first.", len(v.Copies), utils.IfElse(len(v.Copies) == 1, "copy", "copies")) }
+		</p>
+		// Columns fill the width whatever the number of copies; phones stack them.
+		<div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-4">
+			for i, c := range v.Copies {
+				<section class="min-w-0">
+					<div class="mb-2 flex flex-wrap items-center gap-2 text-sm">
+						<span class="font-medium" title={ c.Source.Attribution }>{ copyLabel(c.Source) }</span>
+						if i == 0 {
+							@badge.Badge(badge.Props{}) {
+								Shown
+							}
+						}
+						<a class="ml-auto text-muted-foreground underline underline-offset-4" href={ templ.SafeURL(entryHref(ctx, c.Entry.ID)) }>Open entry</a>
+					</div>
+					<article class="statblock">
+						@entryHead(c.Entry, true)
+						@entryBody(c.Data)
+					</article>
+				</section>
+			}
+		</div>
+	}
+}
+
+// entryHead is the stat block's name and kind; previews link the name.
+templ entryHead(e sqlc.CompendiumEntry, preview bool) {
+	<header class="flex items-start justify-between gap-3">
+		if preview {
+			<a class="text-xl leading-tight font-semibold text-statblock-ink hover:underline" href={ templ.SafeURL(entryHref(ctx, e.ID)) }>{ e.Name }</a>
+		} else {
+			<h1 class="text-3xl leading-tight font-semibold text-statblock-ink">{ e.Name }</h1>
+		}
+		<span class="mt-1 font-sans">
+			@kindBadge(e.Kind, e.IsHomebrew)
+		</span>
+	</header>
+}
+
+// EntryPreview is the hover card on compendium lists.
+templ EntryPreview(e sqlc.CompendiumEntry, data any, habitats []enum.Habitat) {
+	// The pane is a column: the name stays put and only the body scrolls,
+	// so nothing passes behind it.
+	<div class="shrink-0 border-b bg-statblock-paper px-4 pt-3 pb-2 font-serif">
+		@entryHead(e, true)
+	</div>
+	<div class="statblock min-h-0 flex-1 overflow-y-auto rounded-none border-0 pt-2 text-sm sm:p-4 sm:pt-2">
+		@monsterPicture(e, false, "max-h-48")
+		@entryBody(data)
+		@MonsterHabitats(e, habitats, false, nil)
+	</div>
+}
+
+// MonsterHabitats is a monster's habitat line; for the GM, while it has none,
+// a button per copy that has some takes them over (redrawing this line).
+templ MonsterHabitats(e sqlc.CompendiumEntry, habitats []enum.Habitat, gm bool, copies []HabitatCopy) {
+	if e.Kind == enum.KindMonster && (len(habitats) > 0 || gm) {
+		<div id="monster-habitats">
+			@rule()
+			<p>
+				<strong>Habitat</strong> { utils.IfElse(len(habitats) > 0, inHabitatOrder(habitats), "none set") }
+				if gm {
+					<a class="ml-2 font-sans text-xs text-muted-foreground underline underline-offset-4" href={ habitatsURL(ctx, e.Name) }>Edit habitats</a>
+				}
+			</p>
+			if gm && len(habitats) == 0 && len(copies) > 0 {
+				<div class="mt-1 flex flex-wrap gap-1 font-sans">
+					for _, c := range copies {
+						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "h-auto min-w-0 py-1 text-left whitespace-normal", Attributes: templ.Attributes{
+							"type": "button", "hx-post": "/compendium/habitats/copy",
+							"hx-vals":   toJSON(map[string]any{"entry_id": e.ID, "from_id": c.Copy.ID}),
+							"hx-target": "#monster-habitats", "hx-swap": "outerHTML",
+						}}) {
+							@icon.Copy()
+							{ "Copy from " + copyLabel(c.Copy) + " (" + inHabitatOrder(c.Habitats) + ")" }
+						}
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+// monsterPicture shows a monster's linked picture; a dead link hides itself.
+// For the GM, clicking it (or its failing to load) reveals the link form.
+// class sizes the picture.
+templ monsterPicture(e sqlc.CompendiumEntry, editable bool, class string) {
+	if e.Kind == enum.KindMonster {
+		{{ imgClass := utils.CN("rounded-lg border bg-muted object-contain", class) }}
+		if !editable {
+			if e.ImageUrl.String != "" {
+				<img src={ e.ImageUrl.String } alt={ e.Name } loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" class={ utils.CN(imgClass, "mb-3") }/>
+			}
+		} else {
+			<div data-pic class="group/pic space-y-2">
+				if e.ImageUrl.String != "" {
+					@button.Button(button.Props{Variant: button.VariantGhost, Class: "h-auto w-full p-0 group-data-[broken]/pic:hidden", Attributes: templ.Attributes{
+						"type": "button", "title": "Change picture", "onclick": templ.JSUnsafeFuncCall("this.closest('[data-pic]').toggleAttribute('data-editing')"),
+					}}) {
+						<img src={ e.ImageUrl.String } alt={ e.Name } loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('[data-pic]').toggleAttribute('data-broken', true)" class={ imgClass }/>
+					}
+				}
+				<form method="post" action={ templ.SafeURL(entryHref(ctx, e.ID) + "/image") } class={ "flex-wrap items-center gap-2", templ.KV("hidden group-data-[broken]/pic:flex group-data-[editing]/pic:flex", e.ImageUrl.String != ""), templ.KV("flex", e.ImageUrl.String == "") }>
+					@inlineField("Picture link", "image_url", e.ImageUrl.String, "w-96 max-w-full", templ.Attributes{"type": "url", "pattern": "https://.*", "placeholder": "https://… (empty: no picture)"})
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+						Save
+					}
+				</form>
+			</div>
+		}
+	}
+}
+
+// EntryDetails is an entry's body alone, for places that show it inline.
+templ EntryDetails(data any) {
+	@entryBody(data)
+}
+
+templ entryBody(data any) {
+	switch d := data.(type) {
+		case *compendium.MonsterData:
+			@monsterBody(d)
+		case *compendium.SpellData:
+			@spellBody(d)
+		case *compendium.ItemData:
+			@itemBody(d)
+		case *compendium.ClassData:
+			@classBody(d)
+		case *compendium.TextData:
+			@textBody(d)
+	}
+}
+
+templ prose(text string) {
+	if text != "" {
+		@markdown(text)
+	}
+}
+
+templ namedParts(parts []compendium.NameDesc) {
+	for _, p := range parts {
+		@markdown("**" + p.Name + ".** " + p.Desc)
+	}
+}
+
+// rule is the stat block's tapered divider.
+templ rule() {
+	<hr class="statblock-rule"/>
+}
+
+// subtitle is the italic line under an entry's name.
+templ subtitle() {
+	<p class="text-muted-foreground italic first-letter:uppercase">
+		{ children... }
+	</p>
+}
+
+// fact is one labelled figure in an entry's facts grid; empty values are left out.
+templ fact(name, value string) {
+	if value != "" {
+		<div>
+			<dt class="font-semibold">{ name }</dt>
+			<dd>{ value }</dd>
+		</div>
+	}
+}
+
+templ monsterBody(d *compendium.MonsterData) {
+	@subtitle() {
+		{ strings.TrimSpace(d.Size + " " + d.Type) }{ commaPrefixed(d.Alignment) }
+	}
+	@rule()
+	<p><strong>AC</strong> { fmt.Sprint(d.AC) } { parenthesized(d.ACDetail) }<strong class="ml-4">Initiative</strong> { dnd5e.Signed(d.Initiative) }</p>
+	<p><strong>HP</strong> { fmt.Sprint(d.HP) } { parenthesized(d.HitDice) }</p>
+	if len(d.Speed) > 0 {
+		<p><strong>Speed</strong> { speeds(d.Speed) }</p>
+	}
+	if len(d.Abilities) > 0 {
+		@rule()
+		<dl class="grid grid-cols-3 gap-y-2 text-center tabular-nums sm:grid-cols-6">
+			for _, a := range dnd5e.Abilities {
+				<div>
+					<dt class="text-xs font-semibold text-statblock-ink uppercase">{ a }</dt>
+					<dd>{ fmt.Sprint(d.Abilities[a]) } <span class="text-muted-foreground">({ dnd5e.Signed(dnd5e.Modifier(d.Abilities[a])) })</span></dd>
+				</div>
+			}
+		</dl>
+	}
+	if len(d.Saves) > 0 || len(d.Skills) > 0 || d.Resistance != "" || d.Immunity != "" || d.Vulnerability != "" || d.Senses != "" || d.Languages != "" || d.CR != "" {
+		@rule()
+	}
+	if len(d.Saves) > 0 {
+		<p><strong>Saves</strong> { signedMap(d.Saves, dnd5e.Abilities) }</p>
+	}
+	if len(d.Skills) > 0 {
+		<p><strong>Skills</strong> { signedMap(d.Skills, sortedKeys(d.Skills)) }</p>
+	}
+	if d.Resistance != "" {
+		<p><strong>Resistances</strong> { d.Resistance }</p>
+	}
+	if d.Immunity != "" {
+		<p><strong>Immunities</strong> { d.Immunity }</p>
+	}
+	if d.Vulnerability != "" {
+		<p><strong>Vulnerabilities</strong> { d.Vulnerability }</p>
+	}
+	if d.Senses != "" {
+		<p><strong>Senses</strong> { d.Senses }</p>
+	}
+	if d.Languages != "" {
+		<p><strong>Languages</strong> { d.Languages }</p>
+	}
+	if d.CR != "" {
+		<p><strong>CR</strong> { crText(d.CR) }</p>
+	}
+	if d.Desc != "" {
+		@rule()
+		@prose(d.Desc)
+	}
+	if len(d.Traits) > 0 {
+		<h3 class="mt-4 font-semibold">Traits</h3>
+		@namedParts(d.Traits)
+	}
+	{{ section := "" }}
+	for _, a := range d.Actions {
+		if a.Type != section {
+			{{ section = a.Type }}
+			<h3 class="mt-4 font-semibold capitalize">{ strings.ReplaceAll(a.Type, "_", " ") }s</h3>
+		}
+		@markdown("**" + a.Name + ".** " + a.Desc)
+	}
+}
+
+templ spellBody(d *compendium.SpellData) {
+	@subtitle() {
+		if d.Level == 0 {
+			{ d.School } cantrip
+		} else {
+			Level { fmt.Sprint(d.Level) } { d.School }
+		}
+		if d.Ritual {
+			(ritual)
+		}
+	}
+	@rule()
+	<dl class={ factsGrid }>
+		@fact("Casting time", d.CastingTime)
+		@fact("Range", d.Range)
+		@fact("Components", d.Components)
+		@fact("Duration", utils.IfElse(d.Concentration, "Concentration, ", "")+d.Duration)
+	</dl>
+	@rule()
+	@prose(d.Desc)
+	if d.HigherLevel != "" {
+		@markdown("**At higher levels.** " + d.HigherLevel)
+	}
+	if len(d.Classes) > 0 {
+		<p class="mt-3 flex flex-wrap gap-1 font-sans">
+			@classBadges(d.Classes)
+		</p>
+	}
+}
+
+templ itemBody(d *compendium.ItemData) {
+	@subtitle() {
+		// One expression: templ puts a space after one that ends a line.
+		{ strings.ReplaceAll(d.Category, "-", " ") + commaPrefixed(d.Rarity) }
+		if d.Attunement {
+			(requires attunement)
+		}
+	}
+	if d.Damage != "" || d.Mastery != "" || d.ArmorClass != "" || d.Cost != "" || d.Weight != "" {
+		@rule()
+		<dl class={ factsGrid }>
+			@fact("Damage", d.Damage)
+			@fact("Properties", d.Properties)
+			if d.Mastery != "" {
+				<div>
+					<dt class="font-semibold">Mastery</dt>
+					<dd>
+						@MasteryLinks(d.Mastery)
+					</dd>
+				</div>
+			}
+			@fact("AC", d.ArmorClass)
+			@fact("Cost", utils.IfElse(d.Cost != "", d.Cost+" gp", ""))
+			@fact("Weight", utils.IfElse(d.Weight != "", d.Weight+" lb", ""))
+		</dl>
+	}
+	@rule()
+	@prose(d.Desc)
+}
+
+// MasteryLinks links each of a weapon's mastery properties ("Sap", or
+// "Nick, Vex") to its rule entry.
+templ MasteryLinks(mastery string) {
+	for i, m := range strings.Split(mastery, ", ") {
+		if i > 0 {
+			{ ", " }
+		}
+		<a class="underline" href={ templ.SafeURL(compendiumFindURL(ctx, enum.KindRule, compendium.Slugify(m))) }>{ m }</a>
+	}
+}
+
+templ classBody(d *compendium.ClassData) {
+	if d.SubclassOf != "" {
+		<p class="flex items-center gap-1 text-muted-foreground italic">
+			Subclass of
+			<span class="font-sans not-italic">
+				@classBadges([]string{d.SubclassOf})
+			</span>
+		</p>
+	}
+	if d.HitDie > 0 {
+		@rule()
+		<dl class={ factsGrid }>
+			@fact("Hit die", fmt.Sprintf("d%d", d.HitDie))
+			@fact("Spellcasting", d.Caster)
+			@fact("Saves", strings.Join(d.Saves, ", "))
+		</dl>
+	}
+	@rule()
+	@prose(d.Desc)
+	if len(d.Features) > 0 {
+		<h3 class="mt-4 font-semibold">Features</h3>
+	}
+	for _, f := range d.Features {
+		<details class="group/feat border-b border-statblock-ink/15 py-1.5 last:border-0">
+			<summary class="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+				@icon.ChevronRight(icon.Props{Size: 14, Class: "shrink-0 text-statblock-ink transition-transform group-open/feat:rotate-90"})
+				<strong class="mr-auto">{ f.Name }</strong>
+				if len(f.Levels) > 0 {
+					<span class="font-sans text-xs text-muted-foreground tabular-nums">Level { levelsText(f.Levels) }</span>
+				}
+			</summary>
+			<div class="mt-1 pl-5">
+				@markdown(f.Desc)
+			</div>
+		</details>
+	}
+}
+
+templ textBody(d *compendium.TextData) {
+	if d.Category != "" {
+		@subtitle() {
+			{ d.Category }
+		}
+	}
+	if d.Prerequisite != "" {
+		<p><strong>Prerequisite</strong> { d.Prerequisite }</p>
+	}
+	@rule()
+	@prose(d.Desc)
+	@namedParts(d.Parts)
+}

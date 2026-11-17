@@ -35,6 +35,8 @@ if [ -n "$latest" ] && ! newer "$v" "$latest" && [ -z "$force" ]; then
 fi
 [ -z "$(git status --porcelain --untracked-files=no)" ] || die "commit or stash your changes first"
 git merge-base --is-ancestor HEAD origin/main || die "HEAD is not on origin/main: push main first"
+go test ./... || die "tests failed"
+golangci-lint run || die "golangci-lint failed"
 
 git tag -a "$v" -m "$v"
 git push origin "$v"

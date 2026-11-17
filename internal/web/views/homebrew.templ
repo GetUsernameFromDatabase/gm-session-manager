@@ -1,0 +1,255 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/icon"
+	"gm-session-manager/internal/web/components/input"
+	"gm-session-manager/internal/web/components/label"
+	selectcomp "gm-session-manager/internal/web/components/select"
+	"gm-session-manager/internal/web/components/textarea"
+	"gm-session-manager/internal/web/utils"
+	"slices"
+	"strings"
+)
+
+// HomebrewPage edits a homebrew entry. Each kind's own fields show only
+// while that kind is chosen (data-kinds, app.js).
+templ HomebrewPage(l Layout, v HomebrewView) {
+	@Page(l) {
+		<div class="flex items-start gap-2">
+			<div class="mr-auto">
+				switch  {
+					case v.Page.ID != "":
+						@PageHeader("Import preview", "Check and edit the page before saving it.")
+					case v.ID == 0:
+						@PageHeader("New homebrew", utils.IfElse(v.IsGM, "Shared by every campaign.", "Shown in your campaign's compendium; the GM may share it with other campaigns."))
+					default:
+						@PageHeader("Edit "+v.Input.Name, "")
+				}
+			</div>
+			if v.ID != 0 {
+				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Class: quietDestructive, Attributes: templ.Attributes{
+					"form": homebrewFormID, "formaction": entryHref(ctx, v.ID) + "/delete", "formnovalidate": true, "type": "submit",
+					"onclick": templ.JSUnsafeFuncCall("return confirm('Delete this homebrew entry?')"), "aria-label": "Delete", "title": "Delete",
+				}}) {
+					@icon.Trash2()
+				}
+			}
+		</div>
+		if v.Error != "" {
+			@Notice(v.Error, true, "mb-4")
+		}
+		if v.Page.ID != "" {
+			<div class="mb-4 max-w-2xl space-y-1 text-sm text-muted-foreground">
+				<p>
+					From <a class="underline" href={ templ.SafeURL(v.Page.URL()) } target="_blank" rel="noopener">{ v.Page.URL() }</a>{ utils.IfElse(v.Page.Book != "", " ("+v.Page.Book+")", "") }. Nothing is saved until you press Save.
+				</p>
+				if v.Page.Site.Note != "" {
+					<p>{ v.Page.Site.Note }</p>
+				}
+				if v.Replaces != 0 {
+					<p>
+						Saving replaces the <a class="underline" href={ templ.SafeURL(entryHref(ctx, v.Replaces)) }>entry imported from this page before</a>.
+					</p>
+				}
+			</div>
+		}
+		<form id={ homebrewFormID } method="post" action={ templ.SafeURL(CompendiumPath(ctx, utils.IfElse(v.Page.ID != "", "/page", homebrewAction(v.ID)))) } class="group/busy max-w-2xl space-y-6" data-homebrew data-busy>
+			if v.AddToSheet {
+				<input type="hidden" name="add" value="1"/>
+			}
+			if v.Page.ID != "" {
+				<input type="hidden" name="site" value={ v.Page.Site.Key }/>
+				<input type="hidden" name="page" value={ v.Page.ID }/>
+				<input type="hidden" name="book" value={ v.Page.Book }/>
+				<input type="hidden" name="back" value={ v.Back }/>
+			}
+			<div class="flex flex-wrap gap-2">
+				// A page no parser knows the kind of leaves it to the GM.
+				if v.ID == 0 && (v.Page.ID == "" || v.Page.Kind() == "") {
+					@kindSelect(v.Input.Kind, v.IsGM)
+				} else {
+					<input type="hidden" name="kind" value={ string(v.Input.Kind) }/>
+					@kindBadge(v.Input.Kind, true)
+				}
+				@input.Input(input.Props{Name: "name", Value: v.Input.Name, Placeholder: "Name", Required: true, Class: "max-w-sm"})
+			</div>
+			<div class="space-y-3 text-sm" data-kinds="monster">
+				<h2 class={ sectionHeading }>Statistics</h2>
+				if v.Page.ID != "" {
+					<div class="flex flex-wrap items-center gap-3">
+						if v.Page.Image != "" {
+							<img src={ v.Page.Image } alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" class="max-h-32 rounded border object-contain"/>
+						}
+						@inlineField("Picture link", "image_url", v.Page.Image, "w-96 max-w-full", templ.Attributes{"type": "url", "pattern": "https://.*", "placeholder": "https://… (empty: no picture)"})
+					</div>
+				}
+				<div class="flex flex-wrap items-center gap-3">
+					@inlineField("Size", "size", v.Input.Size, "w-28", templ.Attributes{"placeholder": "Medium"})
+					@inlineField("Type", "monster_type", v.Input.MonsterType, "w-32", templ.Attributes{"placeholder": "fiend"})
+					@inlineField("Alignment", "alignment", v.Input.Alignment, "w-36", templ.Attributes{"placeholder": "chaotic evil"})
+				</div>
+				<div class="flex flex-wrap items-center gap-3">
+					@inlineField("AC", "ac", fmt.Sprint(v.Input.AC), "w-16", templ.Attributes{"type": "number", "min": "0"})
+					@inlineField("AC from", "ac_detail", v.Input.ACDetail, "w-36", templ.Attributes{"placeholder": "natural armor"})
+					@inlineField("HP", "hp", fmt.Sprint(v.Input.HP), "w-20", templ.Attributes{"type": "number", "min": "0"})
+					@inlineField("Hit dice", "hit_dice", v.Input.HitDice, "w-28", templ.Attributes{"placeholder": "12d10 + 24"})
+					@inlineField("Initiative", "initiative", fmt.Sprint(v.Input.Initiative), "w-16", templ.Attributes{"type": "number"})
+					@inlineField("CR", "cr", v.Input.CR, "w-16", nil)
+				</div>
+				// A link import's habitats, set on save; edit them on the Habitats page after.
+				if len(v.Input.Habitats) > 0 {
+					<p class="text-muted-foreground">Habitat: { inHabitatOrder(v.Input.Habitats) }</p>
+					for _, h := range v.Input.Habitats {
+						<input type="hidden" name="habitats" value={ string(h) }/>
+					}
+				}
+				// Laid out like the stat block's ability row.
+				<div class="grid max-w-md grid-cols-6 gap-2">
+					for _, a := range []struct {
+						key string
+						n   int
+					}{{dnd5e.Str, v.Input.Str}, {dnd5e.Dex, v.Input.Dex}, {dnd5e.Con, v.Input.Con}, {dnd5e.Int, v.Input.Int}, {dnd5e.Wis, v.Input.Wis}, {dnd5e.Cha, v.Input.Cha}} {
+						@label.Label(label.Props{Class: "flex-col items-stretch gap-1 text-center text-xs"}) {
+							{ strings.ToUpper(a.key) }
+							@input.Input(input.Props{Name: a.key, Value: fmt.Sprint(a.n), Class: "px-1 text-center", Attributes: templ.Attributes{"type": "number", "min": "0", "max": "30"}})
+						}
+					}
+				</div>
+				<div class="grid gap-3 sm:grid-cols-2">
+					@inlineField("Speed", "monster_speed", v.Input.MonsterSpeed, "w-full", templ.Attributes{"placeholder": "walk 40, fly 60"})
+					@inlineField("Saves", "monster_saves", v.Input.MonsterSaves, "w-full", templ.Attributes{"placeholder": "dex +6, wis +8"})
+					@inlineField("Skills", "monster_skills", v.Input.MonsterSkills, "w-full", templ.Attributes{"placeholder": "perception +5, stealth +6"})
+					@inlineField("Senses", "senses", v.Input.Senses, "w-full", templ.Attributes{"placeholder": "Darkvision 60 ft., Passive Perception 15"})
+					@inlineField("Languages", "languages", v.Input.Languages, "w-full", templ.Attributes{"placeholder": "Common, Abyssal"})
+					@inlineField("Resistances", "resistances", v.Input.Resistances, "w-full", templ.Attributes{"placeholder": "cold, fire"})
+					@inlineField("Immunities", "immunities", v.Input.Immunities, "w-full", templ.Attributes{"placeholder": "poison; frightened"})
+					@inlineField("Vulnerabilities", "vulnerabilities", v.Input.Vulnerable, "w-full", templ.Attributes{"placeholder": "radiant"})
+				</div>
+				<h2 class={ utils.CN(sectionHeading, "pt-3") }>Traits and actions</h2>
+				// Each section is one paragraph per entry, as "Name. What it does…".
+				for _, s := range []struct{ name, value, label string }{
+					{"traits", v.Input.Traits, "Traits"}, {"actions", v.Input.Actions, "Actions"}, {"bonus_actions", v.Input.BonusActions, "Bonus actions"},
+					{"reactions", v.Input.Reactions, "Reactions"}, {"legendary_actions", v.Input.Legendary, "Legendary actions"},
+				} {
+					@label.Label(label.Props{Class: "block space-y-1 font-normal"}) {
+						<span>{ s.label }</span>
+						@textarea.Textarea(textarea.Props{Name: s.name, Value: s.value, Rows: 4, Placeholder: "Name. What it does…\n\nNext name. …"})
+					}
+				}
+			</div>
+			<div class="grid gap-3 text-sm sm:grid-cols-2" data-kinds="spell">
+				<h2 class={ utils.CN(sectionHeading, "sm:col-span-2") }>Casting</h2>
+				@inlineField("Level (0 = cantrip)", "level", fmt.Sprint(v.Input.Level), "w-14", templ.Attributes{"type": "number", "min": "0", "max": "9"})
+				@inlineField("School", "school", v.Input.School, "w-40", templ.Attributes{"placeholder": "evocation"})
+				@inlineField("Casting time", "casting_time", v.Input.CastingTime, "w-40", templ.Attributes{"placeholder": "action, bonus action…"})
+				@inlineField("Range", "range", v.Input.Range, "w-40", templ.Attributes{"placeholder": "60 feet"})
+				@inlineField("Components", "components", v.Input.Components, "w-40", templ.Attributes{"placeholder": "V, S, M (a feather)"})
+				@inlineField("Duration", "duration", v.Input.Duration, "w-40", templ.Attributes{"placeholder": "instantaneous"})
+				@inlineField("Classes", "classes", v.Input.Classes, "w-40", templ.Attributes{"placeholder": "wizard, sorcerer"})
+				<div class="flex items-center gap-4">
+					@checkField("concentration", "true", v.Input.Concentration) {
+						Concentration
+					}
+					@checkField("ritual", "true", v.Input.Ritual) {
+						Ritual
+					}
+				</div>
+			</div>
+			<div class="space-y-3 text-sm" data-kinds="item">
+				<h2 class={ sectionHeading }>Item</h2>
+				<div class="flex flex-wrap items-center gap-3">
+					@inlineField("Category", "category", v.Input.Category, "w-32", templ.Attributes{"placeholder": "weapon, armor, gear…"})
+					@inlineField("Damage", "damage", v.Input.Damage, "w-32", templ.Attributes{"placeholder": "1d8 slashing"})
+					@inlineField("Range", "weapon_range", v.Input.WeaponRange, "w-24", templ.Attributes{"placeholder": "80/320"})
+					@inlineField("Properties", "properties", v.Input.Properties, "w-48", templ.Attributes{"placeholder": "Finesse, Light"})
+					@label.Label(label.Props{Class: "font-normal"}) {
+						Mastery
+						@formSelect("", "mastery", masteryItems(""), v.Input.Mastery, "", "")
+					}
+					@checkField("martial", "true", v.Input.Martial) {
+						Martial weapon
+					}
+				</div>
+				<fieldset class="flex flex-wrap items-center gap-3 rounded-md border p-2">
+					<legend class="px-1 text-xs text-muted-foreground">Armor (leave the type empty for anything else)</legend>
+					@formSelect("", "armor_type", []selectcomp.ItemData{{Value: "", Label: "Not armor"}, {Value: "light", Label: "Light"}, {Value: "medium", Label: "Medium"}, {Value: "heavy", Label: "Heavy"}, {Value: "shield", Label: "Shield"}}, v.Input.ArmorType, "", "")
+					@inlineField("Base AC", "armor_base", fmt.Sprint(v.Input.ArmorBase), "w-16", templ.Attributes{"type": "number", "min": "0"})
+					@checkField("armor_add_dex", "true", v.Input.ArmorAddDex) {
+						+ Dex
+					}
+					@inlineField("Dex max (0 = none)", "armor_dex_cap", fmt.Sprint(v.Input.ArmorDexCap), "w-14", templ.Attributes{"type": "number", "min": "0"})
+					@inlineField("Strength needed", "armor_str_req", fmt.Sprint(v.Input.ArmorStrReq), "w-14", templ.Attributes{"type": "number", "min": "0"})
+					@checkField("armor_stealth", "true", v.Input.ArmorStealth) {
+						Stealth disadvantage
+					}
+				</fieldset>
+			</div>
+			<div class="space-y-3 text-sm" data-kinds="class subclass">
+				<h2 class={ sectionHeading }>Class</h2>
+				<div class="flex flex-wrap items-center gap-3">
+					@formSelect("", "caster", []selectcomp.ItemData{{Value: "none", Label: "No spellcasting"}, {Value: "full", Label: "Full caster"}, {Value: "half", Label: "Half caster"}, {Value: "third", Label: "Third caster (subclass)"}, {Value: "pact", Label: "Pact magic"}}, v.Input.Caster, "", "")
+				</div>
+				<div class="flex flex-wrap items-center gap-3" data-kinds="class">
+					@formSelect("", "hit_die", []selectcomp.ItemData{{Value: "8", Label: "d8"}, {Value: "6", Label: "d6"}, {Value: "10", Label: "d10"}, {Value: "12", Label: "d12"}}, fmt.Sprint(v.Input.HitDie), "", "")
+					<span class="text-muted-foreground">Saves</span>
+					for _, a := range dnd5e.Abilities {
+						@checkField("saves", a, slices.Contains(v.Input.Saves, a)) {
+							{ strings.ToUpper(a) }
+						}
+					}
+				</div>
+				<div class="grid gap-3 sm:grid-cols-2" data-kinds="class">
+					@inlineField("Skills", "skills", v.Input.Skills, "w-full", templ.Attributes{"placeholder": "Choose 2: Arcana, History, Investigation"})
+					@inlineField("Armor", "armor", v.Input.Armor, "w-full", templ.Attributes{"placeholder": "Light and Medium armor and Shields"})
+					@inlineField("Weapons", "weapons", v.Input.Weapons, "w-full", templ.Attributes{"placeholder": "Simple weapons"})
+					@inlineField("Tools", "tools", v.Input.Tools, "w-full", templ.Attributes{"placeholder": "Thieves' Tools, Tinker's Tools"})
+				</div>
+				<div data-kinds="subclass">
+					@inlineField("Subclass of", "subclass_of", v.Input.SubclassOf, "w-40", templ.Attributes{"placeholder": "monk"})
+				</div>
+				@textarea.Textarea(textarea.Props{Name: "features", Value: v.Input.Features, Rows: 12, Placeholder: "Features, each starting with a heading line:\nLevel 1: Magical Tinkering\nWhat it does…\n\nLevel 3: Artificer Specialist (subclass)\nChoose a specialty…"})
+				<div data-kinds="class">
+					@textarea.Textarea(textarea.Props{Name: "table", Value: v.Input.Table, Rows: 3, Placeholder: "Class table columns, values for levels 1-20:\nInfusions Known: -, 4, 4, 4, 4, 6, 6, 6, 6, 8"})
+				</div>
+			</div>
+			<div class="space-y-3 text-sm" data-kinds="species background feat">
+				<h2 class={ sectionHeading }>Details</h2>
+				<div class="flex flex-wrap items-center gap-3" data-kinds="species">
+					@inlineField("Size", "size", v.Input.Size, "w-40", templ.Attributes{"placeholder": "Medium"})
+					@inlineField("Speed", "speed", fmt.Sprint(v.Input.Speed), "w-20", templ.Attributes{"type": "number", "min": "0"})
+				</div>
+				<div class="grid gap-3 sm:grid-cols-2" data-kinds="background">
+					@inlineField("Ability scores", "abilities", v.Input.Abilities, "w-full", templ.Attributes{"placeholder": "Strength, Constitution, Wisdom"})
+					@inlineField("Skills", "skills", v.Input.Skills, "w-full", templ.Attributes{"placeholder": "Athletics and Survival"})
+					@inlineField("Tools", "tools", v.Input.Tools, "w-full", templ.Attributes{"placeholder": "One kind of musical instrument"})
+					@inlineField("Origin feat", "feat", v.Input.Feat, "w-full", templ.Attributes{"placeholder": "Tough"})
+				</div>
+				<div data-kinds="species background">
+					@inlineField("Languages", "languages", v.Input.Languages, "w-full", templ.Attributes{"placeholder": "Common and one other language"})
+				</div>
+				<div data-kinds="feat">
+					@inlineField("Prerequisite", "prerequisite", v.Input.Prerequisite, "w-full", templ.Attributes{"placeholder": "Level 4+"})
+				</div>
+				<div data-kinds="species background">
+					@textarea.Textarea(textarea.Props{Name: "traits", Value: v.Input.Traits, Rows: 10, Placeholder: "Traits, one paragraph each:\nAstral Spark. Your psychic connection to the Astral Plane…\n\nHippo Build. You have Advantage on Strength checks…"})
+				</div>
+			</div>
+			<div class="space-y-3">
+				<h2 class={ sectionHeading }>Description</h2>
+				@textarea.Textarea(textarea.Props{Name: "desc", Value: v.Input.Desc, Rows: 14, Placeholder: "Description and rules text", Class: "font-serif", Attributes: templ.Attributes{"aria-label": "Description"}})
+				<div data-kinds="spell">
+					@textarea.Textarea(textarea.Props{Name: "higher_level", Value: v.Input.HigherLevel, Rows: 3, Placeholder: "At higher levels (optional)", Class: "font-serif", Attributes: templ.Attributes{"aria-label": "At higher levels"}})
+				</div>
+			</div>
+			<div class="sticky bottom-3 z-30 flex flex-wrap items-center gap-2 rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur">
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					Save
+				}
+				@busyIndicator("Saving…")
+			</div>
+		</form>
+	}
+}

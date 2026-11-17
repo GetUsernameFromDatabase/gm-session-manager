@@ -1024,7 +1024,7 @@ templ spellPicker(s SheetView, id, placeholder string, autofocus bool) {
 	<div id={ id } hx-preserve="true">
 		@inputgroup.InputGroup() {
 			@inputgroup.Input(inputgroup.InputProps{Name: "q", Placeholder: placeholder, Attributes: templ.Attributes{
-				"hx-get":       fmt.Sprintf("/compendium/search?kind=spell&character=%d", s.ID),
+				"hx-get":       CompendiumPath(ctx, fmt.Sprintf("/search?kind=spell&character=%d", s.ID)),
 				"hx-trigger":   "input changed delay:200ms, keyup[key=='Enter']",
 				"hx-target":    "#" + id + " ul",
 				"hx-swap":      "innerHTML",
@@ -1125,7 +1125,7 @@ templ itemPicker(id, name, placeholder string, autofocus bool) {
 	@combobox.Combobox(combobox.Props{Name: name, Required: true}) {
 		@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: placeholder, Attributes: templ.Attributes{
 			"maxlength": "200", "autofocus": autofocus, "aria-label": "Item", "data-combobox-create-input": "",
-			"hx-get": "/compendium/search?kind=item&format=combobox", "hx-vals": "js:{q: this.value}",
+			"hx-get": CompendiumPath(ctx, "/search?kind=item&format=combobox"), "hx-vals": "js:{q: this.value}",
 			"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-list", "hx-swap": "innerHTML",
 		}})
 		@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {

@@ -1,0 +1,325 @@
+package views
+
+import (
+	"fmt"
+	"gm-session-manager/internal/compendium"
+	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/web/components/alert"
+	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/card"
+	"gm-session-manager/internal/web/components/checkbox"
+	"gm-session-manager/internal/web/components/icon"
+	"gm-session-manager/internal/web/components/input"
+	"gm-session-manager/internal/web/components/label"
+	"gm-session-manager/internal/web/components/spinner"
+	switchcomp "gm-session-manager/internal/web/components/switch"
+	"gm-session-manager/internal/web/components/tabs"
+	"gm-session-manager/internal/web/utils"
+)
+
+// FiveToolsPicker is the book list. Unchecking an imported book does
+// nothing; Remove deletes it with its entries.
+templ FiveToolsPicker(v FiveToolsView) {
+	<form
+		id={ FiveToolsID }
+		method="post"
+		action={ templ.SafeURL(CompendiumPath(ctx, "/5etools")) }
+		class="group/busy space-y-4"
+		data-busy
+		hx-target={ "#" + FiveToolsID }
+		hx-swap="outerHTML"
+	>
+		if v.Msg != "" {
+			@Notice(v.Msg, v.Failed, scrollBox)
+		}
+		// Select-all boxes have no name, so they are not posted (app.js ticks the books).
+		@label.Label(label.Props{Class: "font-normal"}) {
+			@checkbox.Checkbox(checkbox.Props{Attributes: templ.Attributes{"data-check-all": ""}})
+			Select all books
+		}
+		// The list is long (hundreds of books): it scrolls inside its card.
+		<div class={ "space-y-4 pr-1", scrollBox }>
+			for _, g := range v.Groups {
+				<section>
+					<div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+						<h3 class="font-medium">{ g.Title }</h3>
+						@label.Label(label.Props{Class: "font-normal text-muted-foreground"}) {
+							@checkbox.Checkbox(checkbox.Props{Attributes: templ.Attributes{"data-check-all": "section", "aria-label": "Select all " + g.Title}})
+							Select all
+						}
+					</div>
+					<ul class="divide-y rounded-lg border">
+						for _, b := range g.Books {
+							<li class="relative flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+								<div class="min-w-0 grow basis-48">
+									@checkField(FiveToolsField, b.ID, b.Downloaded) {
+										<span class="min-w-0">{ b.Name } <code class="text-xs text-muted-foreground">{ b.ID }</code></span>
+									}
+								</div>
+								if b.Downloaded {
+									if !b.Imported.IsZero() {
+										<span class="text-xs text-muted-foreground">{ "Imported " }@localTime(b.Imported)</span>
+									}
+									// Not removeButton: that one is 16px, too small to tap.
+									@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: quietDestructive, Attributes: templ.Attributes{
+										"aria-label": "Remove " + b.Name, "hx-post": FiveToolsPath + "/" + b.ID + "/delete",
+										"hx-confirm": "Remove " + b.Name + " and its entries from the compendium?",
+									}}) {
+										@icon.X(icon.Props{Size: 16})
+									}
+								}
+							</li>
+						}
+					</ul>
+				</section>
+			}
+		</div>
+		<div class="flex flex-wrap items-center gap-3">
+			@button.Button(button.Props{Type: button.TypeSubmit, Disabled: v.Running}) {
+				@icon.Download()
+				Import selected
+			}
+			if v.Running {
+				<span class="text-muted-foreground">An import is running; wait for it to finish.</span>
+			}
+		</div>
+		@busyIndicator("Starting the import…")
+	</form>
+}
+
+// FiveToolsProgress is the background import: what it is downloading or
+// importing while it runs, then the last one's summary. Refetched as it
+// ends (reload), it also reloads the picker, whose import dates changed.
+templ FiveToolsProgress(j FiveToolsJob, reload bool) {
+	<div id="fivetools-progress" hx-swap-oob="true" { live(LiveImport, 0)... }>
+		if j.Running {
+			<div class="space-y-2 rounded-lg border p-3" role="status">
+				<div class="flex items-center gap-2">
+					@spinner.Spinner()
+					<span class="min-w-0 truncate" { bind("text=imp.label")... }>{ j.label() }</span>
+				</div>
+				<div class="h-2 overflow-hidden rounded-full bg-muted">
+					<div class="h-full bg-primary transition-[width]" style={ j.bar() } { bind("style=imp.bar")... }></div>
+				</div>
+				<p class="text-xs text-muted-foreground">The import goes on if you leave this page.</p>
+			</div>
+		} else if j.Msg != "" {
+			@Notice(j.Msg, j.Failed, scrollBox)
+			if reload {
+				<div hidden hx-get={ FiveToolsPath } hx-trigger="load" hx-target={ "#" + FiveToolsID } hx-swap="outerHTML"></div>
+			}
+		}
+	</div>
+}
+
+// StaleBooksBanner asks the GM to download again the 5etools books written
+// by an older download (compendium.DownloadVersion), or to let the server
+// do it at each start.
+templ StaleBooksBanner(books []compendium.Book, auto bool) {
+	@alert.Alert(alert.Props{Class: "mb-4 border-amber-500/50 bg-amber-500/10 text-amber-800 *:data-[slot=alert-description]:text-amber-800/90 dark:text-amber-300 dark:*:data-[slot=alert-description]:text-amber-300/90"}) {
+		@icon.TriangleAlert()
+		@alert.Title() {
+			{ Plural(len(books), "5etools book") } { utils.IfElse(len(books) == 1, "needs", "need") } downloading again
+		}
+		@alert.Description() {
+			<p>{ bookIDs(books) }: the app now prepares them differently.</p>
+			<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+				<form method="post" action={ templ.SafeURL(FiveToolsPath) }>
+					for _, b := range books {
+						<input type="hidden" name={ FiveToolsField } value={ b.ID }/>
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+						@icon.Download()
+						Download again
+					}
+				</form>
+				<form hx-post={ FiveToolsPath + "/auto" } hx-trigger="change" hx-swap="none">
+					@label.Label(label.Props{For: "fivetools-auto", Class: "font-normal"}) {
+						@switchcomp.Switch(switchcomp.Props{ID: "fivetools-auto", Name: "on", Value: "true", DefaultChecked: auto, Size: switchcomp.SizeSm})
+						Do this automatically from now on
+					}
+				</form>
+			</div>
+		}
+	}
+}
+
+// SourcePriority orders the sources: the first holding an entry wins its
+// lookups and shows alone in lists.
+templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.CountSharedBySourceRow) {
+	<div id={ SourcesID } class="min-w-0 md:sticky md:top-16">
+		@card.Card() {
+			@card.Header() {
+				@card.Title() {
+					Source priority
+				}
+				@card.Description() {
+					The higher source wins when two hold the same entry. Drag or use the arrows.
+					Shared: entries another source also holds; shown: those this source wins.
+				}
+			}
+			@card.Content() {
+				// app.js makes the list sortable (SortableJS) and posts the new order.
+				<ol class={ "divide-y rounded-lg border text-sm", scrollBox } data-sortable={ CompendiumPath(ctx, CompendiumRest(SourceOrderPath)) } data-sort-target={ "#" + SourcesID }>
+					for i, s := range sources {
+						<li class="flex flex-wrap items-center gap-x-3 gap-y-1 cursor-grab bg-card px-3 py-1.5 active:cursor-grabbing" data-source-key={ s.SourceKey }>
+							<span class="text-muted-foreground" aria-hidden="true">
+								@icon.GripVertical(icon.Props{Size: 16})
+							</span>
+							// The text itself selects for copying (data-no-drag); the space after it drags.
+							<span class="min-w-0 grow basis-48" title={ s.Attribution }>
+								<span class="cursor-text font-medium" data-no-drag>{ s.SourceKey }</span>
+								<span class="cursor-text text-xs text-muted-foreground" data-no-drag>{ s.Edition }</span>
+								if n, ok := shared[s.SourceKey]; ok {
+									<a class="block w-fit py-1 text-xs text-muted-foreground tabular-nums underline underline-offset-4" href={ sharedHref(ctx, s.SourceKey) }>
+										{ fmt.Sprintf("%d shared, %d shown", n.Shared, n.Shown) }
+									</a>
+								}
+							</span>
+							<span class="flex gap-1" hx-target={ "#" + SourcesID } hx-swap="outerHTML">
+								@sourceMoveButton(s.SourceKey, SourceUp, "Move "+s.SourceKey+" up", i == 0)
+								@sourceMoveButton(s.SourceKey, SourceDown, "Move "+s.SourceKey+" down", i == len(sources)-1)
+								if s.SourceKey != "homebrew" {
+									@sourceDeleteButton(s.SourceKey)
+								}
+							</span>
+						</li>
+					}
+				</ol>
+			}
+		}
+	</div>
+}
+
+templ sourceDeleteButton(key string) {
+	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Class: quietDestructive, Attributes: templ.Attributes{
+		"aria-label": "Delete " + key, "title": "Delete " + key, "hx-post": sourceURL(ctx, key, "delete"),
+		"hx-confirm": "Delete " + key + " and all its entries?",
+	}}) {
+		@icon.Trash2()
+	}
+}
+
+templ sourceMoveButton(key, dir, label string, disabled bool) {
+	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Disabled: disabled, Attributes: templ.Attributes{
+		"aria-label": label, "title": label, "hx-post": sourceURL(ctx, key, "move"), "hx-vals": toJSON(map[string]string{SourceDirField: dir}),
+	}}) {
+		if dir == SourceUp {
+			@icon.ArrowUp()
+		} else {
+			@icon.ArrowDown()
+		}
+	}
+}
+
+// importTabs are the GM's three ways to fill the compendium: data folders on
+// the host, and single pages of the compendium.Sites.
+templ importTabs(n ImportNotice) {
+	@tabs.Tabs(tabs.Props{ID: "compendium-import", DefaultValue: utils.IfElse(n.Tab == ImportTabFolder || n.Tab == ImportTabFiveTools, n.Tab, ImportTabPage)}) {
+		@tabs.List(tabs.ListProps{Class: "w-fit"}) {
+			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabPage}) {
+				@icon.Globe()
+				Web page
+			}
+			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabFiveTools}) {
+				@icon.Library()
+				5etools
+			}
+			@tabs.Trigger(tabs.TriggerProps{Value: ImportTabFolder}) {
+				@icon.FolderOpen()
+				Data folder
+			}
+		}
+		// Each panel: what it does, the action, its result, then the fine print.
+		@tabs.Content(tabs.ContentProps{Value: ImportTabPage, Class: "space-y-3 text-sm"}) {
+			<p class="text-muted-foreground">Import one entry from a page of the sites below: open one, find the page and paste its link.</p>
+			<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, "/page/preview")) } class="group/busy flex flex-wrap items-center gap-2" data-busy>
+				<input type="hidden" name="back" value={ n.Back }/>
+				// Focused when coming back from an import, ready for the next page.
+				@input.Input(input.Props{Name: "page", Value: n.Page, Placeholder: "Paste a page link", Class: "max-w-md", Attributes: templ.Attributes{"required": true, "aria-label": "Page link", "autocomplete": "off", "autofocus": n.Tab == ImportTabPage}})
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					Preview
+				}
+				@busyIndicator("Fetching…")
+			</form>
+			if n.Msg != "" && n.Tab == ImportTabPage {
+				@Notice(n.Msg, n.Failed, scrollBox)
+			}
+			<ul class="list-disc space-y-1 pl-5 text-muted-foreground">
+				for _, s := range compendium.Sites {
+					<li>
+						<a class="font-medium text-foreground underline" href={ templ.SafeURL(s.Home) } target="_blank" rel="noopener noreferrer">{ s.Host() }</a>: { s.Imports }.
+						if s.Note != "" {
+							<span class="text-amber-700 dark:text-amber-300">{ s.Note }</span>
+							<a class="underline" href={ templ.SafeURL(s.NoteURL) } target="_blank" rel="noopener noreferrer">Browse the mirror</a>.
+						}
+					</li>
+				}
+			</ul>
+			@importDetails("How it works") {
+				<p>
+					Other pages of these sites are tried too, as plain text whose kind you pick.
+					You review and edit it before it is saved; saving the same page again replaces it.
+					Entries are attributed to the book and the page they came from.
+				</p>
+			}
+		}
+		@tabs.Content(tabs.ContentProps{Value: ImportTabFiveTools, Class: "space-y-3 text-sm"}) {
+			<p class="text-muted-foreground">Download whole books from the 5etools GitHub mirror. They are cached in <code>{ n.Dir }</code> and imported like any data folder.</p>
+			<p class="text-xs text-muted-foreground">For private use at your own table; the books stay the property of their publishers.</p>
+			if n.Msg != "" && n.Tab == ImportTabFiveTools {
+				@Notice(n.Msg, n.Failed, scrollBox)
+			}
+			@FiveToolsProgress(n.Job, false)
+			// The list comes from the network: it loads when the tab is first shown.
+			<div id={ FiveToolsID } class="text-muted-foreground" hx-get="/compendium/5etools" hx-trigger="intersect once" hx-swap="outerHTML">Loading books…</div>
+		}
+		@tabs.Content(tabs.ContentProps{Value: ImportTabFolder, Class: "space-y-3 text-sm"}) {
+			<p class="text-muted-foreground">Each folder in this one is a source. They are read again every time the app starts.</p>
+			<div class="flex flex-wrap items-center gap-2">
+				<code class="min-w-0 rounded bg-muted px-2 py-1 font-mono text-xs break-all">{ n.Dir }</code>
+				@button.Button(button.Props{Size: button.SizeIconSm, Variant: button.VariantGhost, Class: "group", Attributes: templ.Attributes{"data-copy": n.Dir, "aria-label": "Copy folder path", "title": "Copy folder path"}}) {
+					@icon.Copy(icon.Props{Size: 16, Class: "group-data-[copied]:hidden"})
+					@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-[copied]:block"})
+				}
+				if n.OnHost {
+					@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": "/compendium/folder", "hx-swap": "none"}}) {
+						@icon.FolderOpen()
+						Open folder
+					}
+				}
+				<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, "/import")) } class="group/busy" data-busy>
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+						@icon.Download()
+						Import now
+					}
+					@busyIndicator("Importing…")
+				</form>
+			</div>
+			if n.Msg != "" && n.Tab == ImportTabFolder {
+				@Notice(n.Msg, n.Failed, scrollBox)
+			}
+			@importDetails("How folders are read") {
+				<ul class="list-disc space-y-1 pl-5">
+					<li>A folder's name is the source's key (for example <code>srd-2024</code>; <code>homebrew</code> is reserved).</li>
+					<li>
+						A source folder holds the Open5e v2 JSON files of one document: <code>Document.json</code>, <code>Spell.json</code>, <code>Creature.json</code>, <code>CharacterClass.json</code>, <code>ClassFeature.json</code> and the rest, as in
+						<a class="underline" href="https://github.com/open5e/open5e-api/tree/staging/data/v2/wizards-of-the-coast/srd-2024" target="_blank" rel="noopener">open5e-api data/v2</a>.
+					</li>
+					<li>Every entry keeps the license and attribution of its folder's <code>Document.json</code>.</li>
+					<li>Folders that have not changed since the last import are skipped; entries removed from a folder are removed from the compendium.</li>
+				</ul>
+			}
+		}
+	}
+}
+
+// importDetails folds an import panel's fine print away from its action.
+templ importDetails(summary string) {
+	<details class="text-muted-foreground">
+		<summary class="cursor-pointer">{ summary }</summary>
+		<div class="mt-2">
+			{ children... }
+		</div>
+	</details>
+}

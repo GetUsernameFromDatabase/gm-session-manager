@@ -37,7 +37,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 
 D&D 5e (2024) is the only system, fenced in rather than abstracted:
 
-- **5e:** `internal/dnd5e` (rules), `internal/web/sheet5e_*.go` (wizard, level-up, builder, sources, sheet commands) and in `internal/web/views` the sheet, wizard, builder, level-up, sources and compendium templates (`.templ`, `_view.go`) and `character_live.go`. The exceptions in the depguard rule `neutral` are the full list.
+- **5e:** `internal/dnd5e` (rules), `internal/web/sheet5e_*.go` (wizard, level-up, builder, sources, sheet commands) and in `internal/web/views` the sheet, wizard, builder, level-up, sources and compendium (`compendium`, `entry`, `homebrew`) templates (`.templ`, `_view.go`) and `character_live.go`. The exceptions in the depguard rule `neutral` are the full list.
 - **Neutral:** everything else (combat, sessions, campaigns, notes, entities, images, files, hub, perm, export). It reaches `dnd5e` only through `internal/web/sheet5e.go` and `internal/web/views/sheet5e.go`, plain-typed functions. depguard (`.golangci.yml`, rule `neutral`) fails the lint on any other `dnd5e` import, generated `*_templ.go` included; a new 5e file must be added to the exceptions of both `neutral` and `compendium`.
 - **Compendium rule:** neutral code does not import `internal/compendium` either (depguard rule `compendium`). The files that still import it, listed after the neutral exceptions in that rule, are the visible debt and the source of truth; the list must not grow without reason.
 - **A second system** starts as its own `sheet<sys>_*.go` beside `sheet5e`; only then is the shared interface extracted from the two. Existing hooks: `campaigns.system` and `characters.system`.
@@ -61,7 +61,7 @@ Then `go build ./...`, `go test ./...`, `golangci-lint run`, `graphify update .`
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
 Rules:
-- When graphify-out/graph.json exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- When graphify-out/graph.json exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output. The graph does not cover `.templ` files: grep those.
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

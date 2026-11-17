@@ -284,13 +284,6 @@ templ PageHeader(title, subtitle string) {
 	</div>
 }
 
-templ Section(title string) {
-	<section class="mb-8">
-		<h2 class="mb-3 text-lg font-semibold">{ title }</h2>
-		{ children... }
-	</section>
-}
-
 // moreMenu is a header's "…" menu: rare or destructive actions kept away from the everyday buttons.
 templ moreMenu(id, label string) {
 	@popover.Popover(popover.Props{ID: id}) {

@@ -1992,7 +1992,7 @@ func entityForm(v EntityView) templ.Component {
 		}
 		templ_7745c5c3_Err = input.Input(input.Props{Name: "q", Type: "search", Placeholder: "Link a compendium monster…", Class: "max-w-sm", Attributes: templ.Attributes{
 			"aria-label": "Link a compendium monster",
-			"hx-get":     fmt.Sprintf("/compendium/search?kind=monster&entity=%d", v.E.ID),
+			"hx-get":     CompendiumPath(ctx, fmt.Sprintf("/search?kind=monster&entity=%d", v.E.ID)),
 			"hx-trigger": "input changed delay:200ms, search",
 			"hx-target":  "next ul",
 			"hx-swap":    "innerHTML",

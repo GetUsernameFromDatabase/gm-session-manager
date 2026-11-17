@@ -4449,7 +4449,7 @@ func addCombatants(e EncounterView) templ.Component {
 				templ_7745c5c3_Err = input.Input(input.Props{Type: "search", Name: "q", Placeholder: "Search monsters…", Attributes: templ.Attributes{
 					"autocomplete": "off",
 					"aria-label":   "Search monsters",
-					"hx-get":       fmt.Sprintf("/compendium/search?kind=monster&encounter=%d", e.Encounter.ID),
+					"hx-get":       CompendiumPath(ctx, fmt.Sprintf("/search?kind=monster&encounter=%d", e.Encounter.ID)),
 					"hx-trigger":   "input changed delay:200ms, search",
 					"hx-target":    "next ul",
 					"hx-swap":      "innerHTML",
