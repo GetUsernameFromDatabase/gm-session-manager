@@ -13,6 +13,8 @@ A page region that updates in real time is a live view:
 3. For often-changing values, give the view model `Hot` (exactly the keys the markup binds) and `Shape` (the model with those values fixed) in `views/live.go` (the sheet's in `views/character_live.go`); mark elements with `bind("text=key")`, `bind("aria-pressed=key")`, etc. The hash of `Shape`'s markup covers everything else. A heavy view (sheet, GM tracker) sets `liveView.model` instead: `Shape` is hashed as JSON, skipping the render, so its markup must read nothing outside the model, and the model should hold only what the page shows (rows offered by name are `views.Named`, not whole `sqlc` rows), or an unseen change refetches.
 4. Cover it in `TestLiveVisibility` and `TestLiveBindsMatchState` (`live_test.go`); a `model` view also in `modelViews` (`TestLiveHotKeepsHash`, `TestLiveModelHashFollowsMarkup`) and `TestLiveModelsEncodeWhole`.
 
+The htmx websocket extension retries forever on an abnormal close (1006, which includes an HTTP error at the upgrade) and stops on a normal one (1000). To turn a page's socket away, accept it, send a control message and close normally (`Hub.ServeGone`), not a 401.
+
 ## Notes
 
 Each note block is its own collaborative document (TipTap, `assets/js/notes.js`) with its own audience; the server is the authority (stale steps get a 409 and rebase). Trusting client snapshots, text and links is accepted on a LAN of friends. NPC fields reuse TipTap (`fields.js`); both share `wikilink.js` for `[[kind:id|label]]` tokens (parsed in `views/wikilinks.go`).
@@ -35,6 +37,12 @@ Each note block is its own collaborative document (TipTap, `assets/js/notes.js`)
 ## Handlers
 
 A handler with an error path returns `error` and is registered as `a.h(a.x)`: a `userError` is a 422, `sql.ErrNoRows` a 404, anything else a 500. Access helpers that answer themselves (`characterAccess`, `idParam`, `bindForm`, …) stay `ok`-returning; the handler then does `return nil`. Never return a non-nil error after writing a response.
+
+- A refused plain form post shows a bare error page and loses what was typed: editors post through htmx (`hx-encoding="multipart/form-data"` for files) and answer with `redirect(c, …)`, not `c.Redirect`.
+- The request log keeps POST bodies except where `keepsBody` (`reqlog.go`, matched on the route pattern) says no. A new route whose body can carry a player's private text (note titles, blocks) goes there, or that text reaches the GM's reports.
+- Browsers post every line break as `\r\n`, hidden inputs included; Go's CSV reader stores `\n`. Normalize before comparing a posted value with a stored one.
+- A hidden input's `defaultValue` always equals its `value`, so live.js `edited` and any browser-side "what changed" check cannot see edits in controls backed by one (shadcn select/combobox, NPC field values): keep the loaded value yourself (`data-saved`, `was_*`).
+- In tests, loopback is the GM: a visitor or player request needs a LAN `RemoteAddr` (`lanAddr`).
 
 ## Gotchas
 

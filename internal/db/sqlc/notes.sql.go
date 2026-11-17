@@ -635,6 +635,36 @@ func (q *Queries) ListExportNotes(ctx context.Context, campaignID int64) ([]Note
 	return items, nil
 }
 
+const listNoteAudience = `-- name: ListNoteAudience :many
+SELECT a.block_id, a.character_id FROM note_block_audience AS a
+JOIN note_blocks AS b ON b.id = a.block_id
+WHERE b.note_id = ?
+ORDER BY a.block_id, a.character_id
+`
+
+func (q *Queries) ListNoteAudience(ctx context.Context, noteID int64) ([]NoteBlockAudience, error) {
+	rows, err := q.db.QueryContext(ctx, listNoteAudience, noteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NoteBlockAudience{}
+	for rows.Next() {
+		var i NoteBlockAudience
+		if err := rows.Scan(&i.BlockID, &i.CharacterID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listReadableBlocks = `-- name: ListReadableBlocks :many
 SELECT b.id, b.note_id, b.position, b.visibility, b.players_can_edit, b.doc_json, b.doc_version, b.version, b.text, b.author_character_id FROM note_blocks AS b
 JOIN notes AS n ON n.id = b.note_id

@@ -191,7 +191,7 @@ func storeSource(ctx context.Context, store *db.Store, src Source, path, hash st
 }
 
 // SeedHabitats gives monster id the habitats unless it already has some.
-func SeedHabitats(ctx context.Context, q *sqlc.Queries, id int64, habitats []string) error {
+func SeedHabitats(ctx context.Context, q *sqlc.Queries, id int64, habitats []enum.Habitat) error {
 	if len(habitats) == 0 {
 		return nil
 	}
@@ -319,7 +319,7 @@ type HomebrewInput struct {
 	Reactions     string `form:"reactions"         validate:"max=50000"`
 	Legendary     string `form:"legendary_actions" validate:"max=50000"`
 	// Habitats come from a link import and seed a new monster's habitats.
-	Habitats []string `form:"habitats" validate:"dive,oneof=Arctic Coastal Desert Forest Grassland Hill Mountain Planar Swamp Underdark Underwater Urban"`
+	Habitats []enum.Habitat `form:"habitats" validate:"dive,oneof=Arctic Coastal Desert Forest Grassland Hill Mountain Planar Swamp Underdark Underwater Urban"`
 
 	School        string `form:"school"         validate:"max=50"`
 	CastingTime   string `form:"casting_time"   validate:"max=100"`

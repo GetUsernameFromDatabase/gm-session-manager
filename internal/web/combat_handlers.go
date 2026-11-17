@@ -14,7 +14,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
@@ -183,23 +182,6 @@ func (a *App) sameCampaign(c *gin.Context, got, want int64) bool {
 		return false
 	}
 	return true
-}
-
-// monsterStats fills name, AC and HP from a compendium monster.
-func (a *App) monsterStats(ctx context.Context, entryID int64, p *sqlc.CreateCombatantParams) error {
-	row, err := a.Store.GetCompendiumEntry(ctx, entryID)
-	if err != nil {
-		return err
-	}
-	if row.Kind != enum.KindMonster {
-		return sql.ErrNoRows
-	}
-	m, err := compendium.Decode[compendium.MonsterData](enum.KindMonster, row.DataJson)
-	if err != nil {
-		return err
-	}
-	p.MonsterRef, p.Name, p.Ac, p.Hp, p.MaxHp = nullID(row.ID), row.Name, int64(m.AC), int64(m.HP), int64(m.HP)
-	return nil
 }
 
 // uniqueName numbers repeated monsters: Goblin, Goblin 2, Goblin 3.

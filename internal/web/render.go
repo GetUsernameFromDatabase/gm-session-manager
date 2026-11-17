@@ -267,12 +267,16 @@ func (a *App) noteList(ctx context.Context, v perm.Viewer, campaignID int64) ([]
 }
 
 func (a *App) characterNames(ctx context.Context, campaignID int64) (map[int64]string, error) {
-	chars, err := a.Store.ListCharactersByCampaign(ctx, campaignID)
+	chars, err := a.Store.ListCharacterNames(ctx, campaignID)
+	return nameMap(chars), err
+}
+
+func nameMap(chars []sqlc.ListCharacterNamesRow) map[int64]string {
 	names := make(map[int64]string, len(chars))
 	for _, c := range chars {
 		names[c.ID] = c.Name
 	}
-	return names, err
+	return names
 }
 
 // author is the character who wrote something (0 for the GM), linked to
@@ -300,15 +304,21 @@ func (a *App) noteView(ctx context.Context, v perm.Viewer, note sqlc.Note) (view
 		return nv, false, nil
 	}
 	nv.Visibilities = perm.BlockVisibilities(v, note.OwnerCharacterID.Int64, note.Kind == enum.NoteGameSession)
-	names, err := a.characterNames(ctx, note.CampaignID)
+	chars, err := a.Store.ListCharacterNames(ctx, note.CampaignID)
 	if err != nil {
 		return nv, false, err
 	}
+	names := nameMap(chars)
+	audRows, err := a.Store.ListNoteAudience(ctx, note.ID)
+	if err != nil {
+		return nv, false, err
+	}
+	audiences := make(map[int64][]int64)
+	for _, ar := range audRows {
+		audiences[ar.BlockID] = append(audiences[ar.BlockID], ar.CharacterID)
+	}
 	for _, r := range rows {
-		audience, err := a.Store.ListBlockAudience(ctx, r.ID)
-		if err != nil {
-			return nv, false, err
-		}
+		audience := audiences[r.ID]
 		pb := perm.Block{
 			Visibility: r.Visibility, PlayersCanEdit: r.PlayersCanEdit, NoteOwnerID: note.OwnerCharacterID.Int64,
 			Audience: audience, AuthorID: r.AuthorCharacterID.Int64,
@@ -330,9 +340,7 @@ func (a *App) noteView(ctx context.Context, v perm.Viewer, note sqlc.Note) (view
 		nv.Blocks = append(nv.Blocks, bv)
 	}
 	if v.IsGM && slices.Contains(nv.Visibilities, enum.VisListed) {
-		if nv.Characters, err = a.Store.ListCharactersByCampaign(ctx, note.CampaignID); err != nil {
-			return nv, false, err
-		}
+		nv.Characters = chars
 	}
 	return nv, true, nil
 }

@@ -108,12 +108,12 @@ func TestImportFiveToolsBook(t *testing.T) {
 		t.Errorf("source %+v %v", src, err)
 	}
 	// The cat's environment seeds its habitats; a GM change survives re-import.
-	habitats := func() []string {
+	habitats := func() []enum.Habitat {
 		h, _ := store.ListEntryHabitats(t.Context(), cat.ID)
 		slices.Sort(h)
 		return h
 	}
-	if got := habitats(); !reflect.DeepEqual(got, []string{"Planar", "Urban"}) {
+	if got := habitats(); !reflect.DeepEqual(got, []enum.Habitat{enum.HabitatPlanar, enum.HabitatUrban}) {
 		t.Errorf("cat habitats %v", got)
 	}
 	if err := store.RemoveMonsterHabitat(t.Context(), sqlc.RemoveMonsterHabitatParams{EntryID: cat.ID, Habitat: "Urban"}); err != nil {
@@ -126,7 +126,7 @@ func TestImportFiveToolsBook(t *testing.T) {
 	if r := importOnce(t, store, filepath.Dir(fiveToolsFixture)); r.Unchanged {
 		t.Fatal("re-import skipped")
 	}
-	if got := habitats(); !reflect.DeepEqual(got, []string{"Planar"}) {
+	if got := habitats(); !reflect.DeepEqual(got, []enum.Habitat{enum.HabitatPlanar}) {
 		t.Errorf("cat habitats after re-import %v", got)
 	}
 	// Pickers offer species and subraces (marked with their base), never versions.
@@ -191,12 +191,12 @@ func TestStripTagsTokens(t *testing.T) {
 func TestHabitatsFrom(t *testing.T) {
 	for _, tt := range []struct {
 		in   []string
-		want []string
+		want []enum.Habitat
 	}{
 		{nil, nil},
-		{[]string{"urban", "forest"}, []string{"Forest", "Urban"}},
-		{[]string{"planar, nine hells", "planar, feywild"}, []string{"Planar"}},
-		{[]string{"Underdark", "moon"}, []string{"Underdark"}},
+		{[]string{"urban", "forest"}, []enum.Habitat{enum.HabitatForest, enum.HabitatUrban}},
+		{[]string{"planar, nine hells", "planar, feywild"}, []enum.Habitat{enum.HabitatPlanar}},
+		{[]string{"Underdark", "moon"}, []enum.Habitat{enum.HabitatUnderdark}},
 		{[]string{"any"}, Habitats},
 	} {
 		if got := habitatsFrom(tt.in); !reflect.DeepEqual(got, tt.want) {

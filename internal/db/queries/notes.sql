@@ -100,6 +100,12 @@ SELECT character_id FROM note_block_audience
 WHERE block_id = ?
 ORDER BY character_id;
 
+-- name: ListNoteAudience :many
+SELECT a.block_id, a.character_id FROM note_block_audience AS a
+JOIN note_blocks AS b ON b.id = a.block_id
+WHERE b.note_id = ?
+ORDER BY a.block_id, a.character_id;
+
 -- name: ClearBlockAudience :exec
 DELETE FROM note_block_audience
 WHERE block_id = ?;

@@ -22,6 +22,8 @@ sql:
             go_type: gm-session-manager/internal/enum.CompendiumKind
           - column: campaign_top.kind
             go_type: gm-session-manager/internal/enum.CompendiumKind
+          - column: monster_habitats.habitat
+            go_type: gm-session-manager/internal/enum.Habitat
           - column: encounters.status
             go_type: gm-session-manager/internal/enum.EncounterStatus
           - column: notes.kind

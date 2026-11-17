@@ -84,7 +84,7 @@ type NoteView struct {
 	CanManage    bool
 	Visibilities []enum.Visibility
 	// Characters are the campaign's characters, for 'listed' audiences.
-	Characters  []sqlc.Character
+	Characters  []sqlc.ListCharacterNamesRow
 	Backlinks   []sqlc.ListBacklinksRow
 	EntityLinks []sqlc.ListEntityFieldBacklinksRow
 }

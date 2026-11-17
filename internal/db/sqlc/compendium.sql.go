@@ -173,7 +173,7 @@ GROUP BY h.habitat
 `
 
 type CountHabitatsRow struct {
-	Habitat string
+	Habitat enum.Habitat
 	N       int64
 }
 
@@ -1009,15 +1009,15 @@ SELECT habitat FROM monster_habitats
 WHERE entry_id = ?
 `
 
-func (q *Queries) ListEntryHabitats(ctx context.Context, entryID int64) ([]string, error) {
+func (q *Queries) ListEntryHabitats(ctx context.Context, entryID int64) ([]enum.Habitat, error) {
 	rows, err := q.db.QueryContext(ctx, listEntryHabitats, entryID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []enum.Habitat{}
 	for rows.Next() {
-		var habitat string
+		var habitat enum.Habitat
 		if err := rows.Scan(&habitat); err != nil {
 			return nil, err
 		}
@@ -1816,7 +1816,7 @@ WHERE entry_id = ? AND habitat = ?
 
 type RemoveMonsterHabitatParams struct {
 	EntryID int64
-	Habitat string
+	Habitat enum.Habitat
 }
 
 func (q *Queries) RemoveMonsterHabitat(ctx context.Context, arg RemoveMonsterHabitatParams) error {

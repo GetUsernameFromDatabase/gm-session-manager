@@ -16,7 +16,56 @@ import (
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
+	"gm-session-manager/internal/perm"
 )
+
+// TestNoteViewAudiences: each 'listed' block of one note shows its own
+// audience to the GM, and a player sees only the blocks listing them.
+func TestNoteViewAudiences(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	bram, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bram", System: "dnd5e"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Plans"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]int64{{e.characterID}, {bram.ID}, {e.characterID, bram.ID}, nil}
+	var ids []int64
+	for _, who := range want {
+		b, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisListed})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range who {
+			if err := e.q().AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: b.ID, CharacterID: c}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ids = append(ids, b.ID)
+	}
+	nv, _, err := e.app.noteView(ctx, perm.GM, note)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nv.Blocks) != len(want) {
+		t.Fatalf("gm sees %d blocks, want %d", len(nv.Blocks), len(want))
+	}
+	for i, b := range nv.Blocks {
+		if b.ID != ids[i] || !slices.Equal(b.Audience, want[i]) {
+			t.Errorf("block %d audience %v, want %v", i, b.Audience, want[i])
+		}
+	}
+	nv, _, err = e.app.noteView(ctx, perm.Player(bram.ID), note)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nv.Blocks) != 2 || nv.Blocks[0].ID != ids[1] || nv.Blocks[1].ID != ids[2] || nv.Blocks[0].Audience != nil {
+		t.Errorf("player's blocks: %+v", nv.Blocks)
+	}
+}
 
 // do sends a request as a device. htmx marks the request as an htmx one.
 func (e testEnv) do(t testing.TB, method, path, cookie string, form url.Values, htmx bool) *httptest.ResponseRecorder {

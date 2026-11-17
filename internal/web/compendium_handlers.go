@@ -784,19 +784,6 @@ func (a *App) saveHomebrew(c *gin.Context, w who, id int64) error {
 	return nil
 }
 
-// addHomebrewToSheet puts a new homebrew spell or item on the character.
-func (a *App) addHomebrewToSheet(ctx context.Context, ch sqlc.Character, id int64) error {
-	e, err := a.Store.GetCompendiumEntry(ctx, id)
-	if err != nil {
-		return err
-	}
-	line := fmt.Sprintf("item add %s", strconv.Quote(e.Name))
-	if e.Kind == enum.KindSpell {
-		line = "spell add " + e.Slug
-	}
-	return a.runLine(ctx, ch, line)
-}
-
 func (a *App) homebrewDelete(c *gin.Context) error {
 	_, e, ok := a.homebrewEntry(c)
 	if !ok {

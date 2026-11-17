@@ -18,7 +18,7 @@ linters:
   settings:
     depguard:
       rules:
-        # Game systems (CLAUDE.md): neutral code reaches 5e only through
+        # Game systems (CLAUDE.md): neutral code reaches dnd5e only through
         # sheet5e.go. Globs start with ** so they hold wherever lint runs.
         neutral:
           files:
@@ -33,6 +33,28 @@ linters:
           deny:
             - pkg: gm-session-manager/internal/dnd5e
               desc: system-neutral code; go through sheet5e.go
+        # Neutral code also stays out of the 5e-shaped compendium. The files
+        # after the neutral list are the visible debt: do not grow it without reason.
+        compendium:
+          files:
+            # Same 5e list as `neutral`: keep the two in step.
+            - $all
+            - "!$test"
+            - "!**/internal/dnd5e/**"
+            - "!**/internal/compendium/**"
+            - "!**/internal/web/sheet5e*.go"
+            - "!**/internal/web/views/sheet5e.go"
+            - "!**/internal/web/views/character_live.go"
+            - "!**/internal/web/views/{builder,character,compendium,levelup,sources,wizard}_{templ,view}.go"
+            - "!**/internal/web/{compendium_handlers,fivetools_handlers,habitat_handlers,import_job,settings,dm_handlers}.go"
+            - "!**/internal/export/archive.go"
+            - "!**/cmd/gm-session-manager/main.go"
+            - "!**/internal/web/views/fivetools.go"
+            - "!**/internal/web/views/habitats_{templ,view}.go"
+            - "!**/internal/web/views/layout_view.go"
+          deny:
+            - pkg: gm-session-manager/internal/compendium
+              desc: system-neutral code; the compendium is 5e-shaped, go through sheet5e.go
     goconst:
       min-len: 3
       min-occurrences: 3

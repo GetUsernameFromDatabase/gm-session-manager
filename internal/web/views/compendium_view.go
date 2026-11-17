@@ -161,8 +161,8 @@ func crText(cr string) string { return crFractions.Replace(cr) }
 // swipes sideways, keeping the sticky filters short.
 const chipRow = "flex flex-wrap gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:pb-1 max-md:[&>*]:shrink-0"
 
-func habitatCountMap(rows []sqlc.CountHabitatsRow) map[string]int64 {
-	m := map[string]int64{}
+func habitatCountMap(rows []sqlc.CountHabitatsRow) map[enum.Habitat]int64 {
+	m := map[enum.Habitat]int64{}
 	for _, r := range rows {
 		m[r.Habitat] = r.N
 	}
@@ -230,7 +230,7 @@ func CompendiumRest(path string) string {
 }
 
 // habitatHref toggles habitat in the monster filter, in Habitats order.
-func habitatHref(query, habitat, current string, campaign int64) string {
+func habitatHref(query string, habitat enum.Habitat, current string, campaign int64) string {
 	q := url.Values{KindKey: {string(enum.KindMonster)}}
 	if query != "" {
 		q.Set(QueryKey, query)
@@ -238,8 +238,8 @@ func habitatHref(query, habitat, current string, campaign int64) string {
 	set := kindSet(current)
 	var next []string
 	for _, h := range compendium.Habitats {
-		if (h == habitat) != slices.Contains(set, h) {
-			next = append(next, h)
+		if (h == habitat) != slices.Contains(set, string(h)) {
+			next = append(next, string(h))
 		}
 	}
 	if len(next) > 0 {
@@ -366,7 +366,7 @@ type EntryView struct {
 	Data    any
 	IsGM    bool
 	// Habitats are a monster's, seeded from its source and edited by the GM.
-	Habitats []string
+	Habitats []enum.Habitat
 	// HabitatCopies are the copies the GM may take habitats from while the
 	// monster has none.
 	HabitatCopies []HabitatCopy
@@ -380,20 +380,20 @@ type EntryView struct {
 // HabitatCopy is another source's copy of a monster and its habitats.
 type HabitatCopy struct {
 	Copy     sqlc.ListEntryCopiesRow
-	Habitats []string
+	Habitats []enum.Habitat
 }
 
 // inHabitatOrder joins habitats in compendium.Habitats order; every one of
 // them reads "Any", as in the Monster Manual.
-func inHabitatOrder(habitats []string) string {
+func inHabitatOrder(habitats []enum.Habitat) string {
 	var out []string
 	for _, h := range compendium.Habitats {
 		if slices.Contains(habitats, h) {
-			out = append(out, h)
+			out = append(out, string(h))
 		}
 	}
 	if len(out) == len(compendium.Habitats) {
-		return "Any"
+		return string(enum.HabitatAny)
 	}
 	return strings.Join(out, ", ")
 }

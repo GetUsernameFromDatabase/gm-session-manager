@@ -37,9 +37,10 @@ const MonsterImagePrefix = "https://dnd-5e-api-images.s3.us-west-1.amazonaws.com
 
 // Habitats are the 2024 Monster Manual habitats, in display order, without
 // "Any", which filters nothing; the monster_habitats CHECK still allows it.
-var Habitats = []string{
-	"Arctic", "Coastal", "Desert", "Forest", "Grassland", "Hill",
-	"Mountain", "Planar", "Swamp", "Underdark", "Underwater", "Urban",
+var Habitats = []enum.Habitat{
+	enum.HabitatArctic, enum.HabitatCoastal, enum.HabitatDesert, enum.HabitatForest,
+	enum.HabitatGrassland, enum.HabitatHill, enum.HabitatMountain, enum.HabitatPlanar,
+	enum.HabitatSwamp, enum.HabitatUnderdark, enum.HabitatUnderwater, enum.HabitatUrban,
 }
 
 // Entry is one normalized compendium entry ready to store.
@@ -53,17 +54,17 @@ type Entry struct {
 	Text string
 	// Habitats are a monster's source habitats; they seed monster_habitats
 	// only while it has none (SeedMonsterHabitats).
-	Habitats []string
+	Habitats []enum.Habitat
 }
 
 // habitatsFrom maps source habitat names ("forest", "planar, feywild",
 // "any") onto Habitats, in display order; unknown names are dropped.
-func habitatsFrom(names []string) []string {
-	var out []string
+func habitatsFrom(names []string) []enum.Habitat {
+	var out []enum.Habitat
 	for _, h := range Habitats {
 		for _, n := range names {
 			n, _, _ = strings.Cut(strings.TrimSpace(n), ",")
-			if strings.EqualFold(n, "any") || strings.EqualFold(n, h) {
+			if strings.EqualFold(n, "any") || strings.EqualFold(n, string(h)) {
 				out = append(out, h)
 				break
 			}

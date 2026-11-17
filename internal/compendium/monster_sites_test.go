@@ -96,7 +96,7 @@ func TestParseFiveTools(t *testing.T) {
 	if image != fiveToolsImages+"MTF/Howler.webp" {
 		t.Errorf("image %q", image)
 	}
-	if in := InputForEntry(e); !reflect.DeepEqual(in.Habitats, []string{"Planar"}) {
+	if in := InputForEntry(e); !reflect.DeepEqual(in.Habitats, []enum.Habitat{enum.HabitatPlanar}) {
 		t.Errorf("form habitats %v", in.Habitats)
 	}
 	for _, slug := range []string{"copycat", "nobody"} {

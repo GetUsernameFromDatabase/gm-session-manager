@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/checkbox"
 	"gm-session-manager/internal/web/components/empty"
@@ -88,7 +89,7 @@ templ HabitatGrid(v HabitatView) {
 						}
 						for _, h := range compendium.Habitats {
 							@table.Head(table.HeadProps{Class: "sticky top-0 z-10 bg-background text-center"}) {
-								<div>{ h }</div>
+								<div>{ string(h) }</div>
 								<div class="flex justify-center">
 									@habitatBatchButton(v, h, true)
 									@habitatBatchButton(v, h, false)
@@ -110,7 +111,7 @@ templ HabitatGrid(v HabitatView) {
 // HabitatRow is one monster's row: its name with an Any toggle (every
 // habitat, as the Monster Manual's "Habitat: Any"), then a box per habitat.
 // The Any button's pressed look follows the boxes (anyPressed).
-templ HabitatRow(m sqlc.ListMonstersByNameRow, has map[string]bool) {
+templ HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) {
 	{{ every := everyHabitat(has) }}
 	@table.Row(table.RowProps{Class: "group/row"}) {
 		// Opaque, so cells scrolling under it stay hidden; on hover it
@@ -132,7 +133,7 @@ templ HabitatRow(m sqlc.ListMonstersByNameRow, has map[string]bool) {
 			// A tint on ticked cells shows each habitat's coverage at a glance.
 			@table.Cell(table.CellProps{Class: "text-center has-checked:bg-emerald-500/10"}) {
 				<form class="flex justify-center" hx-post="/compendium/habitats/cell" hx-trigger="change" hx-vals={ toJSON(map[string]any{"entry_id": m.ID, "habitat": h}) }>
-					@checkbox.Checkbox(checkbox.Props{Name: "on", Value: "true", DefaultChecked: has[h], Attributes: templ.Attributes{"aria-label": h + ": " + m.Name}})
+					@checkbox.Checkbox(checkbox.Props{Name: "on", Value: "true", DefaultChecked: has[h], Attributes: templ.Attributes{"aria-label": string(h) + ": " + m.Name}})
 				</form>
 			}
 		}
@@ -140,7 +141,7 @@ templ HabitatRow(m sqlc.ListMonstersByNameRow, has map[string]bool) {
 }
 
 // habitatBatchButton adds (on) or removes habitat h for every match.
-templ habitatBatchButton(v HabitatView, h string, on bool) {
+templ habitatBatchButton(v HabitatView, h enum.Habitat, on bool) {
 	{{ what := fmt.Sprintf(utils.IfElse(on, "Add %s to all %d monsters shown", "Remove %s from all %d monsters shown"), h, len(v.Monsters)) }}
 	@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: templ.Attributes{
 		"type": "button", "title": what, "aria-label": what,

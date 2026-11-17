@@ -201,7 +201,7 @@ type LevelUp struct {
 
 type MonsterHabitat struct {
 	EntryID int64
-	Habitat string
+	Habitat enum.Habitat
 }
 
 type Note struct {

@@ -7,6 +7,7 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 
 	"github.com/a-h/templ"
 )
@@ -19,7 +20,7 @@ const HabitatGridID = "habitat-grid"
 type HabitatView struct {
 	Filter   string
 	Monsters []sqlc.ListMonstersByNameRow
-	Has      map[int64]map[string]bool
+	Has      map[int64]map[enum.Habitat]bool
 }
 
 // anyPressed styles the Any button pressed while no box in its row is
@@ -27,8 +28,8 @@ type HabitatView struct {
 const anyPressed = "[tr:not(:has([data-slot=checkbox][data-unchecked]))_&]:border-primary [tr:not(:has([data-slot=checkbox][data-unchecked]))_&]:bg-primary [tr:not(:has([data-slot=checkbox][data-unchecked]))_&]:text-primary-foreground"
 
 // everyHabitat reports whether has holds every habitat: the monster's habitat is Any.
-func everyHabitat(has map[string]bool) bool {
-	return !slices.ContainsFunc(compendium.Habitats, func(h string) bool { return !has[h] })
+func everyHabitat(has map[enum.Habitat]bool) bool {
+	return !slices.ContainsFunc(compendium.Habitats, func(h enum.Habitat) bool { return !has[h] })
 }
 
 // habitatsURL opens the grid filtered to name.

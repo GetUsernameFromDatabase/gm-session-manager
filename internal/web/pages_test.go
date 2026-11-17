@@ -234,6 +234,14 @@ func TestMonsterImageLink(t *testing.T) {
 	}
 }
 
+func joinHabitats(hs []enum.Habitat, sep string) string {
+	names := make([]string, len(hs))
+	for i, h := range hs {
+		names[i] = string(h)
+	}
+	return strings.Join(names, sep)
+}
+
 func TestMonsterHabitats(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
@@ -251,7 +259,7 @@ func TestMonsterHabitats(t *testing.T) {
 	habitats := func(id int64) string {
 		h, _ := e.q().ListEntryHabitats(ctx, id)
 		slices.Sort(h)
-		return strings.Join(h, ",")
+		return joinHabitats(h, ",")
 	}
 	cell := func(id int64, habitat string, on bool) url.Values {
 		v := url.Values{"entry_id": {fmt.Sprint(id)}, "habitat": {habitat}}
@@ -266,11 +274,11 @@ func TestMonsterHabitats(t *testing.T) {
 	anyForm := func(id int64) url.Values { return url.Values{"entry_id": {fmt.Sprint(id)}} }
 	every := slices.Clone(compendium.Habitats)
 	slices.Sort(every)
-	all := strings.Join(every, ",")
+	all := joinHabitats(every, ",")
 
 	// Every listed habitat passes the form's oneof and the table's CHECK.
 	for _, h := range compendium.Habitats {
-		if w := e.do(t, http.MethodPost, "/compendium/habitats/cell", gm, cell(goblin.ID, h, true), false); w.Code != http.StatusOK {
+		if w := e.do(t, http.MethodPost, "/compendium/habitats/cell", gm, cell(goblin.ID, string(h), true), false); w.Code != http.StatusOK {
 			t.Fatalf("habitat %s: status %d", h, w.Code)
 		}
 	}
@@ -278,7 +286,7 @@ func TestMonsterHabitats(t *testing.T) {
 		t.Fatalf("goblin habitats %q", got)
 	}
 	for _, h := range compendium.Habitats {
-		e.do(t, http.MethodPost, "/compendium/habitats/cell", gm, cell(goblin.ID, h, false), false)
+		e.do(t, http.MethodPost, "/compendium/habitats/cell", gm, cell(goblin.ID, string(h), false), false)
 	}
 
 	cases := []struct {
@@ -400,7 +408,7 @@ func TestHabitatCopies(t *testing.T) {
 	habitats := func(id int64) string {
 		h, _ := e.q().ListEntryHabitats(ctx, id)
 		slices.Sort(h)
-		return strings.Join(h, ",")
+		return joinHabitats(h, ",")
 	}
 	fill := func(q string) url.Values { return url.Values{"q": {q}} }
 	copyForm := func(to, from int64) url.Values {
@@ -571,7 +579,7 @@ func TestEntryBackKeepsFilters(t *testing.T) {
 // TestHabitatsMatchSchema keeps the habitat forms' oneof lists in step with
 // compendium.Habitats.
 func TestHabitatsMatchSchema(t *testing.T) {
-	want := "oneof=" + strings.Join(compendium.Habitats, " ")
+	want := "oneof=" + joinHabitats(compendium.Habitats, " ")
 	for _, form := range []any{habitatCellForm{}, habitatBatchForm{}} {
 		f, _ := reflect.TypeOf(form).FieldByName("Habitat")
 		if !strings.Contains(f.Tag.Get("validate"), want) {

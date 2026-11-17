@@ -13,6 +13,7 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -53,7 +54,7 @@ var errNotMonster = errors.New("not a monster")
 
 // habitatView reads the grid for the monsters whose name contains filter.
 func (a *App) habitatView(ctx context.Context, filter string) (views.HabitatView, error) {
-	v := views.HabitatView{Filter: filter, Has: map[int64]map[string]bool{}}
+	v := views.HabitatView{Filter: filter, Has: map[int64]map[enum.Habitat]bool{}}
 	var err error
 	if v.Monsters, err = a.Store.ListMonstersByName(ctx, filter); err != nil {
 		return v, err
@@ -61,7 +62,7 @@ func (a *App) habitatView(ctx context.Context, filter string) (views.HabitatView
 	rows, err := a.Store.ListMonsterHabitats(ctx)
 	for _, r := range rows {
 		if v.Has[r.EntryID] == nil {
-			v.Has[r.EntryID] = map[string]bool{}
+			v.Has[r.EntryID] = map[enum.Habitat]bool{}
 		}
 		v.Has[r.EntryID][r.Habitat] = true
 	}
@@ -100,7 +101,7 @@ func (a *App) habitatCell(c *gin.Context) error {
 	}
 	ctx := c.Request.Context()
 	if !f.On {
-		if err := a.Store.RemoveMonsterHabitat(ctx, sqlc.RemoveMonsterHabitatParams{EntryID: f.EntryID, Habitat: f.Habitat}); err != nil {
+		if err := a.Store.RemoveMonsterHabitat(ctx, sqlc.RemoveMonsterHabitatParams{EntryID: f.EntryID, Habitat: enum.Habitat(f.Habitat)}); err != nil {
 			return err
 		}
 		a.render(c, http.StatusOK, views.Flash("", false))
@@ -127,13 +128,13 @@ func (a *App) habitatAny(c *gin.Context) error {
 		return nil
 	}
 	ctx := c.Request.Context()
-	has := map[string]bool{}
+	has := map[enum.Habitat]bool{}
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		current, err := q.ListEntryHabitats(ctx, f.EntryID)
 		if err != nil {
 			return err
 		}
-		every := !slices.ContainsFunc(compendium.Habitats, func(h string) bool { return !slices.Contains(current, h) })
+		every := !slices.ContainsFunc(compendium.Habitats, func(h enum.Habitat) bool { return !slices.Contains(current, h) })
 		for _, h := range compendium.Habitats {
 			if every {
 				if err := q.RemoveMonsterHabitat(ctx, sqlc.RemoveMonsterHabitatParams{EntryID: f.EntryID, Habitat: h}); err != nil {
@@ -141,7 +142,7 @@ func (a *App) habitatAny(c *gin.Context) error {
 				}
 				continue
 			}
-			n, err := q.AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: f.EntryID, Habitat: h})
+			n, err := q.AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: f.EntryID, Habitat: string(h)})
 			if err != nil {
 				return err
 			}

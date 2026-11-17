@@ -29,6 +29,26 @@ const (
 	KindRule       CompendiumKind = "rule"
 )
 
+// Habitat is monster_habitats.habitat.
+type Habitat string
+
+// Monster habitats. Any is allowed by the CHECK but filters nothing.
+const (
+	HabitatAny        Habitat = "Any"
+	HabitatArctic     Habitat = "Arctic"
+	HabitatCoastal    Habitat = "Coastal"
+	HabitatDesert     Habitat = "Desert"
+	HabitatForest     Habitat = "Forest"
+	HabitatGrassland  Habitat = "Grassland"
+	HabitatHill       Habitat = "Hill"
+	HabitatMountain   Habitat = "Mountain"
+	HabitatPlanar     Habitat = "Planar"
+	HabitatSwamp      Habitat = "Swamp"
+	HabitatUnderdark  Habitat = "Underdark"
+	HabitatUnderwater Habitat = "Underwater"
+	HabitatUrban      Habitat = "Urban"
+)
+
 // EncounterStatus is encounters.status: preparing → active → ended, and
 // ended → active on restart.
 type EncounterStatus string

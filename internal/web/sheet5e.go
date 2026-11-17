@@ -218,3 +218,33 @@ func (a *App) addCondition(ctx context.Context, o condOwner, slug, note string, 
 		return applyCondOps(ctx, q, o, []dnd5e.CondOp{op}, expires)
 	})
 }
+
+// monsterStats fills name, AC and HP from a compendium monster.
+func (a *App) monsterStats(ctx context.Context, entryID int64, p *sqlc.CreateCombatantParams) error {
+	row, err := a.Store.GetCompendiumEntry(ctx, entryID)
+	if err != nil {
+		return err
+	}
+	if row.Kind != enum.KindMonster {
+		return sql.ErrNoRows
+	}
+	m, err := compendium.Decode[compendium.MonsterData](enum.KindMonster, row.DataJson)
+	if err != nil {
+		return err
+	}
+	p.MonsterRef, p.Name, p.Ac, p.Hp, p.MaxHp = nullID(row.ID), row.Name, int64(m.AC), int64(m.HP), int64(m.HP)
+	return nil
+}
+
+// addHomebrewToSheet puts a new homebrew spell or item on the character.
+func (a *App) addHomebrewToSheet(ctx context.Context, ch sqlc.Character, id int64) error {
+	e, err := a.Store.GetCompendiumEntry(ctx, id)
+	if err != nil {
+		return err
+	}
+	line := fmt.Sprintf("item add %s", strconv.Quote(e.Name))
+	if e.Kind == enum.KindSpell {
+		line = "spell add " + e.Slug
+	}
+	return a.runLine(ctx, ch, line)
+}

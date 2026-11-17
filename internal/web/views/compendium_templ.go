@@ -4048,7 +4048,7 @@ func habitatCounts(v CompendiumView) templ.Component {
 			}
 			for _, h := range compendium.Habitats {
 				if counts[h] > 0 {
-					on := slices.Contains(kindSet(v.Habitat), h)
+					on := slices.Contains(kindSet(v.Habitat), string(h))
 					templ_7745c5c3_Var177 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 						templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 						templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
@@ -4062,9 +4062,9 @@ func habitatCounts(v CompendiumView) templ.Component {
 						}
 						ctx = templ.InitializeContext(ctx)
 						var templ_7745c5c3_Var178 string
-						templ_7745c5c3_Var178, templ_7745c5c3_Err = templ.JoinStringErrs(h)
+						templ_7745c5c3_Var178, templ_7745c5c3_Err = templ.JoinStringErrs(string(h))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/compendium.templ`, Line: 753, Col: 9}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/compendium.templ`, Line: 753, Col: 17}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var178))
 						if templ_7745c5c3_Err != nil {
@@ -4089,7 +4089,7 @@ func habitatCounts(v CompendiumView) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = badge.Badge(badge.Props{Href: habitatHref(v.Query, h, v.Habitat, v.Campaign), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "gap-1.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on), "data-habitat": h}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var177), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = badge.Badge(badge.Props{Href: habitatHref(v.Query, h, v.Habitat, v.Campaign), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "gap-1.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on), "data-habitat": string(h)}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var177), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -5458,7 +5458,7 @@ func entryHead(e sqlc.CompendiumEntry, preview bool) templ.Component {
 }
 
 // EntryPreview is the hover card on compendium lists.
-func EntryPreview(e sqlc.CompendiumEntry, data any, habitats []string) templ.Component {
+func EntryPreview(e sqlc.CompendiumEntry, data any, habitats []enum.Habitat) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -5509,7 +5509,7 @@ func EntryPreview(e sqlc.CompendiumEntry, data any, habitats []string) templ.Com
 
 // MonsterHabitats is a monster's habitat line; for the GM, while it has none,
 // a button per copy that has some takes them over (redrawing this line).
-func MonsterHabitats(e sqlc.CompendiumEntry, habitats []string, gm bool, copies []HabitatCopy) templ.Component {
+func MonsterHabitats(e sqlc.CompendiumEntry, habitats []enum.Habitat, gm bool, copies []HabitatCopy) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -7684,9 +7684,9 @@ func HomebrewPage(l Layout, v HomebrewView) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var331 string
-					templ_7745c5c3_Var331, templ_7745c5c3_Err = templruntime.NewAttributeExpression(h).Resolve(ctx)
+					templ_7745c5c3_Var331, templ_7745c5c3_Err = templruntime.NewAttributeExpression(string(h)).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/compendium.templ`, Line: 1441, Col: 52}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/compendium.templ`, Line: 1441, Col: 60}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var331)
 					if templ_7745c5c3_Err != nil {

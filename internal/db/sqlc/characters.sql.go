@@ -213,6 +213,41 @@ func (q *Queries) LatestLevelUp(ctx context.Context, characterID int64) (LevelUp
 	return i, err
 }
 
+const listCharacterNames = `-- name: ListCharacterNames :many
+SELECT id, name FROM characters
+WHERE campaign_id = ? AND deleted_at IS NULL
+ORDER BY name
+`
+
+type ListCharacterNamesRow struct {
+	ID   int64
+	Name string
+}
+
+// ListCharacterNames is ListCharactersByCampaign without the sheets.
+func (q *Queries) ListCharacterNames(ctx context.Context, campaignID int64) ([]ListCharacterNamesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCharacterNames, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCharacterNamesRow{}
+	for rows.Next() {
+		var i ListCharacterNamesRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCharacterSheets = `-- name: ListCharacterSheets :many
 SELECT id, sheet_json FROM characters
 ORDER BY id

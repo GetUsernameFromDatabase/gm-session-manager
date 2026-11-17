@@ -19,6 +19,12 @@ SELECT * FROM characters
 WHERE campaign_id = ? AND deleted_at IS NULL
 ORDER BY name;
 
+-- ListCharacterNames is ListCharactersByCampaign without the sheets.
+-- name: ListCharacterNames :many
+SELECT id, name FROM characters
+WHERE campaign_id = ? AND deleted_at IS NULL
+ORDER BY name;
+
 -- GetCharacterAny also finds a deleted character, for the GM's restore,
 -- download and delete forever.
 -- name: GetCharacterAny :one

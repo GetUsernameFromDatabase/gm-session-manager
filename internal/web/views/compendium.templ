@@ -748,9 +748,9 @@ templ habitatCounts(v CompendiumView) {
 			@icon.Mountain(icon.Props{Size: 14, Class: "text-muted-foreground", Attributes: templ.Attributes{"aria-label": "Habitats"}})
 			for _, h := range compendium.Habitats {
 				if counts[h] > 0 {
-					{{ on := slices.Contains(kindSet(v.Habitat), h) }}
-					@badge.Badge(badge.Props{Href: habitatHref(v.Query, h, v.Habitat, v.Campaign), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "gap-1.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on), "data-habitat": h}}) {
-						{ h }
+					{{ on := slices.Contains(kindSet(v.Habitat), string(h)) }}
+					@badge.Badge(badge.Props{Href: habitatHref(v.Query, h, v.Habitat, v.Campaign), Variant: utils.IfElse(on, badge.VariantDefault, badge.VariantOutline), Class: "gap-1.5", Attributes: templ.Attributes{"aria-current": fmt.Sprint(on), "data-habitat": string(h)}}) {
+						{ string(h) }
 						<span class="tabular-nums opacity-60">{ fmt.Sprint(counts[h]) }</span>
 					}
 				}
@@ -1033,7 +1033,7 @@ templ entryHead(e sqlc.CompendiumEntry, preview bool) {
 }
 
 // EntryPreview is the hover card on compendium lists.
-templ EntryPreview(e sqlc.CompendiumEntry, data any, habitats []string) {
+templ EntryPreview(e sqlc.CompendiumEntry, data any, habitats []enum.Habitat) {
 	// The pane is a column: the name stays put and only the body scrolls,
 	// so nothing passes behind it.
 	<div class="shrink-0 border-b bg-statblock-paper px-4 pt-3 pb-2 font-serif">
@@ -1048,7 +1048,7 @@ templ EntryPreview(e sqlc.CompendiumEntry, data any, habitats []string) {
 
 // MonsterHabitats is a monster's habitat line; for the GM, while it has none,
 // a button per copy that has some takes them over (redrawing this line).
-templ MonsterHabitats(e sqlc.CompendiumEntry, habitats []string, gm bool, copies []HabitatCopy) {
+templ MonsterHabitats(e sqlc.CompendiumEntry, habitats []enum.Habitat, gm bool, copies []HabitatCopy) {
 	if e.Kind == enum.KindMonster && (len(habitats) > 0 || gm) {
 		<div id="monster-habitats">
 			@rule()
@@ -1438,7 +1438,7 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 				if len(v.Input.Habitats) > 0 {
 					<p class="text-muted-foreground">Habitat: { inHabitatOrder(v.Input.Habitats) }</p>
 					for _, h := range v.Input.Habitats {
-						<input type="hidden" name="habitats" value={ h }/>
+						<input type="hidden" name="habitats" value={ string(h) }/>
 					}
 				}
 				// Laid out like the stat block's ability row.

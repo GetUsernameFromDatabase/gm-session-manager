@@ -11,3 +11,5 @@
 - A subclass shipped for both the PHB and XPHB class keeps the XPHB copy. Subclass features referenced from another book (`…|XGE|8|TCE`) are bundled at download.
 - Tags to 2014 records with `reprintedAs` are rewritten to the reprint at download (`bookWriter.write`), keeping their words.
 - The trimmed 5etools fixture lives in its own folder, `testdata/fivetools/5etools-xphb/`, so the web tests' `testdata` import skips it.
+- A format's `afterSave` runs inside `storeSource`'s transaction, before the source hash is recorded: a step that wrote outside it would leave a failed import marked unchanged, never retried.
+- The import skips data folders whose names start with `.`: name temporary and swap folders that way (`.tmp-5etools-*`, `.old-5etools-*`).
