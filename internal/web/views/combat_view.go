@@ -41,6 +41,9 @@ type CombatantView struct {
 	IsOwn      bool
 	Active     bool
 	Conditions []sqlc.Condition
+	// HeldLabels name what holds each effect above ("Caster: spell"), by
+	// condition id; only for effects whose holder the viewer may see.
+	HeldLabels map[int64]string
 	// Out is a combatant out of the fight, whose turn is skipped.
 	Out bool
 	// Down is at 0 HP, shown to everyone even when the HP is hidden.

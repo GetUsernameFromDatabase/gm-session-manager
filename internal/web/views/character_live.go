@@ -60,7 +60,7 @@ func (s SheetView) Shape() SheetView {
 	for i := range s.C.Sheet.Features {
 		s.C.Sheet.Features[i].Uses.Used = 0
 	}
-	s.Conditions = slices.DeleteFunc(slices.Clone(s.Conditions), func(c sqlc.Condition) bool { return isToggle(c.Slug) })
+	s.Conditions = slices.DeleteFunc(slices.Clone(s.Conditions), func(c sqlc.Condition) bool { return isToggle(c.Slug) && !hasEffect(c) })
 	return s
 }
 

@@ -14,9 +14,67 @@ GROUP BY cond.id
 ORDER BY cond.slug, cond.id;
 
 -- name: CreateCondition :one
-INSERT INTO conditions (character_id, combatant_id, slug, note, expires_round)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO conditions (character_id, combatant_id, slug, note, expires_round, ends_on, held_by, mods_json)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
+
+-- name: ListCombatantConditions :many
+SELECT * FROM conditions
+WHERE combatant_id = ?
+ORDER BY slug, id;
+
+-- ListHeldBy are the owners of the effects hanging off the given
+-- concentration rows (and, for a combatant, its encounter): who to refresh
+-- before those rows are deleted.
+-- name: ListHeldBy :many
+SELECT cond.character_id, cond.combatant_id, cb.encounter_id
+FROM conditions AS cond
+LEFT JOIN combatants AS cb ON cb.id = cond.combatant_id
+WHERE cond.held_by IN (sqlc.slice(ids));
+
+-- ListRestConditions are an owner's effects that end on this rest: the
+-- short ones, and on a long rest the long ones too.
+-- name: ListRestConditions :many
+SELECT * FROM conditions
+WHERE (character_id = sqlc.narg(character_id) OR combatant_id = sqlc.narg(combatant_id))
+  AND ends_on IN (sqlc.arg(first), sqlc.arg(second));
+
+-- ListCharacterConcentration and ListEncounterConcentration are the
+-- concentration rows an effect may hang off, with whose they are.
+-- name: ListCharacterConcentration :many
+SELECT cond.id, cond.note, ch.id AS character_id, ch.name AS owner_name
+FROM conditions AS cond
+JOIN characters AS ch ON ch.id = cond.character_id
+WHERE ch.campaign_id = ? AND ch.deleted_at IS NULL AND cond.slug = 'concentration'
+ORDER BY ch.name, cond.id;
+
+-- name: ListEncounterConcentration :many
+SELECT cond.id, cond.note, cb.id AS combatant_id, cb.name AS owner_name
+FROM conditions AS cond
+JOIN combatants AS cb ON cb.id = cond.combatant_id
+WHERE cb.encounter_id = ? AND cond.slug = 'concentration'
+ORDER BY cb.name, cond.id;
+
+-- DeleteRoundConditions ends the round-timed effects of a fight's combatants
+-- and their characters, as the fight ends.
+-- name: DeleteRoundConditions :exec
+DELETE FROM conditions
+WHERE expires_round IS NOT NULL
+  AND (
+    combatant_id IN (SELECT cb.id FROM combatants AS cb WHERE cb.encounter_id = sqlc.arg(encounter_id))
+    OR character_id IN (SELECT cb.character_id FROM combatants AS cb WHERE cb.encounter_id = sqlc.arg(encounter_id))
+  );
+
+-- ListExpiringConditions is what ExpireTurnConditions is about to delete,
+-- so the effects held by those rows can be noted first. Keep the two WHEREs
+-- the same.
+-- name: ListExpiringConditions :many
+SELECT id FROM conditions
+WHERE expires_round IS NOT NULL AND expires_round < sqlc.arg(round)
+  AND (
+    combatant_id = sqlc.arg(combatant_id)
+    OR character_id = (SELECT cb.character_id FROM combatants AS cb WHERE cb.id = sqlc.arg(combatant_id))
+  );
 
 -- name: GetCondition :one
 SELECT * FROM conditions

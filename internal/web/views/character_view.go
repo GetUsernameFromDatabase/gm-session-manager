@@ -1,6 +1,8 @@
 package views
 
 import (
+	"cmp"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"regexp"
@@ -10,7 +12,9 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
+	selectcomp "gm-session-manager/internal/web/components/select"
 )
 
 // SheetView is a character as one viewer sees it.
@@ -34,6 +38,144 @@ type SheetView struct {
 	// MasteryLimit is how many weapon kinds the classes let the character
 	// master (dnd5e.Sheet.MasteryLimit).
 	MasteryLimit int
+	// EffectMods is how many of the last C.Sheet.Modifiers come from active
+	// effects: shown, but never saved or edited with the sheet's own.
+	EffectMods int
+	// HeldLabels name what holds each effect on the sheet ("Caster: spell"),
+	// by condition id.
+	HeldLabels map[int64]string
+}
+
+// editableMod is whether modifier i is the sheet's own, not an effect's.
+func (s SheetView) editableMod(i int) bool { return i < len(s.C.Sheet.Modifiers)-s.EffectMods }
+
+// condMods are the modifiers an effect row carries.
+func condMods(c sqlc.Condition) []dnd5e.CustomMod {
+	var mods []dnd5e.CustomMod
+	if c.ModsJson == "" || c.ModsJson == "[]" || json.Unmarshal([]byte(c.ModsJson), &mods) != nil {
+		return nil
+	}
+	return mods
+}
+
+// hasEffect is whether a condition row is more than a plain condition: it
+// has a name, a modifier or something that ends it.
+func hasEffect(c sqlc.Condition) bool {
+	return c.Slug != dnd5e.Exhaustion && (c.Note != "" || c.EndsOn != enum.EffectEndNone || c.HeldBy.Valid || c.ExpiresRound.Valid || len(condMods(c)) > 0)
+}
+
+// effectChip is whether the sheet shows a row as an effect chip, not only
+// as a condition toggle.
+func effectChip(c sqlc.Condition) bool {
+	return c.Slug == dnd5e.TrackConcentration || c.Slug == dnd5e.TrackCustom || hasEffect(c)
+}
+
+// chipName is an effect chip's name.
+func chipName(c sqlc.Condition) string {
+	switch {
+	case c.Slug == dnd5e.TrackConcentration:
+		return "Concentrating: " + c.Note
+	case c.Slug == dnd5e.TrackCustom || c.Note == "":
+		return cmp.Or(c.Note, c.Slug)
+	}
+	return c.Slug + " — " + c.Note
+}
+
+// effectBits say what an effect changes and what ends it, compactly.
+func effectBits(c sqlc.Condition, held map[int64]string) []string {
+	var out []string
+	var mods []string
+	for _, m := range condMods(c) {
+		mods = append(mods, cmp.Or(modTargetLabel(m.Target), m.Target)+" "+dnd5e.Signed(m.Value))
+	}
+	if len(mods) > 0 {
+		out = append(out, strings.Join(mods, ", "))
+	}
+	if c.ExpiresRound.Valid {
+		out = append(out, fmt.Sprintf("until round %d", c.ExpiresRound.Int64))
+	}
+	switch c.EndsOn {
+	case enum.EffectEndShortRest:
+		out = append(out, "until short rest")
+	case enum.EffectEndLongRest:
+		out = append(out, "until long rest")
+	}
+	if c.HeldBy.Valid {
+		out = append(out, "held by "+cmp.Or(held[c.HeldBy.Int64], "a concentration"))
+	}
+	return out
+}
+
+// EffectFields is what the add-effect form's fields show: the target's own
+// numbers, what a picked spell fills in, and what it may be held by.
+type EffectFields struct {
+	// ID prefixes the fields' element ids (EffectID); URL is where they
+	// load from (EffectFieldsURL).
+	ID, URL string
+	// Sheet is the character's, for the weapons a modifier can name.
+	Sheet            dnd5e.Sheet
+	Name, Note, Hint string
+	Rounds           int
+	// InFight offers rounds: they count only in a running fight.
+	InFight bool
+	HeldBy  []Named
+}
+
+// EffectTarget is who an add-effect dialog adds to: a character, or a
+// combatant (CombatantID).
+type EffectTarget struct {
+	CampaignID, CharacterID, CombatantID int64
+	Name, Post, Label                    string
+}
+
+// ID is the id of the target's form.
+func (t EffectTarget) ID() string { return EffectID(t.CharacterID, t.CombatantID) }
+
+// fieldsURL loads the form's fields, for the spell posted along with it.
+func (t EffectTarget) fieldsURL() string {
+	return EffectFieldsURL(t.CampaignID, t.CharacterID, t.CombatantID)
+}
+
+// EffectFieldsURL is where an add-effect form loads its fields and rows.
+func EffectFieldsURL(campaignID, characterID, combatantID int64) string {
+	return fmt.Sprintf("/campaigns/%d/effect/spell?%s", campaignID, effectQuery(characterID, combatantID))
+}
+
+// rowURL loads stat-change row i, with the button for the next.
+func (f EffectFields) rowURL(i int) string { return fmt.Sprintf("%s&row=%d", f.URL, i) }
+
+// targets are the values a modifier can change.
+func (f EffectFields) targets() []selectcomp.ItemData {
+	return SheetView{C: dnd5e.Character{Sheet: f.Sheet}}.modTargetItems()
+}
+
+// EffectID is the element id of the add-effect form of a character or combatant.
+func EffectID(characterID, combatantID int64) string {
+	if characterID != 0 {
+		return fmt.Sprintf("effect-char-%d", characterID)
+	}
+	return fmt.Sprintf("effect-cb-%d", combatantID)
+}
+
+// effectQuery is the target the fields' address names.
+func effectQuery(characterID, combatantID int64) string {
+	if characterID != 0 {
+		return fmt.Sprintf("character=%d", characterID)
+	}
+	return fmt.Sprintf("combatant=%d", combatantID)
+}
+
+// effectHeldItems are the concentrations an effect may hang off.
+func effectHeldItems(held []Named) []selectcomp.ItemData {
+	return append([]selectcomp.ItemData{{Value: "0", Label: "nobody"}},
+		selectItems(held, func(n Named) string { return fmt.Sprint(n.ID) }, func(n Named) string { return n.Name })...)
+}
+
+// effectEnds are the rests that end an effect.
+var effectEnds = []struct{ Value, Label string }{
+	{string(enum.EffectEndNone), "Neither"},
+	{string(enum.EffectEndShortRest), "Short rest"},
+	{string(enum.EffectEndLongRest), "Long rest"},
 }
 
 func (s SheetView) cmdURL() string { return fmt.Sprintf("/characters/%d/cmd", s.ID) }

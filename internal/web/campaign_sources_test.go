@@ -94,6 +94,25 @@ func TestCampaignSourceVisibility(t *testing.T) {
 		})
 	}
 
+	// Search ranks the copies itself (not through campaign_top): same answers, one copy per slug.
+	for _, tt := range tests {
+		t.Run("search: "+tt.name, func(t *testing.T) {
+			names, _, err := compendium.Search(t.Context(), e.q(), tt.sub, "subclass", "", tt.campaign, 50)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for _, n := range names {
+				if n.Name == tt.sub {
+					got = append(got, n.SourceKey)
+				}
+			}
+			if want := []string{tt.want}; tt.want == "" && len(got) > 0 || tt.want != "" && !slices.Equal(got, want) {
+				t.Errorf("%s from %q, want %q", tt.sub, got, tt.want)
+			}
+		})
+	}
+
 	// Choosing by name: an unticked-only subclass is refused, not dropped.
 	refs := []struct {
 		name     string

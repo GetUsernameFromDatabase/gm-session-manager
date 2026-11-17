@@ -42,6 +42,7 @@ A handler with an error path returns `error` and is registered as `a.h(a.x)`: a 
 - The request log keeps POST bodies except where `keepsBody` (`reqlog.go`, matched on the route pattern) says no. A new route whose body can carry a player's private text (note titles, blocks) goes there, or that text reaches the GM's reports.
 - Browsers post every line break as `\r\n`, hidden inputs included; Go's CSV reader stores `\n`. Normalize before comparing a posted value with a stored one.
 - A hidden input's `defaultValue` always equals its `value`, so live.js `edited` and any browser-side "what changed" check cannot see edits in controls backed by one (shadcn select/combobox, NPC field values): keep the loaded value yourself (`data-saved`, `was_*`).
+- An effect (`conditions.held_by`) dies with its concentration row by FK cascade, and its owner is not in the request: before any delete that can cascade, call `noteHeld(ctx, q, ids...)` in the same transaction (`held.go`) and publish with `a.changed`/`a.publish`, which add the collected topics. Effect modifiers are merged only for display (`effectSheet`: `shownSheetView`, tracker rows), never into the stored sheet.
 - In tests, loopback is the GM: a visitor or player request needs a LAN `RemoteAddr` (`lanAddr`).
 
 ## Gotchas

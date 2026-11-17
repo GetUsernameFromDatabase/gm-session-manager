@@ -60,6 +60,16 @@ const (
 	EncounterEnded     EncounterStatus = "ended"
 )
 
+// EffectEnd is conditions.ends_on: the rest that removes an effect.
+type EffectEnd string
+
+// Effect end triggers; none means only a person or the round count ends it.
+const (
+	EffectEndNone      EffectEnd = ""
+	EffectEndShortRest EffectEnd = "short_rest"
+	EffectEndLongRest  EffectEnd = "long_rest"
+)
+
 // NoteKind is notes.kind.
 type NoteKind string
 

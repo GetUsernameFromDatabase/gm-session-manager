@@ -155,7 +155,17 @@ func (a *App) deleteCharacter(c *gin.Context) error {
 		return err
 	}
 	// Sessions, conditions, the player's notes and combat rows cascade.
-	if err := a.Store.DeleteCharacter(ctx, id); err != nil {
+	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		conds, err := q.ListConditionsByCharacter(ctx, nullID(id))
+		if err != nil {
+			return err
+		}
+		if err := noteHeld(ctx, q, concentrationIDs(conds)...); err != nil {
+			return err
+		}
+		return q.DeleteCharacter(ctx, id)
+	})
+	if err != nil {
 		return err
 	}
 	a.Hub.CloseCharacter(id)

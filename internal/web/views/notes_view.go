@@ -38,13 +38,15 @@ func notesOfKind(notes []NoteItem, sessions bool) []NoteItem {
 const closeDialog = "this.closest('[data-slot=dialog-content]').querySelector('[data-slot=dialog-close]').click()"
 
 // closeDialogJS closes the dialog around an htmx request's element once the
-// server accepts it.
-var closeDialogJS = closeDialogAfter("")
+// server accepts it; requests from inside it count too (blockMenu's buttons).
+var closeDialogJS = templ.JSUnsafeFuncCall("if (event.detail.successful) { " + closeDialog + " }")
 
-// closeDialogAfter is closeDialogJS running reset first, to clear fields.
-// A ComponentScript, since templ blanks a spread event handler given a string.
+// closeDialogAfter is for a form: it resets fields, then closes the dialog
+// once the form's own request is accepted, not one from a field that loads
+// itself (the effect form's). A ComponentScript, since templ blanks a spread
+// event handler given a string.
 func closeDialogAfter(reset string) templ.ComponentScript {
-	return templ.JSUnsafeFuncCall("if (event.detail.successful) { " + reset + closeDialog + " }")
+	return templ.JSUnsafeFuncCall("if (event.detail.successful && event.detail.elt === this) { " + reset + closeDialog + " }")
 }
 
 // BlockView is one note block as a viewer sees it. The document itself is

@@ -2,6 +2,7 @@ package perm
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -162,5 +163,109 @@ func TestSQLAgreesWithCanSeeEntry(t *testing.T) {
 				t.Errorf("entry %d (scoped %v, linked %v) in campaign %d: SQL %v, perm %v", i, tt.scoped, tt.linked, campaign, inSQL, want)
 			}
 		}
+	}
+}
+
+// TestScopedEntryInEveryCompendiumQuery checks that each compendium list
+// shows a scoped entry that is the only copy of its slug only in the
+// campaign it is linked to (and to the GM, campaign 0).
+func TestScopedEntryInEveryCompendiumQuery(t *testing.T) {
+	ctx := t.Context()
+	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	q := db.NewStore(conn)
+	var camps []int64
+	for _, name := range []string{"A", "B"} {
+		c, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: name, System: "dnd5e", Edition: "2024"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		camps = append(camps, c.ID)
+	}
+	mk := func(kind enum.CompendiumKind, slug, data string) int64 {
+		e, err := q.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: kind, Slug: slug, Name: slug, DataJson: data, ContentHash: "x", Scoped: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: e.ID, CampaignID: camps[0]}); err != nil {
+			t.Fatal(err)
+		}
+		return e.ID
+	}
+	spell := mk("spell", "zap", `{"level":1,"classes":["wizard"]}`)
+	mk("item", "club", `{"category":"weapon","mastery":"slow"}`)
+	mk("species", "hill", `{"subrace_of":"dwarf"}`)
+	mk("subclass", "lore", `{"subclass_of":"wizard"}`)
+	monster := mk("monster", "blob", `{}`)
+	if _, err := q.AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{Habitat: "Forest", EntryID: monster}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, campaign := range append([]int64{0}, camps...) {
+		want := campaign == 0 || campaign == camps[0]
+		check := func(query string, got bool) {
+			t.Helper()
+			if got != want {
+				t.Errorf("%s in campaign %d: shown %v, want %v", query, campaign, got, want)
+			}
+		}
+		byKind, err := q.ListCompendiumByKind(ctx, sqlc.ListCompendiumByKindParams{CampaignID: campaign, PageSize: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("ListCompendiumByKind", slices.ContainsFunc(byKind, func(r sqlc.ListCompendiumByKindRow) bool { return r.ID == spell }))
+		search, err := q.SearchCompendium(ctx, sqlc.SearchCompendiumParams{Query: `"zap"`, CampaignID: campaign, MaxResults: -1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("SearchCompendium", len(search) == 1)
+		counts, err := q.CountCompendium(ctx, campaign)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("CountCompendium", slices.ContainsFunc(counts, func(r sqlc.CountCompendiumRow) bool { return r.Kind == "spell" }))
+		names, err := q.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: "spell", CampaignID: campaign})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("ListCompendiumNames", len(names) == 1)
+		_, err = q.RandomCompendiumEntry(ctx, sqlc.RandomCompendiumEntryParams{CampaignID: campaign, Kind: "spell"})
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			t.Fatal(err)
+		}
+		check("RandomCompendiumEntry", err == nil)
+		spells, err := q.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{CampaignID: campaign, MaxLevel: 9, ClassSlug: "wizard"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("ListSpellsForClass", len(spells) == 1)
+		items, err := q.ListItemsByCategory(ctx, sqlc.ListItemsByCategoryParams{CampaignID: campaign, Category: "weapon"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("ListItemsByCategory", len(items) == 1)
+		mastery, err := q.ListMasteryWeapons(ctx, campaign)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("ListMasteryWeapons", len(mastery) == 1)
+		subraces, err := q.ListSubracesOf(ctx, sqlc.ListSubracesOfParams{CampaignID: campaign, SpeciesSlug: "dwarf"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("ListSubracesOf", len(subraces) == 1)
+		subclasses, err := q.ListSubclassesOf(ctx, sqlc.ListSubclassesOfParams{ClassSlug: "wizard", CampaignID: campaign})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("ListSubclassesOf", len(subclasses) == 1)
+		habitats, err := q.CountHabitats(ctx, campaign)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("CountHabitats", len(habitats) == 1)
 	}
 }

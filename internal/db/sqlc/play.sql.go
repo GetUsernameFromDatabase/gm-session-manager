@@ -8,6 +8,7 @@ package sqlc
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"gm-session-manager/internal/enum"
 )
@@ -73,9 +74,9 @@ func (q *Queries) CreateCombatant(ctx context.Context, arg CreateCombatantParams
 }
 
 const createCondition = `-- name: CreateCondition :one
-INSERT INTO conditions (character_id, combatant_id, slug, note, expires_round)
-VALUES (?, ?, ?, ?, ?)
-RETURNING id, character_id, combatant_id, slug, note, expires_round, created_at
+INSERT INTO conditions (character_id, combatant_id, slug, note, expires_round, ends_on, held_by, mods_json)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json
 `
 
 type CreateConditionParams struct {
@@ -84,6 +85,9 @@ type CreateConditionParams struct {
 	Slug         string
 	Note         string
 	ExpiresRound sql.NullInt64
+	EndsOn       enum.EffectEnd
+	HeldBy       sql.NullInt64
+	ModsJson     string
 }
 
 func (q *Queries) CreateCondition(ctx context.Context, arg CreateConditionParams) (Condition, error) {
@@ -93,6 +97,9 @@ func (q *Queries) CreateCondition(ctx context.Context, arg CreateConditionParams
 		arg.Slug,
 		arg.Note,
 		arg.ExpiresRound,
+		arg.EndsOn,
+		arg.HeldBy,
+		arg.ModsJson,
 	)
 	var i Condition
 	err := row.Scan(
@@ -103,6 +110,9 @@ func (q *Queries) CreateCondition(ctx context.Context, arg CreateConditionParams
 		&i.Note,
 		&i.ExpiresRound,
 		&i.CreatedAt,
+		&i.EndsOn,
+		&i.HeldBy,
+		&i.ModsJson,
 	)
 	return i, err
 }
@@ -175,6 +185,22 @@ func (q *Queries) DeleteEncounter(ctx context.Context, id int64) error {
 	return err
 }
 
+const deleteRoundConditions = `-- name: DeleteRoundConditions :exec
+DELETE FROM conditions
+WHERE expires_round IS NOT NULL
+  AND (
+    combatant_id IN (SELECT cb.id FROM combatants AS cb WHERE cb.encounter_id = ?1)
+    OR character_id IN (SELECT cb.character_id FROM combatants AS cb WHERE cb.encounter_id = ?1)
+  )
+`
+
+// DeleteRoundConditions ends the round-timed effects of a fight's combatants
+// and their characters, as the fight ends.
+func (q *Queries) DeleteRoundConditions(ctx context.Context, encounterID int64) error {
+	_, err := q.db.ExecContext(ctx, deleteRoundConditions, encounterID)
+	return err
+}
+
 const expireTurnConditions = `-- name: ExpireTurnConditions :exec
 DELETE FROM conditions
 WHERE expires_round IS NOT NULL AND expires_round < ?1
@@ -197,7 +223,7 @@ func (q *Queries) ExpireTurnConditions(ctx context.Context, arg ExpireTurnCondit
 }
 
 const findCharacterCondition = `-- name: FindCharacterCondition :one
-SELECT id, character_id, combatant_id, slug, note, expires_round, created_at FROM conditions
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
 WHERE character_id = ? AND slug = ?
 LIMIT 1
 `
@@ -218,12 +244,15 @@ func (q *Queries) FindCharacterCondition(ctx context.Context, arg FindCharacterC
 		&i.Note,
 		&i.ExpiresRound,
 		&i.CreatedAt,
+		&i.EndsOn,
+		&i.HeldBy,
+		&i.ModsJson,
 	)
 	return i, err
 }
 
 const findCombatantCondition = `-- name: FindCombatantCondition :one
-SELECT id, character_id, combatant_id, slug, note, expires_round, created_at FROM conditions
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
 WHERE combatant_id = ? AND slug = ?
 LIMIT 1
 `
@@ -244,6 +273,9 @@ func (q *Queries) FindCombatantCondition(ctx context.Context, arg FindCombatantC
 		&i.Note,
 		&i.ExpiresRound,
 		&i.CreatedAt,
+		&i.EndsOn,
+		&i.HeldBy,
+		&i.ModsJson,
 	)
 	return i, err
 }
@@ -298,7 +330,7 @@ func (q *Queries) GetCombatant(ctx context.Context, id int64) (Combatant, error)
 }
 
 const getCondition = `-- name: GetCondition :one
-SELECT id, character_id, combatant_id, slug, note, expires_round, created_at FROM conditions
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
 WHERE id = ?
 `
 
@@ -313,6 +345,9 @@ func (q *Queries) GetCondition(ctx context.Context, id int64) (Condition, error)
 		&i.Note,
 		&i.ExpiresRound,
 		&i.CreatedAt,
+		&i.EndsOn,
+		&i.HeldBy,
+		&i.ModsJson,
 	)
 	return i, err
 }
@@ -335,6 +370,51 @@ func (q *Queries) GetEncounter(ctx context.Context, id int64) (Encounter, error)
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listCharacterConcentration = `-- name: ListCharacterConcentration :many
+SELECT cond.id, cond.note, ch.id AS character_id, ch.name AS owner_name
+FROM conditions AS cond
+JOIN characters AS ch ON ch.id = cond.character_id
+WHERE ch.campaign_id = ? AND ch.deleted_at IS NULL AND cond.slug = 'concentration'
+ORDER BY ch.name, cond.id
+`
+
+type ListCharacterConcentrationRow struct {
+	ID          int64
+	Note        string
+	CharacterID int64
+	OwnerName   string
+}
+
+// ListCharacterConcentration and ListEncounterConcentration are the
+// concentration rows an effect may hang off, with whose they are.
+func (q *Queries) ListCharacterConcentration(ctx context.Context, campaignID int64) ([]ListCharacterConcentrationRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCharacterConcentration, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCharacterConcentrationRow{}
+	for rows.Next() {
+		var i ListCharacterConcentrationRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Note,
+			&i.CharacterID,
+			&i.OwnerName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listCharacterEncounters = `-- name: ListCharacterEncounters :many
@@ -366,6 +446,46 @@ func (q *Queries) ListCharacterEncounters(ctx context.Context, arg ListCharacter
 			&i.Round,
 			&i.ActiveCombatantID,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCombatantConditions = `-- name: ListCombatantConditions :many
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
+WHERE combatant_id = ?
+ORDER BY slug, id
+`
+
+func (q *Queries) ListCombatantConditions(ctx context.Context, combatantID sql.NullInt64) ([]Condition, error) {
+	rows, err := q.db.QueryContext(ctx, listCombatantConditions, combatantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Condition{}
+	for rows.Next() {
+		var i Condition
+		if err := rows.Scan(
+			&i.ID,
+			&i.CharacterID,
+			&i.CombatantID,
+			&i.Slug,
+			&i.Note,
+			&i.ExpiresRound,
+			&i.CreatedAt,
+			&i.EndsOn,
+			&i.HeldBy,
+			&i.ModsJson,
 		); err != nil {
 			return nil, err
 		}
@@ -464,7 +584,7 @@ func (q *Queries) ListCombatants(ctx context.Context, encounterID int64) ([]List
 
 const listConditionsByCharacter = `-- name: ListConditionsByCharacter :many
 
-SELECT id, character_id, combatant_id, slug, note, expires_round, created_at FROM conditions
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
 WHERE character_id = ?
 ORDER BY slug, id
 `
@@ -487,6 +607,9 @@ func (q *Queries) ListConditionsByCharacter(ctx context.Context, characterID sql
 			&i.Note,
 			&i.ExpiresRound,
 			&i.CreatedAt,
+			&i.EndsOn,
+			&i.HeldBy,
+			&i.ModsJson,
 		); err != nil {
 			return nil, err
 		}
@@ -502,7 +625,7 @@ func (q *Queries) ListConditionsByCharacter(ctx context.Context, characterID sql
 }
 
 const listConditionsByEncounter = `-- name: ListConditionsByEncounter :many
-SELECT cond.id, cond.character_id, cond.combatant_id, cond.slug, cond.note, cond.expires_round, cond.created_at FROM conditions AS cond
+SELECT cond.id, cond.character_id, cond.combatant_id, cond.slug, cond.note, cond.expires_round, cond.created_at, cond.ends_on, cond.held_by, cond.mods_json FROM conditions AS cond
 JOIN combatants AS cb ON cb.id = cond.combatant_id OR cb.character_id = cond.character_id
 WHERE cb.encounter_id = ?
 GROUP BY cond.id
@@ -527,6 +650,52 @@ func (q *Queries) ListConditionsByEncounter(ctx context.Context, encounterID int
 			&i.Note,
 			&i.ExpiresRound,
 			&i.CreatedAt,
+			&i.EndsOn,
+			&i.HeldBy,
+			&i.ModsJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEncounterConcentration = `-- name: ListEncounterConcentration :many
+SELECT cond.id, cond.note, cb.id AS combatant_id, cb.name AS owner_name
+FROM conditions AS cond
+JOIN combatants AS cb ON cb.id = cond.combatant_id
+WHERE cb.encounter_id = ? AND cond.slug = 'concentration'
+ORDER BY cb.name, cond.id
+`
+
+type ListEncounterConcentrationRow struct {
+	ID          int64
+	Note        string
+	CombatantID int64
+	OwnerName   string
+}
+
+func (q *Queries) ListEncounterConcentration(ctx context.Context, encounterID int64) ([]ListEncounterConcentrationRow, error) {
+	rows, err := q.db.QueryContext(ctx, listEncounterConcentration, encounterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEncounterConcentrationRow{}
+	for rows.Next() {
+		var i ListEncounterConcentrationRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Note,
+			&i.CombatantID,
+			&i.OwnerName,
 		); err != nil {
 			return nil, err
 		}
@@ -629,6 +798,149 @@ func (q *Queries) ListEncountersByMonster(ctx context.Context, monsterRef sql.Nu
 	for rows.Next() {
 		var i ListEncountersByMonsterRow
 		if err := rows.Scan(&i.ID, &i.CampaignID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExpiringConditions = `-- name: ListExpiringConditions :many
+SELECT id FROM conditions
+WHERE expires_round IS NOT NULL AND expires_round < ?1
+  AND (
+    combatant_id = ?2
+    OR character_id = (SELECT cb.character_id FROM combatants AS cb WHERE cb.id = ?2)
+  )
+`
+
+type ListExpiringConditionsParams struct {
+	Round       sql.NullInt64
+	CombatantID sql.NullInt64
+}
+
+// ListExpiringConditions is what ExpireTurnConditions is about to delete,
+// so the effects held by those rows can be noted first. Keep the two WHEREs
+// the same.
+func (q *Queries) ListExpiringConditions(ctx context.Context, arg ListExpiringConditionsParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listExpiringConditions, arg.Round, arg.CombatantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHeldBy = `-- name: ListHeldBy :many
+SELECT cond.character_id, cond.combatant_id, cb.encounter_id
+FROM conditions AS cond
+LEFT JOIN combatants AS cb ON cb.id = cond.combatant_id
+WHERE cond.held_by IN (/*SLICE:ids*/?)
+`
+
+type ListHeldByRow struct {
+	CharacterID sql.NullInt64
+	CombatantID sql.NullInt64
+	EncounterID sql.NullInt64
+}
+
+// ListHeldBy are the owners of the effects hanging off the given
+// concentration rows (and, for a combatant, its encounter): who to refresh
+// before those rows are deleted.
+func (q *Queries) ListHeldBy(ctx context.Context, ids []sql.NullInt64) ([]ListHeldByRow, error) {
+	query := listHeldBy
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHeldByRow{}
+	for rows.Next() {
+		var i ListHeldByRow
+		if err := rows.Scan(&i.CharacterID, &i.CombatantID, &i.EncounterID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRestConditions = `-- name: ListRestConditions :many
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
+WHERE (character_id = ?1 OR combatant_id = ?2)
+  AND ends_on IN (?3, ?4)
+`
+
+type ListRestConditionsParams struct {
+	CharacterID sql.NullInt64
+	CombatantID sql.NullInt64
+	First       enum.EffectEnd
+	Second      enum.EffectEnd
+}
+
+// ListRestConditions are an owner's effects that end on this rest: the
+// short ones, and on a long rest the long ones too.
+func (q *Queries) ListRestConditions(ctx context.Context, arg ListRestConditionsParams) ([]Condition, error) {
+	rows, err := q.db.QueryContext(ctx, listRestConditions,
+		arg.CharacterID,
+		arg.CombatantID,
+		arg.First,
+		arg.Second,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Condition{}
+	for rows.Next() {
+		var i Condition
+		if err := rows.Scan(
+			&i.ID,
+			&i.CharacterID,
+			&i.CombatantID,
+			&i.Slug,
+			&i.Note,
+			&i.ExpiresRound,
+			&i.CreatedAt,
+			&i.EndsOn,
+			&i.HeldBy,
+			&i.ModsJson,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

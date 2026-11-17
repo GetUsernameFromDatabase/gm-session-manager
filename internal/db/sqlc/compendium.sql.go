@@ -127,8 +127,6 @@ func (q *Queries) BindMonsterImages(ctx context.Context, arg BindMonsterImagesPa
 const countCompendium = `-- name: CountCompendium :many
 SELECT e.kind, count(*) AS n FROM compendium_entries AS e
 WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
-  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 GROUP BY e.kind
 ORDER BY e.kind
 `
@@ -167,8 +165,6 @@ const countHabitats = `-- name: CountHabitats :many
 SELECT h.habitat, count(*) AS n FROM monster_habitats AS h
 JOIN compendium_entries AS e ON e.id = h.entry_id
 WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
-  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 GROUP BY h.habitat
 `
 
@@ -647,8 +643,6 @@ WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGE
   AND (CAST(?2 AS TEXT) = '' OR instr(',' || CAST(?2 AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (e.name > CAST(?3 AS TEXT) OR (e.name = CAST(?3 AS TEXT) AND e.id > ?4))
   AND (CAST(?5 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?5 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
-  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 ORDER BY e.name, e.id
 LIMIT ?6
 `
@@ -679,7 +673,9 @@ type ListCompendiumByKindRow struct {
 // Browse, random and search show player homebrew (scoped) only in the
 // campaigns it is linked to; campaign_id 0 is the GM, who sees it all
 // (perm.CanSeeEntry). campaign_top ranks over the sources the campaign
-// allows, so an unticked book's entry falls back to the next allowed copy.
+// allows, so an unticked book's entry falls back to the next allowed copy,
+// and applies that scoping itself: a scoped entry is in it only for the
+// campaigns it is linked to.
 // ListCompendiumByKind reads one kind, or every kind when kind is ”, after
 // the (name, id) cursor; names repeat, so id breaks ties.
 func (q *Queries) ListCompendiumByKind(ctx context.Context, arg ListCompendiumByKindParams) ([]ListCompendiumByKindRow, error) {
@@ -835,8 +831,6 @@ SELECT e.id, e.kind, e.slug, e.name, CAST(COALESCE(json_extract(e.data_json, '$.
 FROM compendium_entries AS e
 WHERE e.kind = ?1 AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?2 AS INTEGER))
   AND json_extract(e.data_json, '$.version_of') IS NULL
-  AND (e.scoped = 0 OR CAST(?2 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?2 AS INTEGER)))
 ORDER BY e.name
 `
 
@@ -1233,8 +1227,6 @@ SELECT e.name, CAST(COALESCE(json_extract(e.data_json, '$.desc'), '') AS TEXT) A
 FROM compendium_entries AS e
 WHERE e.kind = 'item' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
   AND json_extract(e.data_json, '$.category') = CAST(?2 AS TEXT)
-  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 ORDER BY e.name
 `
 
@@ -1277,8 +1269,6 @@ FROM compendium_entries AS e
 WHERE e.kind = 'item' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
   AND COALESCE(json_extract(e.data_json, '$.mastery'), '') != ''
   AND COALESCE(json_extract(e.data_json, '$.rarity'), '') = ''
-  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 ORDER BY e.name
 `
 
@@ -1616,8 +1606,6 @@ FROM compendium_entries AS e
 WHERE e.kind = 'spell' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
   AND CAST(json_extract(e.data_json, '$.level') AS INTEGER) <= CAST(?2 AS INTEGER)
   AND EXISTS (SELECT 1 FROM json_each(e.data_json, '$.classes') AS c WHERE c.value = CAST(?3 AS TEXT))
-  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 ORDER BY level, e.name
 `
 
@@ -1718,8 +1706,6 @@ const listSubracesOf = `-- name: ListSubracesOf :many
 SELECT e.id, e.slug, e.name, e.source_key FROM compendium_entries AS e
 WHERE e.kind = 'species' AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
   AND json_extract(e.data_json, '$.subrace_of') = CAST(?2 AS TEXT)
-  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 ORDER BY e.name
 `
 
@@ -1770,8 +1756,6 @@ SELECT e.id FROM compendium_entries AS e
 WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
   AND (CAST(?2 AS TEXT) = '' OR instr(',' || CAST(?2 AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (CAST(?3 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?3 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
-  AND (e.scoped = 0 OR CAST(?1 AS INTEGER) = 0
-       OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?1 AS INTEGER)))
 ORDER BY random()
 LIMIT 1
 `
@@ -1835,12 +1819,25 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
         WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
 FROM compendium_fts
 JOIN compendium_entries AS e ON e.id = compendium_fts.rowid
+LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE compendium_fts MATCH CAST(?1 AS TEXT)
-  AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?2 AS INTEGER))
-  AND (CAST(?3 AS TEXT) = '' OR instr(',' || CAST(?3 AS TEXT) || ',', ',' || e.kind || ',') > 0)
-  AND (CAST(?4 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?4 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
+  AND (CAST(?2 AS INTEGER) = 0 OR e.source_key = 'homebrew'
+       OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?2 AS INTEGER) AND cs.source_key = e.source_key))
   AND (e.scoped = 0 OR CAST(?2 AS INTEGER) = 0
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?2 AS INTEGER)))
+  AND NOT EXISTS (
+    SELECT 1 FROM compendium_entries AS b
+    LEFT JOIN compendium_sources AS bs ON bs.source_key = b.source_key
+    WHERE b.kind = e.kind AND b.slug = e.slug
+      AND (CAST(?2 AS INTEGER) = 0 OR b.source_key = 'homebrew'
+           OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?2 AS INTEGER) AND cs.source_key = b.source_key))
+      AND (b.scoped = 0 OR CAST(?2 AS INTEGER) = 0
+           OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = b.id AND l.campaign_id = CAST(?2 AS INTEGER)))
+      -- The dates swap sides: a newer b ranks before e (published DESC).
+      AND (b.scoped, COALESCE(bs.priority, 300), COALESCE(s.published, ''), b.id)
+        < (e.scoped, COALESCE(s.priority, 300), COALESCE(bs.published, ''), e.id))
+  AND (CAST(?3 AS TEXT) = '' OR instr(',' || CAST(?3 AS TEXT) || ',', ',' || e.kind || ',') > 0)
+  AND (CAST(?4 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?4 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
 ORDER BY compendium_fts.rank
 LIMIT ?5
 `
@@ -1867,6 +1864,8 @@ type SearchCompendiumRow struct {
 	Figure     string
 }
 
+// SearchCompendium ranks like campaign_top, over the FTS hits only (59 to
+// 34 ms per keystroke on 7,615 entries): change both together.
 func (q *Queries) SearchCompendium(ctx context.Context, arg SearchCompendiumParams) ([]SearchCompendiumRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchCompendium,
 		arg.Query,

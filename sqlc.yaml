@@ -36,3 +36,5 @@ sql:
             go_type: gm-session-manager/internal/enum.LinkTarget
           - column: note_blocks.visibility
             go_type: gm-session-manager/internal/enum.Visibility
+          - column: conditions.ends_on
+            go_type: gm-session-manager/internal/enum.EffectEnd

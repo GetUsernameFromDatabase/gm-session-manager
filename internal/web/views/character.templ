@@ -4,16 +4,20 @@ import (
 	"cmp"
 	"fmt"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
 	"gm-session-manager/internal/web/components/combobox"
 	"gm-session-manager/internal/web/components/command"
 	"gm-session-manager/internal/web/components/dialog"
+	"gm-session-manager/internal/web/components/field"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
 	"gm-session-manager/internal/web/components/inputgroup"
 	"gm-session-manager/internal/web/components/popover"
+	"gm-session-manager/internal/web/components/radiogroup"
+	selectcomp "gm-session-manager/internal/web/components/select"
 	"gm-session-manager/internal/web/components/spinner"
 	"gm-session-manager/internal/web/components/tooltip"
 	"gm-session-manager/internal/web/utils"
@@ -339,9 +343,10 @@ templ editName(s SheetView, to edit, label string) {
 }
 
 // stat is one figure, followed by its children (a modifier warning); key
-// binds it when it changes often.
+// binds it when it changes often. A long value (vision, resistances) wraps
+// in its column on a phone instead of running into the next.
 templ stat(s SheetView, name, value, key string, to edit) {
-	<div>
+	<div class="min-w-0">
 		{{ tip, why := statTips[name], statWhy[name] }}
 		if tip != "" || why != "" {
 			<dt>
@@ -352,8 +357,8 @@ templ stat(s SheetView, name, value, key string, to edit) {
 		} else {
 			<dt class="text-xs text-muted-foreground">{ name }</dt>
 		}
-		<dd class="flex items-center gap-1 text-lg leading-tight font-semibold tabular-nums">
-			@editable(s, to, "Change "+name, "") {
+		<dd class="flex min-w-0 items-center gap-1 text-lg leading-tight font-semibold tabular-nums">
+			@editable(s, to, "Change "+name, "min-w-0 shrink whitespace-normal text-left break-words") {
 				@editName(s, to, "Change "+name)
 				<span
 					if key != "" {
@@ -526,16 +531,12 @@ templ conditionsCard(s SheetView) {
 			}
 		}
 		for _, c := range s.Conditions {
-			if c.Slug == dnd5e.TrackConcentration || c.Slug == dnd5e.TrackCustom {
+			if effectChip(c) {
 				@tooltip.Tooltip() {
 					<span class="inline-flex items-center gap-1 rounded-full border border-primary px-2 py-0.5 text-xs" { tooltip.Trigger(ctx)... }>
-						if c.Slug == dnd5e.TrackConcentration {
-							Concentrating: { c.Note }
-						} else {
-							{ c.Note }
-						}
-						if c.ExpiresRound.Valid {
-							(until round { fmt.Sprint(c.ExpiresRound.Int64) })
+						<span>{ chipName(c) }</span>
+						for _, bit := range effectBits(c, s.HeldLabels) {
+							<span class="text-muted-foreground">{ bit }</span>
 						}
 						if s.CanConditions {
 							@removeButton(fmt.Sprintf("/conditions/%d/delete", c.ID))
@@ -553,8 +554,147 @@ templ conditionsCard(s SheetView) {
 			<form class="inline-flex" hx-post={ s.cmdURL() } hx-on::after-request="if (event.detail.successful) this.reset()">
 				@input.Input(input.Props{Name: "cmd", Placeholder: "+ concentrate Bless", Class: "h-6 w-44 rounded-full border-dashed px-2 text-xs md:text-xs", Attributes: templ.Attributes{"aria-label": "Add a custom condition"}})
 			</form>
+			@effectDialog(EffectTarget{CampaignID: s.CampaignID, CharacterID: s.ID, Name: s.C.Name, Post: fmt.Sprintf("/characters/%d/effect", s.ID), Label: "+ Effect"})
 		}
 	</div>
+}
+
+// effectDialog is the add-effect button and form for a character or
+// combatant. Its fields load from the server when the dialog opens and when
+// a spell is picked, so the page carries one small shell, not a form per
+// combatant; it closes only when the server accepts the effect.
+templ effectDialog(t EffectTarget) {
+	{{ id := t.ID() }}
+	@dialog.Dialog() {
+		@button.Button(button.Props{Size: button.SizeXs, Variant: utils.IfElse(t.CombatantID != 0, button.VariantOutline, button.VariantGhost), Class: utils.IfElse(t.CombatantID != 0, "", "rounded-full max-sm:h-8"), Attributes: with(dialog.Trigger(ctx), templ.Attributes{"id": id + "-open"})}) {
+			if t.CombatantID != 0 {
+				@icon.Plus()
+			}
+			{ t.Label }
+		}
+		@dialog.Content(dialog.ContentProps{Class: "max-h-[90dvh] overflow-y-auto"}) {
+			<form
+				id={ id }
+				class="grid gap-4"
+				hx-post={ t.Post }
+				{ templ.Attributes{"hx-on::after-request": closeDialogAfter("this.reset(); ")}... }
+			>
+				@dialog.Header() {
+					@dialog.Title() {
+						Add effect to { t.Name }
+					}
+				}
+				@field.Field() {
+					@field.Label(field.LabelProps{For: id + "-spell"}) {
+						Spell
+					}
+					@combobox.Combobox(combobox.Props{Name: "spell"}) {
+						@combobox.Input(combobox.InputProps{ID: id + "-spell", Class: "w-full", Placeholder: "Search spells (optional)", ShowClear: true, Attributes: templ.Attributes{
+							"maxlength": "200", "autocomplete": "off",
+							"hx-get": CompendiumPath(ctx, "/search?kind=spell&format=combobox"), "hx-vals": "js:{q: this.value}",
+							"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-spell-list", "hx-swap": "innerHTML",
+						}})
+						@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {
+							@combobox.List(combobox.ListProps{ID: id + "-spell-list"})
+						}
+					}
+				}
+				// Not a form: picking a spell swaps its fields from the server.
+				<div
+					class="grid gap-4"
+					data-effect-fields
+					hx-get={ t.fieldsURL() }
+					hx-trigger={ "click from:#" + id + "-open, change[target.name==='spell'] from:closest form" }
+					hx-include={ "#" + id + " [name=spell]" }
+					hx-swap="innerHTML"
+				></div>
+				@dialog.Footer() {
+					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.Close(ctx)}) {
+						Cancel
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Add
+					}
+				}
+			</form>
+		}
+	}
+}
+
+// EffectModRow is stat-change row i of the add-effect form, then the button
+// that loads the next in its place (none at the cap). No armor state: an
+// effect's change always applies.
+templ EffectModRow(f EffectFields, i int) {
+	<div class="flex flex-wrap items-center gap-2">
+		@formSelect("", "mod_target", append([]selectcomp.ItemData{{Value: " ", Label: "Nothing"}}, f.targets()...), " ", "w-44", "")
+		@input.Input(input.Props{Name: "mod_value", Type: "number", Class: "w-20", Attributes: templ.Attributes{"min": "-50", "max": "50", "aria-label": "Bonus"}})
+	</div>
+	if i+1 < dnd5e.MaxEffectMods {
+		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeXs, Class: "justify-self-start", Attributes: templ.Attributes{"hx-get": f.rowURL(i + 1), "hx-swap": "outerHTML"}}) {
+			+ Stat change
+		}
+	}
+}
+
+// EffectFieldsForm is the add-effect form's fields below the spell picker,
+// filled in for a picked spell.
+templ EffectFieldsForm(f EffectFields) {
+	@field.Field() {
+		@field.Label(field.LabelProps{For: f.ID + "-name"}) {
+			Name
+		}
+		@input.Input(input.Props{ID: f.ID + "-name", Name: "name", Value: f.Name, Placeholder: "e.g. Bless", Attributes: templ.Attributes{"maxlength": "100", "autocomplete": "off"}})
+		if f.Hint != "" {
+			@field.Description() {
+				{ f.Hint }
+			}
+		}
+	}
+	@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
+		@field.Label(field.LabelProps{For: f.ID + "-slug-trigger"}) {
+			Condition
+		}
+		@formSelect(f.ID+"-slug", "slug", conditionItems(), customCondition, "w-48 capitalize", "capitalize")
+	}
+	<div class="grid gap-2">
+		<span class="text-sm font-medium">Stat changes</span>
+		@EffectModRow(f, 0)
+	</div>
+	@field.Field() {
+		@field.Title() {
+			Ends
+		}
+		@radiogroup.RadioGroup(radiogroup.Props{Name: "ends_on", DefaultValue: string(enum.EffectEndNone), Class: "flex flex-wrap gap-4", Attributes: templ.Attributes{"aria-label": "Ends"}}) {
+			for _, e := range effectEnds {
+				<label class="flex items-center gap-2 text-sm">
+					@radiogroup.Item(radiogroup.ItemProps{Value: e.Value})
+					{ e.Label }
+				</label>
+			}
+		}
+	}
+	if f.InFight {
+		@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
+			@field.Label(field.LabelProps{For: f.ID + "-rounds"}) {
+				Rounds
+			}
+			@input.Input(input.Props{ID: f.ID + "-rounds", Name: "rounds", Type: "number", Value: utils.IfElse(f.Rounds > 0, fmt.Sprint(f.Rounds), ""), Placeholder: "∞", Class: "w-20", Attributes: templ.Attributes{"min": "1"}})
+		}
+	}
+	if len(f.HeldBy) > 0 {
+		@field.Field() {
+			@field.Label(field.LabelProps{For: f.ID + "-held-trigger"}) {
+				Held by
+			}
+			@formSelect(f.ID+"-held", "held_by", effectHeldItems(f.HeldBy), "0", "w-full", "")
+		}
+	}
+	@field.Field() {
+		@field.Label(field.LabelProps{For: f.ID + "-note"}) {
+			Note
+		}
+		@input.Input(input.Props{ID: f.ID + "-note", Name: "note", Value: f.Note, Attributes: templ.Attributes{"maxlength": "90", "autocomplete": "off"}})
+	}
 }
 
 // conditionChip's look follows aria-pressed, so a live toggle only flips

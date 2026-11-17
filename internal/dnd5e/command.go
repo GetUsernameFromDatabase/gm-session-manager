@@ -86,6 +86,8 @@ type CondOp struct {
 	Note string
 	// Delta is used by CondExhaustion.
 	Delta int
+	// Rest is ResetShort or ResetLong for CondEndRest.
+	Rest string
 }
 
 // CondOpKind is what a CondOp does.
@@ -99,6 +101,9 @@ const (
 	// CondExhaustion changes the exhaustion level (stored in the note) by
 	// Delta, removing the condition at 0 and capping at 6.
 	CondExhaustion
+	// CondEndRest removes the effects that end on the rest named by Rest: a
+	// long rest also ends the short rest ones.
+	CondEndRest
 )
 
 // Effects lists what Apply could not do to the character struct itself.
@@ -732,7 +737,8 @@ func parseRest(args []string) (Command, error) {
 	}
 	switch strings.ToLower(args[0]) {
 	case ResetShort:
-		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
+		return scoped(perm.ScopeSheet, func(c *Character, _ Env, fx *Effects) error {
+			fx.Conditions = append(fx.Conditions, CondOp{Op: CondEndRest, Rest: ResetShort})
 			c.Sheet.Pact.Used = 0
 			for i := range c.Sheet.Features {
 				switch u := &c.Sheet.Features[i].Uses; u.Reset {
@@ -747,7 +753,7 @@ func parseRest(args []string) (Command, error) {
 	case ResetLong:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, fx *Effects) error {
 			c.LongRest()
-			fx.Conditions = append(fx.Conditions, CondOp{Op: CondExhaustion, Slug: Exhaustion, Delta: -1})
+			fx.Conditions = append(fx.Conditions, CondOp{Op: CondExhaustion, Slug: Exhaustion, Delta: -1}, CondOp{Op: CondEndRest, Rest: ResetLong})
 			return nil
 		}), nil
 	}

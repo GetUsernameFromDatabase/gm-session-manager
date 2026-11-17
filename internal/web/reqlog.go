@@ -32,11 +32,13 @@ type ctxKey int
 // failMsgKey and failStatusKey hold what fail sent back, which the request
 // log prefers over the HTML it was wrapped in. serverErrKey holds the real
 // error behind a 500: kept here, not in c.Errors, which gin's logger would
-// print a second time.
+// print a second time. heldTopicsKey holds the topics of effects deleted by
+// a cascade during the request (held.go).
 const (
 	failMsgKey ctxKey = iota
 	failStatusKey
 	serverErrKey
+	heldTopicsKey
 )
 
 type reqEntry struct {

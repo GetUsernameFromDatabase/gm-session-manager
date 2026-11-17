@@ -234,7 +234,7 @@ templ combatantRow(e EncounterView, c CombatantView) {
 					}
 				}
 			</span>
-			@conditionDialog(c)
+			@conditionDialog(e, c)
 			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{"aria-label": "Remove combatant", "hx-post": fmt.Sprintf("/combatants/%d/delete", c.ID)}}) {
 				@icon.X()
 			}
@@ -243,7 +243,7 @@ templ combatantRow(e EncounterView, c CombatantView) {
 		if len(c.Conditions) > 0 {
 			<div class="flex basis-full flex-wrap items-center gap-1 pl-[6.75rem]">
 				for _, cond := range c.Conditions {
-					@combatCondition(cond, true)
+					@combatCondition(cond, c.HeldLabels, true)
 				}
 			</div>
 		}
@@ -267,7 +267,7 @@ templ ownCombatant(c CombatantView) {
 		</div>
 		@hpMeter(c, "w-full")
 		@hpQuickForm(fmt.Sprintf("/characters/%d/cmd", c.CharacterID), true, c.Defenses)
-		@conditionList(c.Conditions, true)
+		@conditionList(c, true)
 	</div>
 }
 
@@ -287,7 +287,7 @@ templ combatantChip(c CombatantView) {
 		@hpShort(c)
 		@downBadge(c)
 		for _, cond := range c.Conditions[:min(len(c.Conditions), chipConditions)] {
-			@combatCondition(cond, false)
+			@combatCondition(cond, c.HeldLabels, false)
 		}
 		if len(c.Conditions) > chipConditions {
 			@conditionsPopover(c)
@@ -315,6 +315,9 @@ templ conditionsPopover(c CombatantView) {
 						<span class="font-medium capitalize">{ conditionLabel(cond) }</span>
 						if tip, ok := conditionSummary(cond.Slug); ok {
 							<p class="text-xs text-muted-foreground">{ tip }</p>
+						}
+						for _, bit := range effectBits(cond, c.HeldLabels) {
+							<p class="text-xs text-muted-foreground">{ bit }</p>
 						}
 					</li>
 				}
@@ -363,12 +366,12 @@ templ hpMeter(c CombatantView, class string) {
 
 // conditionList marks a combatant's conditions as such, in the violet the
 // GM's conditions box uses.
-templ conditionList(conds []sqlc.Condition, removable bool) {
-	if len(conds) > 0 {
+templ conditionList(c CombatantView, removable bool) {
+	if len(c.Conditions) > 0 {
 		<div class="flex flex-wrap items-center gap-1">
 			@icon.Sparkles(icon.Props{Size: 14, Class: "text-violet-600", Attributes: templ.Attributes{"role": "img", "aria-label": "Conditions"}})
-			for _, cond := range conds {
-				@combatCondition(cond, removable)
+			for _, cond := range c.Conditions {
+				@combatCondition(cond, c.HeldLabels, removable)
 			}
 		</div>
 	}
@@ -422,10 +425,13 @@ templ downBadge(c CombatantView) {
 
 // combatCondition is a condition whose summary opens on click, as phones
 // cannot hover, and a remove button beside it for those who may end it. A
-// custom condition has no summary: its note is the description.
-templ combatCondition(cond sqlc.Condition, removable bool) {
+// custom condition has no summary: its note is the description. An effect's
+// modifiers and what ends it open the same way, to keep the chip short.
+templ combatCondition(cond sqlc.Condition, held map[int64]string, removable bool) {
+	{{ tip, hasTip := conditionSummary(cond.Slug) }}
+	{{ bits := effectBits(cond, held) }}
 	<span class={ "inline-flex items-center rounded-full border border-violet-500/40 bg-violet-500/10 text-xs capitalize", templ.KV("pr-0.5", removable) }>
-		if tip, ok := conditionSummary(cond.Slug); ok {
+		if hasTip || len(bits) > 0 {
 			@popover.Popover(popover.Props{ID: fmt.Sprintf("condinfo-%d", cond.ID)}) {
 				@button.Button(button.Props{Variant: button.VariantGhost, Class: "h-auto rounded-full px-1.5 py-0 text-xs font-normal capitalize hover:bg-violet-500/20 dark:hover:bg-violet-500/20", Attributes: popover.Trigger(ctx)}) {
 					{ conditionLabel(cond) }
@@ -436,7 +442,12 @@ templ combatCondition(cond sqlc.Condition, removable bool) {
 							{ conditionLabel(cond) }
 						}
 					}
-					<p class="text-muted-foreground">{ tip }</p>
+					if hasTip {
+						<p class="text-muted-foreground">{ tip }</p>
+					}
+					for _, bit := range bits {
+						<p class="text-muted-foreground normal-case">{ bit }</p>
+					}
 				}
 			}
 		} else {
@@ -448,63 +459,10 @@ templ combatCondition(cond sqlc.Condition, removable bool) {
 	</span>
 }
 
-// conditionDialog is the GM's add-condition button and form for one
-// combatant; it closes only when the server accepts the condition.
-templ conditionDialog(c CombatantView) {
-	{{ id := fmt.Sprintf("cond-%d", c.ID) }}
-	@dialog.Dialog() {
-		@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Attributes: dialog.Trigger(ctx)}) {
-			@icon.Plus()
-			Condition
-		}
-		@dialog.Content() {
-			<form
-				class="grid gap-4"
-				hx-post={ fmt.Sprintf("/combatants/%d/condition", c.ID) }
-				{ templ.Attributes{"hx-on::after-request": closeDialogAfter("this.note.value = ''; this.rounds.value = ''; ")}... }
-				onchange={ templ.JSUnsafeFuncCall(customToggleJS) }
-			>
-				@dialog.Header() {
-					@dialog.Title() {
-						Add condition to { c.Name }
-					}
-				}
-				@field.Group(field.GroupProps{Class: "gap-4"}) {
-					@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
-						@field.Label(field.LabelProps{For: id + "-trigger"}) {
-							Condition
-						}
-						@formSelect(id, "slug", conditionItems(), "", "w-48 capitalize", "capitalize")
-					}
-					@field.Field() {
-						@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
-							@field.Label(field.LabelProps{For: id + "-note"}) {
-								Note
-							}
-							@input.Input(input.Props{ID: id + "-note", Name: "note", Class: "w-48"})
-						}
-						@field.Description(field.DescriptionProps{Attributes: templ.Attributes{"data-custom-hint": true, "hidden": true}}) {
-							Required for custom: it's the only description of the effect.
-						}
-					}
-					@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
-						@field.Label(field.LabelProps{For: id + "-rounds"}) {
-							Rounds
-						}
-						@input.Input(input.Props{ID: id + "-rounds", Name: "rounds", Type: "number", Placeholder: "∞", Class: "w-20", Attributes: templ.Attributes{"min": "1"}})
-					}
-				}
-				@dialog.Footer() {
-					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.Close(ctx)}) {
-						Cancel
-					}
-					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Add
-					}
-				}
-			</form>
-		}
-	}
+// conditionDialog is the GM's add-effect button for one combatant (the
+// shared effectDialog); it closes only when the server accepts the effect.
+templ conditionDialog(e EncounterView, c CombatantView) {
+	@effectDialog(EffectTarget{CampaignID: e.Encounter.CampaignID, CombatantID: c.ID, Name: c.Name, Post: fmt.Sprintf("/combatants/%d/condition", c.ID), Label: "Effect"})
 }
 
 // hpText is a combatant's HP as the viewer may see it.

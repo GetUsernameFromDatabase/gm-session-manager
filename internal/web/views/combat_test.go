@@ -7,6 +7,14 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 )
 
+// TestCloseDialogOnlyOnOwnRequest: a field inside a dialog form that loads
+// itself (the effect form's fields) must not close the dialog.
+func TestCloseDialogOnlyOnOwnRequest(t *testing.T) {
+	if js := closeDialogAfter("").Call; !strings.Contains(js, "event.detail.elt === this") {
+		t.Errorf("closes on any request inside the form: %s", js)
+	}
+}
+
 // TestCombatPageEmpty: the empty state shows only when there are no
 // encounters, not when the one asked for is missing.
 func TestCombatPageEmpty(t *testing.T) {

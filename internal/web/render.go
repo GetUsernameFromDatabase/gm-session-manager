@@ -134,7 +134,8 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 	}
 	ev := views.EncounterView{Encounter: enc, IsGM: v.IsGM}
 	for _, r := range rows {
-		sheet := pcSheet(r) // parsed once for AC, initiative, defenses and out-of-fight
+		rowConds := rowConditions(r, conds)
+		sheet := pcSheetWith(r, rowConds) // parsed once for AC, initiative, defenses and out-of-fight; with its effects
 		cv := views.CombatantView{
 			ID: r.ID, Name: r.Name, AC: combatantArmorClass(r, sheet), HPVisible: r.HpVisible, CharacterID: r.CharacterID.Int64, EntityID: r.EntityID.Int64,
 			Kind:   combatantKind(r),
@@ -171,10 +172,15 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 				cv.Portrait = views.LookItem(look).Src()
 			}
 		}
-		for _, c := range conds {
-			if r.CharacterID.Valid && c.CharacterID == r.CharacterID || !r.CharacterID.Valid && c.CombatantID.Int64 == r.ID {
-				cv.Conditions = append(cv.Conditions, c)
+		cv.Conditions = rowConds
+		// A player learns the modifiers and holder of their own effects only.
+		if !v.IsGM && !cv.IsOwn {
+			for i := range cv.Conditions {
+				cv.Conditions[i].ModsJson, cv.Conditions[i].HeldBy = noMods, sql.NullInt64{}
 			}
+		}
+		if cv.HeldLabels, err = a.heldLabels(ctx, v, cv.Conditions); err != nil {
+			return ev, err
 		}
 		if v.IsGM || cv.IsOwn { // a player never learns another combatant's defenses
 			cv.Defenses = combatantDefenses(r, sheet, cv.Conditions)

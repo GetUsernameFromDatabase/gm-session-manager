@@ -70,7 +70,7 @@ func (a *App) Router() *gin.Engine {
 	}
 	r.Use(securityHeaders, sameOriginOnly(http.NewCrossOriginProtection()))
 	a.mountAssets(r)
-	r.Use(a.Auth.Middleware(), a.recordRequest)
+	r.Use(a.Auth.Middleware(), a.recordRequest, collectHeld)
 
 	gm := auth.RequireAdmin(a.gmOnly)
 
@@ -105,6 +105,7 @@ func (a *App) Router() *gin.Engine {
 	camp.GET("", gm, a.h(a.campaignOverview))
 	camp.POST("/characters/import", gm, a.h(a.importCharacter))
 	camp.POST("/delete", gm, a.h(a.deleteCampaign))
+	camp.GET("/effect/spell", a.h(a.effectSpell))
 	camp.GET("/export", gm, a.h(a.exportCampaign))
 	camp.POST("/open-join", gm, a.h(a.toggleOpenJoin))
 	camp.POST("/rename", gm, a.h(a.renameCampaign))
@@ -125,6 +126,7 @@ func (a *App) Router() *gin.Engine {
 	ch.POST("/create/:step", a.h(a.wizardSave))
 	ch.POST("/create/:step/change", a.h(a.wizardChange))
 	ch.POST("/delete", gm, a.h(a.deleteCharacter))
+	ch.POST("/effect", a.h(a.characterEffect))
 	ch.GET("/download", gm, a.h(a.downloadCharacter))
 	ch.POST("/images", a.h(a.addCharacterLook))
 	ch.POST("/images/:image/:action", a.h(a.characterLook))

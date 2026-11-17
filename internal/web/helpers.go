@@ -282,7 +282,7 @@ func (a *App) changedNotice(c *gin.Context, campaignID int64, msg string, topics
 
 // changedWith is changed answering htmx with res, such as a views.Toast.
 func (a *App) changedWith(c *gin.Context, campaignID int64, res templ.Component, topics ...hub.Topic) {
-	a.Hub.Publish(campaignID, topics...)
+	a.publish(c, campaignID, topics...)
 	if !isHTMX(c) {
 		back := c.GetHeader("Referer")
 		if back == "" {

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -20,6 +21,23 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
+// shownSheetView is sheetView with the character's active effects added to
+// the sheet, for the sheet page and its live view. The builder, wizard and
+// level-up work on the stored sheet (sheetView), which must never gain an
+// effect's modifiers.
+func (a *App) shownSheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) (views.SheetView, error) {
+	s, err := a.sheetView(ctx, v, row)
+	if err != nil {
+		return s, err
+	}
+	stored := len(s.C.Sheet.Modifiers)
+	s.C.Sheet = effectSheet(s.C.Sheet, s.Conditions)
+	s.EffectMods = len(s.C.Sheet.Modifiers) - stored
+	s.HeldLabels, err = a.heldLabels(ctx, v, s.Conditions)
+	return s, err
+}
+
+// sheetView is the character as stored, with no effects.
 func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) (views.SheetView, error) {
 	sheet, err := dnd5e.ParseSheet(row.SheetJson)
 	if err != nil {
@@ -146,7 +164,7 @@ func (a *App) characterPage(c *gin.Context) error {
 		return err
 	}
 	l := a.layout(w, ch.Name, views.NavCharacter, &camp, true)
-	s, err := a.sheetView(c.Request.Context(), w.viewer, ch)
+	s, err := a.shownSheetView(c.Request.Context(), w.viewer, ch)
 	if err != nil {
 		return err
 	}
@@ -331,7 +349,7 @@ func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Comma
 		if err != nil {
 			return userError{err}
 		}
-		return applyCondOps(ctx, q, condOwner{characterID: ch.ID}, fx.Conditions, sql.NullInt64{})
+		return applyCondOps(ctx, q, condOwner{characterID: ch.ID}, fx.Conditions, condExtra{})
 	})
 }
 
@@ -459,6 +477,11 @@ func (a *App) updateCharacter(ctx context.Context, id int64, fn func(q *sqlc.Que
 		if err := fn(q, &dc); err != nil {
 			return err
 		}
+		if row.Hp > 0 && dc.HP <= 0 { // falling to 0 HP (overkill stays below) knocks the caster unconscious
+			if err := endConcentration(ctx, q, condOwner{characterID: id}); err != nil {
+				return err
+			}
+		}
 		raw, err := dc.Sheet.JSON()
 		if err != nil {
 			return err
@@ -545,17 +568,79 @@ func (o condOwner) find(ctx context.Context, q *sqlc.Queries, slug string) (sqlc
 	return q.FindCombatantCondition(ctx, sqlc.FindCombatantConditionParams{CombatantID: nullID(o.combatantID), Slug: slug})
 }
 
-func (o condOwner) add(ctx context.Context, q *sqlc.Queries, slug, note string, expires sql.NullInt64) error {
+// condExtra is what a new condition row carries besides its slug and note:
+// the round it ends, the rest that ends it, the concentration row it hangs
+// off, and its modifiers (a JSON list of CustomMod, "" for none).
+type condExtra struct {
+	Expires  sql.NullInt64
+	EndsOn   enum.EffectEnd
+	HeldBy   sql.NullInt64
+	ModsJSON string
+}
+
+func (o condOwner) add(ctx context.Context, q *sqlc.Queries, slug, note string, x condExtra) error {
 	_, err := q.CreateCondition(ctx, sqlc.CreateConditionParams{
-		CharacterID: nullID(o.characterID), CombatantID: nullID(o.combatantID), Slug: slug, Note: note, ExpiresRound: expires,
+		CharacterID: nullID(o.characterID), CombatantID: nullID(o.combatantID), Slug: slug, Note: note,
+		ExpiresRound: x.Expires, EndsOn: x.EndsOn, HeldBy: x.HeldBy, ModsJson: cmp.Or(x.ModsJSON, noMods),
 	})
 	return err
 }
 
+// noMods is the empty mods_json.
+const noMods = "[]"
+
+// removeCondition deletes a row, first noting who holds effects off it.
+func removeCondition(ctx context.Context, q *sqlc.Queries, cond sqlc.Condition) error {
+	if err := noteHeld(ctx, q, concentrationIDs([]sqlc.Condition{cond})...); err != nil {
+		return err
+	}
+	return q.DeleteCondition(ctx, cond.ID)
+}
+
+// endConcentration removes o's concentration row, if any, and with it the
+// effects it holds.
+func endConcentration(ctx context.Context, q *sqlc.Queries, o condOwner) error {
+	conc, err := o.find(ctx, q, slugConcentration)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return removeCondition(ctx, q, conc)
+}
+
+// endRest removes the owner's effects that end on a rest: a long rest ends
+// the short rest ones too.
+func endRest(ctx context.Context, q *sqlc.Queries, o condOwner, rest string) error {
+	p := sqlc.ListRestConditionsParams{CharacterID: nullID(o.characterID), CombatantID: nullID(o.combatantID), First: enum.EffectEndShortRest, Second: enum.EffectEndShortRest}
+	if rest == dnd5e.ResetLong {
+		p.Second = enum.EffectEndLongRest
+	}
+	rows, err := q.ListRestConditions(ctx, p)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if err := removeCondition(ctx, q, r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // applyCondOps applies condition changes. Each 2024 condition and
-// concentration is held at most once; custom effects may stack.
-func applyCondOps(ctx context.Context, q *sqlc.Queries, o condOwner, ops []dnd5e.CondOp, expires sql.NullInt64) error {
+// concentration is held at most once; custom effects may stack. x goes on
+// the rows the ops add. A condition that incapacitates also ends the
+// owner's concentration.
+func applyCondOps(ctx context.Context, q *sqlc.Queries, o condOwner, ops []dnd5e.CondOp, x condExtra) error {
 	for _, op := range ops {
+		if op.Op == dnd5e.CondEndRest {
+			if err := endRest(ctx, q, o, op.Rest); err != nil {
+				return err
+			}
+			continue
+		}
 		existing, err := o.find(ctx, q, op.Slug)
 		has := err == nil
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -563,16 +648,23 @@ func applyCondOps(ctx context.Context, q *sqlc.Queries, o condOwner, ops []dnd5e
 		}
 		remove := func() error {
 			if has {
-				return q.DeleteCondition(ctx, existing.ID)
+				return removeCondition(ctx, q, existing)
 			}
 			return nil
+		}
+		// A new row of an incapacitating condition ends concentration.
+		adding := op.Op == dnd5e.CondAdd || op.Op == dnd5e.CondToggle && !has
+		if adding && dnd5e.EndsConcentration(op.Slug) {
+			if err := endConcentration(ctx, q, o); err != nil {
+				return err
+			}
 		}
 		switch op.Op {
 		case dnd5e.CondToggle:
 			if has {
 				err = remove()
 			} else {
-				err = o.add(ctx, q, op.Slug, op.Note, expires)
+				err = o.add(ctx, q, op.Slug, op.Note, x)
 			}
 		case dnd5e.CondAdd:
 			if op.Slug != dnd5e.TrackCustom {
@@ -580,7 +672,7 @@ func applyCondOps(ctx context.Context, q *sqlc.Queries, o condOwner, ops []dnd5e
 					return err
 				}
 			}
-			err = o.add(ctx, q, op.Slug, op.Note, expires)
+			err = o.add(ctx, q, op.Slug, op.Note, x)
 		case dnd5e.CondRemove:
 			err = remove()
 		case dnd5e.CondExhaustion:
@@ -590,7 +682,7 @@ func applyCondOps(ctx context.Context, q *sqlc.Queries, o condOwner, ops []dnd5e
 			}
 			level = min(max(level+op.Delta, 0), dnd5e.MaxExhaustion)
 			if err = remove(); err == nil && level > 0 {
-				err = o.add(ctx, q, op.Slug, strconv.Itoa(level), sql.NullInt64{})
+				err = o.add(ctx, q, op.Slug, strconv.Itoa(level), condExtra{})
 			}
 		}
 		if err != nil {
@@ -625,7 +717,7 @@ func (a *App) deleteCondition(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := a.Store.DeleteCondition(ctx, id); err != nil {
+		if err := a.deleteConditionRow(ctx, cond); err != nil {
 			return err
 		}
 		a.characterChanged(c, ch)
@@ -643,9 +735,14 @@ func (a *App) deleteCondition(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := a.Store.DeleteCondition(ctx, id); err != nil {
+	if err := a.deleteConditionRow(ctx, cond); err != nil {
 		return err
 	}
 	a.changed(c, enc.CampaignID, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
 	return nil
+}
+
+// deleteConditionRow removes one row, noting the owners of the effects it holds.
+func (a *App) deleteConditionRow(ctx context.Context, cond sqlc.Condition) error {
+	return a.Store.InTx(ctx, func(q *sqlc.Queries) error { return removeCondition(ctx, q, cond) })
 }

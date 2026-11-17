@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -105,6 +106,15 @@ func TestPagesRender(t *testing.T) {
 		t.Fatalf("next: %d %s", w.Code, w.Body)
 	}
 
+	// An effect on the PC shows on the sheet and in the tracker.
+	effectMods, err := json.Marshal(dnd5e.EffectMods("Shield of Faith", []dnd5e.CustomMod{{Target: dnd5e.ModAC, Value: 2}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.q().CreateCondition(ctx, sqlc.CreateConditionParams{CharacterID: nullID(e.characterID), Slug: "custom", Note: "Shield of Faith", EndsOn: enum.EffectEndLongRest, ModsJson: string(effectMods)}); err != nil {
+		t.Fatal(err)
+	}
+
 	cb := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID) // the campaign's compendium
 	pages := []struct {
 		path      string
@@ -114,6 +124,11 @@ func TestPagesRender(t *testing.T) {
 		{"/", true, false, "Campaigns"},
 		{fmt.Sprintf("/campaigns/%d", e.campaignID), true, false, "Alice"},
 		{fmt.Sprintf("/characters/%d", e.characterID), true, true, "Alice"},
+		{fmt.Sprintf("/characters/%d", e.characterID), true, true, "Add effect to Alice"},
+		{fmt.Sprintf("/characters/%d", e.characterID), true, true, "Armor class +2"},
+		{fmt.Sprintf("/characters/%d", e.characterID), true, true, "until long rest"},
+		{fmt.Sprintf("/campaigns/%d/combat", e.campaignID), true, true, "Armor class +2"},
+		{fmt.Sprintf("/campaigns/%d/combat", e.campaignID), true, true, "until long rest"},
 		{fmt.Sprintf("/characters/%d/levelup?class=wizard", e.characterID), false, true, "Wizard 1"},
 		{fmt.Sprintf("/campaigns/%d/combat", e.campaignID), true, true, "Goblin Warrior"},
 		{fmt.Sprintf("/campaigns/%d/notes?q=Session", e.campaignID), true, true, "Session 1"},

@@ -491,6 +491,9 @@ func TestLiveModelHashFollowsMarkup(t *testing.T) {
 		{"rename", func() { f.sheetCmd(t, player, "set name Alicia") }},
 		{"feature", func() { f.sheetCmd(t, player, "feature add Lucky") }},
 		{"concentration", func() { f.sheetCmd(t, player, "concentrate Bless") }},
+		{"effect", func() {
+			f.postOK(t, player, fmt.Sprintf("/characters/%d/effect", f.characterID), url.Values{"slug": {"custom"}, "name": {"Shield of Faith"}, "mod_target": {"ac"}, "mod_value": {"2"}})
+		}},
 		{"skill", func() { f.sheetCmd(t, player, "prof add skill athletics") }},
 		{"marker", ogre("marker", url.Values{"marker": {"red"}})},
 		{"monster condition", ogre("condition", url.Values{"slug": {"blinded"}})},

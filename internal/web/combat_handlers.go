@@ -17,6 +17,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
+	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -265,10 +266,22 @@ func (a *App) encounterAction(c *gin.Context) error {
 	}
 	ctx := c.Request.Context()
 	if c.Param("action") == "delete" {
-		if err := a.Store.DeleteEncounter(ctx, enc.ID); err != nil {
+		err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+			conds, err := q.ListConditionsByEncounter(ctx, enc.ID)
+			if err != nil {
+				return err
+			}
+			// Only the combatants' own rows go with it; a PC's are its character's.
+			own := slices.DeleteFunc(conds, func(c sqlc.Condition) bool { return !c.CombatantID.Valid })
+			if err := noteHeld(ctx, q, concentrationIDs(own)...); err != nil {
+				return err
+			}
+			return q.DeleteEncounter(ctx, enc.ID)
+		})
+		if err != nil {
 			return err
 		}
-		a.Hub.Publish(enc.CampaignID, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
+		a.publish(c, enc.CampaignID, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
 		redirect(c, fmt.Sprintf("/campaigns/%d/combat", enc.CampaignID))
 		return nil
 	}
@@ -308,7 +321,7 @@ func (a *App) encounterAction(c *gin.Context) error {
 				if r.CharacterID.Valid || r.Initiative.Valid {
 					continue
 				}
-				if err := q.SetCombatantInitiative(ctx, sqlc.SetCombatantInitiativeParams{ID: r.ID, Initiative: rollFor(r)}); err != nil {
+				if err := q.SetCombatantInitiative(ctx, sqlc.SetCombatantInitiativeParams{ID: r.ID, Initiative: rollFor(r, nil)}); err != nil {
 					return err
 				}
 			}
@@ -338,7 +351,16 @@ func (a *App) encounterAction(c *gin.Context) error {
 			// Timed effects end at the start of their creature's turn; going back
 			// does not restore them.
 			if action == "next" {
-				if err := q.ExpireTurnConditions(ctx, sqlc.ExpireTurnConditionsParams{Round: sql.NullInt64{Int64: next.Round, Valid: true}, CombatantID: nullID(rows[i].ID)}); err != nil {
+				expire := sqlc.ExpireTurnConditionsParams{Round: sql.NullInt64{Int64: next.Round, Valid: true}, CombatantID: nullID(rows[i].ID)}
+				// A concentration that runs out takes its held effects with it.
+				ending, err := q.ListExpiringConditions(ctx, sqlc.ListExpiringConditionsParams(expire))
+				if err != nil {
+					return err
+				}
+				if err := noteHeld(ctx, q, ending...); err != nil {
+					return err
+				}
+				if err := q.ExpireTurnConditions(ctx, expire); err != nil {
 					return err
 				}
 			}
@@ -347,6 +369,18 @@ func (a *App) encounterAction(c *gin.Context) error {
 				return userError{errors.New("the encounter is not running")}
 			}
 			next.Status, next.ActiveCombatantID = enum.EncounterEnded, sql.NullInt64{}
+			// Timed effects do not outlast the fight.
+			conds, err := q.ListConditionsByEncounter(ctx, enc.ID)
+			if err != nil {
+				return err
+			}
+			timed := slices.DeleteFunc(conds, func(c sqlc.Condition) bool { return !c.ExpiresRound.Valid })
+			if err := noteHeld(ctx, q, concentrationIDs(timed)...); err != nil {
+				return err
+			}
+			if err := q.DeleteRoundConditions(ctx, enc.ID); err != nil {
+				return err
+			}
 		default:
 			return userError{errors.New("unknown action")}
 		}
@@ -424,6 +458,13 @@ func (a *App) combatantAction(c *gin.Context) error {
 			if err := passTurn(ctx, q, enc.ID, func(r sqlc.ListCombatantsRow) bool { return r.ID == id }); err != nil {
 				return err
 			}
+			own, err := q.ListCombatantConditions(ctx, nullID(id))
+			if err != nil {
+				return err
+			}
+			if err := noteHeld(ctx, q, concentrationIDs(own)...); err != nil {
+				return err
+			}
 			return q.DeleteCombatant(ctx, id)
 		})
 	default:
@@ -443,12 +484,17 @@ func (a *App) rollInitiative(ctx context.Context, cb sqlc.Combatant) (sql.NullIn
 	if err != nil {
 		return sql.NullInt64{}, err
 	}
-	return rollFor(r), nil
+	conds, err := a.Store.ListConditionsByEncounter(ctx, cb.EncounterID)
+	if err != nil {
+		return sql.NullInt64{}, err
+	}
+	return rollFor(r, conds), nil
 }
 
-// rollFor is d20 plus the row's initiative bonus.
-func rollFor(r sqlc.ListCombatantsRow) sql.NullInt64 {
-	return sql.NullInt64{Int64: int64(rand.IntN(20) + 1 + initiativeMod(r, pcSheet(r))), Valid: true} //nolint:gosec // a game die, not a secret
+// rollFor is d20 plus the row's initiative bonus, with its effects: conds
+// are the fight's conditions (a PC's from its character).
+func rollFor(r sqlc.ListCombatantsRow, conds []sqlc.Condition) sql.NullInt64 {
+	return sql.NullInt64{Int64: int64(rand.IntN(20) + 1 + initiativeMod(r, pcSheetWith(r, rowConditions(r, conds)))), Valid: true} //nolint:gosec // a game die, not a secret
 }
 
 // combatantRow is cb with its character's or statblock's data.
@@ -544,13 +590,17 @@ func (a *App) combatantSetHP(c *gin.Context, cb sqlc.Combatant) error {
 }
 
 func (a *App) combatantCondition(c *gin.Context, cb sqlc.Combatant, enc sqlc.Encounter) error {
+	f, err := bindEffect(c)
+	if err != nil {
+		return err
+	}
 	var expires sql.NullInt64
-	if rounds, ok := formInt(c, "rounds"); ok && rounds > 0 {
-		expires = sql.NullInt64{Int64: max(enc.Round, 1) + rounds - 1, Valid: true}
+	if f.Rounds > 0 {
+		expires = roundsEnd(enc.Round, f.Rounds)
 	}
 	owner := condOwner{combatantID: cb.ID}
 	if cb.CharacterID.Valid {
 		owner = condOwner{characterID: cb.CharacterID.Int64}
 	}
-	return a.addCondition(c.Request.Context(), owner, c.PostForm("slug"), strings.TrimSpace(c.PostForm("note")), expires)
+	return a.addEffect(c.Request.Context(), perm.GM, owner, enc.CampaignID, f, expires)
 }

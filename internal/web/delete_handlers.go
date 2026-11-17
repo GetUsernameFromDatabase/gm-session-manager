@@ -40,6 +40,10 @@ func (a *App) removeCharacter(c *gin.Context) error {
 		if err := q.SoftDeleteCharacter(c.Request.Context(), ch.ID); err != nil {
 			return err
 		}
+		// A removed caster stops concentrating, so what it held ends too.
+		if err := endConcentration(c.Request.Context(), q, condOwner{characterID: ch.ID}); err != nil {
+			return err
+		}
 		if err := q.DeleteCharacterSessions(c.Request.Context(), nullID(ch.ID)); err != nil {
 			return err
 		}
@@ -58,7 +62,7 @@ func (a *App) removeCharacter(c *gin.Context) error {
 	for _, e := range encounters {
 		topics = append(topics, hub.Topic{Kind: hub.TopicEncounter, ID: e})
 	}
-	a.Hub.Publish(ch.CampaignID, topics...)
+	a.publish(c, ch.CampaignID, topics...)
 	if w.viewer.IsGM {
 		a.render(c, http.StatusOK, views.Flash("Deleted "+ch.Name+". You can restore it below.", false))
 		return nil

@@ -273,7 +273,7 @@ func (a *App) loadCharacterLive(ctx context.Context, vc viewerCtx, k liveKey) (l
 	if err != nil || !vc.inCampaign(row.CampaignID) {
 		return liveView{}, notFoundIsNil(err)
 	}
-	s, err := a.sheetView(ctx, vc.viewer, row)
+	s, err := a.shownSheetView(ctx, vc.viewer, row)
 	if err != nil {
 		return liveView{}, err
 	}

@@ -90,6 +90,22 @@ func BenchmarkEncounterState(b *testing.B) {
 	}
 }
 
+// BenchmarkCompendiumSearch is one search keystroke: a one-letter prefix
+// matches the most entries.
+func BenchmarkCompendiumSearch(b *testing.B) {
+	e := newTestEnv(b)
+	if _, err := compendium.Import(b.Context(), e.app.Store, "../compendium/testdata"); err != nil {
+		b.Fatal(err)
+	}
+	q := e.app.Store.Queries
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, _, err := compendium.Search(b.Context(), q, "a", "", "", 0, 50); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 // BenchmarkCompendiumList is the GM's spell list page.
 func BenchmarkCompendiumList(b *testing.B) {
 	e := newTestEnv(b)

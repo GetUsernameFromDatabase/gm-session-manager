@@ -583,9 +583,10 @@ templ modList(s SheetView) {
 }
 
 // modRow is one modifier; the owner taps it to edit or remove it. Inside
-// the dialog it only swaps the form, since the dialog is already open.
+// the dialog it only swaps the form, since the dialog is already open. An
+// active effect's modifier is shown only: it ends with the effect.
 templ modRow(s SheetView, i int, m dnd5e.CustomMod, inDialog bool) {
-	if s.CanSheet {
+	if s.CanSheet && s.editableMod(i) {
 		{{ load := builderLoad(s, verbMods, modEdit, fmt.Sprint(i)) }}
 		if !inDialog {
 			{{ load = with(dialog.TriggerFor(builderID), load) }}

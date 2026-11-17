@@ -25,10 +25,6 @@ func conditionSummary(slug string) (string, bool) {
 	return tip, ok
 }
 
-// customToggleJS makes the note required, and says why, while "custom…" is
-// the chosen condition. It runs on the form's change events.
-var customToggleJS = fmt.Sprintf(`const custom = this.slug.value === %q; this.note.required = custom; this.querySelector("[data-custom-hint]").hidden = !custom`, customCondition)
-
 func conditionItems() []selectcomp.ItemData {
 	var items []selectcomp.ItemData
 	for _, slug := range dnd5e.Conditions {

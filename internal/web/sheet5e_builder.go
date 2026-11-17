@@ -287,21 +287,9 @@ func featureCommand(c *gin.Context) (dnd5e.Command, error) {
 	default:
 		f.Uses.Ability = u
 	}
-	targets, values, whens := c.PostFormArray("mod_target"), c.PostFormArray("mod_value"), c.PostFormArray("mod_when")
-	if len(targets) > 0 && (len(values) == 0 || len(whens) == 0) {
-		return dnd5e.Command{}, errors.New("give each change a value")
-	}
-	var mods []dnd5e.CustomMod
-	for i, t := range targets {
-		t = strings.TrimSpace(t)
-		v, _ := strconv.Atoi(values[min(i, len(values)-1)])
-		if t == "" || v == 0 {
-			continue
-		}
-		if !dnd5e.IsModTarget(t) {
-			return dnd5e.Command{}, fmt.Errorf("cannot change %q", t)
-		}
-		mods = append(mods, dnd5e.CustomMod{Target: t, Value: v, When: strings.TrimSpace(whens[min(i, len(whens)-1)])})
+	mods, err := modRows(c.PostFormArray("mod_target"), c.PostFormArray("mod_value"), c.PostFormArray("mod_when"))
+	if err != nil {
+		return dnd5e.Command{}, err
 	}
 	// A feat picked in the look-up becomes one of the sheet's feats, pinned.
 	var key, source string

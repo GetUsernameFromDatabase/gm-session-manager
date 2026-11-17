@@ -80,6 +80,31 @@ func pcSheet(r sqlc.ListCombatantsRow) *dnd5e.Sheet {
 	return &s
 }
 
+// slugConcentration is the condition slug effects hang off (held_by).
+const slugConcentration = dnd5e.TrackConcentration
+
+// rowConditions are the conditions of a combatant row in conds (an
+// encounter's): a PC's are its character's.
+func rowConditions(r sqlc.ListCombatantsRow, conds []sqlc.Condition) []sqlc.Condition {
+	return slices.DeleteFunc(slices.Clone(conds), func(c sqlc.Condition) bool {
+		if r.CharacterID.Valid {
+			return c.CharacterID != r.CharacterID
+		}
+		return c.CombatantID.Int64 != r.ID
+	})
+}
+
+// pcSheetWith is pcSheet with the PC's active effects added, for the
+// numbers the tracker shows or rolls. conds are the row's own (rowConditions).
+func pcSheetWith(r sqlc.ListCombatantsRow, conds []sqlc.Condition) *dnd5e.Sheet {
+	s := pcSheet(r)
+	if s == nil {
+		return nil
+	}
+	shown := effectSheet(*s, conds)
+	return &shown
+}
+
 // combatantArmorClass is a PC's AC from the sheet (the stored one is from
 // when they joined), else the row's.
 func combatantArmorClass(r sqlc.ListCombatantsRow, s *dnd5e.Sheet) int64 {
@@ -197,25 +222,12 @@ func (a *App) updateMonster(ctx context.Context, id int64, fn hpChange) error {
 		}
 		m := dnd5e.Character{HP: int(cb.Hp), MaxHP: int(cb.MaxHp), TempHP: int(cb.TempHp)}
 		fn(&m)
+		if cb.Hp > 0 && m.HP <= 0 { // a downed caster stops concentrating
+			if err := endConcentration(ctx, q, condOwner{combatantID: id}); err != nil {
+				return err
+			}
+		}
 		return q.SetCombatantHP(ctx, sqlc.SetCombatantHPParams{ID: id, Hp: int64(m.HP), MaxHp: int64(m.MaxHP), TempHp: int64(m.TempHP)})
-	})
-}
-
-// addCondition puts the condition slug on o: exhaustion gains a level, and
-// a custom effect needs its note.
-func (a *App) addCondition(ctx context.Context, o condOwner, slug, note string, expires sql.NullInt64) error {
-	if !dnd5e.IsConditionSlug(slug) {
-		return userError{fmt.Errorf("unknown condition %q", slug)}
-	}
-	if slug == dnd5e.TrackCustom && note == "" {
-		return userError{errors.New("describe the custom effect")}
-	}
-	op := dnd5e.CondOp{Op: dnd5e.CondAdd, Slug: slug, Note: note}
-	if slug == dnd5e.Exhaustion {
-		op = dnd5e.CondOp{Op: dnd5e.CondExhaustion, Slug: slug, Delta: 1}
-	}
-	return a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		return applyCondOps(ctx, q, o, []dnd5e.CondOp{op}, expires)
 	})
 }
 

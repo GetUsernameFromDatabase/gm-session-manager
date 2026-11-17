@@ -135,6 +135,9 @@ type Condition struct {
 	Note         string
 	ExpiresRound sql.NullInt64
 	CreatedAt    time.Time
+	EndsOn       enum.EffectEnd
+	HeldBy       sql.NullInt64
+	ModsJson     string
 }
 
 type Encounter struct {
