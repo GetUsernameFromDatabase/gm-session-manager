@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -200,6 +201,7 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 	if err != nil {
 		return err
 	}
+	a.sweepFiles(c)
 	redirect(c, fmt.Sprintf("/images/%d", img.ID))
 	return nil
 }
@@ -244,10 +246,13 @@ func (a *App) storeImageFile(c *gin.Context, campaignID int64, fh *multipart.Fil
 		return att, false
 	}
 	if !slices.Contains(inlineTypes, att.Mime) {
-		// The file is removed at the next startup with its row gone.
 		if err := a.Store.DeleteAttachment(ctx, att.ID); err != nil {
 			a.serverError(c, err)
 			return att, false
+		}
+		// Too fresh for the sweep's upload guard, so removed here.
+		if err := os.Remove(filepath.Join(a.attachmentsDir(), att.Path)); err != nil {
+			slog.Error("remove refused upload", "err", err)
 		}
 		a.fail(c, http.StatusUnprocessableEntity, "Upload a PNG, JPEG, GIF or WebP image.")
 		return att, false
@@ -362,6 +367,7 @@ func (a *App) deleteImage(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
+	a.sweepFiles(c)
 	a.Hub.Publish(img.CampaignID, topics...)
 	redirect(c, fmt.Sprintf("/campaigns/%d/images", img.CampaignID))
 	return nil

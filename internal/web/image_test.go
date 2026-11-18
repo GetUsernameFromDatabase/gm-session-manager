@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
@@ -148,6 +151,22 @@ func TestImageUploadOnlyPictures(t *testing.T) {
 	w := e.do(t, http.MethodGet, fmt.Sprintf("/images/%d/file", imgs[0].ID), gm, nil, false)
 	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" {
 		t.Errorf("file: %d %s", w.Code, w.Header().Get("Content-Type"))
+	}
+	// Only the PNG is on disk: the refused upload's file went at once.
+	files, _ := os.ReadDir(e.app.attachmentsDir())
+	if len(files) != 1 {
+		t.Fatalf("files after uploads: %d", len(files))
+	}
+	// Deleting the image takes its file too (back-dated past the upload guard).
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(filepath.Join(e.app.attachmentsDir(), files[0].Name()), old, old); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do(t, http.MethodPost, fmt.Sprintf("/images/%d/delete", imgs[0].ID), gm, nil, true); w.Code >= http.StatusMultipleChoices {
+		t.Fatalf("delete: %d", w.Code)
+	}
+	if files, _ := os.ReadDir(e.app.attachmentsDir()); len(files) != 0 {
+		t.Errorf("files after delete: %d", len(files))
 	}
 }
 

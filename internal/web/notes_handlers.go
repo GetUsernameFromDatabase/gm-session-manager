@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -204,6 +205,7 @@ func (a *App) deleteNote(c *gin.Context) error {
 	if err := a.Store.DeleteNote(c.Request.Context(), note.ID); err != nil {
 		return err
 	}
+	a.sweepFiles(c)
 	a.Hub.Publish(note.CampaignID, hub.Topic{Kind: hub.TopicNotes, ID: note.CampaignID})
 	redirect(c, fmt.Sprintf("/campaigns/%d/notes", note.CampaignID))
 	return nil
@@ -410,8 +412,17 @@ func (a *App) deleteBlock(c *gin.Context) error {
 	if err := a.Store.DeleteBlock(c.Request.Context(), b.ID); err != nil {
 		return err
 	}
+	a.sweepFiles(c)
 	a.changed(c, b.CampaignID, hub.Topic{Kind: hub.TopicNote, ID: b.NoteID}, hub.Topic{Kind: hub.TopicNotes, ID: b.CampaignID})
 	return nil
+}
+
+// sweepFiles drops the files a delete just orphaned; a failure is only logged,
+// the delete itself went through.
+func (a *App) sweepFiles(c *gin.Context) {
+	if err := a.CleanAttachments(c.Request.Context()); err != nil {
+		slog.Error("clean attachments", "err", err)
+	}
 }
 
 // stepsPayload is a run of ProseMirror steps starting after Version.
@@ -800,8 +811,11 @@ func (a *App) serveAttachment(c *gin.Context, att sqlc.Attachment, cacheControl 
 	http.ServeContent(c.Writer, c.Request, "", att.CreatedAt, f)
 }
 
+// freshFile is how long a file is spared: storeFile writes it before its row.
+const freshFile = time.Minute
+
 // CleanAttachments removes files no attachments row refers to any more
-// (their campaign or private block was deleted). Run at startup.
+// (their campaign or block was deleted). Run at startup and after deletes.
 func (a *App) CleanAttachments(ctx context.Context) error {
 	entries, err := os.ReadDir(a.attachmentsDir())
 	if errors.Is(err, os.ErrNotExist) {
@@ -814,14 +828,24 @@ func (a *App) CleanAttachments(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	known := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		known[p] = true
+	}
+	// One file that cannot go (open on Windows, or taken by a concurrent
+	// sweep) must not keep the rest.
+	var errs error
 	for _, e := range entries {
-		if !e.IsDir() && !slices.Contains(paths, e.Name()) {
-			if err := os.Remove(filepath.Join(a.attachmentsDir(), e.Name())); err != nil {
-				return err
+		if e.IsDir() || known[e.Name()] {
+			continue
+		}
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > freshFile {
+			if err := os.Remove(filepath.Join(a.attachmentsDir(), e.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+				errs = errors.Join(errs, err)
 			}
 		}
 	}
-	return nil
+	return errs
 }
 
 // linkKinds maps the prefixes that narrow [[ links to the kind they pick.

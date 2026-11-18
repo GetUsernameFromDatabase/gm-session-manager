@@ -539,6 +539,37 @@
     },
     true,
   );
+  // Command forms (form[data-command=url], one "cmd" box, an id) empty the box
+  // as they send, so the next command can be typed at once, and send in order,
+  // one at a time. An empty box sends nothing, so a double Enter cannot apply
+  // a command twice. A refused command comes back if the box is still empty.
+  let commands = Promise.resolve();
+  document.addEventListener(
+    "submit",
+    (e) => {
+      const form = e.target.closest?.("form[data-command]");
+      if (!form) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const box = form.elements.cmd;
+      const cmd = box.value.trim();
+      if (!cmd) return;
+      box.value = "";
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+      // A live refetch may have replaced the form by the time it is sent.
+      const send = () => {
+        const now = document.getElementById(form.id);
+        return now && htmx.ajax("POST", now.dataset.command, { source: now, values: { cmd }, swap: "none" });
+      };
+      commands = commands.then(send, send);
+    },
+    true,
+  );
+  document.addEventListener("htmx:afterRequest", (e) => {
+    const form = e.detail.elt.closest?.("form[data-command]");
+    const box = form && document.getElementById(form.id)?.elements.cmd;
+    if (box && !e.detail.successful && !box.value) box.value = e.detail.requestConfig.parameters.cmd;
+  });
   // A form's 422 flash shows inside that form, where the user is looking
   // (the page flash sits behind an open dialog).
   document.addEventListener("htmx:beforeRequest", (e) => {

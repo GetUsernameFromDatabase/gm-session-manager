@@ -97,8 +97,8 @@ func (a *App) renameCampaign(c *gin.Context) error {
 	return nil
 }
 
-// deleteCampaign removes a campaign and, by cascade, everything in it. Its
-// attachment files go at the next start (CleanAttachments).
+// deleteCampaign removes a campaign and, by cascade, everything in it; its
+// attachment files go with it (sweepFiles).
 func (a *App) deleteCampaign(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
@@ -110,6 +110,7 @@ func (a *App) deleteCampaign(c *gin.Context) error {
 	if err := a.Store.DeleteCampaign(c.Request.Context(), id); err != nil {
 		return err
 	}
+	a.sweepFiles(c)
 	a.Hub.CloseCampaign(id)
 	redirect(c, PathHome)
 	return nil
@@ -168,6 +169,7 @@ func (a *App) deleteCharacter(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
+	a.sweepFiles(c)
 	a.Hub.CloseCharacter(id)
 	a.changed(c, ch.CampaignID, hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID}, hub.Topic{Kind: hub.TopicNotes, ID: ch.CampaignID})
 	return nil

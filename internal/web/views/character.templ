@@ -570,7 +570,7 @@ templ conditionsCard(s SheetView) {
 			<span class="hidden group-data-open/conds:inline">Fewer</span>
 		}
 		if s.CanConditions {
-			<form class="inline-flex" hx-post={ s.cmdURL() } hx-on::after-request="if (event.detail.successful) this.reset()">
+			<form id={ fmt.Sprintf("condition-form-%d", s.ID) } class="inline-flex" data-command={ s.cmdURL() }>
 				@input.Input(input.Props{Name: "cmd", Placeholder: "+ concentrate Bless", Class: "h-6 w-44 rounded-full border-dashed px-2 text-xs md:text-xs", Attributes: templ.Attributes{"aria-label": "Add a custom condition"}})
 			</form>
 			@effectDialog(EffectTarget{CampaignID: s.CampaignID, CharacterID: s.ID, Name: s.C.Name, Post: fmt.Sprintf("/characters/%d/effect", s.ID), Label: "+ Effect"})
@@ -761,7 +761,7 @@ templ exhaustionChip(s SheetView) {
 // example, and picking one puts the example in the bar to adjust.
 templ commandBar(s SheetView) {
 	<div class="space-y-1">
-		<form hx-post={ s.cmdURL() } hx-on::after-request="if(event.detail.successful) this.reset()" class="flex flex-wrap gap-2">
+		<form id="command-form" data-command={ s.cmdURL() } class="flex flex-wrap gap-2">
 			@input.Input(input.Props{ID: "command-input", Name: "cmd", Class: "flex-1", Placeholder: "Command, e.g. hp -5, slot use 2, item add Rope", Attributes: templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "aria-keyshortcuts": "/ Tab Control+Space", "aria-describedby": "command-hint", "data-verbs": strings.Join(dnd5e.Verbs(), " "), "data-complete": fmt.Sprintf("/characters/%d/complete", s.ID)}})
 			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: with(dialog.TriggerFor(commandsID), templ.Attributes{"title": "Browse commands"})}) {
 				@icon.BookOpen()

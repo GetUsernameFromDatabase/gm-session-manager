@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
@@ -61,6 +62,58 @@ func (e testEnv) playersBlock(t *testing.T) int64 {
 		t.Fatal(err)
 	}
 	return b.ID
+}
+
+// TestDeleteRemovesFiles: deleting what holds a file removes the file at once,
+// while a file just written and not yet in a row survives the sweep.
+func TestDeleteRemovesFiles(t *testing.T) {
+	tests := []struct {
+		name   string
+		player bool
+		route  func(e testEnv, note, block int64) string
+	}{
+		{"owner block", true, func(_ testEnv, _, block int64) string { return fmt.Sprintf("/blocks/%d/delete", block) }},
+		{"owner note", true, func(_ testEnv, note, _ int64) string { return fmt.Sprintf("/notes/%d/delete", note) }},
+		{"character", false, func(e testEnv, _, _ int64) string { return fmt.Sprintf("/characters/%d/delete", e.characterID) }},
+		{"campaign", false, func(e testEnv, _, _ int64) string { return fmt.Sprintf("/campaigns/%d/delete", e.campaignID) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEnv(t)
+			ctx := t.Context()
+			note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Mine", OwnerCharacterID: nullID(e.characterID)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisOwner})
+			if err != nil {
+				t.Fatal(err)
+			}
+			att := e.attachFile(t, b.ID, "mine.png")
+			file := filepath.Join(e.app.attachmentsDir(), att.Path)
+			old := time.Now().Add(-time.Hour)
+			if err := os.Chtimes(file, old, old); err != nil {
+				t.Fatal(err)
+			}
+			fresh := filepath.Join(e.app.attachmentsDir(), "fresh.png")
+			if err := os.WriteFile(fresh, []byte(pngHead), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			role := enum.RoleAdmin
+			if tt.player {
+				role = enum.RolePlayer
+			}
+			if w := e.do(t, http.MethodPost, tt.route(e, note.ID, b.ID), e.token(t, role), nil, true); w.Code >= http.StatusMultipleChoices {
+				t.Fatalf("delete: %d %s", w.Code, w.Body)
+			}
+			if _, err := os.Stat(file); !os.IsNotExist(err) {
+				t.Errorf("file still there after the delete: %v", err)
+			}
+			if _, err := os.Stat(fresh); err != nil {
+				t.Errorf("fresh file swept: %v", err)
+			}
+		})
+	}
 }
 
 func TestFilesCleanup(t *testing.T) {

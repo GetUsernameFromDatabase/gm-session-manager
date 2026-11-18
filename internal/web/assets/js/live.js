@@ -107,6 +107,13 @@
   // after the swap, before paint. Tabs wait for the settle, which puts the
   // server's classes back on their panels (they have ids).
   document.addEventListener("htmx:oobBeforeSwap", (e) => {
+    // Typing may have started after the refetch did: keep the text, load later.
+    const view = e.detail.target.dataset?.live;
+    if (view && typing(view)) {
+      e.detail.shouldSwap = false;
+      waiting.add(view);
+      return;
+    }
     for (const el of e.detail.target.querySelectorAll('[data-slot="tabs"][id]')) {
       const value = el.querySelector('[data-slot="tabs-trigger"][data-active]')?.dataset.templValue;
       if (!value) continue;
@@ -143,8 +150,9 @@
       const set = p.set || {};
       const map = p.refetch ? null : bindings(p.v);
       // A key nothing shows yet, or a shown key going away, means the
-      // markup itself changed.
-      if (!map || Object.keys(set).some((k) => !map.has(k)) || (p.del || []).some((k) => map.has(k))) {
+      // markup itself changed. While a refetch is in flight its older HTML
+      // would undo the patch, so that refetch is followed by another.
+      if (!map || inflight.has(p.v) || Object.keys(set).some((k) => !map.has(k)) || (p.del || []).some((k) => map.has(k))) {
         gsm.refetch(p.v);
         continue;
       }
@@ -167,7 +175,8 @@
   const retry = () => [...waiting].forEach(gsm.refetch);
   document.addEventListener("htmx:afterRequest", (e) => {
     const form = e.detail.elt.closest?.("form");
-    if (form && e.detail.successful) [...form.elements].forEach((el) => "defaultValue" in el && (el.defaultValue = el.value));
+    // A command form's box already holds the next command, not the sent one.
+    if (form && e.detail.successful && !form.dataset.command) [...form.elements].forEach((el) => "defaultValue" in el && (el.defaultValue = el.value));
     retry();
   });
   document.addEventListener("reset", () => setTimeout(retry));
