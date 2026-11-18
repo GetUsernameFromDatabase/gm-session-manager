@@ -48,6 +48,8 @@ type CombatantView struct {
 	Out bool
 	// Down is at 0 HP, shown to everyone even when the HP is hidden.
 	Down bool
+	// Dead is a PC with three failed death saves; it replaces Down.
+	Dead bool
 	// InitMod is the initiative roll's bonus, GM only.
 	InitMod int
 	// Link is the combatant's source page, when the viewer may open it.
@@ -131,11 +133,15 @@ func (e EncounterView) turnVals() string {
 
 func (c CombatantView) hasMeter() bool { return c.ShowHP && c.MaxHP > 0 }
 
+// uncheckCrit clears an HP form's Crit box after a hit (the form's reset
+// would not reach the checkbox's own state).
+const uncheckCrit = "this.querySelector('[data-slot=checkbox][data-checked]')?.click();"
+
 // combatantState marks whose turn it is and who is down; live updates flip
 // these attributes.
 func combatantState(c CombatantView) templ.Attributes {
-	a := templ.Attributes{"data-active": fmt.Sprint(c.Active), "data-down": fmt.Sprint(c.down())}
-	return with(a, bind("data-active="+combatantKey(c, "on"), "data-down="+combatantKey(c, "down")))
+	a := templ.Attributes{"data-active": fmt.Sprint(c.Active), "data-down": fmt.Sprint(c.down()), "data-dead": fmt.Sprint(c.Dead)}
+	return with(a, bind("data-active="+combatantKey(c, "on"), "data-down="+combatantKey(c, "down"), "data-dead="+combatantKey(c, "dead")))
 }
 
 // initials is the first letter of the name's first two words ("Goblin 2" → "G2").

@@ -63,7 +63,7 @@ func newTestEnv(t testing.TB) testEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	char, err := q.CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: camp.ID, Name: "Alice", System: "dnd5e"})
+	char, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: "Alice", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}

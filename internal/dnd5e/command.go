@@ -103,6 +103,8 @@ const (
 	// CondEndRest removes the effects that end on the rest named by Rest: a
 	// long rest also ends the short rest ones.
 	CondEndRest
+	// CondClearAll removes every condition and effect of the owner (death).
+	CondClearAll
 )
 
 // Effects lists what Apply could not do to the character struct itself.
@@ -165,7 +167,7 @@ type HelpEntry struct {
 
 // Help lists the command forms for the UI, roughly by how often they are used.
 var Help = []HelpEntry{
-	{"hp -n | +n | =n", "hp -5", "Take damage, heal, or set hit points"},
+	{"hp -n [type] [crit] | +n | =n", "hp -7 fire crit", "Take damage (crit: a critical hit), heal, or set hit points"},
 	{"temp n | +n", "temp 5", "Set or add temporary hit points"},
 	{"maxhp +n | =n", "maxhp =30", "Change max hit points"},
 	{"slot use|restore <level>", "slot use 2", "Spend or regain a spell slot"},
@@ -178,6 +180,7 @@ var Help = []HelpEntry{
 	{"concentrate <spell> | end", "concentrate Bless", "Start or end concentration"},
 	{"exhaustion +n | -n", "exhaustion +1", "Change exhaustion level"},
 	{"deathsave success|fail|reset", "deathsave fail", "Track death saves"},
+	{"revive [n]", "revive 1", "Bring a dead character back with n hit points (default 1)"},
 	{verbInspiration, verbInspiration, "Toggle Heroic Inspiration"},
 	{`item add|remove "<name>" [qty]`, `item add "Rope (50 ft)"`, "Add or remove items (quote names with spaces)"},
 	{`item set "<name>" <qty>`, "item set Torch 5", "Set an item's count; 0 removes it"},
@@ -309,6 +312,7 @@ const (
 	verbCondition      = "condition"
 	verbConcentrate    = "concentrate"
 	verbDeathSave      = "deathsave"
+	verbRevive         = "revive"
 	verbSlot           = "slot"
 	verbPact           = "pact"
 	verbRest           = "rest"
@@ -340,6 +344,7 @@ const (
 	verbEnd       = "end"
 	verbSuccess   = "success"
 	verbFail      = "fail"
+	verbCrit      = "crit"
 	verbReset     = "reset"
 	verbMax       = "max"
 	verbNote      = "note"
@@ -363,6 +368,7 @@ func init() {
 		verbConcentrate: parseConcentrate,
 		Exhaustion:      parseExhaustion,
 		verbDeathSave:   parseDeathSave,
+		verbRevive:      parseRevive,
 		verbSlot:        parseSlot,
 		verbPact:        parsePact,
 		verbRest:        parseRest,
@@ -418,8 +424,9 @@ const MaxAmount = 9999
 // Amount is an HP-style change: a delta, or a set when set is true. Parse
 // builds them from "+n", "-n" and "=n".
 type Amount struct {
-	n   int
-	set bool
+	n    int
+	set  bool
+	crit bool // a critical hit: two death save failures at 0 HP
 }
 
 func (a Amount) applyTo(v int) int {

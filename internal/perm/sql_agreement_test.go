@@ -29,7 +29,7 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"Alice", "Bob"} { // ids 1 and 2, matching alice and bob
-		if _, err := q.CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: camp.ID, Name: name, System: "dnd5e"}); err != nil {
+		if _, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: name, System: "dnd5e", SheetJson: "{}"}); err != nil {
 			t.Fatal(err)
 		}
 	}

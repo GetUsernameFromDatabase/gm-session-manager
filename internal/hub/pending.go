@@ -130,7 +130,7 @@ func (h *Hub) TakeApproved(secret string) (Pending, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for id, p := range h.pending {
-		if secret != "" && p.Secret == secret && p.State == Approved {
+		if secret != "" && subtle.ConstantTimeCompare([]byte(p.Secret), []byte(secret)) == 1 && p.State == Approved {
 			delete(h.pending, id)
 			return *p, true
 		}

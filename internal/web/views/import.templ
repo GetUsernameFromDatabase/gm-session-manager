@@ -272,7 +272,7 @@ templ importTabs(n ImportNotice) {
 			}
 			@FiveToolsProgress(n.Job, false)
 			// The list comes from the network: it loads when the tab is first shown.
-			<div id={ FiveToolsID } class="text-muted-foreground" hx-get="/compendium/5etools" hx-trigger="intersect once" hx-swap="outerHTML">Loading books…</div>
+			<div id={ FiveToolsID } class="text-muted-foreground" hx-get={ FiveToolsPath } hx-trigger="intersect once" hx-swap="outerHTML">Loading books…</div>
 		}
 		@tabs.Content(tabs.ContentProps{Value: ImportTabFolder, Class: "space-y-3 text-sm"}) {
 			<p class="text-muted-foreground">Each folder in this one is a source. They are read again every time the app starts.</p>

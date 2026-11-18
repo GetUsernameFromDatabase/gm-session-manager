@@ -38,10 +38,10 @@ func newEffectFix(t *testing.T) effectFix {
 	ctx := t.Context()
 	f := effectFix{testEnv: e, gm: e.token(t, enum.RoleAdmin), alice: e.token(t, enum.RolePlayer)}
 	var err error
-	if f.bram, err = e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bram", System: "dnd5e"}); err != nil {
+	if f.bram, err = e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bram", System: "dnd5e", SheetJson: "{}"}); err != nil {
 		t.Fatal(err)
 	}
-	if f.cass, err = e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Cass", System: "dnd5e"}); err != nil {
+	if f.cass, err = e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Cass", System: "dnd5e", SheetJson: "{}"}); err != nil {
 		t.Fatal(err)
 	}
 	if f.bramTok, _, err = e.mgr.IssuePlayer(ctx, f.bram.ID); err != nil {
@@ -141,7 +141,7 @@ func TestEffectPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	farChar, err := f.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: far.ID, Name: "Far", System: "dnd5e"})
+	farChar, err := f.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: far.ID, Name: "Far", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -69,7 +69,7 @@ func newLiveFixture(t testing.TB) liveFixture {
 	}
 	f.ogre, f.encounter = ogre.ID, enc.ID
 	other, _ := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Elsewhere", System: "dnd5e"})
-	stranger, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: other.ID, Name: "Bob", System: "dnd5e"})
+	stranger, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: other.ID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +138,23 @@ func TestLiveVisibility(t *testing.T) {
 				}
 			}
 		})
+	}
+	// The tracker row's Dead flag is a hot key for everyone who sees the row,
+	// the player's view included (a separate loop: the table's columns are positional).
+	for _, tt := range []struct {
+		name string
+		v    perm.Viewer
+		view string
+	}{
+		{"GM tracker", perm.GM, views.LiveKey(views.LiveEncounter, f.encounter)},
+		{"player combat", player, views.LiveKey(views.LivePlayerCombat, f.campaignID)},
+	} {
+		st, _ := f.state(t, tt.v, f.campaignID, tt.view)
+		for _, id := range []int64{f.ogre} {
+			if _, has := st[fmt.Sprintf("c.%d.dead", id)]; !has {
+				t.Errorf("%s: no dead key in %v", tt.name, st)
+			}
+		}
 	}
 	// Every live view is registered and has at least one row above.
 	all := []string{
@@ -320,36 +337,43 @@ func TestLiveBindsMatchState(t *testing.T) {
 		{"GM combat", fmt.Sprintf("/campaigns/%d/combat?encounter=%d", f.campaignID, f.encounter), gm, perm.GM},
 		{"GM overview", fmt.Sprintf("/campaigns/%d", f.campaignID), gm, perm.GM},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			page := f.do(t, http.MethodGet, tt.path, tt.cookie, nil, false).Body.String()
-			var bound []string
-			for _, m := range bindAttr.FindAllStringSubmatch(page, -1) {
-				for _, spec := range strings.Fields(m[1]) {
-					bound = append(bound, spec[strings.Index(spec, "=")+1:])
-				}
+	for _, dead := range []bool{false, true} { // the dead sheet swaps its buttons and the tracker its badge
+		if dead {
+			for range 2 {
+				f.sheetCmd(t, player, "deathsave fail")
 			}
-			var hot []string
-			for _, m := range liveAttr.FindAllStringSubmatch(page, -1) {
-				st, ok := f.state(t, tt.viewer, f.campaignID, m[1])
-				if !ok {
-					t.Fatalf("page shows %s but its state is not served", m[1])
-				}
-				for k := range st {
-					if k != hub.HashKey {
-						hot = append(hot, k)
+		}
+		for _, tt := range tests {
+			t.Run(fmt.Sprintf("%s dead=%v", tt.name, dead), func(t *testing.T) {
+				page := f.do(t, http.MethodGet, tt.path, tt.cookie, nil, false).Body.String()
+				var bound []string
+				for _, m := range bindAttr.FindAllStringSubmatch(page, -1) {
+					for _, spec := range strings.Fields(m[1]) {
+						bound = append(bound, spec[strings.Index(spec, "=")+1:])
 					}
 				}
-			}
-			if len(bound) == 0 {
-				t.Fatal("no bound elements on the page")
-			}
-			slices.Sort(bound)
-			slices.Sort(hot)
-			if bound, hot = slices.Compact(bound), slices.Compact(hot); !slices.Equal(bound, hot) {
-				t.Errorf("bound %v\nstate %v", bound, hot)
-			}
-		})
+				var hot []string
+				for _, m := range liveAttr.FindAllStringSubmatch(page, -1) {
+					st, ok := f.state(t, tt.viewer, f.campaignID, m[1])
+					if !ok {
+						t.Fatalf("page shows %s but its state is not served", m[1])
+					}
+					for k := range st {
+						if k != hub.HashKey {
+							hot = append(hot, k)
+						}
+					}
+				}
+				if len(bound) == 0 {
+					t.Fatal("no bound elements on the page")
+				}
+				slices.Sort(bound)
+				slices.Sort(hot)
+				if bound, hot = slices.Compact(bound), slices.Compact(hot); !slices.Equal(bound, hot) {
+					t.Errorf("bound %v\nstate %v", bound, hot)
+				}
+			})
+		}
 	}
 }
 
@@ -431,6 +455,15 @@ func TestLiveHotKeepsHash(t *testing.T) {
 	if after := hashes(); after[sheet] != before[sheet] {
 		t.Errorf("death saves moved the sheet hash")
 	}
+	// Dying for good swaps the sheet's buttons and the tracker's badge: a refetch.
+	before = hashes()
+	sheetCmd("deathsave fail")
+	sheetCmd("deathsave fail")
+	for view, h := range hashes() {
+		if h == before[view] {
+			t.Errorf("%s: dying left the hash unchanged", view)
+		}
+	}
 	before = hashes()
 	sheetCmd("item add Rope")
 	post(fmt.Sprintf("/combatants/%d/marker", f.ogre), url.Values{"marker": {"red"}})
@@ -495,6 +528,11 @@ func TestLiveModelHashFollowsMarkup(t *testing.T) {
 			f.postOK(t, player, fmt.Sprintf("/characters/%d/effect", f.characterID), url.Values{"slug": {"custom"}, "name": {"Shield of Faith"}, "mod_target": {"ac"}, "mod_value": {"2"}})
 		}},
 		{"skill", func() { f.sheetCmd(t, player, "prof add skill athletics") }},
+		{"death", func() {
+			for range 3 {
+				f.sheetCmd(t, player, "deathsave fail")
+			}
+		}},
 		{"marker", ogre("marker", url.Values{"marker": {"red"}})},
 		{"monster condition", ogre("condition", url.Values{"slug": {"blinded"}})},
 		{"hp shown", ogre("visible", nil)},

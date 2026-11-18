@@ -49,7 +49,12 @@ func (s SheetView) Hot(st hub.State) {
 // markup must read nothing outside SheetView.
 func (s SheetView) Shape() SheetView {
 	s.C.HP, s.C.TempHP = 0, 0
+	// Dead is in the model, not hot: it swaps buttons, so a change refetches.
+	dead := s.C.Sheet.Dead()
 	s.C.Sheet.DeathSaves = dnd5e.DeathSaves{}
+	if dead {
+		s.C.Sheet.DeathSaves.Failures = dnd5e.MaxDeathSaves
+	}
 	s.C.Sheet.Inspiration = false
 	s.C.Sheet.HitDiceUsed = 0
 	for i := range s.C.Sheet.Slots { // an array: s holds its own copy
@@ -64,7 +69,8 @@ func (s SheetView) Shape() SheetView {
 	return s
 }
 
-func dying(s SheetView) bool { return s.C.HP <= 0 && s.C.MaxHP > 0 }
+// dying shows the death saves: at 0 HP, or dead (failures can be marked at any HP).
+func dying(s SheetView) bool { return s.C.Sheet.Dead() || s.C.HP <= 0 && s.C.MaxHP > 0 }
 
 func isToggle(slug string) bool { return slices.Contains(dnd5e.Conditions, slug) }
 

@@ -63,6 +63,9 @@ func (s SheetView) builderVerbs() []builderVerb {
 			builderOp{opDSSuccess, "Death save success", "deathsave success", ""},
 			builderOp{opDSFail, "Death save failure", "deathsave fail", ""},
 			builderOp{opDSReset, "Reset death saves", "deathsave reset", ""})
+		if sh.Dead() {
+			rest = append(rest, builderOp{opDSRevive, "Revive", "revive", ""})
+		}
 	}
 	return []builderVerb{
 		{verbHP, "Hit points", []builderOp{
@@ -168,6 +171,7 @@ const (
 	opDSSuccess      = "ds-success"
 	opDSFail         = "ds-fail"
 	opDSReset        = "ds-reset"
+	opDSRevive       = "ds-revive"
 	opHPSet          = "hp-set"
 	opHPTemp         = "hp-temp"
 	opHPMax          = "hp-max"

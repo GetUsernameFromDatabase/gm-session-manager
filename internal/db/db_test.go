@@ -113,7 +113,7 @@ func TestSessionConstraints(t *testing.T) {
 	if !camp.OpenJoin {
 		t.Error("open_join should default to true")
 	}
-	char, err := q.CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: camp.ID, Name: "Alice", System: "dnd5e"})
+	char, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: "Alice", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestAttachmentOutlivesBlock(t *testing.T) {
 	}
 
 	// A private block's file goes with it, even through a cascade.
-	ch, err := q.CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: camp.ID, Name: "A", System: "dnd5e"})
+	ch, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: "A", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}

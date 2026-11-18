@@ -814,7 +814,7 @@ func MonsterHabitats(e sqlc.CompendiumEntry, habitats []enum.Habitat, gm bool, c
 						return nil
 					})
 					templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "h-auto min-w-0 py-1 text-left whitespace-normal", Attributes: templ.Attributes{
-						"type": "button", "hx-post": "/compendium/habitats/copy",
+						"type": "button", "hx-post": CompendiumPath(ctx, "/habitats/copy"),
 						"hx-vals":   toJSON(map[string]any{"entry_id": e.ID, "from_id": c.Copy.ID}),
 						"hx-target": "#monster-habitats", "hx-swap": "outerHTML",
 					}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var33), templ_7745c5c3_Buffer)

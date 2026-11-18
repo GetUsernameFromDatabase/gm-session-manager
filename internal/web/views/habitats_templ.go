@@ -192,7 +192,7 @@ func HabitatsPage(l Layout, v HabitatView) templ.Component {
 			})
 			templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{
 				"type": "button", "title": "Every matching monster with no habitats takes those of its copy in another source",
-				"hx-post": "/compendium/habitats/fill", "hx-include": "#habitat-q",
+				"hx-post": CompendiumPath(ctx, "/habitats/fill"), "hx-include": "#habitat-q",
 				"hx-target": "#" + HabitatGridID, "hx-swap": "outerHTML", "hx-push-url": "false",
 			}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var8), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
@@ -651,7 +651,7 @@ func HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) templ.C
 				})
 				templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Class: anyPressed, Attributes: templ.Attributes{
 					"type": "button", "aria-pressed": fmt.Sprint(every), "title": what, "aria-label": what,
-					"hx-post": "/compendium/habitats/any", "hx-vals": toJSON(map[string]any{"entry_id": m.ID}),
+					"hx-post": CompendiumPath(ctx, "/habitats/any"), "hx-vals": toJSON(map[string]any{"entry_id": m.ID}),
 					"hx-target": "closest tr", "hx-swap": "outerHTML",
 				}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var30), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
@@ -684,20 +684,33 @@ func HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) templ.C
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<form class=\"flex justify-center\" hx-post=\"/compendium/habitats/cell\" hx-trigger=\"change\" hx-vals=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<form class=\"flex justify-center\" hx-post=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var32 string
-					templ_7745c5c3_Var32, templ_7745c5c3_Err = templruntime.NewAttributeExpression(toJSON(map[string]any{"entry_id": m.ID, "habitat": h})).Resolve(ctx)
+					templ_7745c5c3_Var32, templ_7745c5c3_Err = templruntime.NewAttributeExpression(CompendiumPath(ctx, "/habitats/cell")).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 135, Col: 158}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 135, Col: 85}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\" hx-trigger=\"change\" hx-vals=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var33 string
+					templ_7745c5c3_Var33, templ_7745c5c3_Err = templruntime.NewAttributeExpression(toJSON(map[string]any{"entry_id": m.ID, "habitat": h})).Resolve(ctx)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 135, Col: 172}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -705,7 +718,7 @@ func HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) templ.C
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</form>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</form>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -745,7 +758,7 @@ func habitatBatchButton(v HabitatView, h enum.Habitat, on bool) templ.Component 
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
 		what := fmt.Sprintf(utils.IfElse(on, "Add %s to all %d monsters shown", "Remove %s from all %d monsters shown"), h, len(v.Monsters))
-		templ_7745c5c3_Var34 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_Var35 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 			if !templ_7745c5c3_IsBuffer {
@@ -772,9 +785,9 @@ func habitatBatchButton(v HabitatView, h enum.Habitat, on bool) templ.Component 
 		})
 		templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: templ.Attributes{
 			"type": "button", "title": what, "aria-label": what,
-			"hx-post": "/compendium/habitats/batch", "hx-vals": toJSON(map[string]any{"q": v.Filter, "habitat": h, "on": on}),
+			"hx-post": CompendiumPath(ctx, "/habitats/batch"), "hx-vals": toJSON(map[string]any{"q": v.Filter, "habitat": h, "on": on}),
 			"hx-confirm": what + "?", "hx-target": "#" + HabitatGridID, "hx-swap": "outerHTML",
-		}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var34), templ_7745c5c3_Buffer)
+		}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var35), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

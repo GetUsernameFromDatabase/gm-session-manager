@@ -151,7 +151,7 @@ func petrified(conds []sqlc.Condition) bool {
 // 0 HP, or a PC who failed three death saves (a PC at 0 HP still rolls them).
 func outOfFight(r sqlc.ListCombatantsRow, s *dnd5e.Sheet) bool {
 	if s != nil {
-		return s.DeathSaves.Failures >= dnd5e.MaxDeathSaves
+		return s.Dead()
 	}
 	return !r.CharacterID.Valid && r.Hp <= 0 && r.MaxHp > 0
 }
@@ -174,20 +174,37 @@ func damageChoice(v string, d dnd5e.Defenses) (kind string, when int, err error)
 	return kind, when, nil
 }
 
+// damageArgs are the arguments after "hp -n" for a damage type (blank or
+// " " is untyped) and a critical hit; none for healing and temp HP, which a
+// crit does not touch.
+func damageArgs(damage bool, kind string, crit bool) []string {
+	var args []string
+	if kind = strings.TrimSpace(kind); damage && kind != "" {
+		args = append(args, kind)
+	}
+	if damage && crit {
+		args = append(args, "crit")
+	}
+	return args
+}
+
 // hpChange changes a creature's hit points by the rules (temporary HP
 // first, never below 0, and so on).
-type hpChange func(*dnd5e.Character)
+type hpChange func(*dnd5e.Character) error
 
-func healHP(n int) hpChange { return func(m *dnd5e.Character) { m.ApplyHP(dnd5e.Heal(n)) } }
+func healHP(n int) hpChange {
+	return func(m *dnd5e.Character) error { return m.ApplyHP(dnd5e.Heal(n)) }
+}
 
 // damageHP is n damage of kind after d (when as damageChoice reads it).
+// Monsters have no death saves, so a crit changes nothing for them.
 func damageHP(n int, d dnd5e.Defenses, kind string, when int) hpChange {
-	return func(m *dnd5e.Character) { m.ApplyHP(dnd5e.Damage(d.Taken(n, kind, when))) }
+	return func(m *dnd5e.Character) error { return m.ApplyHP(dnd5e.Damage(d.Taken(n, kind, when))) }
 }
 
 // setHP sets the given values and leaves nil ones alone.
 func setHP(hp, maxHP, temp *int) hpChange {
-	return func(dc *dnd5e.Character) {
+	return func(dc *dnd5e.Character) error {
 		if maxHP != nil {
 			if dc.MaxHP == 0 && hp == nil { // no stats yet: start at full
 				dc.HP = *maxHP
@@ -196,18 +213,27 @@ func setHP(hp, maxHP, temp *int) hpChange {
 			dc.HP = min(dc.HP, dc.MaxHP)
 		}
 		if hp != nil {
-			dc.ApplyHP(dnd5e.Set(*hp))
+			if err := dc.ApplyHP(dnd5e.Set(*hp)); err != nil {
+				return err
+			}
 		}
 		if temp != nil {
+			if dc.Sheet.Dead() {
+				return dnd5e.ErrDead
+			}
 			dc.TempHP = *temp
 		}
+		return nil
 	}
 }
 
-// changeCharacterHP applies fn to a character in one transaction.
+// changeCharacterHP applies fn to a character in one transaction; what fn
+// refuses is the user's error.
 func (a *App) changeCharacterHP(ctx context.Context, id int64, fn hpChange) error {
 	return a.updateCharacter(ctx, id, func(_ *sqlc.Queries, dc *dnd5e.Character) error {
-		fn(dc)
+		if err := fn(dc); err != nil {
+			return userError{err}
+		}
 		return nil
 	})
 }
@@ -221,7 +247,9 @@ func (a *App) updateMonster(ctx context.Context, id int64, fn hpChange) error {
 			return err
 		}
 		m := dnd5e.Character{HP: int(cb.Hp), MaxHP: int(cb.MaxHp), TempHP: int(cb.TempHp)}
-		fn(&m)
+		if err := fn(&m); err != nil { // m has an empty sheet, so it is never dead
+			return userError{err}
+		}
 		if cb.Hp > 0 && m.HP <= 0 { // a downed caster stops concentrating
 			if err := endConcentration(ctx, q, condOwner{combatantID: id}); err != nil {
 				return err

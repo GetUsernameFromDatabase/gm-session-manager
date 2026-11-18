@@ -150,7 +150,7 @@ func TestSourceCommandPermissions(t *testing.T) {
 	e.feat(t, oldSrc, "tough", "old")
 	e.feat(t, newSrc, "tough", "new")
 	e.setSheet(t, dnd5e.Sheet{Feats: []string{"Tough"}, FeatSources: map[string]string{"tough": oldSrc}})
-	other, err := e.q().CreateCharacter(t.Context(), sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e"})
+	other, err := e.q().CreateCharacterWithSheet(t.Context(), sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}

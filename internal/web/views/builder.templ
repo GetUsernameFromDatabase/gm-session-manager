@@ -240,7 +240,7 @@ templ builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) {
 templ itemDetails() {
 	<div
 		class="max-h-60 overflow-y-auto rounded-md border p-2 text-xs empty:hidden"
-		hx-get="/compendium/lookup?kind=item"
+		hx-get={ CompendiumPath(ctx, "/lookup?kind=item") }
 		hx-vals="js:{name: this.closest('form').elements.subject?.value || ''}"
 		hx-trigger="load, change[target.name==='subject'] from:closest form"
 		hx-swap="innerHTML"

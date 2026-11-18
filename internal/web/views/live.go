@@ -86,6 +86,7 @@ func (e EncounterView) Hot(st hub.State) {
 	for _, c := range e.Combatants {
 		st[combatantKey(c, "on")] = c.Active
 		st[combatantKey(c, "down")] = c.down()
+		st[combatantKey(c, "dead")] = c.Dead
 		if c.ShowHP {
 			st[combatantKey(c, "hp")] = fmt.Sprintf("%d/%d", c.HP, c.MaxHP)
 			if c.TempHP > 0 {
@@ -107,7 +108,7 @@ func (e EncounterView) Shape() EncounterView {
 	e.Encounter.Round, e.Encounter.ActiveCombatantID = 0, sql.NullInt64{}
 	e.Combatants = slices.Clone(e.Combatants)
 	for i := range e.Combatants {
-		e.Combatants[i].HP, e.Combatants[i].TempHP, e.Combatants[i].Active, e.Combatants[i].Down = 0, 0, false, false
+		e.Combatants[i].HP, e.Combatants[i].TempHP, e.Combatants[i].Active, e.Combatants[i].Down, e.Combatants[i].Dead = 0, 0, false, false, false
 	}
 	return e
 }
@@ -137,7 +138,8 @@ func (r Roster) Shape() Roster {
 	return r
 }
 
-func (c CombatantView) down() bool { return c.Down }
+// down is the Down badge: at 0 HP and not yet dead.
+func (c CombatantView) down() bool { return c.Down && !c.Dead }
 
 func roundLabel(n int64) string { return fmt.Sprintf("Round %d", n) }
 

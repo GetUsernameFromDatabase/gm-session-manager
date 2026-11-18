@@ -215,6 +215,8 @@ type hpForm struct {
 	Amount int    `form:"hp_amount" validate:"min=1"`
 	// Type is the damage type, " " (the select's Other) or empty for untyped.
 	Type string `form:"hp_type"`
+	// Crit marks damage as a critical hit; heal and temp ignore it.
+	Crit bool `form:"hp_crit"`
 }
 
 // hpCommand turns the HP quick form into damage (of a type), healing or
@@ -225,10 +227,7 @@ func hpCommand(c *gin.Context) (dnd5e.Command, error) {
 		return dnd5e.Command{}, errors.New("enter how many hit points, 1 or more")
 	}
 	line := map[string]string{"damage": "hp -", "heal": "hp +", "temp": "temp "}[f.Op] + strconv.Itoa(f.Amount)
-	if kind := strings.TrimSpace(f.Type); f.Op == "damage" && kind != "" {
-		return dnd5e.Parse(line, kind) // Parse checks the type
-	}
-	return dnd5e.Parse(line)
+	return dnd5e.Parse(line, damageArgs(f.Op == "damage", f.Type, f.Crit)...) // Parse checks the type
 }
 
 // builderArgs are the command builder's fields, in the order the commands
@@ -477,6 +476,11 @@ func (a *App) updateCharacter(ctx context.Context, id int64, fn func(q *sqlc.Que
 		if err := fn(q, &dc); err != nil {
 			return err
 		}
+		if !sheet.Dead() && dc.Sheet.Dead() { // dying for good drops every condition and effect, whichever path got here
+			if err := applyCondOps(ctx, q, condOwner{characterID: id}, []dnd5e.CondOp{{Op: dnd5e.CondClearAll}}, condExtra{}); err != nil {
+				return err
+			}
+		}
 		if row.Hp > 0 && dc.HP <= 0 { // falling to 0 HP (overkill stays below) knocks the caster unconscious
 			if err := endConcentration(ctx, q, condOwner{characterID: id}); err != nil {
 				return err
@@ -638,6 +642,18 @@ func applyCondOps(ctx context.Context, q *sqlc.Queries, o condOwner, ops []dnd5e
 		if op.Op == dnd5e.CondEndRest {
 			if err := endRest(ctx, q, o, op.Rest); err != nil {
 				return err
+			}
+			continue
+		}
+		if op.Op == dnd5e.CondClearAll {
+			rows, err := q.ListConditionsByCharacter(ctx, nullID(o.characterID)) // only a character dies
+			if err != nil {
+				return err
+			}
+			for _, r := range rows {
+				if err := removeCondition(ctx, q, r); err != nil {
+					return err
+				}
 			}
 			continue
 		}

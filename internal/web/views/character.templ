@@ -59,6 +59,9 @@ templ CharacterSheet(s SheetView) {
 					@editable(s, edit{verbDetails, opSetName, ""}, "Change name", "") {
 						{ s.C.Name }
 					}
+					if s.C.Sheet.Dead() {
+						@deadBadge()
+					}
 				</h1>
 				<p class="text-sm text-muted-foreground">
 					for i, p := range s.subtitle() {
@@ -194,6 +197,13 @@ templ characterLooks(s SheetView) {
 	}
 }
 
+templ deadBadge() {
+	@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
+		@icon.Skull()
+		Dead
+	}
+}
+
 // vitalsStrip stays pinned under the nav (top-12 is the nav's height): HP
 // as a figure and a bar, then AC, initiative and speed, with the HP form
 // one tap away so the strip stays one row on a phone.
@@ -259,12 +269,21 @@ templ vitalsStrip(s SheetView) {
 				<span class="font-medium">Death saves</span>
 				<span { bind("text=ds.s")... }>{ fmt.Sprintf("✓ %d/3", s.C.Sheet.DeathSaves.Successes) }</span>
 				<span { bind("text=ds.f")... }>{ fmt.Sprintf("✗ %d/3", s.C.Sheet.DeathSaves.Failures) }</span>
+				if s.C.Sheet.Dead() {
+					@deadBadge()
+				}
 				if s.CanSheet {
-					@cmdButton(s, "deathsave success", button.VariantOutline) {
-						Success
-					}
-					@cmdButton(s, "deathsave fail", button.VariantOutline) {
-						Failure
+					if s.C.Sheet.Dead() {
+						@cmdButton(s, "revive", button.VariantOutline) {
+							Revive
+						}
+					} else {
+						@cmdButton(s, "deathsave success", button.VariantOutline) {
+							Success
+						}
+						@cmdButton(s, "deathsave fail", button.VariantOutline) {
+							Failure
+						}
 					}
 					@cmdButton(s, "deathsave reset", button.VariantGhost) {
 						Reset
@@ -958,7 +977,7 @@ templ spellsCard(s SheetView) {
 						<li class="flex items-start justify-between gap-2 py-1">
 							<details
 								class="min-w-0 flex-1"
-								hx-get={ fmt.Sprintf("/compendium/lookup?kind=spell&slug=%s", url.QueryEscape(sp.Slug)) }
+								hx-get={ CompendiumPath(ctx, "/lookup?kind=spell&slug="+url.QueryEscape(sp.Slug)) }
 								hx-trigger="toggle once"
 								hx-target="find [data-spell-body]"
 								hx-swap="innerHTML"
@@ -1211,7 +1230,7 @@ templ actionRow(s SheetView, e actionEntry) {
 		<details
 			class="min-w-0 flex-1"
 			if e.SpellSlug != "" {
-				hx-get={ fmt.Sprintf("/compendium/lookup?kind=spell&slug=%s", url.QueryEscape(e.SpellSlug)) }
+				hx-get={ CompendiumPath(ctx, "/lookup?kind=spell&slug="+url.QueryEscape(e.SpellSlug)) }
 				hx-trigger="toggle once"
 				hx-target="find [data-why]"
 				hx-swap="innerHTML"

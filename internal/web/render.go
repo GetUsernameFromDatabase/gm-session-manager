@@ -152,6 +152,7 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 		}
 		// One without max HP has no stats, so is never down.
 		cv.Marker, cv.Down = r.Marker, r.Hp <= 0 && r.MaxHp > 0
+		cv.Dead = sheet != nil && sheet.Dead()
 		if v.IsGM {
 			cv.Link, cv.InitMod = combatantLink(r, enc.CampaignID), initiativeMod(r, sheet)
 		} else {

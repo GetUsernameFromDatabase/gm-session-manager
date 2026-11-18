@@ -163,7 +163,7 @@ templ MonsterHabitats(e sqlc.CompendiumEntry, habitats []enum.Habitat, gm bool, 
 				<div class="mt-1 flex flex-wrap gap-1 font-sans">
 					for _, c := range copies {
 						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "h-auto min-w-0 py-1 text-left whitespace-normal", Attributes: templ.Attributes{
-							"type": "button", "hx-post": "/compendium/habitats/copy",
+							"type": "button", "hx-post": CompendiumPath(ctx, "/habitats/copy"),
 							"hx-vals":   toJSON(map[string]any{"entry_id": e.ID, "from_id": c.Copy.ID}),
 							"hx-target": "#monster-habitats", "hx-swap": "outerHTML",
 						}}) {

@@ -61,7 +61,7 @@ func TestCampaignExcludesOwnerBlocks(t *testing.T) {
 	q := db.NewStore(conn)
 
 	camp, _ := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"})
-	alice, _ := q.CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: camp.ID, Name: "Alice", System: "dnd5e"})
+	alice, _ := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: "Alice", System: "dnd5e", SheetJson: "{}"})
 	owner := sql.NullInt64{Int64: alice.ID, Valid: true}
 
 	gmNote, _ := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "game_session", Title: "Session one"})

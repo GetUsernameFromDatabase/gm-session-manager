@@ -85,6 +85,9 @@ func parseRest(args []string) (Command, error) {
 	switch strings.ToLower(args[0]) {
 	case ResetShort:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, fx *Effects) error {
+			if c.Sheet.Dead() {
+				return ErrDead
+			}
 			fx.Conditions = append(fx.Conditions, CondOp{Op: CondEndRest, Rest: ResetShort})
 			c.Sheet.Pact.Used = 0
 			for i := range c.Sheet.Features {
@@ -99,6 +102,9 @@ func parseRest(args []string) (Command, error) {
 		}), nil
 	case ResetLong:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, fx *Effects) error {
+			if c.Sheet.Dead() {
+				return ErrDead
+			}
 			c.LongRest()
 			fx.Conditions = append(fx.Conditions, CondOp{Op: CondExhaustion, Slug: Exhaustion, Delta: -1}, CondOp{Op: CondEndRest, Rest: ResetLong})
 			return nil
@@ -132,6 +138,9 @@ func parseHitDie(args []string) (Command, error) {
 		return Command{}, errors.New("use or restore")
 	}
 	return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
+		if c.Sheet.Dead() {
+			return ErrDead
+		}
 		if op == verbUse {
 			if c.Sheet.HitDiceUsed >= c.Sheet.Level() {
 				return errors.New("no hit dice left")

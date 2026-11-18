@@ -24,7 +24,7 @@ import (
 func TestNoteViewAudiences(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	bram, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bram", System: "dnd5e"})
+	bram, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bram", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestCommandPermissions(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
 	gm := e.token(t, enum.RoleAdmin)
-	other, err := e.q().CreateCharacter(t.Context(), sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e"})
+	other, err := e.q().CreateCharacterWithSheet(t.Context(), sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +529,7 @@ func TestPlayerBlocksInGameSession(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	alice := e.token(t, enum.RolePlayer)
-	other, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e"})
+	other, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}

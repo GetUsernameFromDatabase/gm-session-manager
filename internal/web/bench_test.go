@@ -67,7 +67,7 @@ func BenchmarkEncounterState(b *testing.B) {
 	f := newLiveFixture(b) // Alice and the Ogre are already in the fight
 	ctx := b.Context()
 	for i := range 3 {
-		ch, err := f.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: f.campaignID, Name: fmt.Sprintf("PC %d", i), System: "dnd5e"})
+		ch, err := f.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: f.campaignID, Name: fmt.Sprintf("PC %d", i), System: "dnd5e", SheetJson: "{}"})
 		if err != nil {
 			b.Fatal(err)
 		}

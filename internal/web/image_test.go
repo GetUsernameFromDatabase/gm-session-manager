@@ -577,7 +577,7 @@ func TestCharacterLooks(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	alice := e.token(t, enum.RolePlayer)
-	other, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e"})
+	other, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}

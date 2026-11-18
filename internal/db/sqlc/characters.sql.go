@@ -21,36 +21,6 @@ func (q *Queries) CountLevelUps(ctx context.Context, characterID int64) (int64, 
 	return count, err
 }
 
-const createCharacter = `-- name: CreateCharacter :one
-INSERT INTO characters (campaign_id, name, system)
-VALUES (?, ?, ?)
-RETURNING id, campaign_id, name, system, hp, max_hp, temp_hp, sheet_json, created_at, deleted_at
-`
-
-type CreateCharacterParams struct {
-	CampaignID int64
-	Name       string
-	System     string
-}
-
-func (q *Queries) CreateCharacter(ctx context.Context, arg CreateCharacterParams) (Character, error) {
-	row := q.db.QueryRowContext(ctx, createCharacter, arg.CampaignID, arg.Name, arg.System)
-	var i Character
-	err := row.Scan(
-		&i.ID,
-		&i.CampaignID,
-		&i.Name,
-		&i.System,
-		&i.Hp,
-		&i.MaxHp,
-		&i.TempHp,
-		&i.SheetJson,
-		&i.CreatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
 const createCharacterWithSheet = `-- name: CreateCharacterWithSheet :one
 INSERT INTO characters (campaign_id, name, system, hp, max_hp, temp_hp, sheet_json)
 VALUES (?, ?, ?, ?, ?, ?, ?)

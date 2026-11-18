@@ -10,12 +10,14 @@ import (
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/checkbox"
 	"gm-session-manager/internal/web/components/dialog"
 	"gm-session-manager/internal/web/components/empty"
 	"gm-session-manager/internal/web/components/field"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
 	"gm-session-manager/internal/web/components/inputgroup"
+	"gm-session-manager/internal/web/components/label"
 	"gm-session-manager/internal/web/components/popover"
 	selectcomp "gm-session-manager/internal/web/components/select"
 	switchcomp "gm-session-manager/internal/web/components/switch"
@@ -204,7 +206,7 @@ templ Encounter(e EncounterView) {
 templ combatantRow(e EncounterView, c CombatantView) {
 	// One rung of the initiative ladder: amber marks whose turn it is, rose who
 	// is down; the controls wrap under the name on narrow screens.
-	<li class={ "group/row flex flex-wrap items-center gap-x-3 gap-y-2 border-l-4 py-2 pr-2 pl-1 data-[active=true]:border-l-primary data-[active=true]:bg-primary/10 data-[down=true]:bg-rose-500/10", kindTint[c.Kind], templ.KV("opacity-60", c.Out) } { combatantState(c)... }>
+	<li class={ "group/row flex flex-wrap items-center gap-x-3 gap-y-2 border-l-4 py-2 pr-2 pl-1 data-[active=true]:border-l-primary data-[active=true]:bg-primary/10 data-[down=true]:bg-rose-500/10 data-[dead=true]:bg-rose-500/10", kindTint[c.Kind], templ.KV("opacity-60", c.Out) } { combatantState(c)... }>
 		@initiativeInput(c)
 		@portrait(c, "size-8")
 		<span class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
@@ -253,7 +255,7 @@ templ combatantRow(e EncounterView, c CombatantView) {
 // ownCombatant is the player's own character in the fight: HP to change
 // and conditions to end, above everyone else.
 templ ownCombatant(c CombatantView) {
-	<div class={ "group/row space-y-3 rounded-lg border border-l-4 p-3 data-[active=true]:border-l-primary data-[active=true]:bg-primary/10 data-[down=true]:bg-rose-500/10", kindTint[c.Kind] } { combatantState(c)... }>
+	<div class={ "group/row space-y-3 rounded-lg border border-l-4 p-3 data-[active=true]:border-l-primary data-[active=true]:bg-primary/10 data-[down=true]:bg-rose-500/10 data-[dead=true]:bg-rose-500/10", kindTint[c.Kind] } { combatantState(c)... }>
 		<div class="flex items-center gap-3">
 			@portrait(c, "size-10")
 			<div class="flex min-w-0 flex-1 flex-wrap items-center gap-1">
@@ -277,8 +279,8 @@ templ ownCombatant(c CombatantView) {
 // the radius is half a line's height, so a phone's wrapped chip clips nothing.
 // Downed ones fade.
 templ combatantChip(c CombatantView) {
-	<li class={ "group/row inline-flex max-w-[min(100%,22rem)] flex-wrap items-center gap-1 rounded-lg border py-0.5 pr-2.5 pl-0.5 text-sm data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[down=true]:opacity-60", kindBorder[c.Kind] } { combatantState(c)... }>
-		@portrait(c, "size-6 group-data-[down=true]/row:grayscale")
+	<li class={ "group/row inline-flex max-w-[min(100%,22rem)] flex-wrap items-center gap-1 rounded-lg border py-0.5 pr-2.5 pl-0.5 text-sm data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[down=true]:opacity-60 data-[dead=true]:opacity-60", kindBorder[c.Kind] } { combatantState(c)... }>
+		@portrait(c, "size-6 group-data-[down=true]/row:grayscale group-data-[dead=true]/row:grayscale")
 		<span class="min-w-0 truncate">
 			@combatantName(c)
 		</span>
@@ -414,11 +416,18 @@ templ turnBadge(c CombatantView) {
 }
 
 // downBadge shows to everyone, as being down is no secret even when HP is.
+// A dead character shows Dead instead, never both.
 templ downBadge(c CombatantView) {
 	<span hidden?={ !c.down() } { bind("show="+combatantKey(c, "down"))... }>
 		@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
-			@icon.Skull()
+			@icon.HeartPulse()
 			Down
+		}
+	</span>
+	<span hidden?={ !c.Dead } { bind("show="+combatantKey(c, "dead"))... }>
+		@badge.Badge(badge.Props{Variant: badge.VariantDestructive}) {
+			@icon.Skull()
+			Dead
 		}
 	</span>
 }
@@ -469,7 +478,7 @@ templ conditionDialog(e EncounterView, c CombatantView) {
 templ hpText(c CombatantView) {
 	<span class="tabular-nums">
 		if c.ShowHP {
-			<span class="group-data-[down=true]/row:text-rose-600" { bind("text="+combatantKey(c, "hp"))... }>{ fmt.Sprintf("%d/%d", c.HP, c.MaxHP) }</span>
+			<span class="group-data-[down=true]/row:text-rose-600 group-data-[dead=true]/row:text-rose-600" { bind("text="+combatantKey(c, "hp"))... }>{ fmt.Sprintf("%d/%d", c.HP, c.MaxHP) }</span>
 			if c.TempHP > 0 {
 				<span class="text-sky-600" { bind("text="+combatantKey(c, "temp"))... }>{ fmt.Sprintf("+%d", c.TempHP) }</span>
 			}
@@ -486,11 +495,15 @@ templ hpText(c CombatantView) {
 templ hpQuickForm(cmdURL string, compact bool, d Defenses) {
 	{{ size := utils.IfElse(compact, button.SizeXs, button.SizeSm) }}
 	{{ items, typeID := damageTypeItems(d), utils.IfElse(compact, "hp-own-type", "hp-quick-type") }}
-	<form class="flex flex-wrap items-center gap-2" hx-post={ cmdURL } hx-on::after-request="if (event.detail.successful) this.hp_amount.value = ''">
+	<form class="flex flex-wrap items-center gap-2" hx-post={ cmdURL } { templ.Attributes{"hx-on::after-request": templ.JSUnsafeFuncCall("if (event.detail.successful) { this.hp_amount.value = ''; " + uncheckCrit + " }")}... }>
 		@input.Input(input.Props{Name: "hp_amount", Type: "number", Class: utils.IfElse(compact, "h-6 w-16", "w-20"), Placeholder: "0", Required: true, Attributes: templ.Attributes{"min": "1", "inputmode": "numeric", "aria-label": "Hit points"}})
 		if len(items) > 1 {
 			<label for={ typeID + "-trigger" } class="sr-only">Damage type</label>
 			@formSelect(typeID, "hp_type", items, "", utils.IfElse(compact, "h-6 w-48 text-xs", "w-48"), "")
+		}
+		@label.Label(label.Props{Class: "font-normal"}) {
+			@checkbox.Checkbox(checkbox.Props{Name: "hp_crit", Value: "true"})
+			Crit
 		}
 		@button.Button(button.Props{Type: button.TypeSubmit, Size: size, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "hp_op", "value": "damage"}}) {
 			Damage
@@ -638,12 +651,17 @@ templ hpDialog(c CombatantView) {
 				}
 			</form>
 			// Not reset(): it would put the damage type's value back but not its label.
-			<form class="grid gap-4 border-t pt-4" hx-post={ fmt.Sprintf("/combatants/%d/hp", c.ID) } { templ.Attributes{"hx-on::after-request": closeDialogAfter("this.amount.value = ''; ")}... }>
+			<form class="grid gap-4 border-t pt-4" hx-post={ fmt.Sprintf("/combatants/%d/hp", c.ID) } { templ.Attributes{"hx-on::after-request": closeDialogAfter("this.amount.value = ''; " + uncheckCrit)}... }>
 				@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
 					@field.Label(field.LabelProps{For: id + "-amount"}) {
 						Amount
 					}
 					@input.Input(input.Props{ID: id + "-amount", Name: "amount", Type: "number", Class: "w-24", Attributes: templ.Attributes{"min": "0", "max": fmt.Sprint(MaxHPInput), "inputmode": "numeric", "autofocus": true}})
+					// Only a PC at 0 HP cares; heal and monsters ignore it.
+					@label.Label(label.Props{Class: "font-normal"}) {
+						@checkbox.Checkbox(checkbox.Props{Name: "crit", Value: "true"})
+						Critical hit
+					}
 				}
 				// Damage of a type no defense names is "Other".
 				if items := damageTypeItems(c.Defenses); len(items) > 1 {

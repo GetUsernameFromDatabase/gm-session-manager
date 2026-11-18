@@ -528,14 +528,11 @@ func (a *App) combatantHP(c *gin.Context, cb sqlc.Combatant) error {
 		if err != nil {
 			return err
 		}
-		line, raw := fmt.Sprintf("hp -%d", n), []string{kind}
-		if heal || kind == "" {
-			raw = nil
-		}
+		line := fmt.Sprintf("hp -%d", n)
 		if heal {
 			line = fmt.Sprintf("hp +%d", n)
 		}
-		return a.runLine(ctx, ch, line, raw...) // the player's rules, Petrified included
+		return a.runLine(ctx, ch, line, damageArgs(!heal, kind, c.PostForm("crit") == "true")...) // the player's rules, Petrified included
 	}
 	if heal {
 		return a.updateMonster(ctx, cb.ID, healHP(int(n)))

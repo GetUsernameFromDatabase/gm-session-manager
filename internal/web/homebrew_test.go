@@ -26,7 +26,7 @@ func TestPlayerHomebrew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch2, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: camp2.ID, Name: "Bram", System: "dnd5e"})
+	ch2, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp2.ID, Name: "Bram", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestScopedHomebrewPickers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	owner, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: campB.ID, Name: "Bram", System: "dnd5e"})
+	owner, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: campB.ID, Name: "Bram", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}

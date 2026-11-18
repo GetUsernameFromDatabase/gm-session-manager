@@ -1,8 +1,3 @@
--- name: CreateCharacter :one
-INSERT INTO characters (campaign_id, name, system)
-VALUES (?, ?, ?)
-RETURNING *;
-
 -- name: CreateCharacterWithSheet :one
 INSERT INTO characters (campaign_id, name, system, hp, max_hp, temp_hp, sheet_json)
 VALUES (?, ?, ?, ?, ?, ?, ?)

@@ -185,7 +185,7 @@ func TestAttachmentAccess(t *testing.T) {
 	ctx := t.Context()
 	player := func(campaignID int64, name string) string {
 		t.Helper()
-		ch, err := e.q().CreateCharacter(ctx, sqlc.CreateCharacterParams{CampaignID: campaignID, Name: name, System: "dnd5e"})
+		ch, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: campaignID, Name: name, System: "dnd5e", SheetJson: "{}"})
 		if err != nil {
 			t.Fatal(err)
 		}

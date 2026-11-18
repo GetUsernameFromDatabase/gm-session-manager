@@ -153,7 +153,7 @@ func TestHealingFromZeroResetsDeathSaves(t *testing.T) {
 	c := fighter()
 	c.HP = 0
 	c.Sheet.DeathSaves = DeathSaves{Successes: 1, Failures: 2}
-	c.ApplyHP(Heal(3))
+	_ = c.ApplyHP(Heal(3))
 	if c.HP != 3 || c.Sheet.DeathSaves != (DeathSaves{}) {
 		t.Errorf("got hp %d saves %+v", c.HP, c.Sheet.DeathSaves)
 	}
@@ -163,7 +163,7 @@ func TestHealingFromBelowZeroStartsAtZero(t *testing.T) {
 	c := fighter()
 	c.HP = -7
 	c.Sheet.DeathSaves = DeathSaves{Successes: 1, Failures: 2}
-	c.ApplyHP(Heal(8))
+	_ = c.ApplyHP(Heal(8))
 	if c.HP != 8 || c.Sheet.DeathSaves != (DeathSaves{}) {
 		t.Errorf("got hp %d saves %+v", c.HP, c.Sheet.DeathSaves)
 	}
