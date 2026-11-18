@@ -269,7 +269,9 @@ export function linkClick(e, editor, menu) {
   const a = e.target.closest("a[href]");
   if (a && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
-    window.location.href = a.getAttribute("href");
+    // Never a javascript: or data: href from a peer's link mark (the server's safeSchemes).
+    const u = new URL(a.getAttribute("href"), location.href);
+    if (["http:", "https:", "ftp:", "ftps:", "mailto:", "tel:", "callto:", "sms:", "cid:", "xmpp:"].includes(u.protocol)) window.location.href = u.href;
   } else if (editor?.isEditable) {
     e.preventDefault();
     (menu || (() => mentionActions(editor, e.target, e)))();

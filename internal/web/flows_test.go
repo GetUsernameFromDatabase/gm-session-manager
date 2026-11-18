@@ -459,6 +459,56 @@ func TestServerSideStripping(t *testing.T) {
 	}
 }
 
+func TestSubmitStepsRefusesScriptLinks(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	note, _ := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
+	b, _ := e.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
+	hrefs := map[string]bool{
+		"javascript:alert(1)": false, "JavaScript:x": false, "  javascript:x": false, "java\tscript:x": false,
+		"data:text/html,x": false, "vbscript:x": false,
+		"https://example.com": true, "http://x": true, "/notes/3": true, "#a": true, "": true,
+		"mailto:a@example.com": true, "https://x/%zz": true, // no script; refusing would block every later snapshot
+		"ftp://files.example": true, "sms:123": true, // TipTap autolinks these
+	}
+	version := 0
+	for href, ok := range hrefs {
+		mark := map[string]any{"type": "link", "attrs": map[string]any{"href": href}}
+		steps := map[string]json.RawMessage{
+			"addMark": mustJSON(t, map[string]any{"stepType": "addMark", "from": 1, "to": 2, "mark": mark}),
+			"replace": mustJSON(t, map[string]any{"stepType": "replace", "from": 1, "to": 1, "slice": map[string]any{
+				"content": []any{map[string]any{"type": "text", "text": "a", "marks": []any{mark}}}}}),
+		}
+		for name, step := range steps {
+			w := e.doJSON(t, fmt.Sprintf("/blocks/%d/steps", b.ID), gm, map[string]any{"version": version, "clientID": "c", "steps": []json.RawMessage{step}})
+			if got := w.Code == http.StatusOK; got != ok || (!ok && w.Code != http.StatusUnprocessableEntity) {
+				t.Errorf("%s href %q: %d", name, href, w.Code)
+			}
+			if w.Code == http.StatusOK {
+				version++
+			}
+		}
+	}
+	// The snapshot endpoint takes the whole document.
+	for href, ok := range hrefs {
+		doc := map[string]any{"type": "doc", "content": []any{map[string]any{"type": "paragraph", "content": []any{
+			map[string]any{"type": "text", "text": "a", "marks": []any{map[string]any{"type": "link", "attrs": map[string]any{"href": href}}}}}}}}
+		w := e.doJSON(t, fmt.Sprintf("/blocks/%d/snapshot", b.ID), gm, map[string]any{"version": 1, "doc": doc, "text": "a", "links": []any{}})
+		if got := w.Code < 300; got != ok || (!ok && w.Code != http.StatusUnprocessableEntity) {
+			t.Errorf("snapshot href %q: %d", href, w.Code)
+		}
+	}
+}
+
+func mustJSON(t *testing.T, v any) json.RawMessage {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
 func TestCollabConflict(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()

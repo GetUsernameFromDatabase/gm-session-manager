@@ -531,6 +531,11 @@ func (a *App) submitSteps(c *gin.Context) error {
 		c.JSON(http.StatusBadRequest, gin.H{keyError: err.Error()})
 		return nil
 	}
+	// A raw step skips TipTap's link validation, so a script link is refused here.
+	if slices.ContainsFunc(body.Steps, hasUnsafeHref) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{keyError: errScriptLink})
+		return nil
+	}
 	ctx := c.Request.Context()
 	var conflict *stepsPayload
 	var gone bool
@@ -595,6 +600,46 @@ func (a *App) broadcastSteps(ctx context.Context, b sqlc.GetBlockRow, p stepsPay
 	})
 }
 
+const errScriptLink = "links must not run scripts"
+
+// safeSchemes run no script when followed: TipTap Link's defaults, which it
+// autolinks, so refusing one would stall the block's saving.
+var safeSchemes = []string{"http", "https", "ftp", "ftps", "mailto", "tel", "callto", "sms", "cid", "xmpp"}
+
+// unsafeHref reports whether the decoded JSON holds an "href" at any depth
+// whose scheme is not in safeSchemes. Browsers drop whitespace and control
+// characters inside a URL, so they are removed before the scheme is read.
+func unsafeHref(v any) bool {
+	switch v := v.(type) {
+	case map[string]any:
+		for k, x := range v {
+			if s, ok := x.(string); ok && k == "href" {
+				clean := strings.ToLower(strings.Map(func(r rune) rune {
+					if r <= ' ' || r == 0x7f {
+						return -1
+					}
+					return r
+				}, s))
+				// A scheme is what precedes the first ':' before any '/', '?' or '#'.
+				if i := strings.IndexAny(clean, ":/?#"); i >= 0 && clean[i] == ':' && !slices.Contains(safeSchemes, clean[:i]) {
+					return true
+				}
+			} else if unsafeHref(x) {
+				return true
+			}
+		}
+	case []any:
+		return slices.ContainsFunc(v, unsafeHref)
+	}
+	return false
+}
+
+// hasUnsafeHref is unsafeHref for a raw JSON value; invalid JSON counts as unsafe.
+func hasUnsafeHref(raw json.RawMessage) bool {
+	var v any
+	return json.Unmarshal(raw, &v) != nil || unsafeHref(v)
+}
+
 type snapshotBody struct {
 	Version int64           `json:"version" validate:"min=1"`
 	Doc     json.RawMessage `json:"doc"     validate:"required"`
@@ -617,6 +662,10 @@ func (a *App) blockSnapshot(c *gin.Context) error {
 	var body snapshotBody
 	if err := c.ShouldBindJSON(&body); err != nil || !json.Valid(body.Doc) {
 		c.Status(http.StatusBadRequest)
+		return nil
+	}
+	if hasUnsafeHref(body.Doc) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{keyError: errScriptLink})
 		return nil
 	}
 	ctx := c.Request.Context()

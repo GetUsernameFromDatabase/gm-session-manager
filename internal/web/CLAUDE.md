@@ -17,7 +17,7 @@ The htmx websocket extension retries forever on an abnormal close (1006, which i
 
 ## Notes
 
-Each note block is its own collaborative document (TipTap, `assets/js/notes.js`) with its own audience; the server is the authority (stale steps get a 409 and rebase). Trusting client snapshots, text and links is accepted on a LAN of friends. NPC fields reuse TipTap (`fields.js`); both share `wikilink.js` for `[[kind:id|label]]` tokens (parsed in `views/wikilinks.go`).
+Each note block is its own collaborative document (TipTap, `assets/js/notes.js`) with its own audience; the server is the authority (stale steps get a 409 and rebase). Trusting client snapshots, text and links is accepted on a LAN of friends, except link schemes: raw steps skip TipTap's link check, so `submitSteps` and `blockSnapshot` refuse an `href` outside `safeSchemes` and `linkClick` follows only those. NPC fields reuse TipTap (`fields.js`); both share `wikilink.js` for `[[kind:id|label]]` tokens (parsed in `views/wikilinks.go`).
 
 ## UI conventions
 
