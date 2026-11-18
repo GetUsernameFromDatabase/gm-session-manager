@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"io/fs"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -374,6 +375,23 @@ func TestLiveBindsMatchState(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestShadcnPortalOwner pins the private field live.js follows from a
+// dialog portaled to <body> back to its view; a bundle update that renames
+// it would silently stop live values reaching opened dialogs.
+func TestShadcnPortalOwner(t *testing.T) {
+	names, err := fs.Glob(assetsFS, "assets/js/shadcn-templ-*.js")
+	if err != nil || len(names) != 1 {
+		t.Fatalf("shadcn bundle: %v %v", names, err)
+	}
+	js, err := assetsFS.ReadFile(names[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(js, []byte("_templPortalOwner")) {
+		t.Errorf("%s no longer sets _templPortalOwner; update within() in live.js", names[0])
 	}
 }
 

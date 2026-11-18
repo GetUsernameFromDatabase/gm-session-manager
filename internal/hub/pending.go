@@ -56,16 +56,40 @@ type Pending struct {
 	attached bool
 }
 
+// MaxPending bounds memory and GM spam: waiting requests across all
+// campaigns. Answered ones do not count, so the GM can always clear it.
+const MaxPending = 10
+
+// dropStaleLocked deletes requests whose visitor never connected.
+func (h *Hub) dropStaleLocked() {
+	for id, p := range h.pending {
+		if !p.attached && time.Since(p.Created) > attachTimeout {
+			delete(h.pending, id)
+		}
+	}
+}
+
 // AddPending records a request, giving it its ID, secret and time, and
-// tells the GM.
-func (h *Hub) AddPending(req Pending) Pending {
+// tells the GM. It reports false, publishing nothing, once MaxPending
+// requests wait host-wide.
+func (h *Hub) AddPending(req Pending) (Pending, bool) {
 	p := &req
 	p.ID, p.Secret, p.Created, p.State = randomID(idLen), randomID(secretLen), time.Now(), Waiting
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.dropStaleLocked()
+	waiting := 0
+	for _, q := range h.pending {
+		if q.State == Waiting {
+			waiting++
+		}
+	}
+	if waiting >= MaxPending {
+		return Pending{}, false
+	}
 	h.pending[p.ID] = p
 	h.publishLocked(p.CampaignID, Topic{Kind: TopicPending, ID: p.CampaignID})
-	return *p
+	return *p, true
 }
 
 // PendingList returns a campaign's waiting requests (every campaign's for
@@ -73,12 +97,9 @@ func (h *Hub) AddPending(req Pending) Pending {
 func (h *Hub) PendingList(campaignID int64) []Pending {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.dropStaleLocked()
 	var out []Pending
-	for id, p := range h.pending {
-		if !p.attached && time.Since(p.Created) > attachTimeout {
-			delete(h.pending, id)
-			continue
-		}
+	for _, p := range h.pending {
 		if (campaignID == 0 || p.CampaignID == campaignID) && p.State == Waiting {
 			out = append(out, *p)
 		}

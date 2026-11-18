@@ -240,10 +240,28 @@ func sameOriginOnly(cop *http.CrossOriginProtection) gin.HandlerFunc {
 	}
 }
 
+// contentSecurityPolicy: scripts need 'unsafe-inline' (about 40 inline handlers)
+// and 'unsafe-eval' (htmx runs hx-on through new Function); nonces cannot cover
+// handler attributes. Styles need 'unsafe-inline' (shadcn style= attributes,
+// <style> injected by htmx and TipTap). Images may come from https hosts
+// (compendium portraits) and blob: (upload previews). The websocket and fetch
+// calls are same-origin.
+const contentSecurityPolicy = "default-src 'self'; " +
+	"script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+	"style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' data: blob: https:; " +
+	"connect-src 'self'; " +
+	"font-src 'self'; " +
+	"object-src 'none'; " +
+	"base-uri 'self'; " +
+	"form-action 'self'; " +
+	"frame-ancestors 'none'"
+
 // securityHeaders applies to every response. Pages only load scripts and
 // styles from this host; attachments get stricter headers of their own.
 func securityHeaders(c *gin.Context) {
 	h := c.Writer.Header()
+	h.Set("Content-Security-Policy", contentSecurityPolicy)
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "same-origin")
 	h.Set("X-Frame-Options", "DENY")

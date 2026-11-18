@@ -592,3 +592,24 @@ func TestPlayerBlocksInGameSession(t *testing.T) {
 		}
 	}
 }
+
+// TestJoinRequestCap refuses new requests once the host-wide cap is reached.
+func TestJoinRequestCap(t *testing.T) {
+	e := newTestEnv(t)
+	if err := e.q().SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/join/%d/create", e.campaignID)
+	for i := range hub.MaxPending {
+		if w := e.do(t, http.MethodPost, path, "", url.Values{"name": {"Ann"}, "player": {fmt.Sprintf("P%d", i)}}, false); w.Code != http.StatusOK {
+			t.Fatalf("request %d: status %d", i, w.Code)
+		}
+	}
+	w := e.do(t, http.MethodPost, path, "", url.Values{"name": {"Ann"}, "player": {"Late"}}, false)
+	if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), "Too many people are waiting to join") {
+		t.Fatalf("status %d, body missing message", w.Code)
+	}
+	if n := len(e.app.Hub.PendingList(e.campaignID)); n != hub.MaxPending {
+		t.Errorf("%d requests, want %d", n, hub.MaxPending)
+	}
+}

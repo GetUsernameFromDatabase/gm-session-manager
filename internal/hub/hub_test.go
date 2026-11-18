@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"gm-session-manager/internal/perm"
 )
@@ -169,7 +170,7 @@ func TestCloseSessionAndCharacter(t *testing.T) {
 
 func TestPendingFlow(t *testing.T) {
 	h := New(fakeHandler{})
-	p := h.AddPending(Pending{CampaignID: 1, CampaignName: "Camp", Kind: PendingClaim, CharacterID: 5, Name: "Alice"})
+	p, _ := h.AddPending(Pending{CampaignID: 1, CampaignName: "Camp", Kind: PendingClaim, CharacterID: 5, Name: "Alice"})
 	visitor := NewClient(1, perm.Viewer{}, 0, "phone")
 	pp, ok := h.PendingBySecret(p.Secret)
 	if !ok {
@@ -213,7 +214,7 @@ func TestPendingFlow(t *testing.T) {
 
 func TestDisconnectDropsRequest(t *testing.T) {
 	h := New(fakeHandler{})
-	p := h.AddPending(Pending{CampaignID: 1, CampaignName: "Camp", Kind: PendingCreate, Name: "Newbie"})
+	p, _ := h.AddPending(Pending{CampaignID: 1, CampaignName: "Camp", Kind: PendingCreate, Name: "Newbie"})
 	visitor := NewClient(1, perm.Viewer{}, 0, "phone")
 	visitor.Pending, _ = h.PendingBySecret(p.Secret)
 	h.register(visitor)
@@ -314,5 +315,34 @@ func TestLateHelloCatchesUp(t *testing.T) {
 	h.sync(c, epoch, rendered, true)
 	if m := drain(c); len(m) != 0 {
 		t.Errorf("second hello: %+v", m)
+	}
+}
+
+func TestPendingCapHostWide(t *testing.T) {
+	h := New(fakeHandler{})
+	var first Pending
+	for i := range MaxPending {
+		p, ok := h.AddPending(Pending{CampaignID: int64(i%3 + 1), Kind: PendingCreate, Name: "N"})
+		if !ok {
+			t.Fatalf("request %d refused", i)
+		}
+		if i == 0 {
+			first = p
+		}
+	}
+	if _, ok := h.AddPending(Pending{CampaignID: 9, Kind: PendingCreate, Name: "N"}); ok {
+		t.Fatal("request over the cap accepted")
+	}
+	h.mu.Lock()
+	h.pending[first.ID].Created = time.Now().Add(-2 * attachTimeout)
+	h.mu.Unlock()
+	last, ok := h.AddPending(Pending{CampaignID: 9, Kind: PendingCreate, Name: "N"})
+	if !ok {
+		t.Fatal("stale request still counted")
+	}
+	// A denied visitor may keep the waiting page open; the GM has cleared it.
+	h.Decide(last.CampaignID, last.ID, false)
+	if _, ok := h.AddPending(Pending{CampaignID: 9, Kind: PendingCreate, Name: "N"}); !ok {
+		t.Fatal("denied request still counted")
 	}
 }

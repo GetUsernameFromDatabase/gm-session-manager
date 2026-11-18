@@ -319,10 +319,14 @@ func (a *App) startRequest(c *gin.Context, camp sqlc.Campaign, kind hub.PendingK
 		return
 	}
 	ua := useragent.Parse(c.Request.UserAgent())
-	p := a.Hub.AddPending(hub.Pending{
+	p, ok := a.Hub.AddPending(hub.Pending{
 		CampaignID: camp.ID, CampaignName: camp.Name, Kind: kind, CharacterID: characterID, Name: name,
 		Player: strings.TrimSpace(form.Player), Device: userAgentSummary(ua), Phone: ua.Mobile, Host: lanHostname(c.Request.Context(), c.Request.RemoteAddr),
 	})
+	if !ok {
+		a.renderJoinCharacters(c, http.StatusTooManyRequests, camp, "Too many people are waiting to join. Ask the GM to answer the requests first.")
+		return
+	}
 	epoch, seq := a.Hub.Position()
 	l := views.Layout{Title: "Waiting", WS: &views.WS{URL: "/ws?pending=" + p.Secret, Epoch: epoch, Seq: seq}}
 	a.render(c, http.StatusOK, views.JoinWaiting(l, views.Waiting{Secret: p.Secret, Name: p.Name, State: "waiting"}))

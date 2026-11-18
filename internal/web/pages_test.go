@@ -21,6 +21,23 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
+func TestContentSecurityPolicy(t *testing.T) {
+	e := newTestEnv(t)
+	w := e.do(t, http.MethodGet, "/", e.token(t, enum.RoleAdmin), nil, false)
+	got := w.Header().Get("Content-Security-Policy")
+	if got != contentSecurityPolicy {
+		t.Errorf("Content-Security-Policy = %q, want %q", got, contentSecurityPolicy)
+	}
+	if !strings.HasPrefix(got, "default-src 'self'") {
+		t.Errorf("policy %q does not start with default-src 'self'", got)
+	}
+	for _, d := range []string{"script-src 'self'", "frame-ancestors 'none'", "object-src 'none'"} {
+		if !strings.Contains(got, d) {
+			t.Errorf("policy %q lacks %s", got, d)
+		}
+	}
+}
+
 // TestPagesRender requests every page as the GM and as a player and
 // checks each one renders.
 func TestPagesRender(t *testing.T) {

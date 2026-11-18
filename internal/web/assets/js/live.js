@@ -14,11 +14,22 @@
   // watching lists the live views on this page, for the hello message.
   gsm.watching = () => [...new Set([...document.querySelectorAll("[data-live]")].map((el) => el.dataset.live))];
 
+  // within reports whether el belongs to root. An opened shadcn dialog moves
+  // its content to <body>; its owner (_templPortalOwner) stays in the view.
+  function within(root, el) {
+    if (root.contains(el)) return true;
+    const owner = el.closest("[data-base-ui-portal]")?._templPortalOwner;
+    return !!owner && within(root, owner);
+  }
+
+  // inside lists a view root's elements matching sel, portaled ones included.
+  const inside = (root, sel) => [...root.querySelectorAll(sel), ...[...document.querySelectorAll(`[data-base-ui-portal] ${sel}`)].filter((el) => !root.contains(el) && within(root, el))];
+
   // bindings maps each key of a view to the elements showing it.
   function bindings(view) {
     const map = new Map();
     for (const root of roots(view)) {
-      for (const el of [root, ...root.querySelectorAll("[data-bind]")]) {
+      for (const el of [root, ...inside(root, "[data-bind]")]) {
         for (const spec of (el.dataset.bind || "").split(" ")) {
           const i = spec.indexOf("=");
           if (i < 0) continue;
@@ -61,7 +72,7 @@
     [...roots(view)].some(
       (root) =>
         (document.activeElement?.isContentEditable && root.contains(document.activeElement)) ||
-        [...root.querySelectorAll("form")].some((f) => f.checkVisibility() && [...f.elements].some(edited)),
+        inside(root, "form").some((f) => f.checkVisibility() && [...f.elements].some(edited)),
     );
 
   // refetch reloads a view's fragments (out-of-band swaps). A change that
