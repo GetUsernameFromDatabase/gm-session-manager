@@ -38,3 +38,5 @@ sql:
             go_type: gm-session-manager/internal/enum.Visibility
           - column: conditions.ends_on
             go_type: gm-session-manager/internal/enum.EffectEnd
+          - column: effect_presets.ends_on
+            go_type: gm-session-manager/internal/enum.EffectEnd

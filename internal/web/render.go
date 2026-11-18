@@ -175,10 +175,14 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 			}
 		}
 		cv.Conditions = rowConds
-		// A player learns the modifiers and holder of their own effects only.
+		// A player learns the modifiers and holder of their own effects only,
+		// and who applied one only when it was they.
 		if !v.IsGM && !cv.IsOwn {
 			for i := range cv.Conditions {
 				cv.Conditions[i].ModsJson, cv.Conditions[i].HeldBy = noMods, sql.NullInt64{}
+				if cv.Conditions[i].AppliedBy.Int64 != v.CharacterID {
+					cv.Conditions[i].AppliedBy = sql.NullInt64{}
+				}
 			}
 		}
 		if cv.HeldLabels, err = a.heldLabels(ctx, v, cv.Conditions); err != nil {

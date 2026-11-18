@@ -99,6 +99,7 @@ func (a *App) Router() *gin.Engine {
 	camp.POST(route.ImportCharacter, gm, a.h(a.importCharacter))
 	camp.POST(route.Delete, gm, a.h(a.deleteCampaign))
 	camp.GET(route.EffectSpell, a.h(a.effectSpell))
+	camp.POST(route.EffectPresetsDel, a.h(a.deleteEffectPreset))
 	camp.GET(route.Export, gm, a.h(a.exportCampaign))
 	camp.POST(route.OpenJoin, gm, a.h(a.toggleOpenJoin))
 	camp.POST(route.Rename, gm, a.h(a.renameCampaign))

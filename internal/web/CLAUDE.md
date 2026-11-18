@@ -53,6 +53,9 @@ A handler with an error path returns `error` and is registered as `a.h(a.x)`: a 
 
 ## Gotchas
 
+- htmx inherits `hx-include` (and `hx-target`, `hx-swap`) to child elements that make their own requests: a wrapper whose include names something a child loads later needs `hx-disinherit="hx-include"`, or htmx logs "returned no matches".
+- shadcn buttons start `border border-transparent`: a visible (e.g. dashed) border on one needs its own colour class.
+- A shadcn checkbox posts `"on"`, which gin cannot bind to a `bool`: bind a `string` with `validate:"omitempty,oneof=on"`.
 - `htmx.config.defaultSwapStyle` is `none`: every form that swaps HTML needs `hx-swap`. Never swap a fragment holding a `<form>` into another form.
 - templ trims the space before a component call on the next line ("uploaded26 Oct"): write `{ "Updated " }` or keep both on one line. A `{ expr }` ending a line gets a space after it: join adjacent expressions.
 - templ 0.3.1100: a spread event handler given a plain string renders blank; wrap it in `templ.JSUnsafeFuncCall(...)`.

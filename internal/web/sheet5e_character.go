@@ -580,12 +580,15 @@ type condExtra struct {
 	EndsOn   enum.EffectEnd
 	HeldBy   sql.NullInt64
 	ModsJSON string
+	// AppliedBy is the player's character that put it on another character.
+	AppliedBy sql.NullInt64
 }
 
 func (o condOwner) add(ctx context.Context, q *sqlc.Queries, slug, note string, x condExtra) error {
 	_, err := q.CreateCondition(ctx, sqlc.CreateConditionParams{
 		CharacterID: nullID(o.characterID), CombatantID: nullID(o.combatantID), Slug: slug, Note: note,
 		ExpiresRound: x.Expires, EndsOn: x.EndsOn, HeldBy: x.HeldBy, ModsJson: cmp.Or(x.ModsJSON, noMods),
+		AppliedBy: x.AppliedBy,
 	})
 	return err
 }
@@ -725,7 +728,7 @@ func (a *App) deleteCondition(c *gin.Context) error {
 		return err
 	}
 	if cond.CharacterID.Valid {
-		if !perm.CanCharacter(w.viewer, cond.CharacterID.Int64, perm.ScopeConditions) {
+		if !perm.CanRemoveCondition(w.viewer, cond.CharacterID.Int64, cond.AppliedBy.Int64) {
 			a.fail(c, http.StatusForbidden, "Not your character.")
 			return nil
 		}

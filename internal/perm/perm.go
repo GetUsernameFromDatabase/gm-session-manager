@@ -29,6 +29,29 @@ func (v Viewer) owns(characterID int64) bool {
 	return v.IsPlayer() && characterID != 0 && v.CharacterID == characterID
 }
 
+// CanUsePreset reports whether the viewer may list, use or delete an effect
+// preset: the GM their own (owner 0), a player their own character's.
+func CanUsePreset(v Viewer, ownerCharacterID int64) bool {
+	if ownerCharacterID == 0 {
+		return v.IsGM
+	}
+	return v.owns(ownerCharacterID)
+}
+
+// CanAddEffect reports whether v may put an effect on a character: the GM or
+// its player, and any player on an ally in their own campaign (the handler
+// then requires the effect to be held by the player's concentration).
+func CanAddEffect(v Viewer, characterID int64, sameCampaign bool) bool {
+	return CanCharacter(v, characterID, ScopeConditions) || (v.IsPlayer() && sameCampaign)
+}
+
+// CanRemoveCondition reports whether v may remove a character's condition:
+// the GM, its player, or the player of the character that applied it
+// (appliedBy 0 means nobody did).
+func CanRemoveCondition(v Viewer, characterID, appliedBy int64) bool {
+	return CanCharacter(v, characterID, ScopeConditions) || v.owns(appliedBy)
+}
+
 // Block is what the block rules need to know about a note block.
 type Block struct {
 	Visibility     enum.Visibility

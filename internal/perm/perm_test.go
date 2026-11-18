@@ -161,6 +161,79 @@ func TestCanCharacter(t *testing.T) {
 	}
 }
 
+func TestCanUsePreset(t *testing.T) {
+	tests := []struct {
+		name  string
+		v     Viewer
+		owner int64
+		want  bool
+	}{
+		{"gm, gm preset", GM, 0, true},
+		{"gm, player preset", GM, alice, false},
+		{"owner player", asAlice, alice, true},
+		{"other player", asBob, alice, false},
+		{"player, gm preset", asAlice, 0, false},
+		{"visitor, gm preset", anon, 0, false},
+		{"visitor, player preset", anon, alice, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanUsePreset(tt.v, tt.owner); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCanAddEffect(t *testing.T) {
+	tests := []struct {
+		name string
+		v    Viewer
+		same bool
+		want bool
+	}{
+		{"gm", GM, false, true},
+		{"owner", asAlice, false, true},
+		{"ally player, same campaign", asBob, true, true},
+		{"player, other campaign", asBob, false, false},
+		{"visitor, same campaign", anon, true, false},
+		{"visitor", anon, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanAddEffect(tt.v, alice, tt.same); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCanRemoveCondition(t *testing.T) {
+	cass := int64(3)
+	tests := []struct {
+		name      string
+		v         Viewer
+		appliedBy int64
+		want      bool
+	}{
+		{"gm", GM, 0, true},
+		{"target's player", asAlice, 0, true},
+		{"applier", asBob, bob, true},
+		{"third player", Player(cass), bob, false},
+		{"third player, nobody applied", Player(cass), 0, false},
+		{"applier-less never grants", asBob, 0, false},
+		{"visitor", anon, bob, false},
+		{"visitor, nobody applied", anon, 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanRemoveCondition(tt.v, alice, tt.appliedBy); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCanChangeSubclass(t *testing.T) {
 	tests := []struct {
 		name string

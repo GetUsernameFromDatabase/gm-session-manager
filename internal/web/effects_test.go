@@ -195,8 +195,8 @@ func TestEffectPermissions(t *testing.T) {
 			if w.Code != tt.want {
 				t.Errorf("status %d, want %d: %s", w.Code, tt.want, w.Body)
 			}
-			if forbidden := strings.Contains(w.Body.String(), "not your character"); forbidden != (tt.path == bramFx() && tt.cookie == f.alice) {
-				t.Errorf("forbidden = %v: %s", forbidden, w.Body)
+			if forbidden := strings.Contains(w.Body.String(), "not your character"); forbidden {
+				t.Errorf("unexpected refusal: %s", w.Body)
 			}
 		})
 	}
@@ -216,6 +216,99 @@ func TestEffectPermissions(t *testing.T) {
 	}
 	if got.Note != "Bless — d4 to attacks" || got.EndsOn != enum.EffectEndShortRest || got.HeldBy.Int64 != cassConc.ID || !strings.Contains(got.ModsJson, `"target":"ac"`) {
 		t.Errorf("stored %+v", got)
+	}
+}
+
+// TestAllyEffects checks a player may put an effect on an ally in their
+// campaign only held by their own concentration, and who may remove it.
+func TestAllyEffects(t *testing.T) {
+	f := newEffectFix(t)
+	ctx := t.Context()
+	aliceConc := f.concentrating(t, f.characterID, 0)
+	bramConc := f.concentrating(t, f.bram.ID, 0)
+	far, err := f.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Far", System: "dnd5e", Edition: "2024"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	farChar, err := f.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: far.ID, Name: "Far", System: "dnd5e", SheetJson: "{}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cassTok, _, err := f.mgr.IssuePlayer(ctx, f.cass.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	add := []struct {
+		name string
+		path string
+		form url.Values
+		want int
+	}{
+		{"ally, held by own concentration", route.Path(route.CharacterEffect, f.bram.ID), acBonusForm("a", aliceConc.ID), http.StatusOK},
+		{"ally, no holder", route.Path(route.CharacterEffect, f.bram.ID), acBonusForm("a", 0), http.StatusUnprocessableEntity},
+		{"ally, another's concentration", route.Path(route.CharacterEffect, f.bram.ID), acBonusForm("a", bramConc.ID), http.StatusUnprocessableEntity},
+		{"another campaign's character", route.Path(route.CharacterEffect, farChar.ID), acBonusForm("a", aliceConc.ID), http.StatusUnprocessableEntity}, // an htmx refusal is a 422 toast
+		{"non-PC combatant", route.Path(route.CombatantAction, f.mage.ID, "condition"), acBonusForm("a", aliceConc.ID), http.StatusForbidden},
+	}
+	for _, tt := range add {
+		t.Run(tt.name, func(t *testing.T) {
+			w := f.do(t, http.MethodPost, tt.path, f.alice, tt.form, true)
+			if w.Code != tt.want {
+				t.Errorf("status %d, want %d: %s", w.Code, tt.want, w.Body)
+			}
+		})
+	}
+	var applied []sqlc.Condition
+	for _, c := range f.conds(t, f.bram.ID) {
+		if c.Slug == "custom" {
+			applied = append(applied, c)
+		}
+	}
+	if len(applied) != 1 || applied[0].AppliedBy.Int64 != f.characterID || !applied[0].AppliedBy.Valid {
+		t.Fatalf("stored %+v, want one applied by Alice", applied)
+	}
+	if len(f.conds(t, farChar.ID)) != 0 {
+		t.Error("an effect landed on another campaign's character")
+	}
+
+	remove := []struct {
+		name   string
+		cookie string
+		want   int
+	}{
+		{"third player", cassTok, http.StatusUnprocessableEntity}, // an htmx refusal is a 422 toast
+		{"the applier", f.alice, http.StatusOK},
+	}
+	for _, tt := range remove {
+		t.Run("remove, "+tt.name, func(t *testing.T) {
+			w := f.do(t, http.MethodPost, route.Path(route.ConditionDelete, applied[0].ID), tt.cookie, nil, true)
+			if w.Code != tt.want {
+				t.Errorf("status %d, want %d: %s", w.Code, tt.want, w.Body)
+			}
+		})
+	}
+	// The target's player removes another one.
+	if w := f.effect(t, f.alice, f.bram.ID, acBonusForm("b", aliceConc.ID)); w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var second sqlc.Condition
+	for _, c := range f.conds(t, f.bram.ID) {
+		if c.Note == "b" {
+			second = c
+		}
+	}
+	if w := f.do(t, http.MethodPost, route.Path(route.ConditionDelete, second.ID), f.bramTok, nil, true); w.Code != http.StatusOK {
+		t.Errorf("target's player: %d %s", w.Code, w.Body)
+	}
+
+	// Dropping the applier's concentration ends the ally's effect.
+	if w := f.effect(t, f.alice, f.bram.ID, acBonusForm("c", aliceConc.ID)); w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	f.cmd(t, f.alice, f.characterID, "concentrate end")
+	if got := notes(f.conds(t, f.bram.ID)); slices.Contains(got, "c") {
+		t.Errorf("effect survived the applier's concentration: %v", got)
 	}
 }
 
@@ -659,12 +752,12 @@ func TestSpellPrefill(t *testing.T) {
 	e.allowEntrySources(t)
 	for _, s := range spells {
 		t.Run(s.slug, func(t *testing.T) {
-			name, note, rounds, conc, err := e.app.spellPrefill(t.Context(), s.slug, e.campaignID)
+			name, note, rounds, d, err := e.app.spellPrefill(t.Context(), s.slug, e.campaignID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if name != s.name || note != s.wantNote || rounds != s.wantRounds || conc != s.wantConc {
-				t.Errorf("got %q %q %d %v", name, note, rounds, conc)
+			if name != s.name || note != s.wantNote || rounds != s.wantRounds || d.Concentration != s.wantConc {
+				t.Errorf("got %q %q %d %v", name, note, rounds, d.Concentration)
 			}
 		})
 	}
@@ -682,12 +775,21 @@ func TestSpellPrefill(t *testing.T) {
 	}
 }
 
+// TestEffectNoteMaxMatchesTag: the dice are added to the note only within
+// effectNoteMax, so it must stay the Note field's validator cap.
+func TestEffectNoteMaxMatchesTag(t *testing.T) {
+	tagHas(t, effectForm{}, "Note", fmt.Sprintf("max=%d", effectNoteMax))
+}
+
 // TestEffectFields checks the form fields the spell picker loads: filled in
 // from the spell, with rounds only in a running fight.
 func TestEffectFields(t *testing.T) {
 	f := newEffectFix(t)
 	f.source(t, "test", "2024")
 	if err := f.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: "shield-of-faith", Name: shieldOfFaith, SourceKey: "test", DataJson: `{"level":1,"duration":"Concentration, up to 1 minute","concentration":true,"desc":"x"}`, ContentHash: "sof"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: "magic-weapon", Name: "Magic Weapon", SourceKey: "test", DataJson: `{"level":2,"duration":"1 hour","desc":"a +1 bonus to attack rolls and damage rolls.","higher_level":"The bonus increases to +2 with a level 3–5 spell slot. The bonus increases to +3 with a level 6+ spell slot."}`, ContentHash: "mw"}); err != nil {
 		t.Fatal(err)
 	}
 	f.allowEntrySources(t)
@@ -701,11 +803,15 @@ func TestEffectFields(t *testing.T) {
 	}{
 		{"character, no fight", f.alice, fmt.Sprintf("character=%d&spell=Shield+of+Faith", f.characterID), http.StatusOK,
 			[]string{`value="Shield of Faith"`, "Concentration — pick the caster below", `value="Concentration, up to 1 minute"`}, []string{`name="rounds"`}},
+		{"slot 4 raises the parsed bonus", f.alice, fmt.Sprintf("character=%d&spell=magic-weapon&slot=4", f.characterID), http.StatusOK,
+			[]string{"From the spell text — check before adding", `name="slot"`, `value="attack"`, `value="damage"`, `name="mod_value" value="2"`}, []string{`name="mod_value" value="1"`}},
+		{"nothing parsed, no slot", f.alice, fmt.Sprintf("character=%d&spell=Shield+of+Faith", f.characterID), http.StatusOK, nil, []string{"From the spell text", `name="slot"`}},
 		{"blank", f.alice, fmt.Sprintf("character=%d", f.characterID), http.StatusOK, []string{`name="note"`}, []string{`name="rounds"`, "pick the caster"}},
 		{"combatant in a running fight", f.gm, fmt.Sprintf("combatant=%d&spell=shield-of-faith", f.mage.ID), http.StatusOK,
 			[]string{`value="Shield of Faith"`, `name="rounds"`, `value="10"`}, nil},
 		{"player on a combatant", f.alice, fmt.Sprintf("combatant=%d", f.mage.ID), http.StatusForbidden, nil, nil},
-		{"player on another character", f.alice, fmt.Sprintf("character=%d", f.cass.ID), http.StatusForbidden, nil, nil},
+		{"player on an ally", f.alice, fmt.Sprintf("character=%d", f.cass.ID), http.StatusOK, []string{"Concentrate on a spell first"}, []string{`name="target"`, `value="nobody"`}},
+		{"player on own, with targets", f.alice, fmt.Sprintf("character=%d", f.characterID), http.StatusOK, []string{`name="target"`}, nil},
 		{"no target", f.gm, "", http.StatusForbidden, nil, nil},
 	} {
 		if tt.name == "combatant in a running fight" {
@@ -878,5 +984,116 @@ func TestExportCarriesNoEffects(t *testing.T) {
 		if strings.Contains(string(body), shieldOfFaith) {
 			t.Errorf("%s holds the effect", zf.Name)
 		}
+	}
+}
+
+// TestEffectPresets checks saving an effect as a preset with Add, listing,
+// picking and deleting: private to the GM or to the player's character, and
+// to its campaign.
+func TestEffectPresets(t *testing.T) {
+	f := newEffectFix(t)
+	ctx := t.Context()
+	far, err := f.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Far", System: "dnd5e", Edition: "2024"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	save := func(cookie string, characterID int64, name string) {
+		t.Helper()
+		form := acBonusForm(name, 0)
+		form.Set("save_preset", "on")
+		form.Set("note", "from a test")
+		if w := f.effect(t, cookie, characterID, form); w.Code != http.StatusOK {
+			t.Fatalf("save %q: %d %s", name, w.Code, w.Body)
+		}
+	}
+	list := func(campaign, owner int64) []sqlc.EffectPreset {
+		t.Helper()
+		rows, err := f.q().ListEffectPresets(ctx, sqlc.ListEffectPresetsParams{CampaignID: campaign, Owner: nullID(owner)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rows
+	}
+	query := func(cookie, q string) *httptest.ResponseRecorder {
+		return f.do(t, http.MethodGet, fmt.Sprintf("%s?character=%d&%s", route.Path(route.CampaignEffectSpell, f.campaignID), f.characterID, q), cookie, nil, false)
+	}
+
+	save(f.gm, f.characterID, "Gm Aura")
+	save(f.gm, f.characterID, "Gm Aura") // same name: overwritten, not duplicated
+	save(f.alice, f.characterID, "Alice Ward")
+	save(f.bramTok, f.bram.ID, "Bram Ward")
+	if got := list(f.campaignID, 0); len(got) != 1 || got[0].Name != "Gm Aura" || got[0].ModsJson == noMods {
+		t.Fatalf("GM presets: %+v", got)
+	}
+	if got := list(f.campaignID, f.characterID); len(got) != 1 || got[0].Name != "Alice Ward" {
+		t.Fatalf("Alice's presets: %+v", got)
+	}
+	gmPreset, alicePreset, bramPreset := list(f.campaignID, 0)[0], list(f.campaignID, f.characterID)[0], list(f.campaignID, f.bram.ID)[0]
+	farPreset, err := f.q().UpsertEffectPreset(ctx, sqlc.UpsertEffectPresetParams{CampaignID: far.ID, Name: "Far Ward", Slug: "custom", ModsJson: noMods})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := f.effect(t, f.gm, f.characterID, url.Values{"slug": {"custom"}, "save_preset": {"on"}}); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("a preset without a name: %d", w.Code)
+	}
+
+	for _, tt := range []struct {
+		name, cookie, q string
+		code            int
+		has, lacks      []string
+	}{
+		{"GM lists only the GM's", f.gm, "presets=1", http.StatusOK, []string{"Gm Aura"}, []string{"Alice Ward", "Bram Ward"}},
+		{"player lists only their own", f.alice, "presets=1", http.StatusOK, []string{"Alice Ward"}, []string{"Gm Aura", "Bram Ward"}},
+		{"owner picks", f.alice, fmt.Sprintf("preset=%d", alicePreset.ID), http.StatusOK, []string{"Alice Ward", "from a test"}, nil},
+		{"GM picks the GM's", f.gm, fmt.Sprintf("preset=%d", gmPreset.ID), http.StatusOK, []string{"Gm Aura"}, nil},
+		{"other player picks", f.alice, fmt.Sprintf("preset=%d", bramPreset.ID), http.StatusForbidden, nil, []string{"Bram Ward"}},
+		{"GM picks a player's", f.gm, fmt.Sprintf("preset=%d", alicePreset.ID), http.StatusForbidden, nil, []string{"Alice Ward"}},
+		{"player picks the GM's", f.alice, fmt.Sprintf("preset=%d", gmPreset.ID), http.StatusForbidden, nil, []string{"Gm Aura"}},
+		{"other campaign's", f.gm, fmt.Sprintf("preset=%d", farPreset.ID), http.StatusForbidden, nil, []string{"Far Ward"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := query(tt.cookie, tt.q)
+			if w.Code != tt.code {
+				t.Fatalf("status %d, want %d: %s", w.Code, tt.code, w.Body)
+			}
+			for _, s := range tt.has {
+				if !strings.Contains(w.Body.String(), s) {
+					t.Errorf("lacks %q", s)
+				}
+			}
+			for _, s := range tt.lacks {
+				if strings.Contains(w.Body.String(), s) {
+					t.Errorf("shows %q", s)
+				}
+			}
+		})
+	}
+
+	for _, tt := range []struct {
+		name     string
+		cookie   string
+		campaign int64
+		id       int64
+		code     int
+	}{
+		{"other player deletes", f.alice, f.campaignID, bramPreset.ID, http.StatusForbidden},
+		{"GM deletes a player's", f.gm, f.campaignID, alicePreset.ID, http.StatusForbidden},
+		{"another campaign's, through this one", f.gm, f.campaignID, farPreset.ID, http.StatusNotFound},
+		{"GM deletes the GM's in another campaign", f.gm, far.ID, farPreset.ID, http.StatusOK},
+		{"owner deletes", f.alice, f.campaignID, alicePreset.ID, http.StatusOK},
+		{"missing", f.gm, f.campaignID, 999999, http.StatusNotFound},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			form := url.Values{"preset": {fmt.Sprint(tt.id)}}
+			if got := f.do(t, http.MethodPost, route.Path(route.CampaignEffectPresetsDelete, tt.campaign), tt.cookie, form, false).Code; got != tt.code { // plain, as htmx answers every refusal 422
+				t.Errorf("status %d, want %d", got, tt.code)
+			}
+		})
+	}
+	if got := list(f.campaignID, f.characterID); len(got) != 0 {
+		t.Errorf("Alice's preset is still there: %+v", got)
+	}
+	if got := list(f.campaignID, f.bram.ID); len(got) != 1 {
+		t.Errorf("Bram's preset was removed: %+v", got)
 	}
 }

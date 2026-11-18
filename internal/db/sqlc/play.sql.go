@@ -74,9 +74,9 @@ func (q *Queries) CreateCombatant(ctx context.Context, arg CreateCombatantParams
 }
 
 const createCondition = `-- name: CreateCondition :one
-INSERT INTO conditions (character_id, combatant_id, slug, note, expires_round, ends_on, held_by, mods_json)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json
+INSERT INTO conditions (character_id, combatant_id, slug, note, expires_round, ends_on, held_by, mods_json, applied_by)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json, applied_by
 `
 
 type CreateConditionParams struct {
@@ -88,6 +88,7 @@ type CreateConditionParams struct {
 	EndsOn       enum.EffectEnd
 	HeldBy       sql.NullInt64
 	ModsJson     string
+	AppliedBy    sql.NullInt64
 }
 
 func (q *Queries) CreateCondition(ctx context.Context, arg CreateConditionParams) (Condition, error) {
@@ -100,6 +101,7 @@ func (q *Queries) CreateCondition(ctx context.Context, arg CreateConditionParams
 		arg.EndsOn,
 		arg.HeldBy,
 		arg.ModsJson,
+		arg.AppliedBy,
 	)
 	var i Condition
 	err := row.Scan(
@@ -113,6 +115,7 @@ func (q *Queries) CreateCondition(ctx context.Context, arg CreateConditionParams
 		&i.EndsOn,
 		&i.HeldBy,
 		&i.ModsJson,
+		&i.AppliedBy,
 	)
 	return i, err
 }
@@ -175,6 +178,24 @@ func (q *Queries) DeleteCondition(ctx context.Context, id int64) error {
 	return err
 }
 
+const deleteEffectPreset = `-- name: DeleteEffectPreset :execrows
+DELETE FROM effect_presets WHERE id = ? AND campaign_id = ? AND owner_character_id IS ?3
+`
+
+type DeleteEffectPresetParams struct {
+	ID         int64
+	CampaignID int64
+	Owner      sql.NullInt64
+}
+
+func (q *Queries) DeleteEffectPreset(ctx context.Context, arg DeleteEffectPresetParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteEffectPreset, arg.ID, arg.CampaignID, arg.Owner)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteEncounter = `-- name: DeleteEncounter :exec
 DELETE FROM encounters
 WHERE id = ?
@@ -223,7 +244,7 @@ func (q *Queries) ExpireTurnConditions(ctx context.Context, arg ExpireTurnCondit
 }
 
 const findCharacterCondition = `-- name: FindCharacterCondition :one
-SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json, applied_by FROM conditions
 WHERE character_id = ? AND slug = ?
 LIMIT 1
 `
@@ -247,12 +268,13 @@ func (q *Queries) FindCharacterCondition(ctx context.Context, arg FindCharacterC
 		&i.EndsOn,
 		&i.HeldBy,
 		&i.ModsJson,
+		&i.AppliedBy,
 	)
 	return i, err
 }
 
 const findCombatantCondition = `-- name: FindCombatantCondition :one
-SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json, applied_by FROM conditions
 WHERE combatant_id = ? AND slug = ?
 LIMIT 1
 `
@@ -276,6 +298,7 @@ func (q *Queries) FindCombatantCondition(ctx context.Context, arg FindCombatantC
 		&i.EndsOn,
 		&i.HeldBy,
 		&i.ModsJson,
+		&i.AppliedBy,
 	)
 	return i, err
 }
@@ -330,7 +353,7 @@ func (q *Queries) GetCombatant(ctx context.Context, id int64) (Combatant, error)
 }
 
 const getCondition = `-- name: GetCondition :one
-SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json, applied_by FROM conditions
 WHERE id = ?
 `
 
@@ -347,6 +370,28 @@ func (q *Queries) GetCondition(ctx context.Context, id int64) (Condition, error)
 		&i.CreatedAt,
 		&i.EndsOn,
 		&i.HeldBy,
+		&i.ModsJson,
+		&i.AppliedBy,
+	)
+	return i, err
+}
+
+const getEffectPreset = `-- name: GetEffectPreset :one
+SELECT id, campaign_id, owner_character_id, name, slug, note, ends_on, rounds, mods_json FROM effect_presets WHERE id = ?
+`
+
+func (q *Queries) GetEffectPreset(ctx context.Context, id int64) (EffectPreset, error) {
+	row := q.db.QueryRowContext(ctx, getEffectPreset, id)
+	var i EffectPreset
+	err := row.Scan(
+		&i.ID,
+		&i.CampaignID,
+		&i.OwnerCharacterID,
+		&i.Name,
+		&i.Slug,
+		&i.Note,
+		&i.EndsOn,
+		&i.Rounds,
 		&i.ModsJson,
 	)
 	return i, err
@@ -461,7 +506,7 @@ func (q *Queries) ListCharacterEncounters(ctx context.Context, arg ListCharacter
 }
 
 const listCombatantConditions = `-- name: ListCombatantConditions :many
-SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json, applied_by FROM conditions
 WHERE combatant_id = ?
 ORDER BY slug, id
 `
@@ -486,6 +531,7 @@ func (q *Queries) ListCombatantConditions(ctx context.Context, combatantID sql.N
 			&i.EndsOn,
 			&i.HeldBy,
 			&i.ModsJson,
+			&i.AppliedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -584,7 +630,7 @@ func (q *Queries) ListCombatants(ctx context.Context, encounterID int64) ([]List
 
 const listConditionsByCharacter = `-- name: ListConditionsByCharacter :many
 
-SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json, applied_by FROM conditions
 WHERE character_id = ?
 ORDER BY slug, id
 `
@@ -610,6 +656,7 @@ func (q *Queries) ListConditionsByCharacter(ctx context.Context, characterID sql
 			&i.EndsOn,
 			&i.HeldBy,
 			&i.ModsJson,
+			&i.AppliedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -625,7 +672,7 @@ func (q *Queries) ListConditionsByCharacter(ctx context.Context, characterID sql
 }
 
 const listConditionsByEncounter = `-- name: ListConditionsByEncounter :many
-SELECT cond.id, cond.character_id, cond.combatant_id, cond.slug, cond.note, cond.expires_round, cond.created_at, cond.ends_on, cond.held_by, cond.mods_json FROM conditions AS cond
+SELECT cond.id, cond.character_id, cond.combatant_id, cond.slug, cond.note, cond.expires_round, cond.created_at, cond.ends_on, cond.held_by, cond.mods_json, cond.applied_by FROM conditions AS cond
 JOIN combatants AS cb ON cb.id = cond.combatant_id OR cb.character_id = cond.character_id
 WHERE cb.encounter_id = ?
 GROUP BY cond.id
@@ -652,6 +699,52 @@ func (q *Queries) ListConditionsByEncounter(ctx context.Context, encounterID int
 			&i.CreatedAt,
 			&i.EndsOn,
 			&i.HeldBy,
+			&i.ModsJson,
+			&i.AppliedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEffectPresets = `-- name: ListEffectPresets :many
+SELECT id, campaign_id, owner_character_id, name, slug, note, ends_on, rounds, mods_json FROM effect_presets
+WHERE campaign_id = ? AND owner_character_id IS ?2
+ORDER BY name COLLATE NOCASE, id
+`
+
+type ListEffectPresetsParams struct {
+	CampaignID int64
+	Owner      sql.NullInt64
+}
+
+// One owner's presets (a NULL owner is the GM's) in a campaign.
+func (q *Queries) ListEffectPresets(ctx context.Context, arg ListEffectPresetsParams) ([]EffectPreset, error) {
+	rows, err := q.db.QueryContext(ctx, listEffectPresets, arg.CampaignID, arg.Owner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EffectPreset{}
+	for rows.Next() {
+		var i EffectPreset
+		if err := rows.Scan(
+			&i.ID,
+			&i.CampaignID,
+			&i.OwnerCharacterID,
+			&i.Name,
+			&i.Slug,
+			&i.Note,
+			&i.EndsOn,
+			&i.Rounds,
 			&i.ModsJson,
 		); err != nil {
 			return nil, err
@@ -901,7 +994,7 @@ func (q *Queries) ListHeldBy(ctx context.Context, ids []sql.NullInt64) ([]ListHe
 }
 
 const listRestConditions = `-- name: ListRestConditions :many
-SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json FROM conditions
+SELECT id, character_id, combatant_id, slug, note, expires_round, created_at, ends_on, held_by, mods_json, applied_by FROM conditions
 WHERE (character_id = ?1 OR combatant_id = ?2)
   AND ends_on IN (?3, ?4)
 `
@@ -940,6 +1033,7 @@ func (q *Queries) ListRestConditions(ctx context.Context, arg ListRestConditions
 			&i.EndsOn,
 			&i.HeldBy,
 			&i.ModsJson,
+			&i.AppliedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -1041,4 +1135,51 @@ func (q *Queries) UpdateEncounterState(ctx context.Context, arg UpdateEncounterS
 		arg.ID,
 	)
 	return err
+}
+
+const upsertEffectPreset = `-- name: UpsertEffectPreset :one
+INSERT INTO effect_presets (campaign_id, owner_character_id, name, slug, note, ends_on, rounds, mods_json)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+ON CONFLICT (campaign_id, COALESCE(owner_character_id, 0), name) DO UPDATE SET
+    slug = excluded.slug, note = excluded.note, ends_on = excluded.ends_on,
+    rounds = excluded.rounds, mods_json = excluded.mods_json
+RETURNING id, campaign_id, owner_character_id, name, slug, note, ends_on, rounds, mods_json
+`
+
+type UpsertEffectPresetParams struct {
+	CampaignID int64
+	Owner      sql.NullInt64
+	Name       string
+	Slug       string
+	Note       string
+	EndsOn     enum.EffectEnd
+	Rounds     int64
+	ModsJson   string
+}
+
+// A same-name save by the same owner overwrites.
+func (q *Queries) UpsertEffectPreset(ctx context.Context, arg UpsertEffectPresetParams) (EffectPreset, error) {
+	row := q.db.QueryRowContext(ctx, upsertEffectPreset,
+		arg.CampaignID,
+		arg.Owner,
+		arg.Name,
+		arg.Slug,
+		arg.Note,
+		arg.EndsOn,
+		arg.Rounds,
+		arg.ModsJson,
+	)
+	var i EffectPreset
+	err := row.Scan(
+		&i.ID,
+		&i.CampaignID,
+		&i.OwnerCharacterID,
+		&i.Name,
+		&i.Slug,
+		&i.Note,
+		&i.EndsOn,
+		&i.Rounds,
+		&i.ModsJson,
+	)
+	return i, err
 }

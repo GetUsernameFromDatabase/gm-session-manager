@@ -1,11 +1,41 @@
 package views
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/route"
 )
+
+// TestChipRemovesOwnEffects: a player sees a remove x on the effects they
+// applied to an ally, in the chip and in its "+N" popover, and on no other.
+func TestChipRemovesOwnEffects(t *testing.T) {
+	applied := sql.NullInt64{Int64: 7, Valid: true}
+	conds := []sqlc.Condition{
+		{ID: 11, Slug: "prone"},
+		{ID: 12, Slug: "custom", Note: "first", AppliedBy: applied},
+		{ID: 13, Slug: "custom", Note: "overflow", AppliedBy: applied},
+		{ID: 14, Slug: "poisoned"},
+	}
+	html := renderHTML(t, combatantChip(EncounterView{}, CombatantView{ID: 1, Name: "Ally", Kind: KindPC, CharacterID: 2, Conditions: conds}))
+	// The add button reads as an add slot after the conditions, not one more of them.
+	// The button's base class is border-transparent: the dash needs its own colour.
+	if !strings.Contains(html, "+ Effect") || !strings.Contains(html, "border-dashed") || !strings.Contains(html, "border-muted-foreground/50") {
+		t.Error("the ally's add-effect button is not a dashed \"+ Effect\" pill")
+	}
+	// As tall as the condition pills on phones too, not the sheet button's 32px.
+	if strings.Contains(html, "max-sm:h-8") {
+		t.Error("the ally's add-effect pill grows to 32px on phones")
+	}
+	for _, c := range conds {
+		has := strings.Contains(html, `"`+route.Path(route.ConditionDelete, c.ID)+`"`)
+		if has != c.AppliedBy.Valid {
+			t.Errorf("condition %d: remove x shown = %v, want %v", c.ID, has, c.AppliedBy.Valid)
+		}
+	}
+}
 
 // TestCloseDialogOnlyOnOwnRequest: a field inside a dialog form that loads
 // itself (the effect form's fields) must not close the dialog.

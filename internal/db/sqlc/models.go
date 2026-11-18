@@ -138,6 +138,19 @@ type Condition struct {
 	EndsOn       enum.EffectEnd
 	HeldBy       sql.NullInt64
 	ModsJson     string
+	AppliedBy    sql.NullInt64
+}
+
+type EffectPreset struct {
+	ID               int64
+	CampaignID       int64
+	OwnerCharacterID sql.NullInt64
+	Name             string
+	Slug             string
+	Note             string
+	EndsOn           enum.EffectEnd
+	Rounds           int64
+	ModsJson         string
 }
 
 type Encounter struct {

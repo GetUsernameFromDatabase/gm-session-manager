@@ -14,9 +14,30 @@ GROUP BY cond.id
 ORDER BY cond.slug, cond.id;
 
 -- name: CreateCondition :one
-INSERT INTO conditions (character_id, combatant_id, slug, note, expires_round, ends_on, held_by, mods_json)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conditions (character_id, combatant_id, slug, note, expires_round, ends_on, held_by, mods_json, applied_by)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
+
+-- name: ListEffectPresets :many
+-- One owner's presets (a NULL owner is the GM's) in a campaign.
+SELECT * FROM effect_presets
+WHERE campaign_id = ? AND owner_character_id IS sqlc.narg(owner)
+ORDER BY name COLLATE NOCASE, id;
+
+-- name: GetEffectPreset :one
+SELECT * FROM effect_presets WHERE id = ?;
+
+-- name: UpsertEffectPreset :one
+-- A same-name save by the same owner overwrites.
+INSERT INTO effect_presets (campaign_id, owner_character_id, name, slug, note, ends_on, rounds, mods_json)
+VALUES (sqlc.arg(campaign_id), sqlc.narg(owner), sqlc.arg(name), sqlc.arg(slug), sqlc.arg(note), sqlc.arg(ends_on), sqlc.arg(rounds), sqlc.arg(mods_json))
+ON CONFLICT (campaign_id, COALESCE(owner_character_id, 0), name) DO UPDATE SET
+    slug = excluded.slug, note = excluded.note, ends_on = excluded.ends_on,
+    rounds = excluded.rounds, mods_json = excluded.mods_json
+RETURNING *;
+
+-- name: DeleteEffectPreset :execrows
+DELETE FROM effect_presets WHERE id = ? AND campaign_id = ? AND owner_character_id IS sqlc.narg(owner);
 
 -- name: ListCombatantConditions :many
 SELECT * FROM conditions

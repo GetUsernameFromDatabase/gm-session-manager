@@ -193,7 +193,7 @@ templ Encounter(e EncounterView) {
 						</h3>
 						<ul class="flex flex-wrap items-start gap-2">
 							for _, c := range g.Cards {
-								@combatantChip(c)
+								@combatantChip(e, c)
 							}
 						</ul>
 					</section>
@@ -279,7 +279,7 @@ templ ownCombatant(c CombatantView) {
 // conditions and a "+N" for the rest, so it stays one line beside the others;
 // the radius is half a line's height, so a phone's wrapped chip clips nothing.
 // Downed ones fade.
-templ combatantChip(c CombatantView) {
+templ combatantChip(e EncounterView, c CombatantView) {
 	<li class={ "group/row inline-flex max-w-[min(100%,22rem)] flex-wrap items-center gap-1 rounded-lg border py-0.5 pr-2.5 pl-0.5 text-sm data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[down=true]:opacity-60 data-[dead=true]:opacity-60", kindBorder[c.Kind] } { combatantState(c)... }>
 		@portrait(c, "size-6 group-data-[down=true]/row:grayscale group-data-[dead=true]/row:grayscale")
 		<span class="min-w-0 truncate">
@@ -290,10 +290,13 @@ templ combatantChip(c CombatantView) {
 		@hpShort(c)
 		@downBadge(c)
 		for _, cond := range c.Conditions[:min(len(c.Conditions), chipConditions)] {
-			@combatCondition(cond, c.HeldLabels, false)
+			@combatCondition(cond, c.HeldLabels, cond.AppliedBy.Valid)
 		}
 		if len(c.Conditions) > chipConditions {
 			@conditionsPopover(c)
+		}
+		if c.Kind == KindPC && !c.IsOwn {
+			@effectDialog(EffectTarget{CampaignID: e.Encounter.CampaignID, CharacterID: c.CharacterID, Name: c.Name, Post: route.Path(route.CharacterEffect, c.CharacterID), Label: "+ Effect", Class: "h-[18px] max-sm:h-[18px] border border-dashed border-muted-foreground/50 px-1.5 text-xs font-normal text-muted-foreground"})
 		}
 	</li>
 }
@@ -316,6 +319,9 @@ templ conditionsPopover(c CombatantView) {
 				for _, cond := range c.Conditions {
 					<li>
 						<span class="font-medium capitalize">{ conditionLabel(cond) }</span>
+						if cond.AppliedBy.Valid {
+							@removeButton(route.Path(route.ConditionDelete, cond.ID))
+						}
 						if tip, ok := conditionSummary(cond.Slug); ok {
 							<p class="text-xs text-muted-foreground">{ tip }</p>
 						}

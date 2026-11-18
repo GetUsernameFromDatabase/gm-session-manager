@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"gm-session-manager/internal/dnd5e"
-	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
@@ -586,7 +585,7 @@ templ conditionsCard(s SheetView) {
 templ effectDialog(t EffectTarget) {
 	{{ id := t.ID() }}
 	@dialog.Dialog() {
-		@button.Button(button.Props{Size: button.SizeXs, Variant: utils.IfElse(t.CombatantID != 0, button.VariantOutline, button.VariantGhost), Class: utils.IfElse(t.CombatantID != 0, "", "rounded-full max-sm:h-8"), Attributes: with(dialog.Trigger(ctx), templ.Attributes{"id": id + "-open"})}) {
+		@button.Button(button.Props{Size: button.SizeXs, Variant: utils.IfElse(t.CombatantID != 0, button.VariantOutline, button.VariantGhost), Class: utils.CN(utils.IfElse(t.CombatantID != 0, "", "rounded-full max-sm:h-8"), t.Class), Attributes: with(dialog.Trigger(ctx), templ.Attributes{"id": id + "-open"})}) {
 			if t.CombatantID != 0 {
 				@icon.Plus()
 			}
@@ -604,6 +603,24 @@ templ effectDialog(t EffectTarget) {
 						Add effect to { t.Name }
 					}
 				}
+				// Picking a preset fills the fields below; the picker itself loads when the dialog opens.
+				<div
+					id={ id + "-presets" }
+					hx-disinherit="hx-include"
+					hx-get={ t.fieldsURL() }
+					hx-trigger="change[target.name==='preset']"
+					hx-include={ "#" + id + "-presets [name=preset], #" + id + " [name=target]" }
+					hx-target={ "#" + id + " [data-effect-fields]" }
+					hx-swap="innerHTML"
+				>
+					<div
+						data-preset-list
+						hx-get={ t.presetsURL() }
+						hx-trigger={ "click from:#" + id + "-open" }
+						hx-target="this"
+						hx-swap="innerHTML"
+					></div>
+				</div>
 				@field.Field() {
 					@field.Label(field.LabelProps{For: id + "-spell"}) {
 						Spell
@@ -624,11 +641,14 @@ templ effectDialog(t EffectTarget) {
 					class="grid gap-4"
 					data-effect-fields
 					hx-get={ t.fieldsURL() }
-					hx-trigger={ "click from:#" + id + "-open, change[target.name==='spell'] from:closest form" }
-					hx-include={ "#" + id + " [name=spell]" }
+					hx-trigger={ "click from:#" + id + "-open, change[target.name==='spell'] from:closest form, change[target.name==='slot'] from:closest form" }
+					hx-include={ "#" + id + " [name=spell], #" + id + " [name=target], #" + id + " [name=slot]" }
 					hx-swap="innerHTML"
 				></div>
 				@dialog.Footer() {
+					@checkField("save_preset", "on", false) {
+						Save as preset
+					}
 					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.Close(ctx)}) {
 						Cancel
 					}
@@ -641,14 +661,40 @@ templ effectDialog(t EffectTarget) {
 	}
 }
 
+// EffectPresetPicker is the viewer's saved presets as a select, with an x that
+// deletes the picked one and swaps this list. Nothing shows without presets.
+templ EffectPresetPicker(campaignID int64, presets []Named) {
+	if len(presets) > 0 {
+		<div class="flex items-center gap-2">
+			@field.Label() {
+				Preset
+			}
+			@formSelect("", "preset", presetItems(presets), " ", "w-48", "")
+			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-6 " + quietDestructive, Attributes: templ.Attributes{
+				"aria-label": "Delete preset", "hx-post": route.Path(route.CampaignEffectPresetsDelete, campaignID), "hx-include": "closest [data-preset-list]",
+				"hx-target": "closest [data-preset-list]", "hx-swap": "innerHTML",
+			}}) {
+				@icon.X(icon.Props{Size: 14})
+			}
+		</div>
+	}
+}
+
+// effectModFields is the select and value of stat-change row i, filled in
+// from a preset's change when it has one.
+templ effectModFields(f EffectFields, i int) {
+	{{ target, value := f.modAt(i) }}
+	<div class="flex flex-wrap items-center gap-2">
+		@formSelect("", "mod_target", append([]selectcomp.ItemData{{Value: " ", Label: "Nothing"}}, f.targets()...), target, "w-44", "")
+		@input.Input(input.Props{Name: "mod_value", Type: "number", Value: value, Class: "w-20", Attributes: templ.Attributes{"min": "-50", "max": "50", "aria-label": "Bonus"}})
+	</div>
+}
+
 // EffectModRow is stat-change row i of the add-effect form, then the button
 // that loads the next in its place (none at the cap). No armor state: an
 // effect's change always applies.
 templ EffectModRow(f EffectFields, i int) {
-	<div class="flex flex-wrap items-center gap-2">
-		@formSelect("", "mod_target", append([]selectcomp.ItemData{{Value: " ", Label: "Nothing"}}, f.targets()...), " ", "w-44", "")
-		@input.Input(input.Props{Name: "mod_value", Type: "number", Class: "w-20", Attributes: templ.Attributes{"min": "-50", "max": "50", "aria-label": "Bonus"}})
-	</div>
+	@effectModFields(f, i)
 	if i+1 < dnd5e.MaxEffectMods {
 		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeXs, Class: "justify-self-start", Attributes: templ.Attributes{"hx-get": f.rowURL(i + 1), "hx-swap": "outerHTML"}}) {
 			+ Stat change
@@ -659,6 +705,14 @@ templ EffectModRow(f EffectFields, i int) {
 // EffectFieldsForm is the add-effect form's fields below the spell picker,
 // filled in for a picked spell.
 templ EffectFieldsForm(f EffectFields) {
+	if len(f.Targets) > 0 {
+		@field.Field() {
+			@field.Label(field.LabelProps{For: f.ID + "-target-trigger"}) {
+				Target
+			}
+			@formSelect(f.ID+"-target", "target", f.targetItems(), fmt.Sprint(f.Target), "w-full", "")
+		}
+	}
 	@field.Field() {
 		@field.Label(field.LabelProps{For: f.ID + "-name"}) {
 			Name
@@ -670,21 +724,32 @@ templ EffectFieldsForm(f EffectFields) {
 			}
 		}
 	}
+	if f.SpellLevel > 0 {
+		@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
+			@field.Label(field.LabelProps{For: f.ID + "-slot-trigger"}) {
+				Slot level
+			}
+			@formSelect(f.ID+"-slot", "slot", f.slotItems(), strconv.Itoa(f.Slot), "w-24", "")
+		}
+	}
 	@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
 		@field.Label(field.LabelProps{For: f.ID + "-slug-trigger"}) {
 			Condition
 		}
-		@formSelect(f.ID+"-slug", "slug", conditionItems(), customCondition, "w-48 capitalize", "capitalize")
+		@formSelect(f.ID+"-slug", "slug", conditionItems(), cmp.Or(f.Slug, customCondition), "w-48 capitalize", "capitalize")
 	}
 	<div class="grid gap-2">
 		<span class="text-sm font-medium">Stat changes</span>
-		@EffectModRow(f, 0)
+		for i := range f.lastMod() {
+			@effectModFields(f, i)
+		}
+		@EffectModRow(f, f.lastMod())
 	</div>
 	@field.Field() {
 		@field.Title() {
 			Ends
 		}
-		@radiogroup.RadioGroup(radiogroup.Props{Name: "ends_on", DefaultValue: string(enum.EffectEndNone), Class: "flex flex-wrap gap-4", Attributes: templ.Attributes{"aria-label": "Ends"}}) {
+		@radiogroup.RadioGroup(radiogroup.Props{Name: "ends_on", DefaultValue: string(f.EndsOn), Class: "flex flex-wrap gap-4", Attributes: templ.Attributes{"aria-label": "Ends"}}) {
 			for _, e := range effectEnds {
 				<label class="flex items-center gap-2 text-sm">
 					@radiogroup.Item(radiogroup.ItemProps{Value: e.Value})
@@ -706,7 +771,13 @@ templ EffectFieldsForm(f EffectFields) {
 			@field.Label(field.LabelProps{For: f.ID + "-held-trigger"}) {
 				Held by
 			}
-			@formSelect(f.ID+"-held", "held_by", effectHeldItems(f.HeldBy), "0", "w-full", "")
+			@formSelect(f.ID+"-held", "held_by", effectHeldItems(f.HeldBy, f.NeedsHolder), "0", "w-full", "")
+		}
+	} else if f.NeedsHolder {
+		@field.Field() {
+			@field.Description() {
+				Concentrate on a spell first: an effect on an ally ends with your concentration
+			}
 		}
 	}
 	@field.Field() {

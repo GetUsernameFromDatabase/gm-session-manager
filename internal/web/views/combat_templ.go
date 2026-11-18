@@ -911,7 +911,7 @@ func Encounter(e EncounterView) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					for _, c := range g.Cards {
-						templ_7745c5c3_Err = combatantChip(c).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = combatantChip(e, c).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -1305,7 +1305,7 @@ func ownCombatant(c CombatantView) templ.Component {
 // conditions and a "+N" for the rest, so it stays one line beside the others;
 // the radius is half a line's height, so a phone's wrapped chip clips nothing.
 // Downed ones fade.
-func combatantChip(c CombatantView) templ.Component {
+func combatantChip(e EncounterView, c CombatantView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1399,13 +1399,19 @@ func combatantChip(c CombatantView) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		for _, cond := range c.Conditions[:min(len(c.Conditions), chipConditions)] {
-			templ_7745c5c3_Err = combatCondition(cond, c.HeldLabels, false).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = combatCondition(cond, c.HeldLabels, cond.AppliedBy.Valid).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(c.Conditions) > chipConditions {
 			templ_7745c5c3_Err = conditionsPopover(c).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if c.Kind == KindPC && !c.IsOwn {
+			templ_7745c5c3_Err = effectDialog(EffectTarget{CampaignID: e.Encounter.CampaignID, CharacterID: c.CharacterID, Name: c.Name, Post: route.Path(route.CharacterEffect, c.CharacterID), Label: "+ Effect", Class: "h-[18px] max-sm:h-[18px] border border-dashed border-muted-foreground/50 px-1.5 text-xs font-normal text-muted-foreground"}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1464,7 +1470,7 @@ func conditionsPopover(c CombatantView) templ.Component {
 				var templ_7745c5c3_Var49 string
 				templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("+%d", len(c.Conditions)-chipConditions))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 306, Col: 57}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 309, Col: 57}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 				if templ_7745c5c3_Err != nil {
@@ -1519,7 +1525,7 @@ func conditionsPopover(c CombatantView) templ.Component {
 						var templ_7745c5c3_Var53 string
 						templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 312, Col: 13}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 315, Col: 13}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 						if templ_7745c5c3_Err != nil {
@@ -1549,7 +1555,7 @@ func conditionsPopover(c CombatantView) templ.Component {
 					var templ_7745c5c3_Var54 string
 					templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(conditionLabel(cond))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 318, Col: 65}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 321, Col: 65}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 					if templ_7745c5c3_Err != nil {
@@ -1559,6 +1565,12 @@ func conditionsPopover(c CombatantView) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
+					if cond.AppliedBy.Valid {
+						templ_7745c5c3_Err = removeButton(route.Path(route.ConditionDelete, cond.ID)).Render(ctx, templ_7745c5c3_Buffer)
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
 					if tip, ok := conditionSummary(cond.Slug); ok {
 						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "<p class=\"text-xs text-muted-foreground\">")
 						if templ_7745c5c3_Err != nil {
@@ -1567,7 +1579,7 @@ func conditionsPopover(c CombatantView) templ.Component {
 						var templ_7745c5c3_Var55 string
 						templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(tip)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 320, Col: 53}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 326, Col: 53}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 						if templ_7745c5c3_Err != nil {
@@ -1586,7 +1598,7 @@ func conditionsPopover(c CombatantView) templ.Component {
 						var templ_7745c5c3_Var56 string
 						templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(bit)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 323, Col: 53}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 329, Col: 53}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 						if templ_7745c5c3_Err != nil {
@@ -1656,7 +1668,7 @@ func markerText(c CombatantView) templ.Component {
 			var templ_7745c5c3_Var58 string
 			templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(c.Marker)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 337, Col: 13}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 343, Col: 13}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 			if templ_7745c5c3_Err != nil {
@@ -1764,7 +1776,7 @@ func hpMeter(c CombatantView, class string) templ.Component {
 				var templ_7745c5c3_Var63 string
 				templ_7745c5c3_Var63, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(c.MaxHP)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 360, Col: 28}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 366, Col: 28}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var63)
 				if templ_7745c5c3_Err != nil {
@@ -1777,7 +1789,7 @@ func hpMeter(c CombatantView, class string) templ.Component {
 				var templ_7745c5c3_Var64 string
 				templ_7745c5c3_Var64, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(c.MaxHP/2 + 1)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 361, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 367, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var64)
 				if templ_7745c5c3_Err != nil {
@@ -1790,7 +1802,7 @@ func hpMeter(c CombatantView, class string) templ.Component {
 				var templ_7745c5c3_Var65 string
 				templ_7745c5c3_Var65, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(c.MaxHP)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 362, Col: 32}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 368, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var65)
 				if templ_7745c5c3_Err != nil {
@@ -1803,7 +1815,7 @@ func hpMeter(c CombatantView, class string) templ.Component {
 				var templ_7745c5c3_Var66 string
 				templ_7745c5c3_Var66, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(c.HP)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 363, Col: 27}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 369, Col: 27}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var66)
 				if templ_7745c5c3_Err != nil {
@@ -1908,7 +1920,7 @@ func portrait(c CombatantView, size string) templ.Component {
 				var templ_7745c5c3_Var69 string
 				templ_7745c5c3_Var69, templ_7745c5c3_Err = templruntime.NewAttributeExpression(c.Portrait).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 385, Col: 23}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 391, Col: 23}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var69)
 				if templ_7745c5c3_Err != nil {
@@ -2004,7 +2016,7 @@ func portrait(c CombatantView, size string) templ.Component {
 		var templ_7745c5c3_Var74 string
 		templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(initials(c.Name))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 387, Col: 216}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 393, Col: 216}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
 		if templ_7745c5c3_Err != nil {
@@ -2044,7 +2056,7 @@ func combatantName(c CombatantView) templ.Component {
 			var templ_7745c5c3_Var76 string
 			templ_7745c5c3_Var76, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(c.Link)).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 393, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 399, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var76)
 			if templ_7745c5c3_Err != nil {
@@ -2057,7 +2069,7 @@ func combatantName(c CombatantView) templ.Component {
 			var templ_7745c5c3_Var77 string
 			templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 393, Col: 127}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 399, Col: 127}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 			if templ_7745c5c3_Err != nil {
@@ -2111,7 +2123,7 @@ func combatantName(c CombatantView) templ.Component {
 			var templ_7745c5c3_Var80 string
 			templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 395, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 401, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var80))
 			if templ_7745c5c3_Err != nil {
@@ -2158,7 +2170,7 @@ func beingBadge(c CombatantView) templ.Component {
 			var templ_7745c5c3_Var83 string
 			templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.JoinStringErrs(kindLabel[c.Kind])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 401, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 407, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var83))
 			if templ_7745c5c3_Err != nil {
@@ -2521,7 +2533,7 @@ func combatCondition(cond sqlc.Condition, held map[int64]string, removable bool)
 					var templ_7745c5c3_Var95 string
 					templ_7745c5c3_Var95, templ_7745c5c3_Err = templ.JoinStringErrs(conditionLabel(cond))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 447, Col: 27}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 453, Col: 27}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var95))
 					if templ_7745c5c3_Err != nil {
@@ -2572,7 +2584,7 @@ func combatCondition(cond sqlc.Condition, held map[int64]string, removable bool)
 							var templ_7745c5c3_Var99 string
 							templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinStringErrs(conditionLabel(cond))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 452, Col: 29}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 458, Col: 29}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var99))
 							if templ_7745c5c3_Err != nil {
@@ -2598,7 +2610,7 @@ func combatCondition(cond sqlc.Condition, held map[int64]string, removable bool)
 						var templ_7745c5c3_Var100 string
 						templ_7745c5c3_Var100, templ_7745c5c3_Err = templ.JoinStringErrs(tip)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 456, Col: 44}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 462, Col: 44}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var100))
 						if templ_7745c5c3_Err != nil {
@@ -2617,7 +2629,7 @@ func combatCondition(cond sqlc.Condition, held map[int64]string, removable bool)
 						var templ_7745c5c3_Var101 string
 						templ_7745c5c3_Var101, templ_7745c5c3_Err = templ.JoinStringErrs(bit)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 459, Col: 56}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 465, Col: 56}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var101))
 						if templ_7745c5c3_Err != nil {
@@ -2648,7 +2660,7 @@ func combatCondition(cond sqlc.Condition, held map[int64]string, removable bool)
 			var templ_7745c5c3_Var102 string
 			templ_7745c5c3_Var102, templ_7745c5c3_Err = templ.JoinStringErrs(conditionLabel(cond))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 464, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 470, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var102))
 			if templ_7745c5c3_Err != nil {
@@ -2752,7 +2764,7 @@ func hpText(c CombatantView) templ.Component {
 			var templ_7745c5c3_Var105 string
 			templ_7745c5c3_Var105, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d/%d", c.HP, c.MaxHP))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 482, Col: 179}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 488, Col: 179}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var105))
 			if templ_7745c5c3_Err != nil {
@@ -2792,7 +2804,7 @@ func hpText(c CombatantView) templ.Component {
 				var templ_7745c5c3_Var106 string
 				templ_7745c5c3_Var106, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("+%d", c.TempHP))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 484, Col: 106}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 490, Col: 106}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var106))
 				if templ_7745c5c3_Err != nil {
@@ -2851,7 +2863,7 @@ func hpQuickForm(cmdURL string, compact bool, d Defenses) templ.Component {
 			var templ_7745c5c3_Var108 string
 			templ_7745c5c3_Var108, templ_7745c5c3_Err = templruntime.NewAttributeExpression(cmdURL).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 499, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 505, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var108)
 			if templ_7745c5c3_Err != nil {
@@ -2891,7 +2903,7 @@ func hpQuickForm(cmdURL string, compact bool, d Defenses) templ.Component {
 			var templ_7745c5c3_Var109 string
 			templ_7745c5c3_Var109, templ_7745c5c3_Err = templruntime.NewAttributeExpression(typeID + "-trigger").Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 502, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 508, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var109)
 			if templ_7745c5c3_Err != nil {
@@ -3152,7 +3164,7 @@ func initiativeInput(c CombatantView) templ.Component {
 						var templ_7745c5c3_Var121 string
 						templ_7745c5c3_Var121, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%+d", c.InitMod))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 546, Col: 71}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 552, Col: 71}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var121))
 						if templ_7745c5c3_Err != nil {
@@ -3342,7 +3354,7 @@ func turnCard(e EncounterView) templ.Component {
 			var templ_7745c5c3_Var125 string
 			templ_7745c5c3_Var125, templ_7745c5c3_Err = templ.JoinStringErrs(skipped)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 577, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 583, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var125))
 			if templ_7745c5c3_Err != nil {
@@ -3368,7 +3380,7 @@ func turnCard(e EncounterView) templ.Component {
 				var templ_7745c5c3_Var126 string
 				templ_7745c5c3_Var126, templ_7745c5c3_Err = templ.JoinStringErrs(strings.Join(e.missingInitiative(), ", "))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 583, Col: 132}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 589, Col: 132}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var126))
 				if templ_7745c5c3_Err != nil {
@@ -3517,7 +3529,7 @@ func turnSlot(label, name, key, class string) templ.Component {
 		var templ_7745c5c3_Var131 string
 		templ_7745c5c3_Var131, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 613, Col: 52}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 619, Col: 52}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var131))
 		if templ_7745c5c3_Err != nil {
@@ -3574,7 +3586,7 @@ func turnSlot(label, name, key, class string) templ.Component {
 		var templ_7745c5c3_Var134 string
 		templ_7745c5c3_Var134, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 614, Col: 66}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 620, Col: 66}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var134))
 		if templ_7745c5c3_Err != nil {
@@ -3686,7 +3698,7 @@ func hpDialog(c CombatantView) templ.Component {
 						var templ_7745c5c3_Var141 string
 						templ_7745c5c3_Var141, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 630, Col: 20}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 636, Col: 20}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var141))
 						if templ_7745c5c3_Err != nil {
@@ -3719,7 +3731,7 @@ func hpDialog(c CombatantView) templ.Component {
 					var templ_7745c5c3_Var142 string
 					templ_7745c5c3_Var142, templ_7745c5c3_Err = templruntime.NewAttributeExpression(route.Path(route.CombatantAction, c.ID, "hp")).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 638, Col: 59}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 644, Col: 59}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var142)
 					if templ_7745c5c3_Err != nil {
@@ -3800,7 +3812,7 @@ func hpDialog(c CombatantView) templ.Component {
 					var templ_7745c5c3_Var144 string
 					templ_7745c5c3_Var144, templ_7745c5c3_Err = templruntime.NewAttributeExpression(route.Path(route.CombatantAction, c.ID, "hp")).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 655, Col: 97}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 661, Col: 97}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var144)
 					if templ_7745c5c3_Err != nil {
@@ -4111,7 +4123,7 @@ func hpSetField(id, name, label, value string, minimum, maximum int64, bound tem
 				var templ_7745c5c3_Var157 string
 				templ_7745c5c3_Var157, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 702, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 708, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var157))
 				if templ_7745c5c3_Err != nil {
@@ -4172,7 +4184,7 @@ func conditionTip(slug string) templ.Component {
 				var templ_7745c5c3_Var160 string
 				templ_7745c5c3_Var160, templ_7745c5c3_Err = templ.JoinStringErrs(tip)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 713, Col: 8}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 719, Col: 8}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var160))
 				if templ_7745c5c3_Err != nil {
@@ -4327,7 +4339,7 @@ func formSelect(id, name string, items []selectcomp.ItemData, value, class, cont
 						var templ_7745c5c3_Var168 string
 						templ_7745c5c3_Var168, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(it.Label))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 743, Col: 27}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 749, Col: 27}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var168))
 						if templ_7745c5c3_Err != nil {
@@ -4646,7 +4658,7 @@ func addCombatantForm(e EncounterView, kind, tab, pick, label string, items []se
 		var templ_7745c5c3_Var181 string
 		templ_7745c5c3_Var181, templ_7745c5c3_Err = templruntime.NewAttributeExpression(e.url("combatants")).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 810, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 816, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var181)
 		if templ_7745c5c3_Err != nil {
@@ -4659,7 +4671,7 @@ func addCombatantForm(e EncounterView, kind, tab, pick, label string, items []se
 		var templ_7745c5c3_Var182 string
 		templ_7745c5c3_Var182, templ_7745c5c3_Err = templruntime.NewAttributeExpression(kind).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 811, Col: 47}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 817, Col: 47}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var182)
 		if templ_7745c5c3_Err != nil {
@@ -4684,7 +4696,7 @@ func addCombatantForm(e EncounterView, kind, tab, pick, label string, items []se
 			var templ_7745c5c3_Var184 string
 			templ_7745c5c3_Var184, templ_7745c5c3_Err = templ.JoinStringErrs(pick)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 813, Col: 9}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 819, Col: 9}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var184))
 			if templ_7745c5c3_Err != nil {
@@ -4719,7 +4731,7 @@ func addCombatantForm(e EncounterView, kind, tab, pick, label string, items []se
 			var templ_7745c5c3_Var186 string
 			templ_7745c5c3_Var186, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 818, Col: 10}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/combat.templ`, Line: 824, Col: 10}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var186))
 			if templ_7745c5c3_Err != nil {

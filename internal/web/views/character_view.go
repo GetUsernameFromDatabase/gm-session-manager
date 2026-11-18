@@ -7,6 +7,7 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"gm-session-manager/internal/compendium"
@@ -117,9 +118,50 @@ type EffectFields struct {
 	Sheet            dnd5e.Sheet
 	Name, Note, Hint string
 	Rounds           int
+	// SpellLevel (0: no leveled spell picked) and Slot (SpellLevel to 9) are
+	// the Slot level select.
+	SpellLevel, Slot int
+	// Slug (empty: custom), EndsOn and Mods are what a preset fills in.
+	Slug   string
+	EndsOn enum.EffectEnd
+	Mods   []dnd5e.CustomMod
 	// InFight offers rounds: they count only in a running fight.
 	InFight bool
 	HeldBy  []Named
+	// NeedsHolder is a player's effect on an ally: it must be held, so
+	// "nobody" is not offered.
+	NeedsHolder bool
+	// Targets are who a player may add to from their own sheet (themselves
+	// first); Target is the one picked before a swap.
+	Targets []Named
+	Target  int64
+}
+
+// modAt is stat-change row i as a preset filled it: target and value text.
+func (f EffectFields) modAt(i int) (target, value string) {
+	if i >= len(f.Mods) {
+		return " ", ""
+	}
+	return f.Mods[i].Target, strconv.Itoa(f.Mods[i].Value)
+}
+
+// slotItems are the slot levels the picked spell can be cast at.
+func (f EffectFields) slotItems() []selectcomp.ItemData {
+	var items []selectcomp.ItemData
+	for l := f.SpellLevel; l <= 9; l++ {
+		items = append(items, selectcomp.ItemData{Value: strconv.Itoa(l), Label: strconv.Itoa(l)})
+	}
+	return items
+}
+
+// lastMod is the index of the last prefilled stat-change row (0 when none).
+func (f EffectFields) lastMod() int { return max(len(f.Mods), 1) - 1 }
+
+// presetItems are the saved presets a form can be filled from, after a
+// blank "choose" entry.
+func presetItems(presets []Named) []selectcomp.ItemData {
+	return append([]selectcomp.ItemData{{Value: " ", Label: "Choose a preset"}},
+		selectItems(presets, func(n Named) string { return strconv.FormatInt(n.ID, 10) }, func(n Named) string { return n.Name })...)
 }
 
 // EffectTarget is who an add-effect dialog adds to: a character, or a
@@ -127,6 +169,8 @@ type EffectFields struct {
 type EffectTarget struct {
 	CampaignID, CharacterID, CombatantID int64
 	Name, Post, Label                    string
+	// Class restyles the dialog's button (the tracker chip's dashed pill).
+	Class string
 }
 
 // ID is the id of the target's form.
@@ -136,6 +180,9 @@ func (t EffectTarget) ID() string { return EffectID(t.CharacterID, t.CombatantID
 func (t EffectTarget) fieldsURL() string {
 	return EffectFieldsURL(t.CampaignID, t.CharacterID, t.CombatantID)
 }
+
+// presetsURL loads the viewer's preset picker.
+func (t EffectTarget) presetsURL() string { return t.fieldsURL() + "&presets=1" }
 
 // EffectFieldsURL is where an add-effect form loads its fields and rows.
 func EffectFieldsURL(campaignID, characterID, combatantID int64) string {
@@ -167,9 +214,17 @@ func effectQuery(characterID, combatantID int64) string {
 }
 
 // effectHeldItems are the concentrations an effect may hang off.
-func effectHeldItems(held []Named) []selectcomp.ItemData {
-	return append([]selectcomp.ItemData{{Value: "0", Label: "nobody"}},
-		selectItems(held, func(n Named) string { return fmt.Sprint(n.ID) }, func(n Named) string { return n.Name })...)
+func effectHeldItems(held []Named, needsHolder bool) []selectcomp.ItemData {
+	items := selectItems(held, func(n Named) string { return fmt.Sprint(n.ID) }, func(n Named) string { return n.Name })
+	if needsHolder {
+		return items
+	}
+	return append([]selectcomp.ItemData{{Value: "0", Label: "nobody"}}, items...)
+}
+
+// targetItems are the characters a player may add the effect to.
+func (f EffectFields) targetItems() []selectcomp.ItemData {
+	return selectItems(f.Targets, func(n Named) string { return fmt.Sprint(n.ID) }, func(n Named) string { return n.Name })
 }
 
 // effectEnds are the rests that end an effect.

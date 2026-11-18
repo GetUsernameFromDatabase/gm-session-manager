@@ -8,6 +8,9 @@ Every permission and visibility rule lives here; `perm_test.go` mirrors these ta
 | Other characters | view; edit HP, conditions and sources | none |
 | Monster HP in combat | always | hidden unless the GM toggles `hp_visible` |
 | Entities | all fields | revealed entities, revealed fields only |
+| Effect presets | only the GM's own (owner none) | only their own character's; never another's, never the GM's |
+| Add effect | any character, any target | own character; an ally in the same campaign only held by their own concentration; never another campaign's or a non-PC combatant |
+| Remove effect | any | on their own character; on an ally's only the effects they applied (`applied_by`) |
 
 Note blocks:
 
