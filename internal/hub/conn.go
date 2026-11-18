@@ -85,7 +85,7 @@ func (h *Hub) ServeGone(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = conn.CloseNow() }()
 	ctx, cancel := context.WithTimeout(r.Context(), writeTimeout)
 	defer cancel()
-	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"`+msgGone+`"}`)); err != nil {
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"`+MsgGone+`"}`)); err != nil {
 		return
 	}
 	_ = conn.Close(websocket.StatusNormalClosure, "")
@@ -103,16 +103,16 @@ func (h *Hub) readLoop(ctx context.Context, conn *websocket.Conn, c *Client) {
 			continue
 		}
 		switch m.Type {
-		case "hello":
+		case MsgHello:
 			c.setWatch(m.Watch)
 			h.sync(c, m.Epoch, m.Seq, true)
-		case "sub":
+		case MsgSub:
 			for _, id := range m.Blocks {
 				if h.handler.CanSubscribe(ctx, c, id) {
 					c.subscribe(id, true)
 				}
 			}
-		case "unsub":
+		case MsgUnsub:
 			for _, id := range m.Blocks {
 				c.subscribe(id, false)
 			}

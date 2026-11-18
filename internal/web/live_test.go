@@ -25,6 +25,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -215,7 +216,7 @@ func TestLiveRefetchStrips(t *testing.T) {
 	f := newLiveFixture(t)
 	player := f.token(t, enum.RolePlayer)
 	get := func(view string) *httptest.ResponseRecorder {
-		return f.do(t, http.MethodGet, "/live?v="+url.QueryEscape(view), player, nil, true)
+		return f.do(t, http.MethodGet, route.Live+"?v="+url.QueryEscape(view), player, nil, true)
 	}
 	body := func(view string) string { return get(view).Body.String() }
 	if b := body(views.LiveKey(views.LiveEntity, f.entity)); !strings.Contains(b, "Innkeeper") || strings.Contains(b, "lich") {
@@ -263,7 +264,7 @@ func TestLiveRefetchStrips(t *testing.T) {
 	if _, err := f.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: shared.ID, Visibility: "players"}); err != nil {
 		t.Fatal(err)
 	}
-	if b := body(views.LiveKey(views.LiveNotes, f.campaignID)); !strings.Contains(b, "Rumours") || strings.Contains(b, fmt.Sprintf("/notes/%d/rename", shared.ID)) {
+	if b := body(views.LiveKey(views.LiveNotes, f.campaignID)); !strings.Contains(b, "Rumours") || strings.Contains(b, route.Path(route.NoteRename, shared.ID)) {
 		t.Errorf("notes refetch misses the shared note or lets the player manage it")
 	}
 	// A hidden note clears the page that showed it, naming nothing.
@@ -295,7 +296,7 @@ func TestLiveSourcesAlert(t *testing.T) {
 	f.outrankPin(t)
 	view := views.LiveKey(views.LiveCharacter, f.characterID)
 	for name, cookie := range map[string]string{"owner": f.token(t, enum.RolePlayer), "GM": f.token(t, enum.RoleAdmin)} {
-		b := f.do(t, http.MethodGet, "/live?v="+url.QueryEscape(view), cookie, nil, true).Body.String()
+		b := f.do(t, http.MethodGet, route.Live+"?v="+url.QueryEscape(view), cookie, nil, true).Body.String()
 		if !strings.Contains(b, "1 source to review") || !strings.Contains(b, "Review sources") {
 			t.Errorf("%s misses the alert: %s", name, b)
 		}
@@ -320,7 +321,7 @@ func TestLiveBindsMatchState(t *testing.T) {
 	player := f.token(t, enum.RolePlayer)
 	gm := f.token(t, enum.RoleAdmin)
 	for _, c := range []string{"maxhp =12", "hp =0", "temp 3", "slot max 1 2", "exhaustion +1", "toggle prone", "deathsave fail", "feature add Lucky", "feature set Lucky uses=prof"} {
-		if w := f.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", f.characterID), player, url.Values{"cmd": {c}}, true); w.Code != http.StatusOK {
+		if w := f.do(t, http.MethodPost, route.Path(route.CharacterCmd, f.characterID), player, url.Values{"cmd": {c}}, true); w.Code != http.StatusOK {
 			t.Fatalf("%s: %d %s", c, w.Code, w.Body)
 		}
 	}
@@ -331,12 +332,12 @@ func TestLiveBindsMatchState(t *testing.T) {
 		name, path, cookie string
 		viewer             perm.Viewer
 	}{
-		{"GM compendium import", "/compendium?import=" + views.ImportTabFiveTools, gm, perm.GM},
-		{"player sheet", fmt.Sprintf("/characters/%d", f.characterID), player, perm.Player(f.characterID)},
-		{"GM sheet", fmt.Sprintf("/characters/%d", f.characterID), gm, perm.GM},
-		{"player combat", fmt.Sprintf("/campaigns/%d/combat", f.campaignID), player, perm.Player(f.characterID)},
-		{"GM combat", fmt.Sprintf("/campaigns/%d/combat?encounter=%d", f.campaignID, f.encounter), gm, perm.GM},
-		{"GM overview", fmt.Sprintf("/campaigns/%d", f.campaignID), gm, perm.GM},
+		{"GM compendium import", route.Compendium + "?import=" + views.ImportTabFiveTools, gm, perm.GM},
+		{"player sheet", route.Path(route.Character, f.characterID), player, perm.Player(f.characterID)},
+		{"GM sheet", route.Path(route.Character, f.characterID), gm, perm.GM},
+		{"player combat", route.Path(route.CampaignCombat, f.campaignID), player, perm.Player(f.characterID)},
+		{"GM combat", fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, f.campaignID), f.encounter), gm, perm.GM},
+		{"GM overview", route.Path(route.Campaign, f.campaignID), gm, perm.GM},
 	}
 	for _, dead := range []bool{false, true} { // the dead sheet swaps its buttons and the tracker its badge
 		if dead {
@@ -450,8 +451,8 @@ func TestLiveHotKeepsHash(t *testing.T) {
 		"use":       func() { sheetCmd("use Lucky") },
 		"insp":      func() { sheetCmd("inspiration") },
 		"hit die":   func() { sheetCmd("hitdie use") },
-		"next turn": func() { post(fmt.Sprintf("/encounters/%d/next", f.encounter), nil) },
-		"ogre hp":   func() { post(fmt.Sprintf("/combatants/%d/hp", f.ogre), url.Values{"amount": {"5"}}) },
+		"next turn": func() { post(route.Path(route.EncounterAction, f.encounter, "next"), nil) },
+		"ogre hp":   func() { post(route.Path(route.CombatantAction, f.ogre, "hp"), url.Values{"amount": {"5"}}) },
 	} {
 		step()
 		if after := hashes(); !maps.Equal(before, after) {
@@ -484,7 +485,7 @@ func TestLiveHotKeepsHash(t *testing.T) {
 	}
 	before = hashes()
 	sheetCmd("item add Rope")
-	post(fmt.Sprintf("/combatants/%d/marker", f.ogre), url.Values{"marker": {"red"}})
+	post(route.Path(route.CombatantAction, f.ogre, "marker"), url.Values{"marker": {"red"}})
 	for view, h := range hashes() {
 		if h == before[view] {
 			t.Errorf("%s: a new item or marker left the hash unchanged", view)
@@ -500,7 +501,7 @@ func TestLiveTurnValsFollowTurn(t *testing.T) {
 	gm := f.token(t, enum.RoleAdmin)
 	f.readyTurns(t)
 	tracker := views.LiveKey(views.LiveEncounter, f.encounter)
-	next := fmt.Sprintf("/encounters/%d/next", f.encounter)
+	next := route.Path(route.EncounterAction, f.encounter, "next")
 	vals := func() url.Values {
 		st, _ := f.state(t, perm.GM, f.campaignID, tracker)
 		s, _ := st["turn.vals"].(string)
@@ -532,7 +533,7 @@ func TestLiveModelHashFollowsMarkup(t *testing.T) {
 	gm := f.token(t, enum.RoleAdmin)
 	f.readyTurns(t)
 	ogre := func(action string, form url.Values) func() {
-		return func() { f.postOK(t, gm, fmt.Sprintf("/combatants/%d/%s", f.ogre, action), form) }
+		return func() { f.postOK(t, gm, route.Path(route.CombatantAction, f.ogre, action), form) }
 	}
 	steps := []struct {
 		name string
@@ -543,7 +544,7 @@ func TestLiveModelHashFollowsMarkup(t *testing.T) {
 		{"feature", func() { f.sheetCmd(t, player, "feature add Lucky") }},
 		{"concentration", func() { f.sheetCmd(t, player, "concentrate Bless") }},
 		{"effect", func() {
-			f.postOK(t, player, fmt.Sprintf("/characters/%d/effect", f.characterID), url.Values{"slug": {"custom"}, "name": {"Shield of Faith"}, "mod_target": {"ac"}, "mod_value": {"2"}})
+			f.postOK(t, player, route.Path(route.CharacterEffect, f.characterID), url.Values{"slug": {"custom"}, "name": {"Shield of Faith"}, "mod_target": {"ac"}, "mod_value": {"2"}})
 		}},
 		{"skill", func() { f.sheetCmd(t, player, "prof add skill athletics") }},
 		{"death", func() {
@@ -668,7 +669,7 @@ func (f liveFixture) hashes(t *testing.T, v perm.Viewer, view string) (markup, s
 // sheetCmd runs a sheet command on the fixture's character.
 func (f liveFixture) sheetCmd(t *testing.T, cookie, cmd string) {
 	t.Helper()
-	if w := f.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", f.characterID), cookie, url.Values{"cmd": {cmd}}, true); w.Code != http.StatusOK {
+	if w := f.do(t, http.MethodPost, route.Path(route.CharacterCmd, f.characterID), cookie, url.Values{"cmd": {cmd}}, true); w.Code != http.StatusOK {
 		t.Fatalf("%s: %d %s", cmd, w.Code, w.Body)
 	}
 }

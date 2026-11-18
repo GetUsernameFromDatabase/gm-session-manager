@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/route"
 	selectcomp "gm-session-manager/internal/web/components/select"
 )
 
@@ -127,7 +128,7 @@ func (v ImportView) filtering() bool {
 }
 
 func (v ImportView) url() string {
-	return fmt.Sprintf("/campaigns/%d/images/import/%s", v.CampaignID, v.Token)
+	return route.Path(route.CampaignImagesImportReview, v.CampaignID, v.Token)
 }
 
 func (v ImportView) columnItems(optional bool) []selectcomp.ItemData {

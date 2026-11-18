@@ -11,6 +11,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -113,7 +114,7 @@ func BenchmarkCompendiumList(b *testing.B) {
 		b.Fatal(err)
 	}
 	gm := e.token(b, enum.RoleAdmin)
-	path := "/compendium?" + views.KindKey + "=" + string(enum.KindSpell)
+	path := route.Compendium + "?" + views.KindKey + "=" + string(enum.KindSpell)
 	b.ReportAllocs()
 	for b.Loop() {
 		if w := e.do(b, http.MethodGet, path, gm, nil, false); w.Code != http.StatusOK {

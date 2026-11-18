@@ -1,8 +1,8 @@
 package views
 
 import (
-	"fmt"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
 	"gm-session-manager/internal/web/components/empty"
@@ -62,12 +62,12 @@ templ GMHome(l Layout, campaigns []sqlc.Campaign, j JoinInfo, feedbackDir string
 		<div class="grid gap-6 md:grid-cols-2">
 			<div class="space-y-3">
 				for _, c := range campaigns {
-					@campaignRow(fmt.Sprintf("/campaigns/%d", c.ID), c)
+					@campaignRow(route.Path(route.Campaign, c.ID), c)
 				}
 				if len(campaigns) == 0 {
 					<p class="text-muted-foreground">No campaigns yet.</p>
 				}
-				<form method="post" action="/campaigns" class="flex gap-2 pt-2">
+				<form method="post" action={ route.Campaigns } class="flex gap-2 pt-2">
 					@input.Input(input.Props{Name: "name", Placeholder: "New campaign name", Required: true})
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
 						Create
@@ -109,7 +109,7 @@ templ JoinCampaigns(l Layout, campaigns []sqlc.Campaign) {
 			@PageHeader("Join a campaign", "Pick the campaign your table is playing.")
 			<div class="space-y-3">
 				for _, c := range campaigns {
-					@campaignRow(fmt.Sprintf("/join/%d", c.ID), c)
+					@campaignRow(route.Path(route.JoinCampaign, c.ID), c)
 				}
 			</div>
 			if len(campaigns) == 0 {
@@ -134,7 +134,7 @@ templ JoinCampaigns(l Layout, campaigns []sqlc.Campaign) {
 
 templ adminLink() {
 	<p class="mt-10 text-sm text-muted-foreground">
-		GM on another device? <a class="underline" href="/admin/login">Log in as GM</a>
+		GM on another device? <a class="underline" href={ templ.SafeURL(route.AdminLogin) }>Log in as GM</a>
 	</p>
 }
 
@@ -156,7 +156,7 @@ templ JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err stri
 			<h2 class="mb-2 text-base font-semibold">Who are you playing?</h2>
 			<div class="space-y-2">
 				for _, ch := range chars {
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/join/%d/claim/%d", c.ID, ch.ID)) } class="flex min-h-14 items-center justify-between gap-3 rounded-lg border p-3" data-player>
+					<form method="post" action={ templ.SafeURL(route.Path(route.JoinClaim, c.ID, ch.ID)) } class="flex min-h-14 items-center justify-between gap-3 rounded-lg border p-3" data-player>
 						<input type="hidden" name="player"/>
 						<span class="min-w-0 font-medium">{ ch.Name }</span>
 						@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
@@ -169,7 +169,7 @@ templ JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err stri
 				}
 			</div>
 			@separator.Separator(separator.Props{Class: "my-6"})
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/join/%d/create", c.ID)) } class="space-y-2" data-player>
+			<form method="post" action={ templ.SafeURL(route.Path(route.JoinCreate, c.ID)) } class="space-y-2" data-player>
 				<input type="hidden" name="player"/>
 				@label.Label(label.Props{For: "new-name", Class: "text-base font-semibold"}) {
 					New character
@@ -208,7 +208,7 @@ templ PendingStatus(w Waiting) {
 					@spinner.Spinner(spinner.Props{Class: "size-4"})
 					Approved! Opening { w.Name }…
 				</p>
-				<form hx-post="/requests/complete" hx-trigger="load" hx-swap="none">
+				<form hx-post={ route.RequestsComplete } hx-trigger="load" hx-swap="none">
 					<input type="hidden" name="secret" value={ w.Secret }/>
 				</form>
 			case "denied":
@@ -216,7 +216,7 @@ templ PendingStatus(w Waiting) {
 					@icon.CircleX(icon.Props{Size: 18, Class: "shrink-0 text-destructive"})
 					The GM declined this request.
 				</p>
-				@button.Button(button.Props{Href: "/join", Variant: button.VariantOutline, Class: "mt-4"}) {
+				@button.Button(button.Props{Href: route.Join, Variant: button.VariantOutline, Class: "mt-4"}) {
 					Start over
 				}
 			default:
@@ -226,7 +226,7 @@ templ PendingStatus(w Waiting) {
 				</p>
 				<div hidden data-pending-gone>
 					<p>This request ended.</p>
-					@button.Button(button.Props{Href: "/join", Variant: button.VariantOutline, Class: "mt-4"}) {
+					@button.Button(button.Props{Href: route.Join, Variant: button.VariantOutline, Class: "mt-4"}) {
 						Ask again
 					}
 				</div>
@@ -237,12 +237,12 @@ templ PendingStatus(w Waiting) {
 templ AdminLogin(l Layout, err string) {
 	@Page(l) {
 		@narrow() {
-			@button.Button(button.Props{Href: "/join", Variant: button.VariantOutline, Size: button.SizeSm, Class: "mb-4"}) {
+			@button.Button(button.Props{Href: route.Join, Variant: button.VariantOutline, Size: button.SizeSm, Class: "mb-4"}) {
 				@icon.ArrowLeft()
 				Back
 			}
 			@PageHeader("GM login", "For GM devices other than the host PC.")
-			<form method="post" action="/admin/login" class="space-y-3">
+			<form method="post" action={ templ.SafeURL(route.AdminLogin) } class="space-y-3">
 				if err != "" {
 					@Notice(err, true, "")
 				}

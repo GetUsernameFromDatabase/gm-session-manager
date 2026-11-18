@@ -10,6 +10,7 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/route"
 	selectcomp "gm-session-manager/internal/web/components/select"
 
 	"github.com/a-h/templ"
@@ -232,7 +233,7 @@ func (s SheetView) pickBuilder(verb, op string) ([]builderVerb, builderVerb, bui
 
 // builderURL opens a builder form, with subject preselected when not empty.
 func builderURL(s SheetView, verb, op, subject string) string {
-	return fmt.Sprintf("/characters/%d/builder?verb=%s&op=%s&subject=%s", s.ID, verb, op, url.QueryEscape(subject))
+	return fmt.Sprintf("%s?verb=%s&op=%s&subject=%s", route.Path(route.CharacterBuilder, s.ID), verb, op, url.QueryEscape(subject))
 }
 
 // builderLoad makes an element load a builder form into the dialog.
@@ -548,7 +549,7 @@ func (s SheetView) modTargetItems() []selectcomp.ItemData {
 
 // pickURL reloads the builder form filled in from a look-up pick.
 func pickURL(characterID int64, verb, op string, p BuilderPick) string {
-	return fmt.Sprintf("/characters/%d/builder?verb=%s&op=%s&entry=%d&feature=%s", characterID, verb, op, p.EntryID, url.QueryEscape(p.Feature))
+	return fmt.Sprintf("%s?verb=%s&op=%s&entry=%d&feature=%s", route.Path(route.CharacterBuilder, characterID), verb, op, p.EntryID, url.QueryEscape(p.Feature))
 }
 
 // closeAfter makes a builder button close the dialog once its request

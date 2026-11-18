@@ -2,17 +2,24 @@
 import { Extension } from "/assets/vendor/tiptap-core.js";
 import { Mention } from "/assets/vendor/tiptap-mention.js";
 import { Plugin } from "/assets/vendor/pm-state.js";
+import { ROUTES, SAFE_SCHEMES } from "/assets/js/shared.js";
 
 const campaign = document.body.dataset.campaign;
 
+// routePath fills a route pattern's :params in order ("/notes/:note" + 3 -> "/notes/3").
+export const routePath = (route, ...ids) => {
+  let i = 0;
+  return route.replace(/:\w+/g, () => encodeURIComponent(String(ids[i++])));
+};
+
 // Link targets by mention kind; "img:" and the like narrow the [[ picker
 // on the server. An "attachment" is a picture uploaded into a note block.
-export const LINK_PATHS = { note: "/notes/", entity: "/entities/", image: "/images/", attachment: "/attachments/" };
+export const LINK_PATHS = { note: ROUTES.note, entity: ROUTES.entity, image: ROUTES.image, attachment: ROUTES.attachment };
 
-const linkHref = (kind, id) => (LINK_PATHS[kind] || LINK_PATHS.entity) + id;
+const linkHref = (kind, id) => routePath(LINK_PATHS[kind] || LINK_PATHS.entity, id);
 
 // imageSrc is the file an [[image]] or attached picture shows; "" for other links.
-const imageSrc = (kind, id) => ({ image: `/images/${id}/file`, attachment: `/attachments/${id}` })[kind] || "";
+const imageSrc = (kind, id) => ({ image: routePath(ROUTES.imageFile, id), attachment: routePath(ROUTES.attachment, id) })[kind] || "";
 
 const isGM = () => "gm" in document.body.dataset;
 
@@ -59,7 +66,7 @@ export const WikiLink = Mention.extend({
     // [[ opens the picker right after a word too, as Change… leaves it.
     allowedPrefixes: null,
     items: async ({ query }) => {
-      const res = await fetch(`/campaigns/${campaign}/links?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`${routePath(ROUTES.links, campaign)}?q=${encodeURIComponent(query)}`);
       return res.ok ? res.json() : [];
     },
     command: ({ editor, range, props }) => {
@@ -255,7 +262,7 @@ export function mentionMenu(editor, pos, point, { upload } = {}) {
 // toCampaignImage copies an attached picture into the campaign's images and
 // makes this use an [[image]] link to it, keeping its layout.
 async function toCampaignImage(id, setAttrs) {
-  const res = await fetch(`/attachments/${id}/to-image`, { method: "POST" });
+  const res = await fetch(routePath(ROUTES.attachmentToImage, id), { method: "POST" });
   if (!res.ok) return alert("The picture could not be added to the campaign's images.");
   const img = await res.json();
   setAttrs({ id: `image:${img.id}`, label: img.name });
@@ -271,7 +278,7 @@ export function linkClick(e, editor, menu) {
     e.preventDefault();
     // Never a javascript: or data: href from a peer's link mark (the server's safeSchemes).
     const u = new URL(a.getAttribute("href"), location.href);
-    if (["http:", "https:", "ftp:", "ftps:", "mailto:", "tel:", "callto:", "sms:", "cid:", "xmpp:"].includes(u.protocol)) window.location.href = u.href;
+    if (SAFE_SCHEMES.includes(u.protocol.slice(0, -1))) window.location.href = u.href;
   } else if (editor?.isEditable) {
     e.preventDefault();
     (menu || (() => mentionActions(editor, e.target, e)))();

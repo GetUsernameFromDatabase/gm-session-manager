@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/empty"
@@ -49,7 +50,7 @@ templ FilesPage(l Layout, v FilesView) {
 						<div class="mb-6 flex flex-wrap items-center justify-between gap-2">
 							<p class="text-sm text-muted-foreground">No note or image uses these. Delete them to free { fileSize(totalSize(idle)) }.</p>
 							@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Attributes: templ.Attributes{
-								"hx-post": base + "/delete-unused", "hx-confirm": "Delete every unused file " + utils.IfElse(l.CampaignID != 0, "in this campaign ", "") + "from this computer?",
+								"hx-post": base + route.DeleteUnused, "hx-confirm": "Delete every unused file " + utils.IfElse(l.CampaignID != 0, "in this campaign ", "") + "from this computer?",
 							}}) {
 								@icon.Trash2()
 								Delete unused
@@ -106,7 +107,7 @@ templ filesGrid(files []FileRow, base, tab string, headings bool) {
 // any other file as its type. An unused one can be deleted from its corner,
 // which returns to tab of the page at base.
 templ fileTile(f FileRow, base, tab string) {
-	{{ src := fmt.Sprintf("/attachments/%d", f.ID) }}
+	{{ src := route.Path(route.Attachment, f.ID) }}
 	<li class="relative min-w-0">
 		if f.Private {
 			<div class="flex aspect-video items-center justify-center rounded-lg bg-muted text-muted-foreground">

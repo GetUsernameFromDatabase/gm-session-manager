@@ -12,6 +12,7 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -97,7 +98,7 @@ func TestStaleBooksBanner(t *testing.T) {
 		t.Error("banner during an import")
 	}
 	e.app.fiveTools.update(func(j *views.FiveToolsJob) { j.Running = false })
-	if w := e.do(t, http.MethodPost, "/compendium/5etools/auto", gm, url.Values{"on": {"true"}}, true); w.Code != http.StatusNoContent {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumFiveToolsAuto, gm, url.Values{"on": {"true"}}, true); w.Code != http.StatusNoContent {
 		t.Fatalf("switch: %d", w.Code)
 	}
 	if st, err := loadSettings(e.app.DataDir); err != nil || !st.FiveToolsAutoRedownload {

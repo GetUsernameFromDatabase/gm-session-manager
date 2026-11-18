@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/checkbox"
@@ -15,7 +16,7 @@ import (
 templ ImportUploadPage(l Layout, campaignID int64) {
 	@Page(l) {
 		@PageHeader("Import images", "Bring in many image links at once from a spreadsheet.")
-		<form method="post" enctype="multipart/form-data" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/images/import", campaignID)) } class="group/busy max-w-lg" data-busy>
+		<form method="post" enctype="multipart/form-data" action={ templ.SafeURL(route.Path(route.CampaignImagesImport, campaignID)) } class="group/busy max-w-lg" data-busy>
 			@busyIndicator("Reading the CSV…")
 			@importStep(1, "Choose a CSV") {
 				<div class="space-y-5">

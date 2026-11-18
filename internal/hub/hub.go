@@ -171,7 +171,7 @@ func (h *Hub) closeMatching(match func(c *Client) bool) {
 	defer h.mu.Unlock()
 	for c := range h.clients {
 		if match(c) {
-			h.enqueueLocked(c, message{control: controlReload, close: true})
+			h.enqueueLocked(c, message{control: MsgReload, close: true})
 		}
 	}
 }
@@ -263,7 +263,7 @@ func (h *Hub) sync(c *Client, epoch string, seq uint64, hello bool) {
 		oldest = h.ring[0].seq
 	}
 	if epoch != h.epoch || seq > h.seq || seq+1 < oldest {
-		h.enqueueLocked(c, message{control: controlReload})
+		h.enqueueLocked(c, message{control: MsgReload})
 		return
 	}
 	var topics []Topic
@@ -367,8 +367,6 @@ type message struct {
 	// always carries the position.
 	hello bool
 }
-
-const controlReload = "reload"
 
 // announceDevice tells the GM's device list that a player device came or
 // went. Callers hold h.mu.

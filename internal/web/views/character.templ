@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
@@ -80,7 +81,7 @@ templ CharacterSheet(s SheetView) {
 			</div>
 			if s.CanSheet {
 				<div class="flex items-center gap-3">
-					<a class="text-sm underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d/levelup", s.ID)) }>Level up</a>
+					<a class="text-sm underline" href={ templ.SafeURL(route.Path(route.CharacterLevelup, s.ID)) }>Level up</a>
 					@button.Button(button.Props{Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, "", "", ""))}) {
 						@icon.Pencil()
 						Change…
@@ -90,7 +91,7 @@ templ CharacterSheet(s SheetView) {
 						if s.CanRevert {
 							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: templ.Attributes{
 								"data-menu-item": "",
-								"hx-post":        fmt.Sprintf("/characters/%d/levelup/revert", s.ID),
+								"hx-post":        route.Path(route.CharacterLevelupRevert, s.ID),
 								"hx-confirm":     "Revert the last level-up? The sheet goes back to how it was before it: other changes made since (items, spells, slots, notes on the sheet) are lost too. Current HP is kept, up to the old maximum.",
 							}}) {
 								@icon.Undo2()
@@ -102,7 +103,7 @@ templ CharacterSheet(s SheetView) {
 							if cl.Subclass != "" {
 								@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: with(dialog.TriggerFor(builderID), templ.Attributes{
 									"data-menu-item": "",
-									"hx-get":         fmt.Sprintf("/characters/%d/subclass?class=%s", s.ID, url.QueryEscape(cl.Slug)),
+									"hx-get":         fmt.Sprintf("%s?class=%s", route.Path(route.CharacterSubclass, s.ID), url.QueryEscape(cl.Slug)),
 									"hx-target":      builderTarget,
 									"hx-swap":        "innerHTML",
 								})}) {
@@ -115,7 +116,7 @@ templ CharacterSheet(s SheetView) {
 								}
 							}
 						}
-						@menuDelete("Delete character", fmt.Sprintf("/characters/%d/remove", s.ID), "Delete "+s.C.Name+"? This logs out every device playing it. The GM can restore it.")
+						@menuDelete("Delete character", route.Path(route.CharacterRemove, s.ID), "Delete "+s.C.Name+"? This logs out every device playing it. The GM can restore it.")
 					}
 				</div>
 			}
@@ -123,7 +124,7 @@ templ CharacterSheet(s SheetView) {
 		if s.CanSheet && s.C.Sheet.Level() == 0 && !s.C.Sheet.SetUp(StepReview) {
 			<p class="rounded-lg border border-primary/50 bg-primary/5 p-3 text-sm">
 				New character? Choose class, species, scores, background and equipment one step at a time:
-				<a class="font-medium underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d/create", s.ID)) }>finish setting up</a>.
+				<a class="font-medium underline" href={ templ.SafeURL(route.Path(route.CharacterCreate, s.ID)) }>finish setting up</a>.
 			</p>
 		}
 		// In the order play needs them: vitals and conditions, then the rolls
@@ -173,12 +174,12 @@ templ characterLooks(s SheetView) {
 				}
 			}
 			@card.Content(card.ContentProps{Class: "space-y-4"}) {
-				@looksGrid(s.Looks, utils.IfElse(s.CanSheet, fmt.Sprintf("/characters/%d/images/", s.ID), ""))
+				@looksGrid(s.Looks, utils.IfElse(s.CanSheet, route.Path(route.CharacterImages, s.ID)+"/", ""))
 				if s.CanSheet {
 					<form
 						class="group/busy max-w-md space-y-3"
 						data-busy
-						hx-post={ fmt.Sprintf("/characters/%d/images", s.ID) }
+						hx-post={ route.Path(route.CharacterImages, s.ID) }
 						hx-encoding="multipart/form-data"
 					>
 						@sourceTabs(sourceField{
@@ -558,7 +559,7 @@ templ conditionsCard(s SheetView) {
 							<span class="text-muted-foreground">{ bit }</span>
 						}
 						if s.CanConditions {
-							@removeButton(fmt.Sprintf("/conditions/%d/delete", c.ID))
+							@removeButton(route.Path(route.ConditionDelete, c.ID))
 						}
 					</span>
 					@conditionTip(c.Slug)
@@ -573,7 +574,7 @@ templ conditionsCard(s SheetView) {
 			<form id={ fmt.Sprintf("condition-form-%d", s.ID) } class="inline-flex" data-command={ s.cmdURL() }>
 				@input.Input(input.Props{Name: "cmd", Placeholder: "+ concentrate Bless", Class: "h-6 w-44 rounded-full border-dashed px-2 text-xs md:text-xs", Attributes: templ.Attributes{"aria-label": "Add a custom condition"}})
 			</form>
-			@effectDialog(EffectTarget{CampaignID: s.CampaignID, CharacterID: s.ID, Name: s.C.Name, Post: fmt.Sprintf("/characters/%d/effect", s.ID), Label: "+ Effect"})
+			@effectDialog(EffectTarget{CampaignID: s.CampaignID, CharacterID: s.ID, Name: s.C.Name, Post: route.Path(route.CharacterEffect, s.ID), Label: "+ Effect"})
 		}
 	</div>
 }
@@ -610,7 +611,7 @@ templ effectDialog(t EffectTarget) {
 					@combobox.Combobox(combobox.Props{Name: "spell"}) {
 						@combobox.Input(combobox.InputProps{ID: id + "-spell", Class: "w-full", Placeholder: "Search spells (optional)", ShowClear: true, Attributes: templ.Attributes{
 							"maxlength": "200", "autocomplete": "off",
-							"hx-get": CompendiumPath(ctx, "/search?kind=spell&format=combobox"), "hx-vals": "js:{q: this.value}",
+							"hx-get": CompendiumPath(ctx, route.CompendiumSearch+"?kind=spell&format=combobox"), "hx-vals": "js:{q: this.value}",
 							"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-spell-list", "hx-swap": "innerHTML",
 						}})
 						@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {
@@ -762,7 +763,7 @@ templ exhaustionChip(s SheetView) {
 templ commandBar(s SheetView) {
 	<div class="space-y-1">
 		<form id="command-form" data-command={ s.cmdURL() } class="flex flex-wrap gap-2">
-			@input.Input(input.Props{ID: "command-input", Name: "cmd", Class: "flex-1", Placeholder: "Command, e.g. hp -5, slot use 2, item add Rope", Attributes: templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "aria-keyshortcuts": "/ Tab Control+Space", "aria-describedby": "command-hint", "data-verbs": strings.Join(dnd5e.Verbs(), " "), "data-complete": fmt.Sprintf("/characters/%d/complete", s.ID)}})
+			@input.Input(input.Props{ID: "command-input", Name: "cmd", Class: "flex-1", Placeholder: "Command, e.g. hp -5, slot use 2, item add Rope", Attributes: templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "aria-keyshortcuts": "/ Tab Control+Space", "aria-describedby": "command-hint", "data-verbs": strings.Join(dnd5e.Verbs(), " "), "data-complete": route.Path(route.CharacterComplete, s.ID)}})
 			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: with(dialog.TriggerFor(commandsID), templ.Attributes{"title": "Browse commands"})}) {
 				@icon.BookOpen()
 				<span class="hidden sm:inline">Commands</span>
@@ -977,7 +978,7 @@ templ spellsCard(s SheetView) {
 						<li class="flex items-start justify-between gap-2 py-1">
 							<details
 								class="min-w-0 flex-1"
-								hx-get={ CompendiumPath(ctx, "/lookup?kind=spell&slug="+url.QueryEscape(sp.Slug)) }
+								hx-get={ CompendiumPath(ctx, route.CompendiumLookup+"?kind=spell&slug="+url.QueryEscape(sp.Slug)) }
 								hx-trigger="toggle once"
 								hx-target="find [data-spell-body]"
 								hx-swap="innerHTML"
@@ -1043,7 +1044,7 @@ templ spellPicker(s SheetView, id, placeholder string, autofocus bool) {
 	<div id={ id } hx-preserve="true">
 		@inputgroup.InputGroup() {
 			@inputgroup.Input(inputgroup.InputProps{Name: "q", Placeholder: placeholder, Attributes: templ.Attributes{
-				"hx-get":       CompendiumPath(ctx, fmt.Sprintf("/search?kind=spell&character=%d", s.ID)),
+				"hx-get":       CompendiumPath(ctx, fmt.Sprintf("%s?kind=spell&character=%d", route.CompendiumSearch, s.ID)),
 				"hx-trigger":   "input changed delay:200ms, keyup[key=='Enter']",
 				"hx-target":    "#" + id + " ul",
 				"hx-swap":      "innerHTML",
@@ -1061,7 +1062,7 @@ templ spellPicker(s SheetView, id, placeholder string, autofocus bool) {
 			}
 		}
 		<ul class="mt-1 max-h-72 overflow-y-auto text-sm"></ul>
-		<a class="text-xs text-muted-foreground underline" href={ templ.SafeURL(CompendiumPath(ctx, "/homebrew/new?kind=spell&add=1")) }>Not in the compendium? Create a custom spell</a>
+		<a class="text-xs text-muted-foreground underline" href={ templ.SafeURL(CompendiumPath(ctx, route.CompendiumHomebrewNew+"?kind=spell&add=1")) }>Not in the compendium? Create a custom spell</a>
 	</div>
 }
 
@@ -1144,7 +1145,7 @@ templ itemPicker(id, name, placeholder string, autofocus bool) {
 	@combobox.Combobox(combobox.Props{Name: name, Required: true}) {
 		@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: placeholder, Attributes: templ.Attributes{
 			"maxlength": "200", "autofocus": autofocus, "aria-label": "Item", "data-combobox-create-input": "",
-			"hx-get": CompendiumPath(ctx, "/search?kind=item&format=combobox"), "hx-vals": "js:{q: this.value}",
+			"hx-get": CompendiumPath(ctx, route.CompendiumSearch+"?kind=item&format=combobox"), "hx-vals": "js:{q: this.value}",
 			"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-list", "hx-swap": "innerHTML",
 		}})
 		@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {
@@ -1230,7 +1231,7 @@ templ actionRow(s SheetView, e actionEntry) {
 		<details
 			class="min-w-0 flex-1"
 			if e.SpellSlug != "" {
-				hx-get={ CompendiumPath(ctx, "/lookup?kind=spell&slug="+url.QueryEscape(e.SpellSlug)) }
+				hx-get={ CompendiumPath(ctx, route.CompendiumLookup+"?kind=spell&slug="+url.QueryEscape(e.SpellSlug)) }
 				hx-trigger="toggle once"
 				hx-target="find [data-why]"
 				hx-swap="innerHTML"

@@ -13,6 +13,7 @@ import (
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -23,10 +24,10 @@ func TestAttachmentRefs(t *testing.T) {
 		want []int64
 	}{
 		{"attached picture", `{"type":"mention","attrs":{"id":"attachment:7","label":"map"}}`, []int64{7}},
-		{"older picture", `{"type":"image","attrs":{"src":"/attachments/8","alt":"map"}}`, []int64{8}},
-		{"file link", `{"type":"link","attrs":{"href":"/attachments/9"}}`, []int64{9}},
-		{"several", `"attachment:1" "/attachments/2"`, []int64{1, 2}},
-		{"other links", `{"id":"image:7"} {"id":"note:8"} "/images/9/file"`, nil},
+		{"older picture", `{"type":"image","attrs":{"src":"` + route.Path(route.Attachment, 8) + `","alt":"map"}}`, []int64{8}},
+		{"file link", `{"type":"link","attrs":{"href":"` + route.Path(route.Attachment, 9) + `"}}`, []int64{9}},
+		{"several", `"attachment:1" "` + route.Path(route.Attachment, 2) + `"`, []int64{1, 2}},
+		{"other links", `{"id":"image:7"} {"id":"note:8"} "` + route.Path(route.ImageFile, 9) + `"`, nil},
 		{"longer number is another file", `"attachment:70"`, []int64{70}},
 	}
 	for _, tt := range tests {
@@ -72,10 +73,10 @@ func TestDeleteRemovesFiles(t *testing.T) {
 		player bool
 		route  func(e testEnv, note, block int64) string
 	}{
-		{"owner block", true, func(_ testEnv, _, block int64) string { return fmt.Sprintf("/blocks/%d/delete", block) }},
-		{"owner note", true, func(_ testEnv, note, _ int64) string { return fmt.Sprintf("/notes/%d/delete", note) }},
-		{"character", false, func(e testEnv, _, _ int64) string { return fmt.Sprintf("/characters/%d/delete", e.characterID) }},
-		{"campaign", false, func(e testEnv, _, _ int64) string { return fmt.Sprintf("/campaigns/%d/delete", e.campaignID) }},
+		{"owner block", true, func(_ testEnv, _, block int64) string { return route.Path(route.BlockDelete, block) }},
+		{"owner note", true, func(_ testEnv, note, _ int64) string { return route.Path(route.NoteDelete, note) }},
+		{"character", false, func(e testEnv, _, _ int64) string { return route.Path(route.CharacterDelete, e.characterID) }},
+		{"campaign", false, func(e testEnv, _, _ int64) string { return route.Path(route.CampaignDelete, e.campaignID) }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -127,7 +128,7 @@ func TestFilesCleanup(t *testing.T) {
 	}
 	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
 
-	if w := e.do(t, http.MethodGet, views.PathFiles, player, nil, false); w.Code == http.StatusOK {
+	if w := e.do(t, http.MethodGet, route.Files, player, nil, false); w.Code == http.StatusOK {
 		t.Fatal("a player may not open the Files page")
 	}
 	uses, err := e.app.attachmentUses(t.Context())
@@ -137,16 +138,16 @@ func TestFilesCleanup(t *testing.T) {
 	if got := uses[kept.ID]; len(got) != 1 || got[0].Label != "Maps" || len(uses[stray.ID]) != 0 {
 		t.Errorf("uses of kept %v, of stray %v", got, uses[stray.ID])
 	}
-	page := e.do(t, http.MethodGet, views.PathFiles, gm, nil, false).Body.String()
+	page := e.do(t, http.MethodGet, route.Files, gm, nil, false).Body.String()
 	if !strings.Contains(page, "stray.png") || !strings.Contains(page, "kept.png") || !strings.Contains(page, ">Maps<") {
 		t.Errorf("Files page should list every file and the note using it")
 	}
 
-	e.do(t, http.MethodPost, fmt.Sprintf("%s/%d/delete", views.PathFiles, kept.ID), gm, nil, true)
+	e.do(t, http.MethodPost, route.Path(route.FilesAttachmentDelete, kept.ID), gm, nil, true)
 	if _, err := e.q().GetAttachment(t.Context(), kept.ID); err != nil {
 		t.Error("a file still in use was deleted")
 	}
-	e.do(t, http.MethodPost, views.PathFiles+"/delete-unused", gm, nil, true)
+	e.do(t, http.MethodPost, route.FilesDeleteUnused, gm, nil, true)
 	if _, err := e.q().GetAttachment(t.Context(), stray.ID); err == nil {
 		t.Error("the unused file's row is still there")
 	}
@@ -176,8 +177,8 @@ func TestCampaignFiles(t *testing.T) {
 	if !strings.Contains(page, "mine.png") || strings.Contains(page, "theirs.png") {
 		t.Error("a campaign's Files page should list its own files only")
 	}
-	if page := e.do(t, http.MethodGet, views.PathFiles, gm, nil, false).Body.String(); !strings.Contains(page, "mine.png") || !strings.Contains(page, "theirs.png") {
-		t.Error("/files should list every campaign's files")
+	if page := e.do(t, http.MethodGet, route.Files, gm, nil, false).Body.String(); !strings.Contains(page, "mine.png") || !strings.Contains(page, "theirs.png") {
+		t.Error("the all-campaigns files page should list every campaign's files")
 	}
 	if w := e.do(t, http.MethodGet, base, player, nil, false); w.Code == http.StatusOK {
 		t.Error("a player may not open a campaign's Files page")
@@ -187,7 +188,7 @@ func TestCampaignFiles(t *testing.T) {
 	}
 
 	e.do(t, http.MethodPost, fmt.Sprintf("%s/%d/delete", base, theirs.ID), gm, nil, true)
-	e.do(t, http.MethodPost, base+"/delete-unused", gm, nil, true)
+	e.do(t, http.MethodPost, base+route.DeleteUnused, gm, nil, true)
 	if _, err := e.q().GetAttachment(ctx, mine.ID); err == nil {
 		t.Error("the campaign's unused file is still there")
 	}
@@ -199,7 +200,7 @@ func TestCampaignFiles(t *testing.T) {
 func TestAttachmentToImage(t *testing.T) {
 	e := newTestEnv(t)
 	att := e.attachFile(t, e.playersBlock(t), "Harbour map.png")
-	path := fmt.Sprintf("/attachments/%d/to-image", att.ID)
+	path := route.Path(route.AttachmentToImage, att.ID)
 	if w := e.do(t, http.MethodPost, path, e.token(t, enum.RolePlayer), nil, true); w.Code == http.StatusOK {
 		t.Fatal("a player may not add campaign images")
 	}
@@ -226,8 +227,47 @@ func TestAttachmentToImage(t *testing.T) {
 		t.Error("the note's attachment is gone")
 	}
 	// Players of the block see the new image before the editor's next snapshot links it.
-	if w := e.do(t, http.MethodGet, fmt.Sprintf("/images/%d/file", img.ID), e.token(t, enum.RolePlayer), nil, false); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodGet, route.Path(route.ImageFile, img.ID), e.token(t, enum.RolePlayer), nil, false); w.Code != http.StatusOK {
 		t.Errorf("player reading the converted image: %d", w.Code)
+	}
+}
+
+// TestUploadAttachmentURL: the url an upload answers with is the route that
+// serves the file (notes.js recognises attachments by ROUTES.attachment).
+func TestUploadAttachmentURL(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	w := e.doFile(t, route.Path(route.BlockAttachments, e.playersBlock(t)), gm, nil, "file", "map.png", pngHead)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload: %d %s", w.Code, w.Body)
+	}
+	var got struct {
+		ID  int64
+		URL string
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := route.Path(route.Attachment, got.ID)
+	if got.URL != want {
+		t.Errorf("url %q, want %q", got.URL, want)
+	}
+	if w := e.do(t, http.MethodGet, want, gm, nil, false); w.Code != http.StatusOK {
+		t.Errorf("GET %s: %d", want, w.Code)
+	}
+}
+
+// TestAttachmentFileMissing: a row whose file is gone from disk is a 404,
+// not a server error that files a report.
+func TestAttachmentFileMissing(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	att := e.attachFile(t, e.playersBlock(t), "gone.png")
+	if err := os.Remove(filepath.Join(e.app.attachmentsDir(), att.Path)); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do(t, http.MethodGet, route.Path(route.Attachment, att.ID), gm, nil, false); w.Code != http.StatusNotFound {
+		t.Errorf("GET a missing file: %d, want 404", w.Code)
 	}
 }
 
@@ -299,7 +339,7 @@ func TestAttachmentAccess(t *testing.T) {
 			if slices.Contains(tt.readers, who) {
 				want = http.StatusOK
 			}
-			if w := e.do(t, http.MethodGet, fmt.Sprintf("/attachments/%d", tt.att.ID), tok, nil, false); w.Code != want {
+			if w := e.do(t, http.MethodGet, route.Path(route.Attachment, tt.att.ID), tok, nil, false); w.Code != want {
 				t.Errorf("%s, %s: %d, want %d", tt.name, who, w.Code, want)
 			}
 		}
@@ -340,7 +380,7 @@ func TestFileUsePrivacy(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tt.want.Label != "" {
-				tt.want.URL = fmt.Sprintf("/notes/%d", note.ID)
+				tt.want.URL = route.Path(route.Note, note.ID)
 			}
 			if got := uses[att.ID]; len(got) != 1 || got[0] != tt.want {
 				t.Errorf("uses %v, want %v", got, tt.want)

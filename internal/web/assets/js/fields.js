@@ -8,9 +8,11 @@
 import { Editor } from "/assets/vendor/tiptap-core.js";
 import { StarterKit } from "/assets/vendor/tiptap-starter.js";
 import { WikiLink, keepCaretBeside, linkClick, touchDrag } from "/assets/js/wikilink.js";
+import { WIKILINK } from "/assets/js/shared.js";
 
-// The same token as wikiLinkPattern in internal/web/views/wikilinks.go.
-const TOKEN = /\[\[(note|entity|image):(\d+)\|([^\]|]*)(?:\|(left|right|inline|break))?\]\]/g;
+// The Go pattern (views.WikiLinkPattern) itself. A compendium token has no
+// chip here: toDoc leaves it as plain text, which toText writes back unchanged.
+const TOKEN = new RegExp(WIKILINK, "g");
 
 // toDoc turns field text into a document: a paragraph per line, a mention
 // per token.
@@ -19,8 +21,10 @@ function toDoc(text) {
     const content = [];
     let last = 0;
     for (const m of line.matchAll(TOKEN)) {
+      if (m.groups.compendium) continue; // stays in the surrounding text
+      const { kind, id, label, float } = m.groups;
       if (m.index > last) content.push({ type: "text", text: line.slice(last, m.index) });
-      content.push({ type: "mention", attrs: { id: `${m[1]}:${m[2]}`, label: m[3].trim(), float: m[4] || null } });
+      content.push({ type: "mention", attrs: { id: `${kind}:${id}`, label: label.trim(), float: float || null } });
       last = m.index + m[0].length;
     }
     if (last < line.length) content.push({ type: "text", text: line.slice(last) });

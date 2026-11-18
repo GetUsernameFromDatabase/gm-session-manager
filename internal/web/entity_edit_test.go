@@ -10,6 +10,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 )
 
 // TestEntityCommands: each NPC edit changes only what it names, so a stale
@@ -22,7 +23,7 @@ func TestEntityCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := fmt.Sprintf("/entities/%d", npc.ID)
+	base := route.Path(route.Entity, npc.ID)
 	steps := []struct {
 		name, path string
 		form       url.Values
@@ -31,23 +32,23 @@ func TestEntityCommands(t *testing.T) {
 		revealed   bool
 		fields     perm.Fields
 	}{
-		{"reveal", "/reveal", url.Values{"revealed": {"true"}}, http.StatusOK, "Mira", true, perm.Fields{"role": {Value: "Innkeeper"}}},
+		{"reveal", route.Reveal, url.Values{"revealed": {"true"}}, http.StatusOK, "Mira", true, perm.Fields{"role": {Value: "Innkeeper"}}},
 		// A stale page renames without sending the reveal it never saw.
-		{"rename", "/rename", url.Values{"name": {" Mira Vale "}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Innkeeper"}}},
-		{"add field", "/fields", url.Values{"key": {" Secret Name "}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Innkeeper"}, "secret name": {}}},
-		{"add existing keeps it", "/fields", url.Values{"key": {"role"}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Innkeeper"}, "secret name": {}}},
-		{"field text", "/fields/text", url.Values{"key": {"secret name"}, "value": {" Lyra "}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Innkeeper"}, "secret name": {Value: "Lyra"}}},
-		{"reveal field", "/fields/reveal", url.Values{"key": {"role"}, "revealed": {"true"}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Innkeeper", IsRevealed: true}, "secret name": {Value: "Lyra"}}},
+		{"rename", route.Rename, url.Values{"name": {" Mira Vale "}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Innkeeper"}}},
+		{"add field", route.Fields, url.Values{"key": {" Secret Name "}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Innkeeper"}, "secret name": {}}},
+		{"add existing keeps it", route.Fields, url.Values{"key": {"role"}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Innkeeper"}, "secret name": {}}},
+		{"field text", route.FieldsText, url.Values{"key": {"secret name"}, "value": {" Lyra "}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Innkeeper"}, "secret name": {Value: "Lyra"}}},
+		{"reveal field", route.FieldsReveal, url.Values{"key": {"role"}, "revealed": {"true"}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Innkeeper", IsRevealed: true}, "secret name": {Value: "Lyra"}}},
 		// Text from a page that never saw the reveal keeps the field revealed.
-		{"text keeps reveal", "/fields/text", url.Values{"key": {"role"}, "value": {"Barkeep"}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}, "secret name": {Value: "Lyra"}}},
-		{"remove field", "/fields/remove", url.Values{"key": {"secret name"}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
-		{"remove is idempotent", "/fields/remove", url.Values{"key": {"secret name"}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
+		{"text keeps reveal", route.FieldsText, url.Values{"key": {"role"}, "value": {"Barkeep"}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}, "secret name": {Value: "Lyra"}}},
+		{"remove field", route.FieldsRemove, url.Values{"key": {"secret name"}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
+		{"remove is idempotent", route.FieldsRemove, url.Values{"key": {"secret name"}}, http.StatusOK, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
 		// A stale page must not bring back a field another device removed.
-		{"text on a removed field", "/fields/text", url.Values{"key": {"secret name"}, "value": {"Lyra"}}, http.StatusUnprocessableEntity, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
-		{"reveal a removed field", "/fields/reveal", url.Values{"key": {"secret name"}, "revealed": {"true"}}, http.StatusUnprocessableEntity, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
-		{"empty name refused", "/rename", url.Values{"name": {""}}, http.StatusUnprocessableEntity, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
-		{"empty key refused", "/fields", url.Values{"key": {" "}}, http.StatusUnprocessableEntity, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
-		{"hide", "/reveal", url.Values{}, http.StatusOK, "Mira Vale", false, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
+		{"text on a removed field", route.FieldsText, url.Values{"key": {"secret name"}, "value": {"Lyra"}}, http.StatusUnprocessableEntity, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
+		{"reveal a removed field", route.FieldsReveal, url.Values{"key": {"secret name"}, "revealed": {"true"}}, http.StatusUnprocessableEntity, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
+		{"empty name refused", route.Rename, url.Values{"name": {""}}, http.StatusUnprocessableEntity, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
+		{"empty key refused", route.Fields, url.Values{"key": {" "}}, http.StatusUnprocessableEntity, "Mira Vale", true, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
+		{"hide", route.Reveal, url.Values{}, http.StatusOK, "Mira Vale", false, perm.Fields{"role": {Value: "Barkeep", IsRevealed: true}}},
 	}
 	for _, s := range steps {
 		if w := e.do(t, http.MethodPost, base+s.path, gm, s.form, true); w.Code != s.code {
@@ -68,10 +69,10 @@ func TestEntityCommands(t *testing.T) {
 
 	// A long backstory still saves.
 	long := strings.Repeat("Lore. ", 2000)
-	if w := e.do(t, http.MethodPost, base+"/fields/text", gm, url.Values{"key": {"role"}, "value": {long}}, true); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodPost, base+route.FieldsText, gm, url.Values{"key": {"role"}, "value": {long}}, true); w.Code != http.StatusOK {
 		t.Errorf("long text: status %d", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, "/entities/9999/rename", gm, url.Values{"name": {"Nobody"}}, false); w.Code != http.StatusNotFound {
+	if w := e.do(t, http.MethodPost, route.Path(route.EntityRename, 9999), gm, url.Values{"name": {"Nobody"}}, false); w.Code != http.StatusNotFound {
 		t.Errorf("missing NPC: status %d", w.Code)
 	}
 }
@@ -87,17 +88,17 @@ func TestEntityCommandsGMOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := fmt.Sprintf("/entities/%d", npc.ID)
+	base := route.Path(route.Entity, npc.ID)
 	for _, r := range []struct {
 		path string
 		form url.Values
 	}{
-		{"/rename", url.Values{"name": {"Hacked"}}},
-		{"/reveal", url.Values{}},
-		{"/fields", url.Values{"key": {"loot"}}},
-		{"/fields/text", url.Values{"key": {"role"}, "value": {"Hacked"}}},
-		{"/fields/reveal", url.Values{"key": {"role"}}},
-		{"/fields/remove", url.Values{"key": {"role"}}},
+		{route.Rename, url.Values{"name": {"Hacked"}}},
+		{route.Reveal, url.Values{}},
+		{route.Fields, url.Values{"key": {"loot"}}},
+		{route.FieldsText, url.Values{"key": {"role"}, "value": {"Hacked"}}},
+		{route.FieldsReveal, url.Values{"key": {"role"}}},
+		{route.FieldsRemove, url.Values{"key": {"role"}}},
 	} {
 		for _, htmx := range []bool{true, false} {
 			if w := e.do(t, http.MethodPost, base+r.path, player, r.form, htmx); w.Code != http.StatusForbidden && w.Code != http.StatusNotFound {
@@ -124,7 +125,7 @@ func TestEntityEditor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page := fmt.Sprintf("/entities/%d", npc.ID)
+	page := route.Path(route.Entity, npc.ID)
 	body := e.do(t, http.MethodGet, page, gm, nil, false).Body.String()
 	for _, want := range []string{
 		fmt.Sprintf(`hx-post="%s/fields/text"`, page), `name="key" value="role"`, `name="value" value="Innkeeper" data-field-value`,

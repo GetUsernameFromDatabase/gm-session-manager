@@ -19,6 +19,7 @@ import (
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -32,7 +33,7 @@ func dial(t *testing.T, e testEnv, srv *httptest.Server, query, cookie string, w
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	conn, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/ws"+query, &websocket.DialOptions{HTTPHeader: h, CompressionMode: websocket.CompressionContextTakeover})
+	conn, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+route.WS+query, &websocket.DialOptions{HTTPHeader: h, CompressionMode: websocket.CompressionContextTakeover})
 	if res != nil && res.Body != nil {
 		_ = res.Body.Close()
 	}
@@ -60,7 +61,7 @@ func TestWebsocketPendingGone(t *testing.T) {
 		e.router.ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws?pending=unknown"
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + route.WS + "?pending=unknown"
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
@@ -90,7 +91,7 @@ func TestWebsocketRefusesForeignOrigin(t *testing.T) {
 	h := http.Header{"Cookie": {auth.CookieName + "=" + e.token(t, enum.RolePlayer)}, "Origin": {"https://evil.example"}}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	conn, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/ws", &websocket.DialOptions{HTTPHeader: h})
+	conn, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+route.WS, &websocket.DialOptions{HTTPHeader: h})
 	if res != nil && res.Body != nil {
 		_ = res.Body.Close()
 	}
@@ -179,7 +180,7 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 	cmd := func(c string) {
 		t.Helper()
 		form := url.Values{"cmd": {c}}
-		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+fmt.Sprintf("/characters/%d/cmd", e.characterID), strings.NewReader(form.Encode()))
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+route.Path(route.CharacterCmd, e.characterID), strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("HX-Request", "true")
 		req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: player})
@@ -243,7 +244,7 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 	})
 
 	// The combat tab heard none of it: its first message is its own view.
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/campaigns/%d/encounters", e.campaignID), e.token(t, enum.RoleAdmin), url.Values{"name": {"Ambush"}}, true); w.Code >= 400 {
+	if w := e.do(t, http.MethodPost, route.Path(route.CampaignEncounters, e.campaignID), e.token(t, enum.RoleAdmin), url.Values{"name": {"Ambush"}}, true); w.Code >= 400 {
 		t.Fatalf("create encounter: %d", w.Code)
 	}
 	m := readUntil(t, combat, "any message", func(wsMessage) bool { return true })
@@ -257,14 +258,14 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 
 var moduleImport = regexp.MustCompile(`(?:from|import)\s*"(/assets/[^"]+|\./[^"]+)"`)
 
-// TestModuleImportsResolve walks the editor's ES module graph through the
+// TestModuleImportsResolve walks every page module's import graph through the
 // embedded files, so a missing vendored file fails here, not on a phone.
 func TestModuleImportsResolve(t *testing.T) {
 	sub, _ := fs.Sub(assetsFS, "assets")
 	seen := map[string]bool{}
 	var visit func(p string)
 	visit = func(p string) {
-		if seen[p] {
+		if seen[p] || p == "js/shared.js" { // built in Go, has no imports
 			return
 		}
 		seen[p] = true
@@ -282,7 +283,9 @@ func TestModuleImportsResolve(t *testing.T) {
 			}
 		}
 	}
-	visit("js/notes.js")
+	for _, m := range []string{"js/notes.js", "js/fields.js", "js/app.js", "js/live.js"} {
+		visit(m)
+	}
 	if len(seen) < 10 {
 		t.Errorf("only %d modules reached; the import pattern may be wrong", len(seen))
 	}

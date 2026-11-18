@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
 	"gm-session-manager/internal/web/components/dialog"
@@ -217,7 +218,7 @@ templ SubclassChange(v SubclassChangeView) {
 	<form
 		class="grid gap-4"
 		data-subclass-form
-		hx-post={ fmt.Sprintf("/characters/%d/subclass", v.CharacterID) }
+		hx-post={ route.Path(route.CharacterSubclass, v.CharacterID) }
 		hx-on::after-request={ templ.JSUnsafeFuncCall(builderDoneJS) }
 	>
 		<input type="hidden" name="class" value={ v.Class }/>

@@ -12,6 +12,7 @@ import (
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 )
 
 // TestPlayerHomebrew: a player's homebrew spell lands on their sheet and in
@@ -36,8 +37,8 @@ func TestPlayerHomebrew(t *testing.T) {
 	}
 
 	spell := url.Values{"kind": {"spell"}, "name": {"Glitter Bolt"}, "level": {"1"}, "casting_time": {"action"}, "desc": {"A sparkly ranged spell attack."}, "add": {"1"}}
-	w := e.do(t, http.MethodPost, "/compendium/homebrew", player, spell, false)
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != fmt.Sprintf("/characters/%d", e.characterID) {
+	w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumHomebrew, player, spell, false)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != route.Path(route.Character, e.characterID) {
 		t.Fatalf("create: %d %v %s", w.Code, w.Header(), w.Body)
 	}
 	slug := fmt.Sprintf("glitter-bolt-%d", e.characterID)
@@ -49,34 +50,34 @@ func TestPlayerHomebrew(t *testing.T) {
 	if err != nil || !entry.Scoped {
 		t.Fatalf("entry %+v %v", entry, err)
 	}
-	if w := e.do(t, http.MethodPost, "/compendium/homebrew", player, url.Values{"kind": {"monster"}, "name": {"Pet"}}, false); w.Code != http.StatusUnprocessableEntity {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumHomebrew, player, url.Values{"kind": {"monster"}, "name": {"Pet"}}, false); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("player monster: %d", w.Code)
 	}
 
-	search := "/compendium/search?kind=spell&q=glitter"
-	entryPath := fmt.Sprintf("/compendium/entries/%d", entry.ID)
+	search := route.Compendium + route.CompendiumSearch + "?kind=spell&q=glitter"
+	entryPath := route.Compendium + route.Path(route.CompendiumEntry, entry.ID)
 	sees := func(cookie string) bool {
 		return strings.Contains(e.do(t, http.MethodGet, search, cookie, nil, true).Body.String(), "Glitter Bolt")
 	}
 	if !sees(player) || !sees(gm) || sees(other) {
 		t.Errorf("before linking: author %v gm %v other %v", sees(player), sees(gm), sees(other))
 	}
-	if w := e.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d/compendium/entries/%d", camp2.ID, entry.ID), other, nil, false); w.Code != http.StatusNotFound {
+	if w := e.do(t, http.MethodGet, route.Path(route.CampaignCompendium+route.CompendiumEntry, camp2.ID, entry.ID), other, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("other campaign opened the entry: %d", w.Code)
 	}
 	// By slug too: neither the lookup nor a command reaches it.
 	lookup := func(cookie string) bool {
-		return strings.Contains(e.do(t, http.MethodGet, "/compendium/lookup?kind=spell&slug="+slug, cookie, nil, true).Body.String(), "sparkly")
+		return strings.Contains(e.do(t, http.MethodGet, route.Compendium+route.CompendiumLookup+"?kind=spell&slug="+slug, cookie, nil, true).Body.String(), "sparkly")
 	}
 	if !lookup(player) || lookup(other) {
 		t.Errorf("lookup by slug: author %v other %v", lookup(player), lookup(other))
 	}
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", ch2.ID), other, url.Values{"cmd": {"spell add " + slug}}, true); w.Code != http.StatusUnprocessableEntity {
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterCmd, ch2.ID), other, url.Values{"cmd": {"spell add " + slug}}, true); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("other campaign added the spell by slug: %d", w.Code)
 	}
 	// Nor by entry number, through the command builder.
 	blade := url.Values{"kind": {"item"}, "name": {"Moon Blade"}, "damage": {"1d8 radiant"}, "properties": {"Moonlit"}}
-	if w := e.do(t, http.MethodPost, "/compendium/homebrew", player, blade, false); w.Code != http.StatusSeeOther {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumHomebrew, player, blade, false); w.Code != http.StatusSeeOther {
 		t.Fatalf("create item: %d %s", w.Code, w.Body)
 	}
 	item, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "item", Slug: fmt.Sprintf("moon-blade-%d", e.characterID)})
@@ -84,14 +85,14 @@ func TestPlayerHomebrew(t *testing.T) {
 		t.Fatal(err)
 	}
 	builder := func(cookie string, characterID int64) bool {
-		path := fmt.Sprintf("/characters/%d/builder?verb=weapons&op=weapon-add&entry=%d", characterID, item.ID)
+		path := fmt.Sprintf("%s?verb=weapons&op=weapon-add&entry=%d", route.Path(route.CharacterBuilder, characterID), item.ID)
 		return strings.Contains(e.do(t, http.MethodGet, path, cookie, nil, true).Body.String(), "Moonlit")
 	}
 	if !builder(player, e.characterID) || builder(other, ch2.ID) {
 		t.Errorf("builder by entry: author %v other %v", builder(player, e.characterID), builder(other, ch2.ID))
 	}
 
-	if w := e.do(t, http.MethodPost, entryPath+"/campaigns", gm, url.Values{"campaign_id": {fmt.Sprint(camp2.ID)}}, true); w.Code >= 400 {
+	if w := e.do(t, http.MethodPost, entryPath+route.Campaigns, gm, url.Values{"campaign_id": {fmt.Sprint(camp2.ID)}}, true); w.Code >= 400 {
 		t.Fatalf("link: %d %s", w.Code, w.Body)
 	}
 	if !sees(other) {
@@ -100,13 +101,13 @@ func TestPlayerHomebrew(t *testing.T) {
 	if w := e.do(t, http.MethodPost, entryPath, other, spell, false); w.Code != http.StatusForbidden {
 		t.Errorf("another player edited the entry: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("%s/campaigns/%d/delete", entryPath, camp2.ID), gm, nil, true); w.Code >= 400 {
+	if w := e.do(t, http.MethodPost, fmt.Sprintf("%s%s/%d%s", entryPath, route.Campaigns, camp2.ID, route.Delete), gm, nil, true); w.Code >= 400 {
 		t.Fatalf("unlink: %d %s", w.Code, w.Body)
 	}
 	if sees(other) {
 		t.Error("unlinked campaign still sees the entry")
 	}
-	if w := e.do(t, http.MethodPost, entryPath+"/delete", player, nil, false); w.Code != http.StatusSeeOther {
+	if w := e.do(t, http.MethodPost, entryPath+route.Delete, player, nil, false); w.Code != http.StatusSeeOther {
 		t.Errorf("author delete: %d %s", w.Code, w.Body)
 	}
 }
@@ -185,7 +186,7 @@ func TestGMHomebrewClassAndWikidot(t *testing.T) {
 
 	class := url.Values{"kind": {"class"}, "name": {"Tinkerer"}, "hit_die": {"10"}, "caster": {"half"}, "saves": {"con", "int"},
 		"features": {"Level 1: Tinkering\nYou tinker."}, "table": {"Gadgets: 2, 3"}}
-	if w := e.do(t, http.MethodPost, "/compendium/homebrew", gm, class, false); w.Code != http.StatusSeeOther {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumHomebrew, gm, class, false); w.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d %s", w.Code, w.Body)
 	}
 	entry, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "class", Slug: "tinkerer"})
@@ -195,24 +196,24 @@ func TestGMHomebrewClassAndWikidot(t *testing.T) {
 
 	// A reviewed page, as the preview form posts it back (no network).
 	review := url.Values{"site": {"wikidot"}, "page": {"lineage:giff"}, "book": {"Some Book"}, "kind": {"species"}, "name": {"Giff"}, "speed": {"30"}, "traits": {"Hippo Build. You are strong."}}
-	for _, path := range []string{"/compendium/page/preview", "/compendium/page", "/compendium/folder"} {
+	for _, path := range []string{route.Compendium + route.CompendiumPagePreview, route.Compendium + route.CompendiumPage, route.Compendium + route.CompendiumFolder} {
 		if w := e.do(t, http.MethodPost, path, player, review, false); w.Code != http.StatusForbidden {
 			t.Errorf("player %s: %d", path, w.Code)
 		}
 	}
-	if w := e.do(t, http.MethodPost, "/compendium/folder", gm, nil, false); w.Code != http.StatusForbidden {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumFolder, gm, nil, false); w.Code != http.StatusForbidden {
 		t.Errorf("folder from another device: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, "/compendium/page/preview", gm, url.Values{"page": {"asdasd"}}, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "one of the sites listed below") || !strings.Contains(w.Body.String(), `role="alert"`) {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumPagePreview, gm, url.Values{"page": {"asdasd"}}, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "one of the sites listed below") || !strings.Contains(w.Body.String(), `role="alert"`) {
 		t.Errorf("not a link: %d", w.Code)
 	}
 	review.Set("back", "q=giff&kind=species&evil=1")
-	w := e.do(t, http.MethodPost, "/compendium/page", gm, review, false)
+	w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumPage, gm, review, false)
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("save: %d %s", w.Code, w.Body)
 	}
 	// The entry links back to the filtered list, wiki tab open; other keys are dropped.
-	if w := e.do(t, http.MethodGet, w.Header().Get("Location"), gm, nil, false); !strings.Contains(w.Body.String(), `href="/compendium?import=page&amp;kind=species&amp;q=giff#compendium-import"`) {
+	if w := e.do(t, http.MethodGet, w.Header().Get("Location"), gm, nil, false); !strings.Contains(w.Body.String(), `href="`+route.Compendium+`?import=page&amp;kind=species&amp;q=giff#compendium-import"`) {
 		t.Errorf("back link missing: %d %s", w.Code, w.Body)
 	}
 	review.Del("back")
@@ -224,13 +225,13 @@ func TestGMHomebrewClassAndWikidot(t *testing.T) {
 		t.Errorf("source %+v %v", src, err)
 	}
 	review.Set("kind", "feat")
-	if w := e.do(t, http.MethodPost, "/compendium/page", gm, review, false); w.Code != http.StatusUnprocessableEntity {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumPage, gm, review, false); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("kind changed: %d", w.Code)
 	}
 
 	// A page of no known kind takes the kind the GM picked.
 	spell := url.Values{"site": {"wikidot"}, "page": {"spell:fireball"}, "kind": {"spell"}, "name": {"Fireball"}, "level": {"3"}, "desc": {"A bright streak."}}
-	if w := e.do(t, http.MethodPost, "/compendium/page", gm, spell, false); w.Code != http.StatusSeeOther {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumPage, gm, spell, false); w.Code != http.StatusSeeOther {
 		t.Fatalf("save spell: %d %s", w.Code, w.Body)
 	}
 	if fb, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "spell", Slug: "fireball"}); err != nil || fb.SourceKey != "wikidot:spell:fireball" {
@@ -240,7 +241,7 @@ func TestGMHomebrewClassAndWikidot(t *testing.T) {
 	// A monster page keeps its statblock and picture.
 	monster := url.Values{"site": {"aidedd"}, "page": {"howler"}, "kind": {"monster"}, "name": {"Howler"}, "ac": {"16"}, "hp": {"90"},
 		"str": {"17"}, "monster_speed": {"walk 40"}, "actions": {"Rending Bite. Bites."}, "image_url": {"https://www.aidedd.org/dnd/images/howler.jpg"}}
-	if w := e.do(t, http.MethodPost, "/compendium/page", gm, monster, false); w.Code != http.StatusSeeOther {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumPage, gm, monster, false); w.Code != http.StatusSeeOther {
 		t.Fatalf("save monster: %d %s", w.Code, w.Body)
 	}
 	howler, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "howler"})
@@ -248,7 +249,7 @@ func TestGMHomebrewClassAndWikidot(t *testing.T) {
 		t.Errorf("saved %+v %v", howler, err)
 	}
 	monster.Set("site", "evil")
-	if w := e.do(t, http.MethodPost, "/compendium/page", gm, monster, false); w.Code != http.StatusBadRequest {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumPage, gm, monster, false); w.Code != http.StatusBadRequest {
 		t.Errorf("unknown site: %d", w.Code)
 	}
 }

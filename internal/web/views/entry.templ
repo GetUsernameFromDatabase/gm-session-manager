@@ -7,6 +7,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/icon"
@@ -26,7 +27,7 @@ templ EntryPage(l Layout, v EntryView) {
 				@campaignSwitcher(l)
 			</div>
 			if v.CanEdit {
-				@button.Button(button.Props{Href: entryHref(ctx, v.Entry.ID) + "/edit", Variant: button.VariantOutline, Size: button.SizeSm}) {
+				@button.Button(button.Props{Href: CompendiumPath(ctx, route.Path(route.CompendiumEntryEdit, v.Entry.ID)), Variant: button.VariantOutline, Size: button.SizeSm}) {
 					@icon.Pencil()
 					Edit
 				}
@@ -163,7 +164,7 @@ templ MonsterHabitats(e sqlc.CompendiumEntry, habitats []enum.Habitat, gm bool, 
 				<div class="mt-1 flex flex-wrap gap-1 font-sans">
 					for _, c := range copies {
 						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "h-auto min-w-0 py-1 text-left whitespace-normal", Attributes: templ.Attributes{
-							"type": "button", "hx-post": CompendiumPath(ctx, "/habitats/copy"),
+							"type": "button", "hx-post": CompendiumPath(ctx, route.CompendiumHabitatCopy),
 							"hx-vals":   toJSON(map[string]any{"entry_id": e.ID, "from_id": c.Copy.ID}),
 							"hx-target": "#monster-habitats", "hx-swap": "outerHTML",
 						}}) {
@@ -196,7 +197,7 @@ templ monsterPicture(e sqlc.CompendiumEntry, editable bool, class string) {
 						<img src={ e.ImageUrl.String } alt={ e.Name } loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('[data-pic]').toggleAttribute('data-broken', true)" class={ imgClass }/>
 					}
 				}
-				<form method="post" action={ templ.SafeURL(entryHref(ctx, e.ID) + "/image") } class={ "flex-wrap items-center gap-2", templ.KV("hidden group-data-[broken]/pic:flex group-data-[editing]/pic:flex", e.ImageUrl.String != ""), templ.KV("flex", e.ImageUrl.String == "") }>
+				<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, route.Path(route.CompendiumEntryImage, e.ID))) } class={ "flex-wrap items-center gap-2", templ.KV("hidden group-data-[broken]/pic:flex group-data-[editing]/pic:flex", e.ImageUrl.String != ""), templ.KV("flex", e.ImageUrl.String == "") }>
 					@inlineField("Picture link", "image_url", e.ImageUrl.String, "w-96 max-w-full", templ.Attributes{"type": "url", "pattern": "https://.*", "placeholder": "https://… (empty: no picture)"})
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
 						Save

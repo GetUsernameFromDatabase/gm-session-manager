@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/checkbox"
@@ -39,7 +40,7 @@ templ NotesPage(l Layout, v NoteListView) {
 					<ul class="divide-y border-y">
 						for _, h := range v.Hits {
 							<li class="py-2.5">
-								<a class="font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d#block-%d", h.NoteID, h.BlockID)) }>{ h.Title }</a>
+								<a class="font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("%s#block-%d", route.Path(route.Note, h.NoteID), h.BlockID)) }>{ h.Title }</a>
 								<p class="line-clamp-2 font-serif text-sm text-muted-foreground">{ h.Text }</p>
 							</li>
 						}
@@ -84,7 +85,7 @@ templ noteSection(title string, notes []NoteItem) {
 			<ul class="divide-y border-y">
 				for _, n := range notes {
 					<li class="flex items-center gap-3 py-2.5">
-						<a class="min-w-0 flex-1 truncate font-medium hover:underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", n.ID)) }>{ n.Title }</a>
+						<a class="min-w-0 flex-1 truncate font-medium hover:underline" href={ templ.SafeURL(route.Path(route.Note, n.ID)) }>{ n.Title }</a>
 						if n.OwnerCharacterID.Valid {
 							<span class="hidden shrink-0 text-xs text-muted-foreground sm:inline">
 								@authorRef(n.Author)
@@ -129,7 +130,7 @@ templ newNoteDialog(campaignID int64) {
 			New note
 		}
 		@dialog.Content() {
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/notes", campaignID)) } class="grid gap-4">
+			<form method="post" action={ templ.SafeURL(route.Path(route.CampaignNotes, campaignID)) } class="grid gap-4">
 				@dialog.Header() {
 					@dialog.Title() {
 						New note
@@ -158,7 +159,7 @@ templ noteEditDialog(n NoteItem) {
 			@icon.Pencil()
 		}
 		@dialog.Content() {
-			<form class="grid gap-4" hx-post={ fmt.Sprintf("/notes/%d/rename", n.ID) } { templ.Attributes{"hx-on::after-request": closeDialogJS}... }>
+			<form class="grid gap-4" hx-post={ route.Path(route.NoteRename, n.ID) } { templ.Attributes{"hx-on::after-request": closeDialogJS}... }>
 				@dialog.Header() {
 					@dialog.Title() {
 						Edit note
@@ -167,7 +168,7 @@ templ noteEditDialog(n NoteItem) {
 				@noteFields(id, n.Title, n.Kind)
 				@dialog.Footer() {
 					@button.Button(button.Props{Variant: button.VariantDestructive, Class: "sm:mr-auto", Attributes: templ.Attributes{
-						"hx-post": fmt.Sprintf("/notes/%d/delete", n.ID), "hx-confirm": "Delete this note and all its blocks?",
+						"hx-post": route.Path(route.NoteDelete, n.ID), "hx-confirm": "Delete this note and all its blocks?",
 					}}) {
 						Delete
 					}
@@ -204,7 +205,7 @@ templ NotePage(l Layout, v NoteView) {
 				<ul class="space-y-1 text-sm">
 					@npcMentions(v.EntityLinks)
 					for _, b := range v.Backlinks {
-						<li><a class="underline" href={ templ.SafeURL(fmt.Sprintf("/notes/%d", b.ID)) }>{ b.Title }</a></li>
+						<li><a class="underline" href={ templ.SafeURL(route.Path(route.Note, b.ID)) }>{ b.Title }</a></li>
 					}
 					if len(v.Backlinks) == 0 && len(v.EntityLinks) == 0 {
 						<li class="text-muted-foreground">No other note links here yet. Type [[ in a block to link.</li>
@@ -219,7 +220,7 @@ templ NoteMeta(v NoteView) {
 	<div id={ fmt.Sprintf("note-%d-meta", v.Note.ID) } hx-swap-oob="true" class="mb-8 border-b pb-4" { live(LiveNote, v.Note.ID)... }>
 		<div class="flex items-start gap-2">
 			if v.CanManage {
-				<form class="min-w-0 flex-1" hx-post={ fmt.Sprintf("/notes/%d/rename", v.Note.ID) } hx-trigger="change">
+				<form class="min-w-0 flex-1" hx-post={ route.Path(route.NoteRename, v.Note.ID) } hx-trigger="change, submit" hx-sync="this:drop">
 					<input type="hidden" name="kind" value={ v.Note.Kind }/>
 					@input.Input(input.Props{Name: "title", Value: v.Note.Title, Class: "-ml-1 h-auto border-transparent px-1 text-3xl leading-tight font-semibold md:text-3xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Title"}})
 				</form>
@@ -336,7 +337,7 @@ templ blockMenu(v NoteView, b BlockView, i int) {
 				</div>
 			}
 			if b.CanManage && len(v.Visibilities) > 0 {
-				<form class="space-y-3 text-sm" hx-post={ fmt.Sprintf("/blocks/%d/access", b.ID) }>
+				<form class="space-y-3 text-sm" hx-post={ route.Path(route.BlockAccess, b.ID) }>
 					@visibilityFields(v, b.Visibility, b.PlayersCanEdit, b.Audience)
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
 						Save access
@@ -345,7 +346,7 @@ templ blockMenu(v NoteView, b BlockView, i int) {
 			}
 			if b.CanManage {
 				@dialog.Footer() {
-					@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Class: "sm:mr-auto", Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/delete", b.ID), "hx-confirm": "Delete this block?"}}) {
+					@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Class: "sm:mr-auto", Attributes: templ.Attributes{"hx-post": route.Path(route.BlockDelete, b.ID), "hx-confirm": "Delete this block?"}}) {
 						@icon.Trash2()
 						Delete block
 					}
@@ -356,7 +357,7 @@ templ blockMenu(v NoteView, b BlockView, i int) {
 }
 
 templ moveButton(blockID int64, dir string) {
-	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/blocks/%d/move", blockID), "hx-vals": fmt.Sprintf(`{"dir":%q}`, dir)}}) {
+	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": route.Path(route.BlockMove, blockID), "hx-vals": fmt.Sprintf(`{"dir":%q}`, dir)}}) {
 		{ children... }
 	}
 }
@@ -396,7 +397,7 @@ templ checkField(name, value string, checked bool) {
 }
 
 templ addBlockForm(v NoteView) {
-	<form class="mt-8 flex flex-wrap items-start gap-2 border-t pt-4 text-sm" hx-post={ fmt.Sprintf("/notes/%d/blocks", v.Note.ID) }>
+	<form class="mt-8 flex flex-wrap items-start gap-2 border-t pt-4 text-sm" hx-post={ route.Path(route.NoteBlocks, v.Note.ID) }>
 		<div class="w-full space-y-2 sm:w-64">
 			@visibilityFields(v, v.Visibilities[0], false, nil)
 		</div>

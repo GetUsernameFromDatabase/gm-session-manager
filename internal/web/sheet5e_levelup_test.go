@@ -13,6 +13,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -25,7 +26,7 @@ func TestRevertLevelUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	base := route.Path(route.CharacterLevelup, e.characterID)
 	start, _ := e.q().GetCharacter(ctx, e.characterID)
 	var after []int64
 	for range 2 {
@@ -39,7 +40,7 @@ func TestRevertLevelUp(t *testing.T) {
 		t.Fatalf("max HP did not grow: %v", after)
 	}
 	for i, wantMax := range []int64{after[0], start.MaxHp} {
-		if w := e.do(t, http.MethodPost, base+"/revert", player, nil, true); w.Code != http.StatusOK {
+		if w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelupRevert, e.characterID), player, nil, true); w.Code != http.StatusOK {
 			t.Fatalf("revert %d: %d %s", i+1, w.Code, w.Body)
 		}
 		ch, _ := e.q().GetCharacter(ctx, e.characterID)
@@ -52,7 +53,7 @@ func TestRevertLevelUp(t *testing.T) {
 	if want, _ := startSheet.JSON(); ch.SheetJson != want {
 		t.Errorf("sheet not restored:\n got %s\nwant %s", ch.SheetJson, want)
 	}
-	if w := e.do(t, http.MethodPost, base+"/revert", player, nil, true); w.Code != http.StatusUnprocessableEntity {
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelupRevert, e.characterID), player, nil, true); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("revert with nothing left: %d, want 422", w.Code)
 	}
 }
@@ -66,7 +67,7 @@ func TestLevelUpTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	base := route.Path(route.CharacterLevelup, e.characterID)
 	level := func() int {
 		ch, _ := e.q().GetCharacter(ctx, e.characterID)
 		s, _ := dnd5e.ParseSheet(ch.SheetJson)
@@ -101,7 +102,7 @@ func TestLevelUpInvocations(t *testing.T) {
 	}
 	e.allowEntrySources(t)
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	base := route.Path(route.CharacterLevelup, e.characterID)
 	if w := e.do(t, http.MethodGet, base+"?class=testlock", player, nil, false); !strings.Contains(w.Body.String(), "Eldritch Invocations") || strings.Contains(w.Body.String(), "Agonizing Blast") {
 		t.Errorf("level 1 form lacks the pick or offers a level 2 option")
 	}
@@ -193,7 +194,7 @@ func TestLevelUpLineage(t *testing.T) {
 	}
 	e.allowEntrySources(t)
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	base := route.Path(route.CharacterLevelup, e.characterID)
 	// Each level's new invocations: one, two, none.
 	for i, picks := range [][]string{{"Armor of Shadows"}, {"Agonizing Blast", "Shadow Step"}, nil} {
 		if i == 2 {
@@ -311,7 +312,7 @@ func TestLevelUpFeats(t *testing.T) {
 				t.Fatal(err)
 			}
 			player := e.token(t, enum.RolePlayer)
-			base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+			base := route.Path(route.CharacterLevelup, e.characterID)
 			for range 3 {
 				if w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}}), false); w.Code != http.StatusSeeOther {
 					t.Fatalf("level up: %d %s", w.Code, w.Body)
@@ -392,7 +393,7 @@ func TestLevelUpFeatWithoutASI(t *testing.T) {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	base := route.Path(route.CharacterLevelup, e.characterID)
 	form := url.Values{"class": {"wizard"}, "feat": {"magic-initiate"}}
 	w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, form), false)
 	body := w.Body.String()
@@ -409,7 +410,7 @@ func TestLevelUpGoneSubclass(t *testing.T) {
 	player := e.token(t, enum.RolePlayer)
 	before := e.sheet(t).Level()
 	form := url.Values{"class": {"wizard"}, "subclass": {"gone-school"}}
-	w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/levelup", e.characterID), player, wizardLevelUp(t, e, form), true)
+	w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelup, e.characterID), player, wizardLevelUp(t, e, form), true)
 	if w.Code != http.StatusUnprocessableEntity || e.sheet(t).Level() != before {
 		t.Errorf("gone subclass: status %d, level %d → %d", w.Code, before, e.sheet(t).Level())
 	}
@@ -436,7 +437,7 @@ func TestLevelUpEpicBoon(t *testing.T) {
 	}
 	e.allowEntrySources(t)
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	base := route.Path(route.CharacterLevelup, e.characterID)
 	if body := e.do(t, http.MethodGet, base+"?class=boonling", player, nil, false).Body.String(); !strings.Contains(body, `value="boon-of-fate"`) {
 		t.Fatalf("Boon of Fate not offered: %s", body)
 	}
@@ -464,7 +465,7 @@ func TestLevelUpPageAtTwenty(t *testing.T) {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
-	w := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/levelup?class=wizard", e.characterID), player, nil, false)
+	w := e.do(t, http.MethodGet, route.Path(route.CharacterLevelup, e.characterID)+"?class=wizard", player, nil, false)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "already level 20") {
 		t.Errorf("level 20 page: %d %s", w.Code, w.Body)
 	}
@@ -479,7 +480,7 @@ func TestRevertLevelUpInterleaved(t *testing.T) {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	base := route.Path(route.CharacterLevelup, e.characterID)
 	start, _ := e.q().GetCharacter(ctx, e.characterID)
 	startSheet, _ := dnd5e.ParseSheet(start.SheetJson)
 	wantStart, _ := startSheet.JSON()
@@ -495,8 +496,8 @@ func TestRevertLevelUpInterleaved(t *testing.T) {
 	}
 	revert := func() {
 		t.Helper()
-		if w := e.do(t, http.MethodPost, base+"/revert", player, nil, true); w.Code != http.StatusOK {
-			t.Fatalf("revert: %d %s", w.Code, w.Body)
+		if w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelupRevert, e.characterID), player, nil, true); w.Code != http.StatusOK {
+			t.Fatalf("revert:%d %s", w.Code, w.Body)
 		}
 	}
 
@@ -520,7 +521,7 @@ func TestRevertLevelUpInterleaved(t *testing.T) {
 	if ch, _ := e.q().GetCharacter(ctx, e.characterID); ch.SheetJson != wantStart || ch.MaxHp != start.MaxHp {
 		t.Errorf("not back at the start:\n got %s (max %d)\nwant %s (max %d)", ch.SheetJson, ch.MaxHp, wantStart, start.MaxHp)
 	}
-	if w := e.do(t, http.MethodPost, base+"/revert", player, nil, true); w.Code != http.StatusUnprocessableEntity {
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelupRevert, e.characterID), player, nil, true); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("revert with nothing left: %d, want 422", w.Code)
 	}
 }
@@ -543,7 +544,7 @@ func TestChangeSubclass(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.allowEntrySources(t)
-	path := fmt.Sprintf("/characters/%d/subclass", e.characterID)
+	path := route.Path(route.CharacterSubclass, e.characterID)
 	tests := []struct {
 		name   string
 		role   enum.Role

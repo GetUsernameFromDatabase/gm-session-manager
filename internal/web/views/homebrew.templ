@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
@@ -31,7 +32,7 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 			</div>
 			if v.ID != 0 {
 				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIcon, Class: quietDestructive, Attributes: templ.Attributes{
-					"form": homebrewFormID, "formaction": entryHref(ctx, v.ID) + "/delete", "formnovalidate": true, "type": "submit",
+					"form": homebrewFormID, "formaction": CompendiumPath(ctx, route.Path(route.CompendiumEntryDelete, v.ID)), "formnovalidate": true, "type": "submit",
 					"onclick": templ.JSUnsafeFuncCall("return confirm('Delete this homebrew entry?')"), "aria-label": "Delete", "title": "Delete",
 				}}) {
 					@icon.Trash2()
@@ -56,7 +57,7 @@ templ HomebrewPage(l Layout, v HomebrewView) {
 				}
 			</div>
 		}
-		<form id={ homebrewFormID } method="post" action={ templ.SafeURL(CompendiumPath(ctx, utils.IfElse(v.Page.ID != "", "/page", homebrewAction(v.ID)))) } class="group/busy max-w-2xl space-y-6" data-homebrew data-busy>
+		<form id={ homebrewFormID } method="post" action={ templ.SafeURL(CompendiumPath(ctx, utils.IfElse(v.Page.ID != "", route.CompendiumPage, homebrewAction(v.ID)))) } class="group/busy max-w-2xl space-y-6" data-homebrew data-busy>
 			if v.AddToSheet {
 				<input type="hidden" name="add" value="1"/>
 			}

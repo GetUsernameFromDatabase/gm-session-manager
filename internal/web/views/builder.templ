@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/combobox"
 	"gm-session-manager/internal/web/components/dialog"
@@ -240,7 +241,7 @@ templ builderForm(s SheetView, o builderOp, subject string, x BuilderExtra) {
 templ itemDetails() {
 	<div
 		class="max-h-60 overflow-y-auto rounded-md border p-2 text-xs empty:hidden"
-		hx-get={ CompendiumPath(ctx, "/lookup?kind=item") }
+		hx-get={ CompendiumPath(ctx, route.CompendiumLookup+"?kind=item") }
 		hx-vals="js:{name: this.closest('form').elements.subject?.value || ''}"
 		hx-trigger="load, change[target.name==='subject'] from:closest form"
 		hx-swap="innerHTML"
@@ -337,7 +338,7 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 				@itemPicker("builder-subject", "subject", "Search or type a name", true)
 				@field.Description() {
 					Suggestions come from the compendium; any name works.
-					<a class="underline" href={ templ.SafeURL(CompendiumPath(ctx, "/homebrew/new?kind=item&add=1")) }>Create a custom item</a> to give it a description.
+					<a class="underline" href={ templ.SafeURL(CompendiumPath(ctx, route.CompendiumHomebrewNew+"?kind=item&add=1")) }>Create a custom item</a> to give it a description.
 				}
 			}
 			@numberField("Quantity", 1, 0, 1, false)
@@ -613,7 +614,7 @@ templ compendiumLookup(s SheetView, pick, placeholder string) {
 	<div class="space-y-1 border-t pt-4">
 		@input.Input(input.Props{Type: "search", Placeholder: placeholder, Attributes: templ.Attributes{
 			"name":         "q",
-			"hx-get":       fmt.Sprintf("/characters/%d/picks?pick=%s", s.ID, pick),
+			"hx-get":       fmt.Sprintf("%s?pick=%s", route.Path(route.CharacterPicks, s.ID), pick),
 			"hx-trigger":   "input changed delay:200ms, search",
 			"hx-target":    "next ul",
 			"hx-swap":      "innerHTML",
@@ -630,7 +631,7 @@ templ BuilderPicks(characterID int64, pick string, picks []BuilderPick) {
 	for _, p := range picks {
 		if pick == "armor" {
 			@pickRow(p.EntryID, closeAfter(templ.Attributes{
-				"hx-post": fmt.Sprintf("/characters/%d/cmd", characterID), "hx-vals": cmdVals("armor wear " + p.Slug),
+				"hx-post": route.Path(route.CharacterCmd, characterID), "hx-vals": cmdVals("armor wear " + p.Slug),
 			})) {
 				<span class="truncate">{ p.Name }</span>
 				<span class="text-xs text-muted-foreground">{ p.Detail }</span>
@@ -655,7 +656,7 @@ templ BuilderPicks(characterID int64, pick string, picks []BuilderPick) {
 		<li class="py-0.5 text-muted-foreground">
 			No matches. You can still fill in your own below
 			if pick == "weapon" {
-				, or <a class="underline" href={ templ.SafeURL(CompendiumPath(ctx, "/homebrew/new?kind=item&add=1")) }>create a custom weapon</a>
+				, or <a class="underline" href={ templ.SafeURL(CompendiumPath(ctx, route.CompendiumHomebrewNew+"?kind=item&add=1")) }>create a custom weapon</a>
 			}
 			.
 		</li>
@@ -675,7 +676,7 @@ templ featurePicker(characterID int64, value string) {
 			@combobox.Combobox(combobox.Props{Name: "subject", Required: true, DefaultValue: value, Items: comboItems(value, nil)}) {
 				@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: "Search feats and class features, or type a name", Attributes: templ.Attributes{
 					"maxlength": "200", "autocomplete": "off", "data-combobox-create-input": "",
-					"hx-get": fmt.Sprintf("/characters/%d/picks?pick=feature&format=combobox", characterID), "hx-vals": "js:{q: this.value}",
+					"hx-get": route.Path(route.CharacterPicks, characterID) + "?pick=feature&format=combobox", "hx-vals": "js:{q: this.value}",
 					"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-list", "hx-swap": "innerHTML",
 				}})
 				@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {

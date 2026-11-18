@@ -13,6 +13,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/export"
 	"gm-session-manager/internal/hub"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -36,7 +37,7 @@ func (a *App) createCampaign(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/campaigns/%d", camp.ID))
+	c.Redirect(http.StatusSeeOther, route.Path(route.Campaign, camp.ID))
 	return nil
 }
 
@@ -93,7 +94,7 @@ func (a *App) renameCampaign(c *gin.Context) error {
 	if err := a.Store.RenameCampaign(c.Request.Context(), sqlc.RenameCampaignParams{ID: id, Name: strings.TrimSpace(form.Name)}); err != nil {
 		return err
 	}
-	redirect(c, fmt.Sprintf("/campaigns/%d", id))
+	redirect(c, route.Path(route.Campaign, id))
 	return nil
 }
 
@@ -112,7 +113,7 @@ func (a *App) deleteCampaign(c *gin.Context) error {
 	}
 	a.sweepFiles(c)
 	a.Hub.CloseCampaign(id)
-	redirect(c, PathHome)
+	redirect(c, route.Home)
 	return nil
 }
 

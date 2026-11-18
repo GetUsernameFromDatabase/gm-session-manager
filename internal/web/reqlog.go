@@ -15,7 +15,7 @@ import (
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
-	"gm-session-manager/internal/web/views"
+	"gm-session-manager/internal/route"
 )
 
 // Each device's recent requests, kept in memory for its bug reports.
@@ -96,7 +96,7 @@ func (a *App) recordRequest(c *gin.Context) {
 	key, ok := deviceKey(auth.FromContext(c))
 	path := c.Request.URL.Path
 	// Logout ends the device's log; logging it would start a new one.
-	if !ok || path == "/ws" || path == views.PathFeedback || path == PathLogout || strings.HasPrefix(path, "/assets/") {
+	if !ok || path == route.WS || path == route.Feedback || path == route.Logout || strings.HasPrefix(path, "/assets/") {
 		c.Next()
 		return
 	}
@@ -127,18 +127,12 @@ func (a *App) recordRequest(c *gin.Context) {
 }
 
 // keepsBody is false where a body must not reach a report: credentials,
-// note blocks and note titles, which can be a player's private text. route
-// is the matched pattern, so ids do not matter.
-func keepsBody(path, route string) bool {
-	return path != PathAdminLogin && !strings.HasPrefix(path, "/blocks/") &&
-		route != routeNoteCreate && route != routeNoteRename
+// note blocks and note titles, which can be a player's private text. pattern
+// is the matched route, so ids do not matter.
+func keepsBody(path, pattern string) bool {
+	return path != route.AdminLogin && !strings.HasPrefix(pattern, route.Block+"/") &&
+		pattern != route.CampaignNotes && pattern != route.NoteRename
 }
-
-// Routes whose body is a note title.
-const (
-	routeNoteCreate = "/campaigns/:campaign/notes"
-	routeNoteRename = "/notes/:note/rename"
-)
 
 // Bounds on what is kept of a request body.
 const (

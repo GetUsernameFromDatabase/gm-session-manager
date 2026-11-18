@@ -9,6 +9,7 @@ import (
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/combobox"
 	"gm-session-manager/internal/web/utils"
 
@@ -125,7 +126,7 @@ type EquipmentChoice struct {
 }
 
 func (v WizardView) path(step string) string {
-	return fmt.Sprintf("/characters/%d/create/%s", v.CharacterID, step)
+	return route.Path(route.CharacterCreateStep, v.CharacterID, step)
 }
 
 // done reports whether a step that adds to the sheet was applied.

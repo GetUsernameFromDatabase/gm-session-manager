@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -467,7 +468,7 @@ func (a *App) importUpload(c *gin.Context) {
 		return
 	}
 	token := a.imports.put(csvImport{campaignID: id, header: header, rows: rows})
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/campaigns/%d/images/import/%s", id, token))
+	c.Redirect(http.StatusSeeOther, route.Path(route.CampaignImagesImportReview, id, token))
 }
 
 // csvImportForm is the CSV link, used when no file is uploaded.
@@ -517,7 +518,7 @@ func (a *App) importParam(c *gin.Context) (int64, string, csvImport, bool) {
 	token := c.Param("token")
 	imp, ok := a.imports.get(token, id)
 	if !ok {
-		a.failBack(c, http.StatusNotFound, "This import has expired. Upload the file again.", fmt.Sprintf("/campaigns/%d/images/import", id), "Start the import again")
+		a.failBack(c, http.StatusNotFound, "This import has expired. Upload the file again.", route.Path(route.CampaignImagesImport, id), "Start the import again")
 	}
 	return id, token, imp, ok
 }
@@ -582,6 +583,6 @@ func (a *App) importCommit(c *gin.Context) error {
 		return err
 	}
 	a.imports.drop(token)
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/campaigns/%d/images?imported=%d", id, n))
+	c.Redirect(http.StatusSeeOther, fmt.Sprintf("%s?imported=%d", route.Path(route.CampaignImages, id), n))
 	return nil
 }

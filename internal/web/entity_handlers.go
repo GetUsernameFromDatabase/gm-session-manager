@@ -14,6 +14,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -54,7 +55,7 @@ func (a *App) createEntity(c *gin.Context) error {
 		return err
 	}
 	a.Hub.Publish(id, hub.Topic{Kind: hub.TopicEntities, ID: id})
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/entities/%d", e.ID))
+	c.Redirect(http.StatusSeeOther, route.Path(route.Entity, e.ID))
 	return nil
 }
 
@@ -284,7 +285,7 @@ func (a *App) deleteEntity(c *gin.Context) error {
 		return err
 	}
 	a.Hub.Publish(e.CampaignID, entityTopics(e)...)
-	redirect(c, fmt.Sprintf("/campaigns/%d/entities", e.CampaignID))
+	redirect(c, route.Path(route.CampaignEntities, e.CampaignID))
 	return nil
 }
 
@@ -309,7 +310,7 @@ func (a *App) imageToEntity(c *gin.Context) error {
 			return err
 		}
 		a.Hub.Publish(ch.CampaignID, topics...)
-		redirect(c, fmt.Sprintf("/images/%d", img.ID))
+		redirect(c, route.Path(route.Image, img.ID))
 		return nil
 	}
 	if id, ok := formInt(c, "entity"); ok {
@@ -321,7 +322,7 @@ func (a *App) imageToEntity(c *gin.Context) error {
 			return err
 		}
 		a.Hub.Publish(e.CampaignID, hub.Topic{Kind: hub.TopicEntity, ID: e.ID})
-		redirect(c, fmt.Sprintf("/images/%d", img.ID))
+		redirect(c, route.Path(route.Image, img.ID))
 		return nil
 	}
 	fields := perm.Fields{}
@@ -344,7 +345,7 @@ func (a *App) imageToEntity(c *gin.Context) error {
 		return err
 	}
 	a.Hub.Publish(img.CampaignID, hub.Topic{Kind: hub.TopicEntities, ID: img.CampaignID})
-	redirect(c, fmt.Sprintf("/entities/%d", e.ID))
+	redirect(c, route.Path(route.Entity, e.ID))
 	return nil
 }
 

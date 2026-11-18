@@ -17,6 +17,7 @@ import (
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -35,7 +36,7 @@ func (e testEnv) sendFeedback(t *testing.T, cookie string, fields url.Values, fi
 		_, _ = fw.Write([]byte(content))
 	}
 	_ = mw.Close()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, views.PathFeedback, &body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, route.Feedback, &body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("HX-Request", "true")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Linux; Android 14) Gecko/131.0 Firefox/131.0")
@@ -73,7 +74,7 @@ func (e testEnv) reports(t *testing.T) map[string]string {
 func bugForm(title string) url.Values {
 	return url.Values{
 		"kind": {"bug"}, "title": {title}, "body": {"The sheet went blank."}, "steps": {"Open sheet\nTap HP"},
-		"expected": {"HP changes"}, "player": {"Sam"}, "page": {"/characters/1"}, "viewport": {"390×844"}, "dark": {"true"},
+		"expected": {"HP changes"}, "player": {"Sam"}, "page": {route.Path(route.Character, 1)}, "viewport": {"390×844"}, "dark": {"true"},
 	}
 }
 
@@ -140,13 +141,14 @@ func TestFeedbackValidation(t *testing.T) {
 func TestBugReport(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
-	e.do(t, http.MethodGet, "/notes/9999", player, nil, true)
+	e.do(t, http.MethodGet, route.Path(route.Note, 9999), player, nil, true)
 
 	f := bugForm("../../Dice | tray")
+	page := route.Path(route.Character, 1)
 	f.Set("console", `[
-		{"at":"2026-10-26T15:29:50.000Z","level":"log","msg":"sheet loaded","page":"/characters/1"},
-		{"at":"2026-10-26T15:29:57.000Z","level":"uncaught","msg":"TypeError: x is null\n    at hp (app.js:12:3)","page":"/characters/1"},
-		{"at":"2026-10-26T15:29:58.000Z","level":"warn","msg":"a | b","page":"/characters/1"}
+		{"at":"2026-10-26T15:29:50.000Z","level":"log","msg":"sheet loaded","page":"`+page+`"},
+		{"at":"2026-10-26T15:29:57.000Z","level":"uncaught","msg":"TypeError: x is null\n    at hp (app.js:12:3)","page":"`+page+`"},
+		{"at":"2026-10-26T15:29:58.000Z","level":"warn","msg":"a | b","page":"`+page+`"}
 	]`)
 	w := e.sendFeedback(t, player, f, map[string]string{"shot.png": pngHead, "notes.txt": "not a picture"})
 	if w.Code != http.StatusOK {
@@ -167,16 +169,16 @@ func TestBugReport(t *testing.T) {
 		for _, want := range []string{
 			"# Bug: ../../Dice | tray\n",
 			"| From | Alice (Sam) |",
-			"| Page | /characters/1 |",
+			"| Page | " + page + " |",
 			"| Device | Firefox 131 on Android · 390×844 · dark |",
 			"## Steps to reproduce\n\nOpen sheet\nTap HP\n",
-			"| GET /notes/9999 |  | 404 | Not found. |",
+			"| GET " + route.Path(route.Note, 9999) + " |  | 404 | Not found. |",
 			"## Recent requests (last 30)",
 			// Errors newest first, a stack's first line in the table and all of it below.
-			"## Browser errors\n\n| Time (UTC) | Page | Message |\n|---|---|---|\n| 15:29:57 | /characters/1 | TypeError: x is null |\n",
+			"## Browser errors\n\n| Time (UTC) | Page | Message |\n|---|---|---|\n| 15:29:57 | " + page + " | TypeError: x is null |\n",
 			"```\nTypeError: x is null\n    at hp (app.js:12:3)\n```",
-			"| 15:29:58 | warn | /characters/1 | a \\| b |\n| 15:29:57 | uncaught |",
-			"| 15:29:50 | log | /characters/1 | sheet loaded |",
+			"| 15:29:58 | warn | " + page + " | a \\| b |\n| 15:29:57 | uncaught |",
+			"| 15:29:50 | log | " + page + " | sheet loaded |",
 			"![screenshot-1.png](screenshot-1.png)",
 			"Left out, not a picture: notes.txt (text/plain)",
 		} {

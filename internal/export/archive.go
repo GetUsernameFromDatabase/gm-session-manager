@@ -16,6 +16,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 )
 
 // Campaign writes a zip of one campaign to w:
@@ -56,7 +57,7 @@ func Campaign(ctx context.Context, w io.Writer, q *sqlc.Queries, campaignID int6
 	}
 	attachmentFile := map[string]string{}
 	for _, a := range files {
-		attachmentFile[fmt.Sprintf("/attachments/%d", a.ID)] = a.Path
+		attachmentFile[route.Path(route.Attachment, a.ID)] = a.Path
 	}
 	links := Links{
 		Mention: func(id string) string {

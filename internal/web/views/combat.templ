@@ -7,6 +7,7 @@ import (
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
@@ -79,7 +80,7 @@ templ PlayerCombat(campaignID, want int64, encounters []sqlc.Encounter, e *Encou
 templ EncounterList(campaignID int64, encounters []sqlc.Encounter, current int64) {
 	<div id="encounter-list" hx-swap-oob="true" class="mb-6 flex flex-wrap items-center gap-2" { live(LiveEncounters, campaignID, current)... }>
 		@encounterLinks(campaignID, encounters, current)
-		<form method="post" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/encounters", campaignID)) } class="flex gap-2">
+		<form method="post" action={ templ.SafeURL(route.Path(route.CampaignEncounters, campaignID)) } class="flex gap-2">
 			@input.Input(input.Props{Name: "name", Placeholder: "New encounter", Required: true, Class: "h-8"})
 			@button.Button(button.Props{Type: button.TypeSubmit}) {
 				@icon.Plus()
@@ -92,7 +93,7 @@ templ EncounterList(campaignID int64, encounters []sqlc.Encounter, current int64
 templ encounterLinks(campaignID int64, encounters []sqlc.Encounter, current int64) {
 	for _, e := range encounters {
 		<a
-			href={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/combat?encounter=%d", campaignID, e.ID)) }
+			href={ templ.SafeURL(fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, campaignID), e.ID)) }
 			class="inline-flex h-8 items-center gap-1 rounded-md border px-3 text-sm aria-[current=page]:border-primary/60 aria-[current=page]:bg-accent aria-[current=page]:font-medium"
 			if e.ID == current {
 				aria-current="page"
@@ -217,14 +218,14 @@ templ combatantRow(e EncounterView, c CombatantView) {
 		<div class="flex flex-wrap items-center gap-2 max-md:basis-full max-md:pl-[6.75rem]">
 			@input.Input(input.Props{Name: "marker", Value: c.Marker, Placeholder: "Marker", Class: "h-7 w-24", Attributes: templ.Attributes{
 				"aria-label": "Table marker", "title": "Which piece on the table, e.g. mini 5", "maxlength": fmt.Sprint(MaxMarker),
-				"hx-post": fmt.Sprintf("/combatants/%d/marker", c.ID), "hx-trigger": "change",
+				"hx-post": route.Path(route.CombatantAction, c.ID, "marker"), "hx-trigger": "change",
 			}})
 			<span class="w-11 text-sm text-muted-foreground tabular-nums">AC { fmt.Sprint(c.AC) }</span>
 			<span class="flex items-center gap-1.5">
 				@hpDialog(c)
 				@hpMeter(c, "w-14")
 				@tooltip.Tooltip() {
-					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "text-muted-foreground", Attributes: with(templ.Attributes{"aria-label": visibleTitle(c.HPVisible), "hx-post": fmt.Sprintf("/combatants/%d/visible", c.ID)}, tooltip.Trigger(ctx))}) {
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "text-muted-foreground", Attributes: with(templ.Attributes{"aria-label": visibleTitle(c.HPVisible), "hx-post": route.Path(route.CombatantAction, c.ID, "visible")}, tooltip.Trigger(ctx))}) {
 						if c.HPVisible {
 							@icon.Eye()
 						} else {
@@ -237,7 +238,7 @@ templ combatantRow(e EncounterView, c CombatantView) {
 				}
 			</span>
 			@conditionDialog(e, c)
-			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{"aria-label": "Remove combatant", "hx-post": fmt.Sprintf("/combatants/%d/delete", c.ID)}}) {
+			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: quietDestructive, Attributes: templ.Attributes{"aria-label": "Remove combatant", "hx-post": route.Path(route.CombatantAction, c.ID, "delete")}}) {
 				@icon.X()
 			}
 		</div>
@@ -268,7 +269,7 @@ templ ownCombatant(c CombatantView) {
 			</div>
 		</div>
 		@hpMeter(c, "w-full")
-		@hpQuickForm(fmt.Sprintf("/characters/%d/cmd", c.CharacterID), true, c.Defenses)
+		@hpQuickForm(route.Path(route.CharacterCmd, c.CharacterID), true, c.Defenses)
 		@conditionList(c, true)
 	</div>
 }
@@ -463,7 +464,7 @@ templ combatCondition(cond sqlc.Condition, held map[int64]string, removable bool
 			<span class="px-1.5">{ conditionLabel(cond) }</span>
 		}
 		if removable {
-			@removeButton(fmt.Sprintf("/conditions/%d/delete", cond.ID))
+			@removeButton(route.Path(route.ConditionDelete, cond.ID))
 		}
 	</span>
 }
@@ -471,7 +472,7 @@ templ combatCondition(cond sqlc.Condition, held map[int64]string, removable bool
 // conditionDialog is the GM's add-effect button for one combatant (the
 // shared effectDialog); it closes only when the server accepts the effect.
 templ conditionDialog(e EncounterView, c CombatantView) {
-	@effectDialog(EffectTarget{CampaignID: e.Encounter.CampaignID, CombatantID: c.ID, Name: c.Name, Post: fmt.Sprintf("/combatants/%d/condition", c.ID), Label: "Effect"})
+	@effectDialog(EffectTarget{CampaignID: e.Encounter.CampaignID, CombatantID: c.ID, Name: c.Name, Post: route.Path(route.CombatantAction, c.ID, "condition"), Label: "Effect"})
 }
 
 // hpText is a combatant's HP as the viewer may see it.
@@ -528,7 +529,7 @@ templ petrifiedNote(d Defenses, class string) {
 // initiativeInput is the GM's initiative field, with a button that rolls
 // d20 plus the combatant's bonus.
 templ initiativeInput(c CombatantView) {
-	{{ url := fmt.Sprintf("/combatants/%d/initiative", c.ID) }}
+	{{ url := route.Path(route.CombatantAction, c.ID, "initiative") }}
 	// A set initiative reads as the ladder's rung number, still editable in place.
 	@inputgroup.InputGroup(inputgroup.Props{Class: utils.CN("h-9 w-24 shrink-0", utils.IfElse(c.Initiative == "", "ring-2 ring-amber-500/60", "border-transparent bg-transparent shadow-none dark:bg-transparent"))}) {
 		@inputgroup.Input(inputgroup.InputProps{Name: "initiative", Value: c.Initiative, Class: utils.CN("px-1 text-center tabular-nums", utils.IfElse(c.Initiative == "", "", "text-2xl font-semibold md:text-2xl")), Attributes: templ.Attributes{
@@ -634,7 +635,7 @@ templ hpDialog(c CombatantView) {
 			// current one.
 			<form
 				class="grid gap-3"
-				hx-post={ fmt.Sprintf("/combatants/%d/hp", c.ID) }
+				hx-post={ route.Path(route.CombatantAction, c.ID, "hp") }
 				hx-on:input="this.hp.max = Number(this.max_hp.value) || this.hp.dataset.max; event.target.reportValidity()"
 				hx-on::config-request="for (const el of this.querySelectorAll('input[type=number]')) if (el.value === el.defaultValue) delete event.detail.parameters[el.name]"
 				{ templ.Attributes{"hx-on::after-request": closeDialogAfter("this.reset(); this.hp.max = this.hp.dataset.max; ")}... }
@@ -651,7 +652,7 @@ templ hpDialog(c CombatantView) {
 				}
 			</form>
 			// Not reset(): it would put the damage type's value back but not its label.
-			<form class="grid gap-4 border-t pt-4" hx-post={ fmt.Sprintf("/combatants/%d/hp", c.ID) } { templ.Attributes{"hx-on::after-request": closeDialogAfter("this.amount.value = ''; " + uncheckCrit)}... }>
+			<form class="grid gap-4 border-t pt-4" hx-post={ route.Path(route.CombatantAction, c.ID, "hp") } { templ.Attributes{"hx-on::after-request": closeDialogAfter("this.amount.value = ''; " + uncheckCrit)}... }>
 				@field.Field(field.Props{Orientation: field.OrientationHorizontal}) {
 					@field.Label(field.LabelProps{For: id + "-amount"}) {
 						Amount
@@ -792,7 +793,7 @@ templ addCombatants(e EncounterView) {
 					@input.Input(input.Props{Type: "search", Name: "q", Placeholder: "Search monsters…", Attributes: templ.Attributes{
 						"autocomplete": "off",
 						"aria-label":   "Search monsters",
-						"hx-get":       CompendiumPath(ctx, fmt.Sprintf("/search?kind=monster&encounter=%d", e.Encounter.ID)),
+						"hx-get":       CompendiumPath(ctx, fmt.Sprintf("%s?kind=monster&encounter=%d", route.CompendiumSearch, e.Encounter.ID)),
 						"hx-trigger":   "input changed delay:200ms, search",
 						"hx-target":    "next ul",
 						"hx-swap":      "innerHTML",

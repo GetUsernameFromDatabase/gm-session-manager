@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	routes "gm-session-manager/internal/route" // join has its own route func
 )
 
 // serveSplit serves app over TLS and the redirect over plain HTTP on one
@@ -62,8 +64,8 @@ func TestSplitTLS(t *testing.T) {
 		wantLocation string
 		wantBody     string
 	}{
-		{"plain GET redirects", http.MethodGet, "http://" + addr + "/notes?x=1", http.StatusPermanentRedirect, "https://" + addr + "/notes?x=1", ""},
-		{"plain POST redirects", http.MethodPost, "http://" + addr + "/login", http.StatusPermanentRedirect, "https://" + addr + "/login", ""},
+		{"plain GET redirects", http.MethodGet, "http://" + addr + routes.Notes + "?x=1", http.StatusPermanentRedirect, "https://" + addr + routes.Notes + "?x=1", ""},
+		{"plain POST redirects", http.MethodPost, "http://" + addr + routes.AdminLogin, http.StatusPermanentRedirect, "https://" + addr + routes.AdminLogin, ""},
 		{"TLS reaches the app", http.MethodGet, "https://" + addr + "/", http.StatusOK, "", "app"},
 	}
 	for _, tt := range tests {

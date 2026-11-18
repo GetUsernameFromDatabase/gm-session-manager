@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/dialog"
 	"gm-session-manager/internal/web/components/field"
@@ -42,7 +43,7 @@ templ feedbackForm() {
 		class="group/busy group/feedback grid gap-5"
 		data-busy
 		data-feedback
-		hx-post={ PathFeedback }
+		hx-post={ route.Feedback }
 		hx-encoding="multipart/form-data"
 		{ templ.Attributes{"hx-on::after-request": closeDialogJS}... }
 	>

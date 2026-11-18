@@ -3,7 +3,6 @@ package web
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -13,6 +12,7 @@ import (
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 )
 
 // Test sources: "old-src" (2014, priority 300) is outranked by "new-src"
@@ -159,7 +159,7 @@ func TestSourceCommandPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.allowEntrySources(t)
-	cmdPath := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	cmdPath := route.Path(route.CharacterCmd, e.characterID)
 	tests := []struct {
 		name, cookie, to string
 		ok               bool
@@ -247,7 +247,7 @@ func TestSourceSwitchKeepsEdits(t *testing.T) {
 	})
 	e.allowEntrySources(t)
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/sources/preview?", e.characterID)
+	base := route.Path(route.CharacterSourcesPreview, e.characterID) + "?"
 	preview := url.Values{"kind": {"class"}, "slug": {"testclass"}, "source": {newSrc}}
 	if w := e.do(t, http.MethodGet, base+preview.Encode(), player, nil, false); w.Code != http.StatusOK {
 		t.Errorf("preview: %d %s", w.Code, w.Body)
@@ -269,7 +269,7 @@ func TestSourceSwitchKeepsEdits(t *testing.T) {
 		t.Errorf("plan %+v", plan)
 	}
 
-	w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", e.characterID), player, url.Values{"cmd": {"source class testclass " + newSrc}}, true)
+	w := e.do(t, http.MethodPost, route.Path(route.CharacterCmd, e.characterID), player, url.Values{"cmd": {"source class testclass " + newSrc}}, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("command: %d %s", w.Code, w.Body)
 	}

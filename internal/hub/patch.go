@@ -54,10 +54,16 @@ type patchMessage struct {
 	Views []viewPatch `json:"views,omitempty"`
 }
 
-const msgPatch = "patch"
-
-// msgGone tells a visitor its join request no longer exists.
-const msgGone = "gone"
+// The type of every websocket message, both directions (shared with the JS).
+const (
+	MsgHello  = "hello"
+	MsgSub    = "sub"
+	MsgUnsub  = "unsub"
+	MsgPatch  = "patch"
+	MsgReload = "reload"
+	// MsgGone tells a visitor its join request no longer exists.
+	MsgGone = "gone"
+)
 
 // maxPatchKeys is the most changed keys one view's patch carries; beyond
 // it (a long rest, a level-up) the page refetches the view instead.
@@ -115,7 +121,7 @@ func (h *Hub) patch(ctx context.Context, c *Client, m message) ([]byte, error) {
 	if len(views) == 0 && !m.hello {
 		return nil, nil
 	}
-	return json.Marshal(patchMessage{Type: msgPatch, Epoch: h.epoch, Seq: m.seq, Views: views})
+	return json.Marshal(patchMessage{Type: MsgPatch, Epoch: h.epoch, Seq: m.seq, Views: views})
 }
 
 // setWatch records the live views the client's page shows.

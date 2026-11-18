@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/combobox"
@@ -40,7 +41,7 @@ templ ImagesPage(l Layout, v ImagesView) {
 		<form
 			method="get"
 			class="mb-4 flex flex-wrap gap-2"
-			hx-get={ fmt.Sprintf("/campaigns/%d/images", v.CampaignID) }
+			hx-get={ route.Path(route.CampaignImages, v.CampaignID) }
 			hx-trigger="submit, input[target.name==='q'] delay:200ms, change[target.name!=='q']"
 			hx-target={ "#" + ImageResultsID }
 			hx-swap="outerHTML"
@@ -54,14 +55,14 @@ templ ImagesPage(l Layout, v ImagesView) {
 }
 
 templ importButton(campaignID int64) {
-	@button.Button(button.Props{Variant: button.VariantOutline, Href: fmt.Sprintf("/campaigns/%d/images/import", campaignID)}) {
+	@button.Button(button.Props{Variant: button.VariantOutline, Href: route.Path(route.CampaignImagesImport, campaignID)}) {
 		@icon.Upload()
 		Import CSV
 	}
 }
 
 templ newImageButton(campaignID int64) {
-	@button.Button(button.Props{Href: fmt.Sprintf("/campaigns/%d/images/new", campaignID)}) {
+	@button.Button(button.Props{Href: route.Path(route.CampaignImagesNew, campaignID)}) {
 		@icon.ImagePlus()
 		New image
 	}
@@ -94,7 +95,7 @@ templ ImageResults(v ImagesView) {
 							<p class="truncate text-xs text-muted-foreground">{ img.Category }</p>
 						}
 					</div>
-					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: "-mt-0.5 -mr-1 shrink-0 text-muted-foreground", Href: fmt.Sprintf("/images/%d", img.ID), Attributes: templ.Attributes{"aria-label": "Edit " + img.Name, "title": "Edit"}}) {
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: "-mt-0.5 -mr-1 shrink-0 text-muted-foreground", Href: route.Path(route.Image, img.ID), Attributes: templ.Attributes{"aria-label": "Edit " + img.Name, "title": "Edit"}}) {
 						@icon.Pencil()
 					}
 				</div>
@@ -210,16 +211,16 @@ templ ImagePage(l Layout, v ImageView) {
 							<h2 class={ sectionHeading }>Linked mentions</h2>
 							<ul class="space-y-1.5 text-sm">
 								for _, e := range v.NPCs {
-									@mention(icon.Drama, fmt.Sprintf("/entities/%d", e.ID), e.Name)
+									@mention(icon.Drama, route.Path(route.Entity, e.ID), e.Name)
 								}
 								for _, ch := range v.Characters {
-									@mention(icon.UserRound, fmt.Sprintf("/characters/%d", ch.ID), ch.Name)
+									@mention(icon.UserRound, route.Path(route.Character, ch.ID), ch.Name)
 								}
 								for _, e := range v.EntityLinks {
-									@mention(icon.Drama, fmt.Sprintf("/entities/%d", e.ID), e.Name)
+									@mention(icon.Drama, route.Path(route.Entity, e.ID), e.Name)
 								}
 								for _, b := range v.Backlinks {
-									@mention(icon.NotebookPen, fmt.Sprintf("/notes/%d", b.ID), b.Title)
+									@mention(icon.NotebookPen, route.Path(route.Note, b.ID), b.Title)
 								}
 								if len(v.Backlinks) == 0 && len(v.NPCs) == 0 && len(v.Characters) == 0 && len(v.EntityLinks) == 0 {
 									<li class="text-muted-foreground">No notes, NPCs or characters mention this image yet.</li>
@@ -247,7 +248,7 @@ templ mention(ic func(...icon.Props) templ.Component, href, label string) {
 // or a new one) or, while no NPC wears it, to a character. A character's
 // image is theirs alone. Each group's row wraps item by item.
 templ imageBindForm(v ImageView) {
-	{{ action := fmt.Sprintf("/images/%d/npc", v.Image.ID) }}
+	{{ action := route.Path(route.ImageNpc, v.Image.ID) }}
 	if len(v.Characters) == 0 {
 		<div class="space-y-6">
 			<section>
@@ -339,7 +340,7 @@ templ imageForm(v ImageView) {
 			}
 			if v.Image.ID != 0 {
 				@button.Button(button.Props{Variant: button.VariantDestructive, Class: "ml-auto", Attributes: templ.Attributes{
-					"hx-post": fmt.Sprintf("/images/%d/delete", v.Image.ID), "hx-confirm": "Delete " + v.Image.Name + "?",
+					"hx-post": route.Path(route.ImageDelete, v.Image.ID), "hx-confirm": "Delete " + v.Image.Name + "?",
 				}}) {
 					Delete
 				}
@@ -441,7 +442,7 @@ templ DisplayPage(campaignID int64) {
 			<title>Display · GM Session Manager</title>
 			<link rel="stylesheet" href="/assets/css/output.css"/>
 			<script src="/assets/vendor/htmx.min.js"></script>
-			<script src="/assets/js/app.js"></script>
+			<script type="module" src="/assets/js/app.js"></script>
 		</head>
 		<body class="h-screen overflow-hidden bg-black" data-campaign={ fmt.Sprint(campaignID) }>
 			<img id="display-image" hidden alt="" class="absolute inset-0 flex items-center justify-center text-center size-full object-contain text-2xl text-white/70"/>

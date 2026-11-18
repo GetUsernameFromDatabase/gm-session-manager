@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
@@ -117,7 +118,7 @@ templ wizardDone(v WizardView, msg string) {
 		</p>
 		if redo {
 			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{
-				"hx-post":    v.path(v.Step) + "/change",
+				"hx-post":    route.Path(route.CharacterCreateChange, v.CharacterID, v.Step),
 				"hx-confirm": "Redo this step? The character goes back to how it was before it, so the steps saved after it are undone too.",
 			}}) {
 				@icon.Undo2()

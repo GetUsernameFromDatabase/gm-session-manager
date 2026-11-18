@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"gm-session-manager/internal/route"
 )
 
 // ProseMirror node types the export writes.
@@ -156,7 +158,7 @@ func (w writer) inline(nodes []pmNode) string {
 			}
 			// An attached picture is an image of the block's own file.
 			if num, ok := strings.CutPrefix(id, "attachment:"); ok {
-				b.WriteString(w.inline([]pmNode{{Type: pmImage, Attrs: map[string]any{"src": "/attachments/" + num, "alt": label}}}))
+				b.WriteString(w.inline([]pmNode{{Type: pmImage, Attrs: map[string]any{"src": route.Path(route.Attachment, num), "alt": label}}}))
 				continue
 			}
 			if target := w.links.Mention(id); target != "" {

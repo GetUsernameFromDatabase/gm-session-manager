@@ -16,6 +16,7 @@ import (
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -35,14 +36,14 @@ var wizardSteps = []views.WizardStep{
 }
 
 func wizardPath(id int64, step string) string {
-	return fmt.Sprintf("/characters/%d/create/%s", id, step)
+	return route.Path(route.CharacterCreateStep, id, step)
 }
 
 // nextStep is the step after key, or the sheet after the last.
 func nextStep(id int64, key string) string {
 	i := slices.IndexFunc(wizardSteps, func(s views.WizardStep) bool { return s.Key == key })
 	if i < 0 || i+1 >= len(wizardSteps) {
-		return fmt.Sprintf("/characters/%d", id)
+		return route.Path(route.Character, id)
 	}
 	return wizardPath(id, wizardSteps[i+1].Key)
 }

@@ -13,6 +13,7 @@ import (
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 )
 
 // TestStepTurn checks next and previous turn pass over combatants out of the
@@ -66,12 +67,12 @@ func TestPlayerCombatantLink(t *testing.T) {
 		showHP bool
 		want   string
 	}{
-		{"own character", sqlc.ListCombatantsRow{CharacterID: nullID(1)}, true, "/characters/1"},
+		{"own character", sqlc.ListCombatantsRow{CharacterID: nullID(1)}, true, route.Path(route.Character, 1)},
 		{"another character", sqlc.ListCombatantsRow{CharacterID: nullID(2)}, true, ""},
-		{"revealed NPC", sqlc.ListCombatantsRow{EntityID: nullID(3), EntityRevealed: sql.NullBool{Bool: true, Valid: true}}, false, "/entities/3"},
+		{"revealed NPC", sqlc.ListCombatantsRow{EntityID: nullID(3), EntityRevealed: sql.NullBool{Bool: true, Valid: true}}, false, route.Path(route.Entity, 3)},
 		{"hidden NPC", sqlc.ListCombatantsRow{EntityID: nullID(3), EntityRevealed: sql.NullBool{Valid: true}}, true, ""},
 		{"statted NPC never links its monster", sqlc.ListCombatantsRow{EntityID: nullID(3), MonsterRef: nullID(4)}, true, ""},
-		{"monster with shown HP", sqlc.ListCombatantsRow{MonsterRef: nullID(4)}, true, "/campaigns/9/compendium/entries/4"},
+		{"monster with shown HP", sqlc.ListCombatantsRow{MonsterRef: nullID(4)}, true, route.Path(route.CampaignCompendium+route.CompendiumEntry, 9, 4)},
 		{"monster with hidden HP", sqlc.ListCombatantsRow{MonsterRef: nullID(4)}, false, ""},
 	}
 	for _, tt := range tests {
@@ -94,7 +95,7 @@ func TestRollInitiative(t *testing.T) {
 	}
 	gm := e.token(t, enum.RoleAdmin)
 	for range 20 {
-		if w := e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/initiative", cb.ID), gm, url.Values{"roll": {"1"}}, true); w.Code != http.StatusOK {
+		if w := e.do(t, http.MethodPost, route.Path(route.CombatantAction, cb.ID, "initiative"), gm, url.Values{"roll": {"1"}}, true); w.Code != http.StatusOK {
 			t.Fatalf("roll: %d %s", w.Code, w.Body)
 		}
 		got, _ := e.q().GetCombatant(ctx, cb.ID)
@@ -140,7 +141,7 @@ func TestRollAllInitiative(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/roll", enc.ID), e.token(t, enum.RoleAdmin), nil, true); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodPost, route.Path(route.EncounterAction, enc.ID, "roll"), e.token(t, enum.RoleAdmin), nil, true); w.Code != http.StatusOK {
 		t.Fatalf("roll: %d %s", w.Code, w.Body)
 	}
 	rows, _ := e.q().ListCombatants(ctx, enc.ID)
@@ -196,7 +197,7 @@ func TestCombatDefenses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hpURL := fmt.Sprintf("/combatants/%d/hp", mon.ID)
+	hpURL := route.Path(route.CombatantAction, mon.ID, "hp")
 	hp := int64(60)
 	for _, tt := range []struct {
 		kind  string
@@ -218,13 +219,13 @@ func TestCombatDefenses(t *testing.T) {
 			t.Errorf("%q: HP %d, want %d", tt.kind, cb.Hp, hp)
 		}
 	}
-	e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/condition", mon.ID), gm, url.Values{"slug": {"petrified"}}, true)
+	e.do(t, http.MethodPost, route.Path(route.CombatantAction, mon.ID, "condition"), gm, url.Values{"slug": {"petrified"}}, true)
 	e.do(t, http.MethodPost, hpURL, gm, url.Values{"op": {"damage"}, "amount": {"9"}}, true)
 	if cb, _ := e.q().GetCombatant(ctx, mon.ID); cb.Hp != hp-4 {
 		t.Errorf("petrified: HP %d, want %d", cb.Hp, hp-4)
 	}
 
-	cmd := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	cmd := route.Path(route.CharacterCmd, e.characterID)
 	e.do(t, http.MethodPost, cmd, player, url.Values{"hp_op": {"damage"}, "hp_amount": {"9"}, "hp_type": {"fire"}}, true)
 	if ch, _ := e.q().GetCharacter(ctx, e.characterID); ch.Hp != 26 {
 		t.Errorf("player's fire damage: HP %d, want 26", ch.Hp)
@@ -236,7 +237,7 @@ func TestCombatDefenses(t *testing.T) {
 	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
 		t.Fatal(err)
 	}
-	combat := fmt.Sprintf("/campaigns/%d/combat", e.campaignID)
+	combat := route.Path(route.CampaignCombat, e.campaignID)
 	view := e.do(t, http.MethodGet, combat, player, nil, false).Body.String()
 	if !strings.Contains(view, `name="hp_type"`) || !strings.Contains(view, "Fire (resisted, half)") {
 		t.Error("player's own row has no damage type")
@@ -284,7 +285,7 @@ func TestPlayerCombatView(t *testing.T) {
 	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
 		t.Fatal(err)
 	}
-	combat := fmt.Sprintf("/campaigns/%d/combat", e.campaignID)
+	combat := route.Path(route.CampaignCombat, e.campaignID)
 	player := e.do(t, http.MethodGet, combat, e.token(t, enum.RolePlayer), nil, false).Body.String()
 	for _, want := range []string{`name="hp_amount"`, "Ogre", "Monsters", "mini 5", `data-down="true"`} {
 		if !strings.Contains(player, want) {

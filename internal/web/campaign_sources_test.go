@@ -14,6 +14,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 )
 
 // Allow-list test sources: "on-book" is ticked in the test campaign;
@@ -138,14 +139,14 @@ func TestCampaignSourceVisibility(t *testing.T) {
 
 	// The compendium page: the campaign in the path, or every source.
 	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
+	base := route.Path(route.CampaignCompendium, e.campaignID)
 	pages := []struct {
 		name, cookie, path string
 		want, hidden       []string
 	}{
 		{"player compendium", player, base + "?kind=subclass", []string{"Brew School", "Shared School"}, []string{"Off School"}},
-		{"gm compendium in the campaign", gm, base + "?kind=subclass", []string{"Brew School", "Shared School", base + "/entries/"}, []string{"Off School"}},
-		{"gm compendium, every campaign", gm, "/compendium?kind=subclass", []string{"Off School", "Brew School"}, nil},
+		{"gm compendium in the campaign", gm, base + "?kind=subclass", []string{"Brew School", "Shared School", base + route.Path(route.CompendiumEntry, "")}, []string{"Off School"}},
+		{"gm compendium, every campaign", gm, route.Compendium + "?kind=subclass", []string{"Off School", "Brew School"}, nil},
 		{"player search", player, base + "?q=school", []string{"Shared School"}, []string{"Off School"}},
 		{"gm search in the campaign", gm, base + "?q=school", []string{"Shared School"}, []string{"Off School"}},
 	}
@@ -202,24 +203,25 @@ func TestSourceOverlap(t *testing.T) {
 	}
 
 	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
+	base := route.Path(route.CampaignCompendium, e.campaignID)
+	compareSubclass := route.Compendium + route.Path(route.CompendiumCompare, "subclass", "shared-school")
 	pages := []struct {
 		name, cookie, path string
 		code               int
 		want, hidden       []string
 	}{
-		{"card counts", gm, "/compendium?tab=import", http.StatusOK, []string{"1 shared, 1 shown", "1 shared, 0 shown", "?shared=on-book"}, nil},
-		{"shared filter opens comparisons", gm, "/compendium?shared=on-book", http.StatusOK, []string{"1 shared, 0 shown", "/compendium/compare/subclass/shared-school", `title="off-book › on-book"`}, []string{"Off School"}},
-		{"kind chips stay in the shared list", gm, "/compendium?shared=on-book", http.StatusOK, []string{"kind=subclass&amp;shared=on-book", "with=off-book"}, nil},
-		{"with narrows to one other source", gm, "/compendium?shared=on-book&with=off-book", http.StatusOK, []string{"/compendium/compare/subclass/shared-school"}, nil},
+		{"card counts", gm, route.Compendium + "?tab=import", http.StatusOK, []string{"1 shared, 1 shown", "1 shared, 0 shown", "?shared=on-book"}, nil},
+		{"shared filter opens comparisons", gm, route.Compendium + "?shared=on-book", http.StatusOK, []string{"1 shared, 0 shown", compareSubclass, `title="off-book › on-book"`}, []string{"Off School"}},
+		{"kind chips stay in the shared list", gm, route.Compendium + "?shared=on-book", http.StatusOK, []string{"kind=subclass&amp;shared=on-book", "with=off-book"}, nil},
+		{"with narrows to one other source", gm, route.Compendium + "?shared=on-book&with=off-book", http.StatusOK, []string{compareSubclass}, nil},
 		{"unticked source is never first in its rows", gm, base + "?shared=off-book", http.StatusOK, []string{"1 shared, 0 shown", `title="on-book"`}, []string{`title="off-book › on-book"`}},
-		{"with a source sharing nothing", gm, "/compendium?shared=on-book&with=srd-mini", http.StatusOK, []string{"Nothing found"}, []string{"/compendium/compare/"}},
-		{"player ignores the shared filter", player, base + "?shared=on-book", http.StatusOK, []string{"Brew School"}, []string{"/compare/"}},
-		{"comparison of every source", gm, "/compendium/compare/subclass/shared-school", http.StatusOK, []string{"2 copies", "off-book, 2024", "on-book, 2014", "Shown"}, nil},
-		{"comparison in the campaign", gm, base + "/compare/subclass/shared-school", http.StatusOK, []string{"1 copy,", "on-book, 2014"}, []string{"off-book, 2024"}},
-		{"unticked-only entry", gm, base + "/compare/subclass/off-school", http.StatusNotFound, nil, nil},
-		{"unknown kind", gm, "/compendium/compare/nope/shared-school", http.StatusNotFound, nil, nil},
-		{"player may not compare", player, base + "/compare/subclass/shared-school", http.StatusForbidden, nil, nil},
+		{"with a source sharing nothing", gm, route.Compendium + "?shared=on-book&with=srd-mini", http.StatusOK, []string{"Nothing found"}, []string{compareSubclass}},
+		{"player ignores the shared filter", player, base + "?shared=on-book", http.StatusOK, []string{"Brew School"}, []string{route.Path(route.CompendiumCompare, "subclass", "shared-school")}},
+		{"comparison of every source", gm, compareSubclass, http.StatusOK, []string{"2 copies", "off-book, 2024", "on-book, 2014", "Shown"}, nil},
+		{"comparison in the campaign", gm, base + route.Path(route.CompendiumCompare, "subclass", "shared-school"), http.StatusOK, []string{"1 copy,", "on-book, 2014"}, []string{"off-book, 2024"}},
+		{"unticked-only entry", gm, base + route.Path(route.CompendiumCompare, "subclass", "off-school"), http.StatusNotFound, nil, nil},
+		{"unknown kind", gm, route.Compendium + route.Path(route.CompendiumCompare, "nope", "shared-school"), http.StatusNotFound, nil, nil},
+		{"player may not compare", player, base + route.Path(route.CompendiumCompare, "subclass", "shared-school"), http.StatusForbidden, nil, nil},
 	}
 	for _, tt := range pages {
 		t.Run(tt.name, func(t *testing.T) {
@@ -250,21 +252,21 @@ func TestCompendiumAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
+	base := route.Path(route.CampaignCompendium, e.campaignID)
 	tests := []struct {
 		name, cookie, path string
 		htmx               bool
 		code               int
 		location           string
 	}{
-		{"player sent to their campaign", player, "/compendium?kind=subclass", false, http.StatusSeeOther, base + "?kind=subclass"},
-		{"player entry sent to their campaign", player, "/compendium/entries/1", false, http.StatusSeeOther, base + "/entries/1"},
-		{"player background request stays", player, "/compendium/lookup?kind=spell&slug=nothing", true, http.StatusOK, ""},
-		{"gm old campaign key moves to the path", gm, "/compendium?q=school&campaign=" + fmt.Sprint(e.campaignID), false, http.StatusSeeOther, base + "?q=school"},
-		{"gm whole compendium stays", gm, "/compendium?kind=subclass", false, http.StatusOK, ""},
-		{"player in another campaign", player, fmt.Sprintf("/campaigns/%d/compendium", other.ID), false, http.StatusForbidden, ""},
-		{"gm in a missing campaign", gm, "/campaigns/999/compendium", false, http.StatusNotFound, ""},
-		{"gm in another campaign", gm, fmt.Sprintf("/campaigns/%d/compendium", other.ID), false, http.StatusOK, ""},
+		{"player sent to their campaign", player, route.Compendium + "?kind=subclass", false, http.StatusSeeOther, base + "?kind=subclass"},
+		{"player entry sent to their campaign", player, route.Compendium + route.Path(route.CompendiumEntry, 1), false, http.StatusSeeOther, base + route.Path(route.CompendiumEntry, 1)},
+		{"player background request stays", player, route.Compendium + route.CompendiumLookup + "?kind=spell&slug=nothing", true, http.StatusOK, ""},
+		{"gm old campaign key moves to the path", gm, route.Compendium + "?q=school&campaign=" + fmt.Sprint(e.campaignID), false, http.StatusSeeOther, base + "?q=school"},
+		{"gm whole compendium stays", gm, route.Compendium + "?kind=subclass", false, http.StatusOK, ""},
+		{"player in another campaign", player, route.Path(route.CampaignCompendium, other.ID), false, http.StatusForbidden, ""},
+		{"gm in a missing campaign", gm, route.Path(route.CampaignCompendium, 999), false, http.StatusNotFound, ""},
+		{"gm in another campaign", gm, route.Path(route.CampaignCompendium, other.ID), false, http.StatusOK, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -282,11 +284,11 @@ func TestCompendiumAddresses(t *testing.T) {
 		want, hidden       []string
 	}{
 		{"gm list", gm, base + "?tab=homebrew", []string{
-			`href="` + base + `/entries/`, `href="` + base + `/habitats"`, `href="` + base + `/homebrew/new"`,
-			fmt.Sprintf(`href="/campaigns/%d/compendium?tab=homebrew"`, other.ID), `href="/compendium?tab=homebrew"`,
-		}, []string{`href="/compendium/entries/`}},
-		{"player list has no switcher", player, base, []string{`href="` + base + `/entries/`}, []string{`href="/compendium?`, "campaign-switch"}},
-		{"gm whole compendium", gm, "/compendium", []string{`href="/compendium/entries/`, `href="` + base + `"`}, nil},
+			`href="` + base + route.Path(route.CompendiumEntry, ""), `href="` + base + route.CompendiumHabitats + `"`, `href="` + base + route.CompendiumHomebrewNew + `"`,
+			`href="` + route.Path(route.CampaignCompendium, other.ID) + `?tab=homebrew"`, `href="` + route.Compendium + `?tab=homebrew"`,
+		}, []string{`href="` + route.Compendium + route.Path(route.CompendiumEntry, "")}},
+		{"player list has no switcher", player, base, []string{`href="` + base + route.Path(route.CompendiumEntry, "")}, []string{`href="` + route.Compendium + `?`, "campaign-switch"}},
+		{"gm whole compendium", gm, route.Compendium, []string{`href="` + route.Compendium + route.Path(route.CompendiumEntry, ""), `href="` + base + `"`}, nil},
 	}
 	for _, tt := range links {
 		t.Run(tt.name, func(t *testing.T) {
@@ -310,7 +312,7 @@ func TestCompendiumAddresses(t *testing.T) {
 func TestCampaignSourcePicks(t *testing.T) {
 	e := sourcesEnv(t)
 	player := e.token(t, enum.RolePlayer)
-	path := fmt.Sprintf("/characters/%d/subclass", e.characterID)
+	path := route.Path(route.CharacterSubclass, e.characterID)
 	tests := []struct {
 		name, sub, wantSource string
 		want                  int
@@ -338,7 +340,7 @@ func TestCampaignSourcePicks(t *testing.T) {
 
 	t.Run("pinned to an unticked source still renders", func(t *testing.T) {
 		e.wizard3(t, "Off School", "off-school", offBook)
-		w := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d", e.characterID), player, nil, false)
+		w := e.do(t, http.MethodGet, route.Path(route.Character, e.characterID), player, nil, false)
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Off School") {
 			t.Fatalf("sheet %d lacks Off School", w.Code)
 		}
@@ -356,7 +358,7 @@ func TestSubclassPickBySlug(t *testing.T) {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
-	path := fmt.Sprintf("/characters/%d/subclass", e.characterID)
+	path := route.Path(route.CharacterSubclass, e.characterID)
 	e.wizard3(t, "Evoker", "", "")
 	form := e.do(t, http.MethodGet, path+"?class=wizard", player, nil, true).Body.String()
 	for _, label := range []string{"Shared School · " + onBook, "Shared School · " + compendium.HomebrewSource} {
@@ -382,7 +384,7 @@ func TestCampaignSourcesSet(t *testing.T) {
 	e := sourcesEnv(t)
 	e.wizard3(t, "Shared School", "shared-school", onBook)
 	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
-	path := fmt.Sprintf("/campaigns/%d/sources", e.campaignID)
+	path := route.Path(route.CampaignSources, e.campaignID)
 	tests := []struct {
 		name   string
 		cookie string
@@ -425,7 +427,7 @@ func TestCampaignSourcesSet(t *testing.T) {
 	}
 
 	t.Run("card shows the user and locks the box", func(t *testing.T) {
-		w := e.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d", e.campaignID), gm, nil, false)
+		w := e.do(t, http.MethodGet, route.Path(route.Campaign, e.campaignID), gm, nil, false)
 		body := w.Body.String()
 		if w.Code != http.StatusOK || !strings.Contains(body, "Used by Alice") || !strings.Contains(body, onBook+" is used by Alice") {
 			t.Fatalf("campaign page %d lacks the used source", w.Code)
@@ -433,12 +435,12 @@ func TestCampaignSourcesSet(t *testing.T) {
 	})
 
 	t.Run("new campaign gets every source", func(t *testing.T) {
-		w := e.post(t, "/campaigns", loopbackAddr, url.Values{"name": {"Fresh"}}, gm)
+		w := e.post(t, route.Campaigns, loopbackAddr, url.Values{"name": {"Fresh"}}, gm)
 		if w.Code != http.StatusSeeOther {
 			t.Fatalf("create %d", w.Code)
 		}
 		var id int64
-		if _, err := fmt.Sscanf(w.Header().Get("Location"), "/campaigns/%d", &id); err != nil {
+		if _, err := fmt.Sscanf(w.Header().Get("Location"), route.Campaigns+"/%d", &id); err != nil {
 			t.Fatal(err)
 		}
 		keys, _ := e.q().ListCampaignSources(t.Context(), id)

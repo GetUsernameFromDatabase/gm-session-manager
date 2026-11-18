@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -17,7 +18,27 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 )
+
+// TestNoteTitleEnterPosts: Enter in a note's title posts the rename through
+// htmx; with only a change trigger the browser submits the form as a GET
+// to the page, putting the title in the address.
+func TestNoteTitleEnterPosts(t *testing.T) {
+	e := newTestEnv(t)
+	note, err := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Plans"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := e.do(t, http.MethodGet, route.Path(route.Note, note.ID), e.token(t, enum.RoleAdmin), nil, false)
+	form := regexp.MustCompile(`<form[^>]*hx-post="` + regexp.QuoteMeta(route.Path(route.NoteRename, note.ID)) + `"[^>]*hx-trigger="([^"]*)"`).FindStringSubmatch(w.Body.String())
+	if form == nil {
+		t.Fatalf("no title form with an hx-trigger on the note page")
+	}
+	if !strings.Contains(form[1], "submit") {
+		t.Errorf("title form triggers on %q, want submit too", form[1])
+	}
+}
 
 // TestNoteViewAudiences: each 'listed' block of one note shows its own
 // audience to the GM, and a player sees only the blocks listing them.
@@ -106,7 +127,7 @@ func (e testEnv) q() *sqlc.Queries { return e.app.Store.Queries }
 
 func TestJoinOpenCampaign(t *testing.T) {
 	e := newTestEnv(t)
-	w := e.do(t, http.MethodPost, fmt.Sprintf("/join/%d/create", e.campaignID), "", url.Values{"name": {"Bob"}}, false)
+	w := e.do(t, http.MethodPost, route.Path(route.JoinCreate, e.campaignID), "", url.Values{"name": {"Bob"}}, false)
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
 	}
@@ -125,7 +146,7 @@ func TestJoinOpenCampaign(t *testing.T) {
 		}
 	}
 	// A device with a session cannot join again without logging out.
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/join/%d/create", e.campaignID), c.Value, url.Values{"name": {"Eve"}}, false); sessionCookie(w) != nil {
+	if w := e.do(t, http.MethodPost, route.Path(route.JoinCreate, e.campaignID), c.Value, url.Values{"name": {"Eve"}}, false); sessionCookie(w) != nil {
 		t.Error("second join issued another session")
 	}
 }
@@ -134,7 +155,7 @@ func TestClaimNeedsApproval(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
 
-	claim := fmt.Sprintf("/join/%d/claim/%d", e.campaignID, e.characterID)
+	claim := route.Path(route.JoinClaim, e.campaignID, e.characterID)
 	for _, player := range []string{"", "Thirteen char"} {
 		if w := e.do(t, http.MethodPost, claim, "", url.Values{"player": {player}}, false); w.Code != http.StatusUnprocessableEntity {
 			t.Errorf("player %q: status %d", player, w.Code)
@@ -154,19 +175,19 @@ func TestClaimNeedsApproval(t *testing.T) {
 	p, _ := e.app.Hub.PendingBySecret(pendingSecret(t, e, pending[0].ID))
 
 	// Before approval the secret redeems nothing.
-	if w := e.do(t, http.MethodPost, "/requests/complete", "", url.Values{"secret": {p.Secret}}, true); sessionCookie(w) != nil {
+	if w := e.do(t, http.MethodPost, route.RequestsComplete, "", url.Values{"secret": {p.Secret}}, true); sessionCookie(w) != nil {
 		t.Fatal("redeemed before approval")
 	}
 	// A player cannot approve; the GM can.
 	player := e.token(t, enum.RolePlayer)
-	approve := fmt.Sprintf("/campaigns/%d/requests/%s/approve", e.campaignID, p.ID)
+	approve := route.Path(route.CampaignRequestDecision, e.campaignID, p.ID, "approve")
 	if w := e.do(t, http.MethodPost, approve, player, nil, true); w.Code != http.StatusForbidden {
 		t.Errorf("player approve: %d", w.Code)
 	}
 	if w := e.do(t, http.MethodPost, approve, gm, nil, true); w.Code != http.StatusOK {
 		t.Fatalf("approve: %d %s", w.Code, w.Body)
 	}
-	w = e.do(t, http.MethodPost, "/requests/complete", "", url.Values{"secret": {p.Secret}}, true)
+	w = e.do(t, http.MethodPost, route.RequestsComplete, "", url.Values{"secret": {p.Secret}}, true)
 	c := sessionCookie(w)
 	if c == nil || w.Header().Get("HX-Redirect") != "/" {
 		t.Fatalf("complete: %d %v", w.Code, w.Header())
@@ -177,7 +198,7 @@ func TestClaimNeedsApproval(t *testing.T) {
 	}
 
 	// Kick: the session is gone and the device is anonymous again.
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/sessions/%d/kick", sess.ID), gm, nil, true); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodPost, route.Path(route.SessionKick, sess.ID), gm, nil, true); w.Code != http.StatusOK {
 		t.Fatalf("kick: %d %s", w.Code, w.Body)
 	}
 	if e.alive(t, c.Value) {
@@ -194,40 +215,42 @@ func TestJoinBurst(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"Ann", "Ben", "Cat"} {
-		e.do(t, http.MethodPost, fmt.Sprintf("/join/%d/create", e.campaignID), "", url.Values{"name": {name}, "player": {name}}, false)
+		e.do(t, http.MethodPost, route.Path(route.JoinCreate, e.campaignID), "", url.Values{"name": {name}, "player": {name}}, false)
 	}
 	p := e.app.Hub.PendingList(e.campaignID)
 	if len(p) != 3 {
 		t.Fatalf("pending %+v", p)
 	}
-	if w := e.do(t, http.MethodGet, "/compendium", gm, nil, false); !strings.Contains(w.Body.String(), "/requests/all/approve") || !strings.Contains(w.Body.String(), "Cat") {
+	if w := e.do(t, http.MethodGet, route.Compendium, gm, nil, false); !strings.Contains(w.Body.String(), route.Path(route.CampaignRequestsDecision, e.campaignID, "approve")) || !strings.Contains(w.Body.String(), "Cat") {
 		t.Error("compendium page does not show the requests")
 	}
 
 	// The GM saw only the first two when they clicked.
-	all := fmt.Sprintf("/campaigns/%d/requests/all/", e.campaignID)
-	if w := e.do(t, http.MethodPost, all+"approve", gm, url.Values{"id": {p[0].ID, p[1].ID}}, true); w.Code != http.StatusOK {
+	all := func(decision string) string {
+		return route.Path(route.CampaignRequestsDecision, e.campaignID, decision)
+	}
+	if w := e.do(t, http.MethodPost, all("approve"), gm, url.Values{"id": {p[0].ID, p[1].ID}}, true); w.Code != http.StatusOK {
 		t.Fatalf("approve all: %d %s", w.Code, w.Body)
 	}
 	if left := e.app.Hub.PendingList(e.campaignID); len(left) != 1 || left[0].ID != p[2].ID {
 		t.Fatalf("still waiting %+v", left)
 	}
 	for _, r := range p[:2] {
-		if w := e.do(t, http.MethodPost, "/requests/complete", "", url.Values{"secret": {r.Secret}}, true); sessionCookie(w) == nil {
+		if w := e.do(t, http.MethodPost, route.RequestsComplete, "", url.Values{"secret": {r.Secret}}, true); sessionCookie(w) == nil {
 			t.Errorf("%s not logged in", r.Name)
 		}
-		if w := e.do(t, http.MethodPost, "/requests/complete", "", url.Values{"secret": {r.Secret}}, true); sessionCookie(w) != nil {
+		if w := e.do(t, http.MethodPost, route.RequestsComplete, "", url.Values{"secret": {r.Secret}}, true); sessionCookie(w) != nil {
 			t.Errorf("%s redeemed twice", r.Name)
 		}
 	}
 
-	if w := e.do(t, http.MethodPost, all+"deny", gm, url.Values{"id": {p[2].ID}}, true); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodPost, all("deny"), gm, url.Values{"id": {p[2].ID}}, true); w.Code != http.StatusOK {
 		t.Fatalf("deny all: %d %s", w.Code, w.Body)
 	}
 	if left := e.app.Hub.PendingList(e.campaignID); len(left) != 0 {
 		t.Errorf("still waiting after deny %+v", left)
 	}
-	if w := e.do(t, http.MethodPost, "/requests/complete", "", url.Values{"secret": {p[2].Secret}}, true); sessionCookie(w) != nil {
+	if w := e.do(t, http.MethodPost, route.RequestsComplete, "", url.Values{"secret": {p[2].Secret}}, true); sessionCookie(w) != nil {
 		t.Error("denied request logged in")
 	}
 }
@@ -249,7 +272,7 @@ func TestWaitingPageCarriesSecret(t *testing.T) {
 	if err := e.q().SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
 		t.Fatal(err)
 	}
-	w := e.do(t, http.MethodPost, fmt.Sprintf("/join/%d/create", e.campaignID), "", url.Values{"name": {"Zed"}, "player": {"Mira"}}, false)
+	w := e.do(t, http.MethodPost, route.Path(route.JoinCreate, e.campaignID), "", url.Values{"name": {"Zed"}, "player": {"Mira"}}, false)
 	if sessionCookie(w) != nil {
 		t.Fatal("closed campaign created a session without approval")
 	}
@@ -257,7 +280,7 @@ func TestWaitingPageCarriesSecret(t *testing.T) {
 	if len(p) != 1 || p[0].Kind != hub.PendingCreate {
 		t.Fatalf("pending %+v", p)
 	}
-	if !strings.Contains(w.Body.String(), "/ws?pending="+p[0].Secret) {
+	if !strings.Contains(w.Body.String(), route.WS+"?pending="+p[0].Secret) {
 		t.Error("waiting page does not connect its websocket")
 	}
 }
@@ -274,7 +297,7 @@ func TestCommandPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmdPath := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	cmdPath := route.Path(route.CharacterCmd, e.characterID)
 	tests := []struct {
 		name, cookie, cmd string
 		want              int
@@ -310,7 +333,7 @@ func TestCommandPermissions(t *testing.T) {
 func TestHPQuickForm(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
-	cmdPath := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	cmdPath := route.Path(route.CharacterCmd, e.characterID)
 	for _, tt := range []struct {
 		name, op, amount string
 		want             int
@@ -346,21 +369,21 @@ func TestCommandBuilder(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
 	gm := e.token(t, enum.RoleAdmin)
-	base := fmt.Sprintf("/characters/%d/builder?verb=", e.characterID)
+	base := route.Path(route.CharacterBuilder, e.characterID) + "?verb="
 	for _, verb := range []string{"", "hp", "conditions", "rest", "abilities", "profs", "details", "weapons", "mods", "slots", "spells", "items", "coins", "features"} {
 		if w := e.do(t, http.MethodGet, base+verb, player, nil, true); w.Code != http.StatusOK {
 			t.Errorf("verb %q: status %d: %s", verb, w.Code, w.Body)
 		}
 	}
 	// The score field starts at the preselected ability's score.
-	e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", e.characterID), player, url.Values{"cmd": {"set ability wis 17"}}, true)
+	e.do(t, http.MethodPost, route.Path(route.CharacterCmd, e.characterID), player, url.Values{"cmd": {"set ability wis 17"}}, true)
 	if w := e.do(t, http.MethodGet, base+"abilities&op=ability&subject=wis", player, nil, true); !strings.Contains(w.Body.String(), `value="17"`) {
 		t.Errorf("ability not preselected: %s", w.Body)
 	}
 	if w := e.do(t, http.MethodGet, base+"hp", gm, nil, true); w.Code == http.StatusOK {
 		t.Error("GM got the owner's builder")
 	}
-	cmdPath := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	cmdPath := route.Path(route.CharacterCmd, e.characterID)
 	for _, form := range []url.Values{
 		{"prefix": {"set ability"}, "subject": {"dex"}, "sign": {""}, "n": {"16"}},
 		{"prefix": {"weapon add"}, "subject": {"Rapier"}, "ability": {"finesse"}, "dice": {"1d8"}, "dtype": {"piercing"}, "prof": {"prof"}},
@@ -428,17 +451,17 @@ func TestServerSideStripping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := e.do(t, http.MethodGet, fmt.Sprintf("/entities/%d", ent.ID), player, nil, false).Body.String()
+	body := e.do(t, http.MethodGet, route.Path(route.Entity, ent.ID), player, nil, false).Body.String()
 	if !strings.Contains(body, "Innkeeper") || strings.Contains(body, "lich") || strings.Contains(body, ">secret<") {
 		t.Errorf("entity page leaks or misses fields")
 	}
 
 	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Plans"})
 	secret, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "gm"})
-	if w := e.do(t, http.MethodGet, fmt.Sprintf("/blocks/%d/doc", secret.ID), player, nil, false); w.Code != http.StatusNotFound {
+	if w := e.do(t, http.MethodGet, route.Path(route.BlockDoc, secret.ID), player, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("player read a GM block: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodGet, fmt.Sprintf("/notes/%d", note.ID), player, nil, false); w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "Plans") {
+	if w := e.do(t, http.MethodGet, route.Path(route.Note, note.ID), player, nil, false); w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "Plans") {
 		t.Errorf("player saw a GM-only note: %d", w.Code)
 	}
 
@@ -453,7 +476,7 @@ func TestServerSideStripping(t *testing.T) {
 	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1, ActiveCombatantID: nullID(cb[0].ID)}); err != nil {
 		t.Fatal(err)
 	}
-	body = e.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d/combat", e.campaignID), player, nil, false).Body.String()
+	body = e.do(t, http.MethodGet, route.Path(route.CampaignCombat, e.campaignID), player, nil, false).Body.String()
 	if !strings.Contains(body, "Ogre") || strings.Contains(body, "59/59") {
 		t.Errorf("combat page leaks monster HP or misses the monster")
 	}
@@ -467,7 +490,7 @@ func TestSubmitStepsRefusesScriptLinks(t *testing.T) {
 	hrefs := map[string]bool{
 		"javascript:alert(1)": false, "JavaScript:x": false, "  javascript:x": false, "java\tscript:x": false,
 		"data:text/html,x": false, "vbscript:x": false,
-		"https://example.com": true, "http://x": true, "/notes/3": true, "#a": true, "": true,
+		"https://example.com": true, "http://x": true, route.Path(route.Note, 3): true, "#a": true, "": true,
 		"mailto:a@example.com": true, "https://x/%zz": true, // no script; refusing would block every later snapshot
 		"ftp://files.example": true, "sms:123": true, // TipTap autolinks these
 	}
@@ -480,7 +503,7 @@ func TestSubmitStepsRefusesScriptLinks(t *testing.T) {
 				"content": []any{map[string]any{"type": "text", "text": "a", "marks": []any{mark}}}}}),
 		}
 		for name, step := range steps {
-			w := e.doJSON(t, fmt.Sprintf("/blocks/%d/steps", b.ID), gm, map[string]any{"version": version, "clientID": "c", "steps": []json.RawMessage{step}})
+			w := e.doJSON(t, route.Path(route.BlockSteps, b.ID), gm, map[string]any{"version": version, "clientID": "c", "steps": []json.RawMessage{step}})
 			if got := w.Code == http.StatusOK; got != ok || (!ok && w.Code != http.StatusUnprocessableEntity) {
 				t.Errorf("%s href %q: %d", name, href, w.Code)
 			}
@@ -493,7 +516,7 @@ func TestSubmitStepsRefusesScriptLinks(t *testing.T) {
 	for href, ok := range hrefs {
 		doc := map[string]any{"type": "doc", "content": []any{map[string]any{"type": "paragraph", "content": []any{
 			map[string]any{"type": "text", "text": "a", "marks": []any{map[string]any{"type": "link", "attrs": map[string]any{"href": href}}}}}}}}
-		w := e.doJSON(t, fmt.Sprintf("/blocks/%d/snapshot", b.ID), gm, map[string]any{"version": 1, "doc": doc, "text": "a", "links": []any{}})
+		w := e.doJSON(t, route.Path(route.BlockSnapshot, b.ID), gm, map[string]any{"version": 1, "doc": doc, "text": "a", "links": []any{}})
 		if got := w.Code < 300; got != ok || (!ok && w.Code != http.StatusUnprocessableEntity) {
 			t.Errorf("snapshot href %q: %d", href, w.Code)
 		}
@@ -515,7 +538,7 @@ func TestCollabConflict(t *testing.T) {
 	gm := e.token(t, enum.RoleAdmin)
 	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
 	b, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
-	path := fmt.Sprintf("/blocks/%d/steps", b.ID)
+	path := route.Path(route.BlockSteps, b.ID)
 	step := json.RawMessage(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}}`)
 
 	w := e.doJSON(t, path, gm, map[string]any{"version": 0, "clientID": "c1", "steps": []json.RawMessage{step}})
@@ -535,7 +558,7 @@ func TestCollabConflict(t *testing.T) {
 	snapshot := func(version int) {
 		t.Helper()
 		snap := map[string]any{"version": version, "doc": json.RawMessage(`{"type":"doc","content":[]}`), "text": "a", "links": []any{}}
-		if w := e.doJSON(t, fmt.Sprintf("/blocks/%d/snapshot", b.ID), gm, snap); w.Code != http.StatusNoContent {
+		if w := e.doJSON(t, route.Path(route.BlockSnapshot, b.ID), gm, snap); w.Code != http.StatusNoContent {
 			t.Fatalf("snapshot: %d %s", w.Code, w.Body)
 		}
 	}
@@ -592,7 +615,7 @@ func TestPlayerBlocksInGameSession(t *testing.T) {
 	gmBlock, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: log.ID, Visibility: "players"})
 
 	add := func(cookie string, noteID int64, vis string) int {
-		return e.do(t, http.MethodPost, fmt.Sprintf("/notes/%d/blocks", noteID), cookie, url.Values{"visibility": {vis}}, true).Code
+		return e.do(t, http.MethodPost, route.Path(route.NoteBlocks, noteID), cookie, url.Values{"visibility": {vis}}, true).Code
 	}
 	if got := add(alice, log.ID, "players"); got != http.StatusOK {
 		t.Fatalf("player add to game session: %d", got)
@@ -615,7 +638,7 @@ func TestPlayerBlocksInGameSession(t *testing.T) {
 	// The author edits without players_can_edit; other players cannot.
 	step := json.RawMessage(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}}`)
 	steps := func(cookie string) int {
-		return e.doJSON(t, fmt.Sprintf("/blocks/%d/steps", own.ID), cookie, map[string]any{"version": own.Version, "clientID": "c", "steps": []json.RawMessage{step}}).Code
+		return e.doJSON(t, route.Path(route.BlockSteps, own.ID), cookie, map[string]any{"version": own.Version, "clientID": "c", "steps": []json.RawMessage{step}}).Code
 	}
 	if own.PlayersCanEdit || steps(alice) != http.StatusOK || steps(bob) != http.StatusNotFound {
 		t.Error("only the author may edit a block without players_can_edit")
@@ -630,12 +653,12 @@ func TestPlayerBlocksInGameSession(t *testing.T) {
 		form               url.Values
 		want               int
 	}{
-		{"bob re-scopes alice's block", bob, fmt.Sprintf("/blocks/%d/access", own.ID), access, refused},
-		{"bob deletes alice's block", bob, fmt.Sprintf("/blocks/%d/delete", own.ID), nil, refused},
-		{"alice deletes the gm's block", alice, fmt.Sprintf("/blocks/%d/delete", gmBlock.ID), nil, refused},
-		{"alice moves her block", alice, fmt.Sprintf("/blocks/%d/move", own.ID), url.Values{"dir": {"up"}}, refused},
-		{"alice re-scopes her block", alice, fmt.Sprintf("/blocks/%d/access", own.ID), access, http.StatusOK},
-		{"alice deletes her block", alice, fmt.Sprintf("/blocks/%d/delete", own.ID), nil, http.StatusOK},
+		{"bob re-scopes alice's block", bob, route.Path(route.BlockAccess, own.ID), access, refused},
+		{"bob deletes alice's block", bob, route.Path(route.BlockDelete, own.ID), nil, refused},
+		{"alice deletes the gm's block", alice, route.Path(route.BlockDelete, gmBlock.ID), nil, refused},
+		{"alice moves her block", alice, route.Path(route.BlockMove, own.ID), url.Values{"dir": {"up"}}, refused},
+		{"alice re-scopes her block", alice, route.Path(route.BlockAccess, own.ID), access, http.StatusOK},
+		{"alice deletes her block", alice, route.Path(route.BlockDelete, own.ID), nil, http.StatusOK},
 	} {
 		if got := post(tt.cookie, tt.path, tt.form); got != tt.want {
 			t.Errorf("%s: %d, want %d", tt.name, got, tt.want)
@@ -649,7 +672,7 @@ func TestJoinRequestCap(t *testing.T) {
 	if err := e.q().SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
 		t.Fatal(err)
 	}
-	path := fmt.Sprintf("/join/%d/create", e.campaignID)
+	path := route.Path(route.JoinCreate, e.campaignID)
 	for i := range hub.MaxPending {
 		if w := e.do(t, http.MethodPost, path, "", url.Values{"name": {"Ann"}, "player": {fmt.Sprintf("P%d", i)}}, false); w.Code != http.StatusOK {
 			t.Fatalf("request %d: status %d", i, w.Code)

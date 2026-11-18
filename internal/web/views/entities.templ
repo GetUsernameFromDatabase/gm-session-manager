@@ -6,6 +6,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
@@ -38,7 +39,7 @@ templ newEntityDialog(campaignID int64) {
 			New NPC
 		}
 		@dialog.Content() {
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/campaigns/%d/entities", campaignID)) } class="grid gap-4">
+			<form method="post" action={ templ.SafeURL(route.Path(route.CampaignEntities, campaignID)) } class="grid gap-4">
 				@dialog.Header() {
 					@dialog.Title() {
 						New NPC
@@ -96,7 +97,7 @@ templ EntityList(v EntityListView) {
 			<ul class="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 lg:grid-cols-5">
 				for _, e := range v.Entities {
 					<li class="group/npc min-w-0" data-hidden?={ v.IsGM && !e.IsRevealed }>
-						<a class="block rounded-lg ring-offset-2 ring-offset-background outline-none focus-visible:ring-3 focus-visible:ring-ring/50" href={ templ.SafeURL(fmt.Sprintf("/entities/%d", e.ID)) }>
+						<a class="block rounded-lg ring-offset-2 ring-offset-background outline-none focus-visible:ring-3 focus-visible:ring-ring/50" href={ templ.SafeURL(route.Path(route.Entity, e.ID)) }>
 							<div class="relative">
 								@npcPortrait(e, "group-data-[hidden]/npc:opacity-60 group-data-[hidden]/npc:grayscale")
 								if v.IsGM && !e.IsRevealed {
@@ -138,12 +139,12 @@ templ EntityPage(l Layout, v EntityView) {
 				<ul class="space-y-1.5 text-sm">
 					if v.IsGM {
 						for _, img := range v.E.Images {
-							@mention(icon.Image, fmt.Sprintf("/images/%d", img.ImageID), img.Name)
+							@mention(icon.Image, route.Path(route.Image, img.ImageID), img.Name)
 						}
 					}
 					@npcMentions(v.EntityLinks)
 					for _, b := range v.Backlinks {
-						@mention(icon.NotebookPen, fmt.Sprintf("/notes/%d", b.ID), b.Title)
+						@mention(icon.NotebookPen, route.Path(route.Note, b.ID), b.Title)
 					}
 					if len(v.Backlinks) == 0 && len(v.EntityLinks) == 0 && (!v.IsGM || len(v.E.Images) == 0) {
 						<li class="text-muted-foreground">No notes mention this NPC yet.</li>
@@ -205,10 +206,10 @@ templ entityLooks(v EntityView) {
 				}
 			}
 			@card.Content(card.ContentProps{Class: "space-y-4"}) {
-				@looksGrid(v.E.Images, utils.IfElse(v.IsGM, fmt.Sprintf("/entities/%d/images/", v.E.ID), ""))
+				@looksGrid(v.E.Images, utils.IfElse(v.IsGM, route.Path(route.EntityImages, v.E.ID)+"/", ""))
 				if v.IsGM {
 					if len(v.ImageChoices) > 0 {
-						<form class="flex flex-wrap items-center gap-2" hx-post={ fmt.Sprintf("/entities/%d/images", v.E.ID) }>
+						<form class="flex flex-wrap items-center gap-2" hx-post={ route.Path(route.EntityImages, v.E.ID) }>
 							@formSelect("", "image", selectItems(v.ImageChoices, func(i sqlc.ListImagesRow) string { return fmt.Sprint(i.ID) }, func(i sqlc.ListImagesRow) string { return i.Name }), "", "w-56", "")
 							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
 								Add look
@@ -230,7 +231,7 @@ templ looksGrid(looks []perm.Look, base string) {
 	<div class="flex flex-wrap items-start gap-4">
 		for _, img := range looks {
 			<figure class={ "space-y-1", utils.IfElse(img.IsCurrent, "w-64", "w-32") }>
-				<a href={ templ.SafeURL(fmt.Sprintf("/images/%d", img.ImageID)) } class="block rounded-lg">
+				<a href={ templ.SafeURL(route.Path(route.Image, img.ImageID)) } class="block rounded-lg">
 					<img src={ LookItem(img).Src() } alt={ img.Name } loading="lazy" class={ "aspect-square w-full rounded-lg border bg-muted object-cover", templ.KV("ring-2 ring-primary ring-offset-2 ring-offset-background", img.IsCurrent) }/>
 				</a>
 				<figcaption class="truncate text-xs" title={ img.Name }>
@@ -292,18 +293,18 @@ templ EntityGone(id int64) {
 // page open on a second GM device changes only what its GM touched.
 templ entityForm(v EntityView) {
 	{{ keys := OrderedFieldKeys(v.E.Fields) }}
-	{{ base := fmt.Sprintf("/entities/%d", v.E.ID) }}
+	{{ base := route.Path(route.Entity, v.E.ID) }}
 	<div class="group/fields space-y-5" data-fields>
 		<div class="space-y-2">
 			<div class="flex items-center gap-2">
-				<form class="contents" hx-post={ base + "/rename" } hx-trigger="change, submit">
+				<form class="contents" hx-post={ base + route.Rename } hx-trigger="change, submit">
 					@input.Input(input.Props{Name: "name", Value: v.E.Name, Required: true, Class: "-ml-2.5 h-auto min-w-0 flex-1 border-transparent py-0.5 text-2xl font-semibold shadow-none hover:border-input md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Name"}})
 				</form>
 				@moreMenu("entity-menu", "More actions") {
-					@menuDelete("Delete NPC", base+"/delete", "Delete "+v.E.Name+"?")
+					@menuDelete("Delete NPC", base+route.Delete, "Delete "+v.E.Name+"?")
 				}
 			</div>
-			<form hx-post={ base + "/reveal" } hx-trigger="change">
+			<form hx-post={ base + route.Reveal } hx-trigger="change">
 				@checkField("revealed", "true", v.E.IsRevealed) {
 					Players can see this NPC
 				}
@@ -326,14 +327,14 @@ templ entityForm(v EntityView) {
 			}
 		</div>
 		<p class="hidden text-sm text-muted-foreground peer-empty:block">No fields yet.</p>
-		@addFieldInput(v.E.ID, base+"/fields", keys)
+		@addFieldInput(v.E.ID, base+route.Fields, keys)
 		<section class="space-y-1 pt-3 text-sm">
 			<h2 class={ sectionHeading }>Statblock</h2>
 			<p class="flex items-center gap-1">
 				if v.Compendium != nil {
 					@icon.BookOpen(icon.Props{Size: 16, Class: "text-muted-foreground"})
 					<a class="underline underline-offset-4" href={ templ.SafeURL(entryHref(ctx, v.Compendium.ID)) }>{ v.Compendium.Name }</a>
-					@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeXs, Class: "text-muted-foreground", Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", v.E.ID), "hx-vals": `{"entry":"0"}`}}) {
+					@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeXs, Class: "text-muted-foreground", Attributes: templ.Attributes{"hx-post": route.Path(route.EntityLink, v.E.ID), "hx-vals": `{"entry":"0"}`}}) {
 						Unlink
 					}
 				} else {
@@ -342,7 +343,7 @@ templ entityForm(v EntityView) {
 			</p>
 			@input.Input(input.Props{Name: "q", Type: "search", Placeholder: "Link a compendium monster…", Class: "max-w-sm", Attributes: templ.Attributes{
 				"aria-label": "Link a compendium monster",
-				"hx-get":     CompendiumPath(ctx, fmt.Sprintf("/search?kind=monster&entity=%d", v.E.ID)),
+				"hx-get":     CompendiumPath(ctx, fmt.Sprintf("%s?kind=monster&entity=%d", route.CompendiumSearch, v.E.ID)),
 				"hx-trigger": "input changed delay:200ms, search",
 				"hx-target":  "next ul",
 				"hx-swap":    "innerHTML",
@@ -351,7 +352,7 @@ templ entityForm(v EntityView) {
 		</section>
 		if v.ActiveEncounterID != 0 {
 			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: templ.Attributes{
-				"hx-post": fmt.Sprintf("/encounters/%d/combatants", v.ActiveEncounterID), "hx-vals": fmt.Sprintf(`{"kind":"entity","id":"%d"}`, v.E.ID),
+				"hx-post": route.Path(route.EncounterCombatants, v.ActiveEncounterID), "hx-vals": fmt.Sprintf(`{"kind":"entity","id":"%d"}`, v.E.ID),
 			}}) {
 				@icon.Swords()
 				Add to current fight
@@ -366,16 +367,16 @@ templ entityForm(v EntityView) {
 // its own command with the row's key: fields.js fires field-save for the
 // text, the checkbox and the remove button post on their own.
 templ fieldRow(base, key string, f perm.Field) {
-	<form class="group/field space-y-1 border-l-[3px] border-l-rose-500 pl-3 has-[[data-reveal]_[data-checked]]:border-l-sky-500" data-field-key={ key } hx-post={ base + "/fields/text" } hx-trigger="field-save">
+	<form class="group/field space-y-1 border-l-[3px] border-l-rose-500 pl-3 has-[[data-reveal]_[data-checked]]:border-l-sky-500" data-field-key={ key } hx-post={ base + route.FieldsText } hx-trigger="field-save">
 		<div class="flex items-center gap-2">
 			<span class="text-sm font-medium first-letter:uppercase" data-field-label>{ key }</span>
 			<input type="hidden" name="key" value={ key }/>
-			<span class="ml-auto text-xs" data-reveal hx-post={ base + "/fields/reveal" } hx-trigger="change">
+			<span class="ml-auto text-xs" data-reveal hx-post={ base + route.FieldsReveal } hx-trigger="change">
 				@checkField("revealed", "true", f.IsRevealed) {
 					Players see
 				}
 			</span>
-			@removeButton(base + "/fields/remove")
+			@removeButton(base + route.FieldsRemove)
 		</div>
 		// The value is the hidden input the text command posts: an editor is
 		// not a form control. fields.js shows it in an editor that renders
@@ -422,7 +423,7 @@ templ wikiLink(l WikiLink) {
 // npcMentions are the linked-mentions rows for NPCs whose fields link here.
 templ npcMentions(rows []sqlc.ListEntityFieldBacklinksRow) {
 	for _, e := range rows {
-		@mention(icon.Drama, fmt.Sprintf("/entities/%d", e.ID), e.Name)
+		@mention(icon.Drama, route.Path(route.Entity, e.ID), e.Name)
 	}
 }
 

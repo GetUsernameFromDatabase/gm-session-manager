@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
@@ -13,15 +14,15 @@ templ CampaignOverview(l Layout, r Roster, j JoinInfo, s CampaignSourcesView) {
 	@Page(l) {
 		<div class="mb-6">
 			<div class="flex items-center gap-2">
-				<form class="min-w-0 flex-1" hx-post={ fmt.Sprintf("/campaigns/%d/rename", r.Campaign.ID) } hx-trigger="change, submit">
+				<form class="min-w-0 flex-1" hx-post={ route.Path(route.CampaignRename, r.Campaign.ID) } hx-trigger="change, submit">
 					@input.Input(input.Props{Name: "name", Value: r.Campaign.Name, Required: true, Class: "h-auto min-w-0 border-transparent px-1 text-2xl font-semibold md:text-2xl dark:bg-transparent", Attributes: templ.Attributes{"aria-label": "Campaign name", "maxlength": "100", "autocomplete": "off"}})
 				</form>
 				@moreMenu("campaign-menu", "More actions") {
-					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Href: fmt.Sprintf("/campaigns/%d/export", r.Campaign.ID), Attributes: templ.Attributes{"data-menu-item": ""}}) {
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Href: route.Path(route.CampaignExport, r.Campaign.ID), Attributes: templ.Attributes{"data-menu-item": ""}}) {
 						@icon.Download()
 						Export campaign (zip)
 					}
-					@menuDelete("Delete campaign", fmt.Sprintf("/campaigns/%d/delete", r.Campaign.ID), "Delete "+r.Campaign.Name+" forever, with all its characters, notes, combat and images? Its players are logged out. This cannot be undone.")
+					@menuDelete("Delete campaign", route.Path(route.CampaignDelete, r.Campaign.ID), "Delete "+r.Campaign.Name+" forever, with all its characters, notes, combat and images? Its players are logged out. This cannot be undone.")
 				}
 			</div>
 		</div>
@@ -51,10 +52,10 @@ templ PendingRequests(groups []PendingGroup) {
 						{ fmt.Sprintf("%d requests for ", len(g.Requests)) }
 						@campaignLink(g)
 					</span>
-					@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/campaigns/%d/requests/all/approve", g.CampaignID), "aria-label": fmt.Sprintf("Approve all %d requests for %s", len(g.Requests), g.CampaignName)}}) {
+					@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": route.Path(route.CampaignRequestsDecision, g.CampaignID, "approve"), "aria-label": fmt.Sprintf("Approve all %d requests for %s", len(g.Requests), g.CampaignName)}}) {
 						Approve
 					}
-					@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/campaigns/%d/requests/all/deny", g.CampaignID), "aria-label": fmt.Sprintf("Deny all %d requests for %s", len(g.Requests), g.CampaignName)}}) {
+					@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": route.Path(route.CampaignRequestsDecision, g.CampaignID, "deny"), "aria-label": fmt.Sprintf("Deny all %d requests for %s", len(g.Requests), g.CampaignName)}}) {
 						Deny
 					}
 				</form>
@@ -86,10 +87,10 @@ templ PendingRequests(groups []PendingGroup) {
 						}
 					</p>
 					<div class="flex gap-2">
-						@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/campaigns/%d/requests/%s/approve", g.CampaignID, p.ID)}}) {
+						@button.Button(button.Props{Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": route.Path(route.CampaignRequestDecision, g.CampaignID, p.ID, "approve")}}) {
 							Approve
 						}
-						@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/campaigns/%d/requests/%s/deny", g.CampaignID, p.ID)}}) {
+						@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": route.Path(route.CampaignRequestDecision, g.CampaignID, p.ID, "deny")}}) {
 							Deny
 						}
 					</div>
@@ -101,7 +102,7 @@ templ PendingRequests(groups []PendingGroup) {
 
 // campaignLink opens a request's campaign in a new tab, leaving the GM's page.
 templ campaignLink(g PendingGroup) {
-	<a class="underline" href={ templ.SafeURL(fmt.Sprintf("/campaigns/%d", g.CampaignID)) } target="_blank" rel="noopener">{ g.CampaignName }</a>
+	<a class="underline" href={ templ.SafeURL(route.Path(route.Campaign, g.CampaignID)) } target="_blank" rel="noopener">{ g.CampaignName }</a>
 }
 
 templ CampaignRoster(r Roster) {
@@ -111,7 +112,7 @@ templ CampaignRoster(r Roster) {
 			@button.Button(button.Props{
 				Variant:    utils.IfElse(r.Campaign.OpenJoin, button.VariantDefault, button.VariantOutline),
 				Size:       button.SizeXs,
-				Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/campaigns/%d/open-join", r.Campaign.ID), "title": "When open, new characters are created without your approval", "aria-pressed": fmt.Sprint(r.Campaign.OpenJoin)},
+				Attributes: templ.Attributes{"hx-post": route.Path(route.CampaignOpenJoin, r.Campaign.ID), "title": "When open, new characters are created without your approval", "aria-pressed": fmt.Sprint(r.Campaign.OpenJoin)},
 			}) {
 				Open join: { utils.IfElse(r.Campaign.OpenJoin, "on", "off") }
 			}
@@ -134,12 +135,12 @@ templ CampaignRoster(r Roster) {
 							<span class="text-xs text-muted-foreground">deleted @localTime(ch.DeletedAt.Time)</span>
 						</span>
 						<span class="flex flex-wrap gap-2">
-							@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/characters/%d/restore", ch.ID)}}) {
+							@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": route.Path(route.CharacterRestore, ch.ID)}}) {
 								Restore
 							}
-							<a class="text-xs underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d/download", ch.ID)) } download>Download</a>
+							<a class="text-xs underline" href={ templ.SafeURL(route.Path(route.CharacterDownload, ch.ID)) } download>Download</a>
 							@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantDestructive, Attributes: templ.Attributes{
-								"hx-post": fmt.Sprintf("/characters/%d/delete", ch.ID), "hx-confirm": "Delete " + ch.Name + " forever, with their notes? This cannot be undone.",
+								"hx-post": route.Path(route.CharacterDelete, ch.ID), "hx-confirm": "Delete " + ch.Name + " forever, with their notes? This cannot be undone.",
 							}}) {
 								Delete forever
 							}
@@ -151,7 +152,7 @@ templ CampaignRoster(r Roster) {
 		<form
 			class="group/busy mt-6 flex flex-wrap items-center gap-2 text-sm"
 			data-busy
-			hx-post={ fmt.Sprintf("/campaigns/%d/characters/import", r.Campaign.ID) }
+			hx-post={ route.Path(route.CampaignImportCharacter, r.Campaign.ID) }
 			hx-encoding="multipart/form-data"
 			hx-on::after-request="if (event.detail.successful) this.reset()"
 		>
@@ -168,7 +169,7 @@ templ CampaignRoster(r Roster) {
 templ rosterCard(r Roster, rc RosterCharacter) {
 	<div class="rounded-lg border p-3">
 		<div class="flex flex-wrap items-center justify-between gap-2">
-			<a class="font-medium underline-offset-2 hover:underline" href={ templ.SafeURL(fmt.Sprintf("/characters/%d", rc.Character.ID)) }>{ rc.Character.Name }</a>
+			<a class="font-medium underline-offset-2 hover:underline" href={ templ.SafeURL(route.Path(route.Character, rc.Character.ID)) }>{ rc.Character.Name }</a>
 			<span class="text-sm" { bind(fmt.Sprintf("text=ch.%d.hp", rc.Character.ID))... }>{ rosterHP(rc) }</span>
 		</div>
 		<ul class="mt-2 space-y-1 text-sm">
@@ -180,7 +181,7 @@ templ rosterCard(r Roster, rc RosterCharacter) {
 						<span class="data-[online=false]:text-muted-foreground" data-online={ fmt.Sprint(d.Online) } { bind(on, fmt.Sprintf("text=dev.%d.label", d.SessionID))... }>{ deviceLabel(d) }</span>
 					</span>
 					@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantDestructive, Attributes: templ.Attributes{
-						"hx-post": fmt.Sprintf("/sessions/%d/kick", d.SessionID), "hx-confirm": "Kick this device? It can ask to join again.",
+						"hx-post": route.Path(route.SessionKick, d.SessionID), "hx-confirm": "Kick this device? It can ask to join again.",
 					}}) {
 						Kick
 					}
@@ -194,7 +195,7 @@ templ rosterCard(r Roster, rc RosterCharacter) {
 			<summary class="cursor-pointer text-muted-foreground">More</summary>
 			<div class="mt-2 flex flex-wrap items-center gap-2">
 				if len(r.OtherCampaigns) > 0 {
-					<form class="flex items-center gap-2" hx-post={ fmt.Sprintf("/characters/%d/copy", rc.Character.ID) }>
+					<form class="flex items-center gap-2" hx-post={ route.Path(route.CharacterCopy, rc.Character.ID) }>
 						@formSelect("", "campaign_id", selectItems(r.OtherCampaigns, func(c sqlc.Campaign) string { return fmt.Sprint(c.ID) }, func(c sqlc.Campaign) string { return c.Name }), "", "h-7", "")
 						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs, Variant: button.VariantOutline}) {
 							Copy to campaign
@@ -202,7 +203,7 @@ templ rosterCard(r Roster, rc RosterCharacter) {
 					</form>
 				}
 				@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantDestructive, Attributes: templ.Attributes{
-					"hx-post": fmt.Sprintf("/characters/%d/remove", rc.Character.ID), "hx-confirm": "Delete " + rc.Character.Name + " and log out its devices? You can restore it afterwards.",
+					"hx-post": route.Path(route.CharacterRemove, rc.Character.ID), "hx-confirm": "Delete " + rc.Character.Name + " and log out its devices? You can restore it afterwards.",
 				}}) {
 					Delete character
 				}

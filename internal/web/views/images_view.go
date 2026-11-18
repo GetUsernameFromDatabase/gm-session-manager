@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/combobox"
 	selectcomp "gm-session-manager/internal/web/components/select"
 
@@ -35,18 +36,18 @@ func (i ImageItem) Src() string {
 }
 
 // ImageSrc is the authorized URL of image id.
-func ImageSrc(id int64) string { return fmt.Sprintf("/images/%d/file", id) }
+func ImageSrc(id int64) string { return route.Path(route.ImageFile, id) }
 
 // DisplayURL is the display window of a campaign.
-func DisplayURL(campaignID int64) string { return fmt.Sprintf("/campaigns/%d/display", campaignID) }
+func DisplayURL(campaignID int64) string { return route.Path(route.CampaignDisplay, campaignID) }
 
 // JoinQRSrc is the join QR code image for a campaign, or for the campaign
 // list when campaignID is 0. The query name matches web's queryCampaign.
 func JoinQRSrc(campaignID int64) string {
 	if campaignID == 0 {
-		return "/join.png"
+		return route.JoinQR
 	}
-	return fmt.Sprintf("/join.png?campaign=%d", campaignID)
+	return fmt.Sprintf("%s?campaign=%d", route.JoinQR, campaignID)
 }
 
 // ImagesView is the GM's image picker.
@@ -95,9 +96,9 @@ type ImageView struct {
 
 func imageAction(v ImageView) string {
 	if v.Image.ID == 0 {
-		return fmt.Sprintf("/campaigns/%d/images", v.CampaignID)
+		return route.Path(route.CampaignImages, v.CampaignID)
 	}
-	return fmt.Sprintf("/images/%d", v.Image.ID)
+	return route.Path(route.Image, v.Image.ID)
 }
 
 // comboEmptyHidden hides a combobox popup with nothing to show (no items, no

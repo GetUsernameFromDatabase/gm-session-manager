@@ -20,6 +20,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -65,7 +66,7 @@ func TestCreationWizard(t *testing.T) {
 	}
 	e.allowEntrySources(t)
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/create", e.characterID)
+	base := route.Path(route.CharacterCreate, e.characterID)
 	if w := e.do(t, http.MethodGet, base, player, nil, false); w.Header().Get("Location") != base+"/class" {
 		t.Fatalf("start: %d %v", w.Code, w.Header())
 	}
@@ -98,7 +99,7 @@ func TestCreationWizard(t *testing.T) {
 			"trait_versatile": {"Alert"}, "language": {"Elvish", "Dwarvish", "Elvish"}, "spell": {"fire-bolt"}}, "/equipment"},
 		{"equipment", url.Values{"option_background": {"B"}}, "/details"},
 		{"details", url.Values{"name": {"Wren"}, "backstory": {"Raised in a library."}, "size": {"medium"}, "vision": {"Darkvision 60 ft"}}, "/review"},
-		{"review", nil, fmt.Sprintf("/characters/%d", e.characterID)},
+		{"review", nil, route.Path(route.Character, e.characterID)},
 	} {
 		if step.step == "abilities" {
 			if w := e.do(t, http.MethodGet, base+"/abilities", player, nil, false); !strings.Contains(w.Body.String(), "Sage: ability score increases") {
@@ -225,7 +226,7 @@ func TestWizardChange(t *testing.T) {
 	e := newTestEnv(t)
 	loadFeatFixtures(t, e)
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/create", e.characterID)
+	base := route.Path(route.CharacterCreate, e.characterID)
 	for _, step := range []struct {
 		step string
 		form url.Values
@@ -252,7 +253,7 @@ func TestWizardChange(t *testing.T) {
 		{"background", http.StatusSeeOther},
 		{"species", http.StatusUnprocessableEntity}, // undone with the background
 	} {
-		if w := e.do(t, http.MethodPost, base+"/"+c.step+"/change", player, nil, false); w.Code != c.code {
+		if w := e.do(t, http.MethodPost, route.Path(route.CharacterCreateChange, e.characterID, c.step), player, nil, false); w.Code != c.code {
 			t.Errorf("change %s: %d, want %d", c.step, w.Code, c.code)
 		}
 	}
@@ -365,7 +366,7 @@ func TestFeatChoices(t *testing.T) {
 			ctx := t.Context()
 			loadFeatFixtures(t, e)
 			player := e.token(t, enum.RolePlayer)
-			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
+			base := route.Path(route.CharacterCreate, e.characterID) + "/"
 			for _, step := range []string{"class=wizard", "species=human", "background=sage"} {
 				step, pick, _ := strings.Cut(step, "=")
 				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
@@ -422,7 +423,7 @@ func TestCreationSpeciesSpells(t *testing.T) {
 				}
 			}
 			player := e.token(t, enum.RolePlayer)
-			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
+			base := route.Path(route.CharacterCreate, e.characterID) + "/"
 			for _, step := range []string{"class=wizard", "species=" + tc.species, "background=testfolk"} {
 				step, pick, _ := strings.Cut(step, "=")
 				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
@@ -528,7 +529,7 @@ func TestBackgroundRepicksClassSkill(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	base, player := fmt.Sprintf("/characters/%d/create/", e.characterID), e.token(t, enum.RolePlayer)
+	base, player := route.Path(route.CharacterCreate, e.characterID)+"/", e.token(t, enum.RolePlayer)
 	if w := e.do(t, http.MethodPost, base+"class", player, url.Values{"pick": {"testmonk"}, "skill": {"insight", "stealth"}}, false); w.Code != http.StatusSeeOther {
 		t.Fatalf("class: %d %s", w.Code, w.Body)
 	}
@@ -576,7 +577,7 @@ func TestClassSkillCount(t *testing.T) {
 	if err := e0.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testcommoner", Name: "Testcommoner", SourceKey: "test", ContentHash: "x", DataJson: `{"hit_die":8}`}); err != nil {
 		t.Fatal(err)
 	}
-	w0 := e0.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/create/class", e0.characterID), e0.token(t, enum.RolePlayer), url.Values{"pick": {"testcommoner"}, "skill": {"athletics"}}, false)
+	w0 := e0.do(t, http.MethodPost, route.Path(route.CharacterCreateStep, e0.characterID, "class"), e0.token(t, enum.RolePlayer), url.Values{"pick": {"testcommoner"}, "skill": {"athletics"}}, false)
 	if body := w0.Body.String(); w0.Code != http.StatusUnprocessableEntity || errorAt(body, views.FieldSkill) || !strings.Contains(body, ">choose none<") {
 		t.Errorf("skill on a class without skills: %d, message not at the top", w0.Code)
 	}
@@ -595,7 +596,7 @@ func TestClassSkillCount(t *testing.T) {
 			t.Fatal(err)
 		}
 		form := url.Values{"pick": {"testfighter"}, "skill": tc.skills}
-		path, player := fmt.Sprintf("/characters/%d/create/class", e.characterID), e.token(t, enum.RolePlayer)
+		path, player := route.Path(route.CharacterCreateStep, e.characterID, "class"), e.token(t, enum.RolePlayer)
 		w := e.do(t, http.MethodPost, path, player, form, false)
 		if w.Code != tc.code {
 			t.Errorf("%v: %d, want %d", tc.skills, w.Code, tc.code)
@@ -613,7 +614,7 @@ func TestClassSkillCount(t *testing.T) {
 		// A crafted spell on a non-caster's choices, which draw no checklist,
 		// is refused at the top.
 		loadFeatFixtures(t, e)
-		base := fmt.Sprintf("/characters/%d/create/", e.characterID)
+		base := route.Path(route.CharacterCreate, e.characterID) + "/"
 		for _, step := range []string{"species=human", "background=testfolk"} {
 			step, pick, _ := strings.Cut(step, "=")
 			if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
@@ -817,7 +818,7 @@ func TestCreationOptionCheck(t *testing.T) {
 				t.Fatal(err)
 			}
 			player := e.token(t, enum.RolePlayer)
-			base := fmt.Sprintf("/characters/%d/create/", e.characterID)
+			base := route.Path(route.CharacterCreate, e.characterID) + "/"
 			for _, step := range []string{"class=testlock", "species=human", "background=testfolk"} {
 				step, pick, _ := strings.Cut(step, "=")
 				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
@@ -1165,7 +1166,7 @@ func TestWizardSpeciesVariant(t *testing.T) {
 	}
 	e.allowEntrySources(t)
 	player := e.token(t, enum.RolePlayer)
-	base := fmt.Sprintf("/characters/%d/create/species", e.characterID)
+	base := route.Path(route.CharacterCreateStep, e.characterID, "species")
 	page := e.do(t, http.MethodGet, base, player, nil, false).Body.String()
 	if strings.Contains(page, "Drow Descent") {
 		t.Error("a subrace is offered as a species of its own")

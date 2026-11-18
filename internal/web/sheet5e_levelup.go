@@ -18,6 +18,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -450,7 +451,7 @@ func (a *App) levelUp(c *gin.Context) error {
 		return err
 	}
 	a.Hub.Publish(ch.CampaignID, hub.Topic{Kind: hub.TopicCharacter, ID: ch.ID})
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/characters/%d", ch.ID))
+	c.Redirect(http.StatusSeeOther, route.Path(route.Character, ch.ID))
 	return nil
 }
 

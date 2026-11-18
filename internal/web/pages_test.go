@@ -18,6 +18,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -62,22 +63,22 @@ func TestPagesRender(t *testing.T) {
 	}
 	for _, kind := range []string{"pc", "monster", "entity"} {
 		id := map[string]int64{"pc": e.characterID, "monster": goblin.ID, "entity": ent.ID}[kind]
-		w := e.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/combatants", enc.ID), gm, url.Values{"kind": {kind}, "id": {fmt.Sprint(id)}}, true)
+		w := e.do(t, http.MethodPost, route.Path(route.EncounterCombatants, enc.ID), gm, url.Values{"kind": {kind}, "id": {fmt.Sprint(id)}}, true)
 		if w.Code != http.StatusOK {
 			t.Fatalf("add %s: %d %s", kind, w.Code, w.Body)
 		}
 	}
-	start := fmt.Sprintf("/encounters/%d/start", enc.ID)
+	start := route.Path(route.EncounterAction, enc.ID, "start")
 	if w := e.do(t, http.MethodPost, start, gm, nil, true); w.Code == http.StatusOK {
 		t.Fatal("start ran without initiatives")
 	}
 	rows, _ := e.q().ListCombatants(ctx, enc.ID)
 	for i, r := range rows {
-		if w := e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/initiative", r.ID), gm, url.Values{"initiative": {fmt.Sprint(10 + i)}}, true); w.Code != http.StatusOK {
+		if w := e.do(t, http.MethodPost, route.Path(route.CombatantAction, r.ID, "initiative"), gm, url.Values{"initiative": {fmt.Sprint(10 + i)}}, true); w.Code != http.StatusOK {
 			t.Fatalf("initiative: %d %s", w.Code, w.Body)
 		}
 		if r.CharacterID.Valid { // a PC's resistance halves damage of its type only
-			hpURL, id := fmt.Sprintf("/combatants/%d/hp", r.ID), r.CharacterID.Int64
+			hpURL, id := route.Path(route.CombatantAction, r.ID, "hp"), r.CharacterID.Int64
 			if err := e.app.updateCharacter(ctx, id, func(_ *sqlc.Queries, dc *dnd5e.Character) error {
 				dc.Sheet.Resistances, dc.HP, dc.MaxHP = []string{"fire"}, 30, 30
 				return nil
@@ -99,26 +100,26 @@ func TestPagesRender(t *testing.T) {
 			e.do(t, http.MethodPost, hpURL, gm, url.Values{"op": {"heal"}, "amount": {"30"}, "type": {"fire"}}, true)
 		}
 		if r.EntityID.Valid && !r.MonsterRef.Valid { // Mira has no stats: max HP starts her at full
-			e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/hp", r.ID), gm, url.Values{"op": {"set"}, "max_hp": {"12"}}, true)
-			e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/hp", r.ID), gm, url.Values{"op": {"damage"}, "amount": {"15"}}, true)
+			e.do(t, http.MethodPost, route.Path(route.CombatantAction, r.ID, "hp"), gm, url.Values{"op": {"set"}, "max_hp": {"12"}}, true)
+			e.do(t, http.MethodPost, route.Path(route.CombatantAction, r.ID, "hp"), gm, url.Values{"op": {"damage"}, "amount": {"15"}}, true)
 			if cb, _ := e.q().GetCombatant(ctx, r.ID); cb.MaxHp != 12 || cb.Hp != -3 {
 				t.Fatalf("Mira HP %d/%d, want -3/12", cb.Hp, cb.MaxHp)
 			}
 			// Set fills only the given fields; HP is capped at max.
-			e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/hp", r.ID), gm, url.Values{"op": {"set"}, "hp": {"20"}, "temp_hp": {"4"}}, true)
+			e.do(t, http.MethodPost, route.Path(route.CombatantAction, r.ID, "hp"), gm, url.Values{"op": {"set"}, "hp": {"20"}, "temp_hp": {"4"}}, true)
 			if cb, _ := e.q().GetCombatant(ctx, r.ID); cb.Hp != 12 || cb.MaxHp != 12 || cb.TempHp != 4 {
 				t.Fatalf("Mira HP %d/%d+%d, want 12/12+4", cb.Hp, cb.MaxHp, cb.TempHp)
 			}
-			if w := e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/hp", r.ID), gm, url.Values{"op": {"set"}}, true); w.Code == http.StatusOK {
+			if w := e.do(t, http.MethodPost, route.Path(route.CombatantAction, r.ID, "hp"), gm, url.Values{"op": {"set"}}, true); w.Code == http.StatusOK {
 				t.Fatal("empty set succeeded")
 			}
-			e.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/hp", r.ID), gm, url.Values{"op": {"damage"}, "amount": {"19"}}, true)
+			e.do(t, http.MethodPost, route.Path(route.CombatantAction, r.ID, "hp"), gm, url.Values{"op": {"damage"}, "amount": {"19"}}, true)
 		}
 	}
 	if w := e.do(t, http.MethodPost, start, gm, nil, true); w.Code != http.StatusOK {
 		t.Fatalf("start: %d %s", w.Code, w.Body)
 	}
-	next := fmt.Sprintf("/encounters/%d/next", enc.ID)
+	next := route.Path(route.EncounterAction, enc.ID, "next")
 	if w := e.do(t, http.MethodPost, next, gm, nil, true); w.Code != http.StatusOK {
 		t.Fatalf("next: %d %s", w.Code, w.Body)
 	}
@@ -132,27 +133,27 @@ func TestPagesRender(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cb := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID) // the campaign's compendium
+	cb := route.Path(route.CampaignCompendium, e.campaignID) // the campaign's compendium
 	pages := []struct {
 		path      string
 		gm, other bool // who may load it
 		contains  string
 	}{
 		{"/", true, false, "Campaigns"},
-		{fmt.Sprintf("/campaigns/%d", e.campaignID), true, false, "Alice"},
-		{fmt.Sprintf("/characters/%d", e.characterID), true, true, "Alice"},
-		{fmt.Sprintf("/characters/%d", e.characterID), true, true, "Add effect to Alice"},
-		{fmt.Sprintf("/characters/%d", e.characterID), true, true, "Armor class +2"},
-		{fmt.Sprintf("/characters/%d", e.characterID), true, true, "until long rest"},
-		{fmt.Sprintf("/campaigns/%d/combat", e.campaignID), true, true, "Armor class +2"},
-		{fmt.Sprintf("/campaigns/%d/combat", e.campaignID), true, true, "until long rest"},
-		{fmt.Sprintf("/characters/%d/levelup?class=wizard", e.characterID), false, true, "Wizard 1"},
-		{fmt.Sprintf("/campaigns/%d/combat", e.campaignID), true, true, "Goblin Warrior"},
-		{fmt.Sprintf("/campaigns/%d/notes?q=Session", e.campaignID), true, true, "Session 1"},
-		{fmt.Sprintf("/notes/%d", note.ID), true, true, "Session 1"},
-		{fmt.Sprintf("/campaigns/%d/entities", e.campaignID), true, true, "Mira"},
-		{fmt.Sprintf("/entities/%d", ent.ID), true, true, "Mira"},
-		{fmt.Sprintf("/campaigns/%d/switcher?q=mi", e.campaignID), true, true, "Mira"},
+		{route.Path(route.Campaign, e.campaignID), true, false, "Alice"},
+		{route.Path(route.Character, e.characterID), true, true, "Alice"},
+		{route.Path(route.Character, e.characterID), true, true, "Add effect to Alice"},
+		{route.Path(route.Character, e.characterID), true, true, "Armor class +2"},
+		{route.Path(route.Character, e.characterID), true, true, "until long rest"},
+		{route.Path(route.CampaignCombat, e.campaignID), true, true, "Armor class +2"},
+		{route.Path(route.CampaignCombat, e.campaignID), true, true, "until long rest"},
+		{route.Path(route.CharacterLevelup, e.characterID) + "?class=wizard", false, true, "Wizard 1"},
+		{route.Path(route.CampaignCombat, e.campaignID), true, true, "Goblin Warrior"},
+		{route.Path(route.CampaignNotes, e.campaignID) + "?q=Session", true, true, "Session 1"},
+		{route.Path(route.Note, note.ID), true, true, "Session 1"},
+		{route.Path(route.CampaignEntities, e.campaignID), true, true, "Mira"},
+		{route.Path(route.Entity, ent.ID), true, true, "Mira"},
+		{route.Path(route.CampaignSwitcher, e.campaignID) + "?q=mi", true, true, "Mira"},
 		{cb + "?q=fire", true, true, "Fire Bolt"},
 		{cb, true, true, "Goblin Warrior"}, // first batch of every kind
 		{fmt.Sprintf("%s/entries/%d", cb, goblin.ID), true, true, "Scimitar"},
@@ -166,14 +167,14 @@ func TestPagesRender(t *testing.T) {
 		{cb + "?kind=monster,spell", true, true, "Fire Bolt"},
 		{cb + "?after_name=Fire+Bolt&after_id=0", true, true, "Fire Bolt"},           // cursor is (name, id): same name, later id
 		{cb + "?after_name=Fire+Bolt&after_id=999999", true, true, "Goblin Warrior"}, // next batch after the cursor
-		{cb + "/search?q=gob", true, true, "Goblin Warrior"},
-		{cb + "/search?kind=monster&q=gob&encounter=1", true, true, "Goblin Warrior"},
-		{cb + "/homebrew/new", true, true, "New homebrew"}, // players write their own spells and items
+		{cb + route.CompendiumSearch + "?q=gob", true, true, "Goblin Warrior"},
+		{cb + route.CompendiumSearch + "?kind=monster&q=gob&encounter=1", true, true, "Goblin Warrior"},
+		{cb + route.CompendiumHomebrewNew, true, true, "New homebrew"}, // players write their own spells and items
 	}
-	if w := e.do(t, http.MethodGet, cb+"/random?kind=monster", player, nil, false); w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), cb+"/entries/") {
+	if w := e.do(t, http.MethodGet, cb+route.CompendiumRandom+"?kind=monster", player, nil, false); w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), cb+route.Path(route.CompendiumEntry, "")) {
 		t.Errorf("random: %d %q", w.Code, w.Header().Get("Location"))
 	}
-	if w := e.do(t, http.MethodGet, cb+"/random?kind=monster", player, nil, true); !strings.HasPrefix(w.Header().Get("HX-Redirect"), cb+"/entries/") {
+	if w := e.do(t, http.MethodGet, cb+route.CompendiumRandom+"?kind=monster", player, nil, true); !strings.HasPrefix(w.Header().Get("HX-Redirect"), cb+route.Path(route.CompendiumEntry, "")) {
 		t.Errorf("htmx random: %d %q", w.Code, w.Header().Get("HX-Redirect"))
 	}
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, cb+"?kind=spell", nil)
@@ -226,7 +227,7 @@ func TestMonsterImageLink(t *testing.T) {
 	player := e.token(t, enum.RolePlayer)
 	goblin, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
 	spell, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "spell", Slug: "fire-bolt"})
-	page := fmt.Sprintf("/campaigns/%d/compendium/entries/%d", e.campaignID, goblin.ID)
+	page := route.Path(route.CampaignCompendium+route.CompendiumEntry, e.campaignID, goblin.ID)
 	if w := e.do(t, http.MethodGet, page, player, nil, false); !strings.Contains(w.Body.String(), compendium.MonsterImagePrefix+"goblin-warrior.png") {
 		t.Errorf("player page lacks the bound picture: %s", w.Body)
 	}
@@ -253,7 +254,7 @@ func TestMonsterImageLink(t *testing.T) {
 		{"gm clears", gm, goblin.ID, "", true, ""},
 	}
 	for _, c := range cases {
-		w := e.do(t, http.MethodPost, fmt.Sprintf("/compendium/entries/%d/image", c.id), c.cookie, url.Values{"image_url": {c.link}}, false)
+		w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumEntryImage, c.id), c.cookie, url.Values{"image_url": {c.link}}, false)
 		if ok := w.Code == http.StatusSeeOther; ok != c.ok {
 			t.Errorf("%s: status %d", c.name, w.Code)
 		}
@@ -310,7 +311,7 @@ func TestMonsterHabitats(t *testing.T) {
 
 	// Every listed habitat passes the form's oneof and the table's CHECK.
 	for _, h := range compendium.Habitats {
-		if w := e.do(t, http.MethodPost, "/compendium/habitats/cell", gm, cell(goblin.ID, string(h), true), false); w.Code != http.StatusOK {
+		if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumHabitatCell, gm, cell(goblin.ID, string(h), true), false); w.Code != http.StatusOK {
 			t.Fatalf("habitat %s: status %d", h, w.Code)
 		}
 	}
@@ -318,7 +319,7 @@ func TestMonsterHabitats(t *testing.T) {
 		t.Fatalf("goblin habitats %q", got)
 	}
 	for _, h := range compendium.Habitats {
-		e.do(t, http.MethodPost, "/compendium/habitats/cell", gm, cell(goblin.ID, string(h), false), false)
+		e.do(t, http.MethodPost, route.Compendium+route.CompendiumHabitatCell, gm, cell(goblin.ID, string(h), false), false)
 	}
 
 	cases := []struct {
@@ -330,24 +331,24 @@ func TestMonsterHabitats(t *testing.T) {
 		goblin string // habitats afterwards
 		giant  string
 	}{
-		{"gm ticks", gm, "/compendium/habitats/cell", cell(goblin.ID, "Forest", true), true, "Forest", ""},
-		{"gm ticks again", gm, "/compendium/habitats/cell", cell(goblin.ID, "Forest", true), true, "Forest", ""},
-		{"player refused", player, "/compendium/habitats/cell", cell(goblin.ID, "Hill", true), false, "Forest", ""},
-		{"unknown habitat", gm, "/compendium/habitats/cell", cell(goblin.ID, "Moon", true), false, "Forest", ""},
-		{"not a monster", gm, "/compendium/habitats/cell", cell(spell.ID, "Hill", true), false, "Forest", ""},
-		{"batch adds to matches only", gm, "/compendium/habitats/batch", batch("HILL", "Hill", true), true, "Forest", "Hill"},
-		{"batch with no filter adds to all", gm, "/compendium/habitats/batch", batch("", "Mountain", true), true, "Forest,Mountain", "Hill,Mountain"},
-		{"player batch refused", player, "/compendium/habitats/batch", batch("", "Urban", true), false, "Forest,Mountain", "Hill,Mountain"},
-		{"batch removes from matches only", gm, "/compendium/habitats/batch", batch("goblin", "Mountain", false), true, "Forest", "Hill,Mountain"},
-		{"gm unticks", gm, "/compendium/habitats/cell", cell(goblin.ID, "Forest", false), true, "", "Hill,Mountain"},
-		{"gm sets any", gm, "/compendium/habitats/any", anyForm(goblin.ID), true, all, "Hill,Mountain"},
-		{"player any refused", player, "/compendium/habitats/any", anyForm(goblin.ID), false, all, "Hill,Mountain"},
-		{"any on a spell refused", gm, "/compendium/habitats/any", anyForm(spell.ID), false, all, "Hill,Mountain"},
-		{"any from some sets the rest", gm, "/compendium/habitats/any", anyForm(giant.ID), true, all, all},
-		{"gm clears any", gm, "/compendium/habitats/any", anyForm(goblin.ID), true, "", all},
-		{"gm clears the giant's any", gm, "/compendium/habitats/any", anyForm(giant.ID), true, "", ""},
-		{"batch restores the giant", gm, "/compendium/habitats/batch", batch("giant", "Hill", true), true, "", "Hill"},
-		{"and its mountain", gm, "/compendium/habitats/batch", batch("giant", "Mountain", true), true, "", "Hill,Mountain"},
+		{"gm ticks", gm, route.Compendium + route.CompendiumHabitatCell, cell(goblin.ID, "Forest", true), true, "Forest", ""},
+		{"gm ticks again", gm, route.Compendium + route.CompendiumHabitatCell, cell(goblin.ID, "Forest", true), true, "Forest", ""},
+		{"player refused", player, route.Compendium + route.CompendiumHabitatCell, cell(goblin.ID, "Hill", true), false, "Forest", ""},
+		{"unknown habitat", gm, route.Compendium + route.CompendiumHabitatCell, cell(goblin.ID, "Moon", true), false, "Forest", ""},
+		{"not a monster", gm, route.Compendium + route.CompendiumHabitatCell, cell(spell.ID, "Hill", true), false, "Forest", ""},
+		{"batch adds to matches only", gm, route.Compendium + route.CompendiumHabitatBatch, batch("HILL", "Hill", true), true, "Forest", "Hill"},
+		{"batch with no filter adds to all", gm, route.Compendium + route.CompendiumHabitatBatch, batch("", "Mountain", true), true, "Forest,Mountain", "Hill,Mountain"},
+		{"player batch refused", player, route.Compendium + route.CompendiumHabitatBatch, batch("", "Urban", true), false, "Forest,Mountain", "Hill,Mountain"},
+		{"batch removes from matches only", gm, route.Compendium + route.CompendiumHabitatBatch, batch("goblin", "Mountain", false), true, "Forest", "Hill,Mountain"},
+		{"gm unticks", gm, route.Compendium + route.CompendiumHabitatCell, cell(goblin.ID, "Forest", false), true, "", "Hill,Mountain"},
+		{"gm sets any", gm, route.Compendium + route.CompendiumHabitatAny, anyForm(goblin.ID), true, all, "Hill,Mountain"},
+		{"player any refused", player, route.Compendium + route.CompendiumHabitatAny, anyForm(goblin.ID), false, all, "Hill,Mountain"},
+		{"any on a spell refused", gm, route.Compendium + route.CompendiumHabitatAny, anyForm(spell.ID), false, all, "Hill,Mountain"},
+		{"any from some sets the rest", gm, route.Compendium + route.CompendiumHabitatAny, anyForm(giant.ID), true, all, all},
+		{"gm clears any", gm, route.Compendium + route.CompendiumHabitatAny, anyForm(goblin.ID), true, "", all},
+		{"gm clears the giant's any", gm, route.Compendium + route.CompendiumHabitatAny, anyForm(giant.ID), true, "", ""},
+		{"batch restores the giant", gm, route.Compendium + route.CompendiumHabitatBatch, batch("giant", "Hill", true), true, "", "Hill"},
+		{"and its mountain", gm, route.Compendium + route.CompendiumHabitatBatch, batch("giant", "Mountain", true), true, "", "Hill,Mountain"},
 	}
 	for _, c := range cases {
 		w := e.do(t, http.MethodPost, c.path, c.cookie, c.form, true)
@@ -366,14 +367,14 @@ func TestMonsterHabitats(t *testing.T) {
 	}
 
 	// Every habitat reads as the Monster Manual's "Any".
-	e.do(t, http.MethodPost, "/compendium/habitats/any", gm, anyForm(goblin.ID), true)
-	if body := e.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d/compendium/entries/%d", e.campaignID, goblin.ID), player, nil, false).Body.String(); !strings.Contains(body, "</strong> Any") {
+	e.do(t, http.MethodPost, route.Compendium+route.CompendiumHabitatAny, gm, anyForm(goblin.ID), true)
+	if body := e.do(t, http.MethodGet, route.Path(route.CampaignCompendium+route.CompendiumEntry, e.campaignID, goblin.ID), player, nil, false).Body.String(); !strings.Contains(body, "</strong> Any") {
 		t.Error("entry page with every habitat does not read Any")
 	}
-	e.do(t, http.MethodPost, "/compendium/habitats/any", gm, anyForm(goblin.ID), true)
+	e.do(t, http.MethodPost, route.Compendium+route.CompendiumHabitatAny, gm, anyForm(goblin.ID), true)
 
 	// Re-importing keeps what the GM typed.
-	e.do(t, http.MethodPost, "/compendium/habitats/cell", gm, cell(goblin.ID, "Hill", true), false)
+	e.do(t, http.MethodPost, route.Compendium+route.CompendiumHabitatCell, gm, cell(goblin.ID, "Hill", true), false)
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
@@ -381,17 +382,17 @@ func TestMonsterHabitats(t *testing.T) {
 		t.Errorf("after re-import: goblin %q", got)
 	}
 
-	page := fmt.Sprintf("/campaigns/%d/compendium/entries/%d", e.campaignID, giant.ID)
-	if body := e.do(t, http.MethodGet, page, player, nil, false).Body.String(); !strings.Contains(body, "Hill, Mountain") || strings.Contains(body, "/compendium/habitats") {
+	page := route.Path(route.CampaignCompendium+route.CompendiumEntry, e.campaignID, giant.ID)
+	if body := e.do(t, http.MethodGet, page, player, nil, false).Body.String(); !strings.Contains(body, "Hill, Mountain") || strings.Contains(body, route.Compendium+route.CompendiumHabitats) {
 		t.Errorf("player page: want habitats, no grid link: %s", body)
 	}
-	if body := e.do(t, http.MethodGet, page, gm, nil, false).Body.String(); !strings.Contains(body, "/compendium/habitats?q=Hill+Giant") {
+	if body := e.do(t, http.MethodGet, page, gm, nil, false).Body.String(); !strings.Contains(body, route.Compendium+route.CompendiumHabitats+"?q=Hill+Giant") {
 		t.Errorf("gm page lacks the grid link")
 	}
-	if w := e.do(t, http.MethodGet, "/compendium/habitats?q=giant", player, nil, false); w.Code == http.StatusOK {
+	if w := e.do(t, http.MethodGet, route.Compendium+route.CompendiumHabitats+"?q=giant", player, nil, false); w.Code == http.StatusOK {
 		t.Error("player opened the grid")
 	}
-	if body := e.do(t, http.MethodGet, "/compendium/habitats?q=giant", gm, nil, false).Body.String(); !strings.Contains(body, "Hill Giant") || strings.Contains(body, "Goblin Warrior") {
+	if body := e.do(t, http.MethodGet, route.Compendium+route.CompendiumHabitats+"?q=giant", gm, nil, false).Body.String(); !strings.Contains(body, "Hill Giant") || strings.Contains(body, "Goblin Warrior") {
 		t.Errorf("grid filter: %s", body)
 	}
 }
@@ -461,13 +462,13 @@ func TestHabitatCopies(t *testing.T) {
 		srd    string // habitats afterwards
 		giant  string
 	}{
-		{"player fill refused", player, "/compendium/habitats/fill", fill(""), false, "", ""},
-		{"fill outside the filter", gm, "/compendium/habitats/fill", fill("giant"), true, "", ""},
-		{"fill takes the copy's", gm, "/compendium/habitats/fill", fill("goblin"), true, "Swamp", ""},
-		{"fill again changes nothing", gm, "/compendium/habitats/fill", fill(""), true, "Swamp", ""},
-		{"player copy refused", player, "/compendium/habitats/copy", copyForm(giant.ID, brew.ID), false, "Swamp", ""},
-		{"copy from any monster", gm, "/compendium/habitats/copy", copyForm(giant.ID, brew.ID), true, "Swamp", "Swamp"},
-		{"copy needs both ids", gm, "/compendium/habitats/copy", url.Values{"entry_id": {fmt.Sprint(srd.ID)}}, false, "Swamp", "Swamp"},
+		{"player fill refused", player, route.Compendium + route.CompendiumHabitatFill, fill(""), false, "", ""},
+		{"fill outside the filter", gm, route.Compendium + route.CompendiumHabitatFill, fill("giant"), true, "", ""},
+		{"fill takes the copy's", gm, route.Compendium + route.CompendiumHabitatFill, fill("goblin"), true, "Swamp", ""},
+		{"fill again changes nothing", gm, route.Compendium + route.CompendiumHabitatFill, fill(""), true, "Swamp", ""},
+		{"player copy refused", player, route.Compendium + route.CompendiumHabitatCopy, copyForm(giant.ID, brew.ID), false, "Swamp", ""},
+		{"copy from any monster", gm, route.Compendium + route.CompendiumHabitatCopy, copyForm(giant.ID, brew.ID), true, "Swamp", "Swamp"},
+		{"copy needs both ids", gm, route.Compendium + route.CompendiumHabitatCopy, url.Values{"entry_id": {fmt.Sprint(srd.ID)}}, false, "Swamp", "Swamp"},
 	}
 	for _, c := range cases {
 		w := e.do(t, http.MethodPost, c.path, c.cookie, c.form, true)
@@ -486,24 +487,24 @@ func TestHabitatCopies(t *testing.T) {
 	if _, err := e.q().AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: brew.ID, Habitat: "Hill"}); err != nil {
 		t.Fatal(err)
 	}
-	e.do(t, http.MethodPost, "/compendium/habitats/copy", gm, copyForm(srd.ID, brew.ID), true)
+	e.do(t, http.MethodPost, route.Compendium+route.CompendiumHabitatCopy, gm, copyForm(srd.ID, brew.ID), true)
 	if got := habitats(srd.ID); got != "Swamp" {
 		t.Errorf("copy over habitats: srd %q", got)
 	}
 
 	// The page offers the copy to the GM only, while the monster has none.
 	clearSwamp(srd.ID)
-	page := fmt.Sprintf("/campaigns/%d/compendium/entries/%d", e.campaignID, srd.ID)
-	if body := e.do(t, http.MethodGet, page, gm, nil, false).Body.String(); !strings.Contains(body, "/compendium/habitats/copy") || !strings.Contains(body, "Hill, Swamp") {
+	page := route.Path(route.CampaignCompendium+route.CompendiumEntry, e.campaignID, srd.ID)
+	if body := e.do(t, http.MethodGet, page, gm, nil, false).Body.String(); !strings.Contains(body, route.Compendium+route.CompendiumHabitatCopy) || !strings.Contains(body, "Hill, Swamp") {
 		t.Error("gm page lacks the copy button")
 	}
-	if body := e.do(t, http.MethodGet, page, player, nil, false).Body.String(); strings.Contains(body, "/compendium/habitats/copy") {
+	if body := e.do(t, http.MethodGet, page, player, nil, false).Body.String(); strings.Contains(body, route.Compendium+route.CompendiumHabitatCopy) {
 		t.Error("player page has the copy button")
 	}
 
 	// A new homebrew monster takes the habitats its form carries.
 	form := url.Values{"kind": {"monster"}, "name": {"Howler"}, "habitats": {"Planar", "Urban"}}
-	if w := e.do(t, http.MethodPost, "/compendium/homebrew", gm, form, false); w.Code != http.StatusSeeOther {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumHomebrew, gm, form, false); w.Code != http.StatusSeeOther {
 		t.Fatalf("homebrew create: status %d", w.Code)
 	}
 	howler, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "howler"})
@@ -515,7 +516,7 @@ func TestHabitatCopies(t *testing.T) {
 	}
 	form.Set("name", "Moonling")
 	form["habitats"] = []string{"Moon"}
-	if w := e.do(t, http.MethodPost, "/compendium/homebrew", gm, form, false); w.Code != http.StatusUnprocessableEntity {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumHomebrew, gm, form, false); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("unknown habitat: status %d", w.Code)
 	}
 }
@@ -553,7 +554,7 @@ func TestCompendiumHabitatFilter(t *testing.T) {
 		{"habitat ignored for other kinds", "kind=monster,spell&habitat=Hill", true, true, false},
 	}
 	for _, c := range cases {
-		body := e.do(t, http.MethodGet, "/compendium?"+c.query, gm, nil, false).Body.String()
+		body := e.do(t, http.MethodGet, route.Compendium+"?"+c.query, gm, nil, false).Body.String()
 		// Only the results, not the GM's homebrew tab after them.
 		_, results, _ := strings.Cut(body, `id="`+views.CompendiumResultsID+`"`)
 		results, _, _ = strings.Cut(results, `role="tabpanel"`)
@@ -568,8 +569,8 @@ func TestCompendiumHabitatFilter(t *testing.T) {
 		}
 	}
 
-	w := e.do(t, http.MethodGet, "/compendium/random?kind=monster&habitat=Hill", gm, nil, false)
-	if want := fmt.Sprintf("/compendium/entries/%d", giant.ID); w.Header().Get("Location") != want {
+	w := e.do(t, http.MethodGet, route.Compendium+route.CompendiumRandom+"?kind=monster&habitat=Hill", gm, nil, false)
+	if want := route.Compendium + route.Path(route.CompendiumEntry, giant.ID); w.Header().Get("Location") != want {
 		t.Errorf("random: %d %q, want %q", w.Code, w.Header().Get("Location"), want)
 	}
 }
@@ -588,13 +589,13 @@ func TestEntryBackKeepsFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := []struct{ name, referer, back string }{
-		{"filtered list", "https://192.168.1.10:8080/compendium?kind=monster&q=gob", `href="/compendium?kind=monster&amp;q=gob"`},
-		{"other site", "https://evil.example/compendium?kind=spell", `href="/compendium?kind=spell"`},
-		{"other page", "https://192.168.1.10:8080/campaigns/1/notes", `href="/compendium"`},
-		{"no referer", "", `href="/compendium"`},
+		{"filtered list", "https://192.168.1.10:8080" + route.Compendium + "?kind=monster&q=gob", `href="` + route.Compendium + `?kind=monster&amp;q=gob"`},
+		{"other site", "https://evil.example" + route.Compendium + "?kind=spell", `href="` + route.Compendium + `?kind=spell"`},
+		{"other page", "https://192.168.1.10:8080" + route.Path(route.CampaignNotes, 1), `href="` + route.Compendium + `"`},
+		{"no referer", "", `href="` + route.Compendium + `"`},
 	}
 	for _, c := range cases {
-		req := httptest.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("/compendium/entries/%d", goblin.ID), nil)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, route.Compendium+route.Path(route.CompendiumEntry, goblin.ID), nil)
 		req.RemoteAddr = lanAddr
 		req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: gm})
 		if c.referer != "" {

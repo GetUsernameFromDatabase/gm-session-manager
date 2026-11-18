@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -9,6 +8,7 @@ import (
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 )
 
 // TestDeleteRestoreImport: a player deletes their character, which hides it
@@ -23,19 +23,19 @@ func TestDeleteRestoreImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sheet := fmt.Sprintf("/characters/%d", e.characterID)
-	overview := fmt.Sprintf("/campaigns/%d", e.campaignID)
+	sheet := route.Path(route.Character, e.characterID)
+	overview := route.Path(route.Campaign, e.campaignID)
 
 	// Another player's character cannot be deleted.
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/remove", other.ID), player, nil, true); w.Code == http.StatusOK && w.Header().Get("HX-Redirect") != "" {
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterRemove, other.ID), player, nil, true); w.Code == http.StatusOK && w.Header().Get("HX-Redirect") != "" {
 		t.Fatal("deleted another player's character")
 	}
 	if _, err := e.q().GetCharacter(ctx, other.ID); err != nil {
 		t.Fatalf("other character gone: %v", err)
 	}
 
-	w := e.do(t, http.MethodPost, sheet+"/remove", player, nil, true)
-	if w.Header().Get("HX-Redirect") != PathHome {
+	w := e.do(t, http.MethodPost, route.Path(route.CharacterRemove, e.characterID), player, nil, true)
+	if w.Header().Get("HX-Redirect") != route.Home {
 		t.Fatalf("remove: %d %v %s", w.Code, w.Header(), w.Body)
 	}
 	if _, err := e.q().GetCharacter(ctx, e.characterID); err == nil {
@@ -45,25 +45,25 @@ func TestDeleteRestoreImport(t *testing.T) {
 		t.Error("the deleted character's device still sees it")
 	}
 	body := e.do(t, http.MethodGet, overview, gm, nil, false).Body.String()
-	if !strings.Contains(body, "Deleted characters") || !strings.Contains(body, fmt.Sprintf("/characters/%d/restore", e.characterID)) {
+	if !strings.Contains(body, "Deleted characters") || !strings.Contains(body, route.Path(route.CharacterRestore, e.characterID)) {
 		t.Errorf("overview lacks the deleted character: %s", body)
 	}
 
-	if w := e.do(t, http.MethodPost, sheet+"/restore", player, nil, true); w.Code == http.StatusOK {
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterRestore, e.characterID), player, nil, true); w.Code == http.StatusOK {
 		t.Error("a visitor restored a character")
 	}
-	if w := e.do(t, http.MethodPost, sheet+"/restore", gm, nil, true); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterRestore, e.characterID), gm, nil, true); w.Code != http.StatusOK {
 		t.Fatalf("restore: %d %s", w.Code, w.Body)
 	}
 	if _, err := e.q().GetCharacter(ctx, e.characterID); err != nil {
 		t.Errorf("restored character hidden: %v", err)
 	}
 
-	file := e.do(t, http.MethodGet, sheet+"/download", gm, nil, false)
+	file := e.do(t, http.MethodGet, route.Path(route.CharacterDownload, e.characterID), gm, nil, false)
 	if file.Code != http.StatusOK || !strings.Contains(file.Body.String(), `"name": "Alice"`) {
 		t.Fatalf("download: %d %s", file.Code, file.Body)
 	}
-	importPath := fmt.Sprintf("/campaigns/%d/characters/import", e.campaignID)
+	importPath := route.Path(route.CampaignImportCharacter, e.campaignID)
 	if w := e.doFile(t, importPath, gm, nil, "file", "alice.json", file.Body.String()); w.Code != http.StatusSeeOther {
 		t.Fatalf("import: %d %s", w.Code, w.Body)
 	}
@@ -83,24 +83,24 @@ func TestRenameDeleteCampaign(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	player := e.token(t, enum.RolePlayer)
-	overview := fmt.Sprintf("/campaigns/%d", e.campaignID)
+	overview := route.Path(route.Campaign, e.campaignID)
 	name := url.Values{"name": {"  Curse of Strahd  "}}
 
-	if w := e.do(t, http.MethodPost, overview+"/rename", player, name, true); w.Code < http.StatusBadRequest {
+	if w := e.do(t, http.MethodPost, route.Path(route.CampaignRename, e.campaignID), player, name, true); w.Code < http.StatusBadRequest {
 		t.Errorf("player rename: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, overview+"/delete", player, nil, true); w.Code < http.StatusBadRequest {
+	if w := e.do(t, http.MethodPost, route.Path(route.CampaignDelete, e.campaignID), player, nil, true); w.Code < http.StatusBadRequest {
 		t.Errorf("player delete: %d", w.Code)
 	}
 
-	if w := e.do(t, http.MethodPost, overview+"/rename", gm, name, true); w.Header().Get("HX-Redirect") != overview {
+	if w := e.do(t, http.MethodPost, route.Path(route.CampaignRename, e.campaignID), gm, name, true); w.Header().Get("HX-Redirect") != overview {
 		t.Fatalf("rename: %d %v %s", w.Code, w.Header(), w.Body)
 	}
 	if camp, err := e.q().GetCampaign(ctx, e.campaignID); err != nil || camp.Name != "Curse of Strahd" {
 		t.Errorf("renamed campaign: %q %v", camp.Name, err)
 	}
 
-	if w := e.do(t, http.MethodPost, overview+"/delete", gm, nil, true); w.Header().Get("HX-Redirect") != PathHome {
+	if w := e.do(t, http.MethodPost, route.Path(route.CampaignDelete, e.campaignID), gm, nil, true); w.Header().Get("HX-Redirect") != route.Home {
 		t.Fatalf("delete: %d %v %s", w.Code, w.Header(), w.Body)
 	}
 	if w := e.do(t, http.MethodGet, overview, gm, nil, false); w.Code != http.StatusNotFound {

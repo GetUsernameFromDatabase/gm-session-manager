@@ -14,6 +14,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -47,7 +48,7 @@ func TestWeaponMastery(t *testing.T) {
 	e := newTestEnv(t)
 	seedMastery(t, e)
 	player, gm := e.token(t, enum.RolePlayer), e.token(t, enum.RoleAdmin)
-	levelUp := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	levelUp := route.Path(route.CharacterLevelup, e.characterID)
 	for _, step := range []struct {
 		form url.Values
 		code int
@@ -68,7 +69,7 @@ func TestWeaponMastery(t *testing.T) {
 		}
 	}
 
-	cmdURL := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	cmdURL := route.Path(route.CharacterCmd, e.characterID)
 	for _, tt := range []struct {
 		name, cookie, cmd string
 		code              int
@@ -96,13 +97,13 @@ func TestWeaponMastery(t *testing.T) {
 	sh.Masteries = sh.Masteries[:2]
 	sh.Weapons = append(sh.Weapons, dnd5e.Weapon{Name: "+1 Longsword", Ability: "str", Dice: "1d8", Mastery: "Sap"}, dnd5e.Weapon{Name: "Spear", Ability: "str", Dice: "1d6", Mastery: "Sap"})
 	e.setSheet(t, sh)
-	page := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d", e.characterID), player, nil, false).Body.String()
-	for _, want := range []string{"2/3 chosen", "/compendium/find/rule/sap", ">mastered<", "not mastered"} {
+	page := e.do(t, http.MethodGet, route.Path(route.Character, e.characterID), player, nil, false).Body.String()
+	for _, want := range []string{"2/3 chosen", route.Compendium + route.Path(route.CompendiumFind, "rule", "sap"), ">mastered<", "not mastered"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("sheet lacks %q", want)
 		}
 	}
-	form := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/builder?verb=weapons&op=%s", e.characterID, views.OpMastery), player, nil, true).Body.String()
+	form := e.do(t, http.MethodGet, fmt.Sprintf("%s?verb=weapons&op=%s", route.Path(route.CharacterBuilder, e.characterID), views.OpMastery), player, nil, true).Body.String()
 	if !strings.Contains(form, `mastery add \&#34;Dagger`) || !strings.Contains(form, `mastery remove \&#34;Club`) || strings.Contains(form, "Torch") {
 		t.Errorf("mastery form: %s", form)
 	}
@@ -121,7 +122,7 @@ func TestLevelUpSubclassCaster(t *testing.T) {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
-	levelUp := fmt.Sprintf("/characters/%d/levelup", e.characterID)
+	levelUp := route.Path(route.CharacterLevelup, e.characterID)
 	for _, form := range []url.Values{
 		{"class": {"testfighter"}, views.FieldMastery: {"Longsword", "Dagger"}},
 		{"class": {"testfighter"}},
@@ -190,16 +191,17 @@ func TestCompendiumFind(t *testing.T) {
 	seedMastery(t, e)
 	player := e.token(t, enum.RolePlayer)
 	rule, _ := e.q().GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "rule", Slug: "sap"})
-	base := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
-	w := e.do(t, http.MethodGet, base+"/find/rule/sap", player, nil, false)
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != fmt.Sprintf("%s/entries/%d", base, rule.ID) {
+	base := route.Path(route.CampaignCompendium, e.campaignID)
+	find := func(slug string) string { return base + route.Path(route.CompendiumFind, "rule", slug) }
+	w := e.do(t, http.MethodGet, find("sap"), player, nil, false)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != base+route.Path(route.CompendiumEntry, rule.ID) {
 		t.Errorf("find: %d %s", w.Code, w.Header().Get("Location"))
 	}
-	if w := e.do(t, http.MethodGet, base+"/find/rule/vex", player, nil, false); w.Code != http.StatusNotFound {
+	if w := e.do(t, http.MethodGet, find("vex"), player, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("missing rule: %d", w.Code)
 	}
 	sword, _ := e.q().GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "item", Slug: "longsword"})
-	if page := e.do(t, http.MethodGet, fmt.Sprintf("%s/entries/%d", base, sword.ID), player, nil, false).Body.String(); !strings.Contains(page, `href="`+base+`/find/rule/sap"`) {
+	if page := e.do(t, http.MethodGet, base+route.Path(route.CompendiumEntry, sword.ID), player, nil, false).Body.String(); !strings.Contains(page, `href="`+find("sap")+`"`) {
 		t.Error("item page does not link its mastery")
 	}
 }
@@ -221,7 +223,7 @@ func TestLiveMastery(t *testing.T) {
 		return st[hub.HashKey]
 	}
 	before := hash()
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", e.characterID), e.token(t, enum.RolePlayer), url.Values{"cmd": {"mastery add Longsword"}}, true); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterCmd, e.characterID), e.token(t, enum.RolePlayer), url.Values{"cmd": {"mastery add Longsword"}}, true); w.Code != http.StatusOK {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	if hash() == before {

@@ -14,6 +14,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/checkbox"
 	"gm-session-manager/internal/web/components/empty"
@@ -99,9 +100,9 @@ func HabitatsPage(l Layout, v HabitatView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var4 string
-			templ_7745c5c3_Var4, templ_7745c5c3_Err = templruntime.NewAttributeExpression(CompendiumPath(ctx, "/habitats")).Resolve(ctx)
+			templ_7745c5c3_Var4, templ_7745c5c3_Err = templruntime.NewAttributeExpression(CompendiumPath(ctx, route.CompendiumHabitats)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 30, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 31, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 			if templ_7745c5c3_Err != nil {
@@ -114,7 +115,7 @@ func HabitatsPage(l Layout, v HabitatView) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templruntime.NewAttributeExpression("#" + HabitatGridID).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 32, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 33, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 			if templ_7745c5c3_Err != nil {
@@ -192,7 +193,7 @@ func HabitatsPage(l Layout, v HabitatView) templ.Component {
 			})
 			templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{
 				"type": "button", "title": "Every matching monster with no habitats takes those of its copy in another source",
-				"hx-post": CompendiumPath(ctx, "/habitats/fill"), "hx-include": "#habitat-q",
+				"hx-post": CompendiumPath(ctx, route.CompendiumHabitatFill), "hx-include": "#habitat-q",
 				"hx-target": "#" + HabitatGridID, "hx-swap": "outerHTML", "hx-push-url": "false",
 			}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var8), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
@@ -242,7 +243,7 @@ func HabitatGrid(v HabitatView) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templruntime.NewAttributeExpression(HabitatGridID).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 63, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 64, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 		if templ_7745c5c3_Err != nil {
@@ -341,7 +342,7 @@ func HabitatGrid(v HabitatView) templ.Component {
 							var templ_7745c5c3_Var16 string
 							templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(v.Filter)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 75, Col: 47}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 76, Col: 47}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 							if templ_7745c5c3_Err != nil {
@@ -383,7 +384,7 @@ func HabitatGrid(v HabitatView) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(len(v.Monsters)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 83, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 84, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -471,7 +472,7 @@ func HabitatGrid(v HabitatView) templ.Component {
 								var templ_7745c5c3_Var23 string
 								templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(string(h))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 92, Col: 24}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 93, Col: 24}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 								if templ_7745c5c3_Err != nil {
@@ -607,7 +608,7 @@ func HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) templ.C
 				var templ_7745c5c3_Var28 string
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(entryHref(ctx, m.ID))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 121, Col: 73}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 122, Col: 73}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
 				if templ_7745c5c3_Err != nil {
@@ -620,7 +621,7 @@ func HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) templ.C
 				var templ_7745c5c3_Var29 string
 				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(m.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 121, Col: 84}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 122, Col: 84}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 				if templ_7745c5c3_Err != nil {
@@ -651,7 +652,7 @@ func HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) templ.C
 				})
 				templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Class: anyPressed, Attributes: templ.Attributes{
 					"type": "button", "aria-pressed": fmt.Sprint(every), "title": what, "aria-label": what,
-					"hx-post": CompendiumPath(ctx, "/habitats/any"), "hx-vals": toJSON(map[string]any{"entry_id": m.ID}),
+					"hx-post": CompendiumPath(ctx, route.CompendiumHabitatAny), "hx-vals": toJSON(map[string]any{"entry_id": m.ID}),
 					"hx-target": "closest tr", "hx-swap": "outerHTML",
 				}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var30), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
@@ -689,9 +690,9 @@ func HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) templ.C
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var32 string
-					templ_7745c5c3_Var32, templ_7745c5c3_Err = templruntime.NewAttributeExpression(CompendiumPath(ctx, "/habitats/cell")).Resolve(ctx)
+					templ_7745c5c3_Var32, templ_7745c5c3_Err = templruntime.NewAttributeExpression(CompendiumPath(ctx, route.CompendiumHabitatCell)).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 135, Col: 85}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 136, Col: 96}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 					if templ_7745c5c3_Err != nil {
@@ -704,7 +705,7 @@ func HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) templ.C
 					var templ_7745c5c3_Var33 string
 					templ_7745c5c3_Var33, templ_7745c5c3_Err = templruntime.NewAttributeExpression(toJSON(map[string]any{"entry_id": m.ID, "habitat": h})).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 135, Col: 172}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/habitats.templ`, Line: 136, Col: 183}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 					if templ_7745c5c3_Err != nil {
@@ -785,7 +786,7 @@ func habitatBatchButton(v HabitatView, h enum.Habitat, on bool) templ.Component 
 		})
 		templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: templ.Attributes{
 			"type": "button", "title": what, "aria-label": what,
-			"hx-post": CompendiumPath(ctx, "/habitats/batch"), "hx-vals": toJSON(map[string]any{"q": v.Filter, "habitat": h, "on": on}),
+			"hx-post": CompendiumPath(ctx, route.CompendiumHabitatBatch), "hx-vals": toJSON(map[string]any{"q": v.Filter, "habitat": h, "on": on}),
 			"hx-confirm": what + "?", "hx-target": "#" + HabitatGridID, "hx-swap": "outerHTML",
 		}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var35), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {

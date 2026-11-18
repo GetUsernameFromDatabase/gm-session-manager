@@ -15,6 +15,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -52,16 +53,16 @@ func TestFiveToolsGMOnly(t *testing.T) {
 	gm := e.token(t, enum.RoleAdmin)
 	e.source(t, "5etools-phb", "2014")
 	tests := []struct{ method, path string }{
-		{http.MethodGet, "/compendium/5etools"},
-		{http.MethodPost, "/compendium/5etools"},
-		{http.MethodPost, "/compendium/5etools/phb/delete"},
-		{http.MethodPost, "/compendium/5etools/auto"},
-		{http.MethodPost, "/compendium/sources/5etools-phb/move"},
+		{http.MethodGet, views.FiveToolsPath},
+		{http.MethodPost, views.FiveToolsPath},
+		{http.MethodPost, route.Compendium + route.Path(route.CompendiumFiveToolsBookDelete, "phb")},
+		{http.MethodPost, route.Compendium + route.CompendiumFiveToolsAuto},
+		{http.MethodPost, route.Compendium + route.Path(route.CompendiumSourceMove, "5etools-phb")},
 		{http.MethodPost, views.SourceOrderPath},
 	}
 	for _, tt := range tests {
 		// The same under the whole compendium and the player's campaign's.
-		for _, base := range []string{"", fmt.Sprintf("/campaigns/%d", e.campaignID)} {
+		for _, base := range []string{"", route.Path(route.Campaign, e.campaignID)} {
 			t.Run(tt.method+" "+base+tt.path, func(t *testing.T) {
 				if w := e.do(t, tt.method, base+tt.path, player, url.Values{"dir": {"up"}}, true); w.Code != http.StatusForbidden {
 					t.Errorf("player: %d", w.Code)
@@ -70,11 +71,11 @@ func TestFiveToolsGMOnly(t *testing.T) {
 		}
 	}
 	// Reloading the picker's URL (where an import posts) opens the whole page.
-	if w := e.do(t, http.MethodGet, "/compendium/5etools", gm, nil, false); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/compendium?import=fivetools" {
+	if w := e.do(t, http.MethodGet, views.FiveToolsPath, gm, nil, false); w.Code != http.StatusSeeOther || w.Header().Get("Location") != route.Compendium+"?import=fivetools" {
 		t.Errorf("plain visit: %d %q", w.Code, w.Header().Get("Location"))
 	}
 	// An empty pick is refused before anything is downloaded.
-	if w := e.do(t, http.MethodPost, "/compendium/5etools", gm, url.Values{}, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Pick at least one book") {
+	if w := e.do(t, http.MethodPost, views.FiveToolsPath, gm, url.Values{}, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Pick at least one book") {
 		t.Errorf("empty pick: %d", w.Code)
 	}
 }
@@ -111,7 +112,7 @@ func TestSourceMove(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.code != 0 {
-				if w := e.do(t, http.MethodPost, "/compendium/sources/"+tt.key+"/move", gm, url.Values{"dir": {tt.dir}}, true); w.Code != tt.code {
+				if w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumSourceMove, tt.key), gm, url.Values{"dir": {tt.dir}}, true); w.Code != tt.code {
 					t.Fatalf("code %d, want %d: %s", w.Code, tt.code, w.Body)
 				}
 			}
@@ -171,7 +172,7 @@ func TestFiveToolsImportRunning(t *testing.T) {
 	e.source(t, "5etools-phb", "2014")
 	e.app.fiveTools.start(4)
 	e.app.fiveTools.update(func(j *views.FiveToolsJob) { j.Done, j.Current = 1, "Test Book" })
-	body := e.do(t, http.MethodGet, "/compendium?import="+views.ImportTabFiveTools, gm, nil, false).Body.String()
+	body := e.do(t, http.MethodGet, route.Compendium+"?import="+views.ImportTabFiveTools, gm, nil, false).Body.String()
 	if !strings.Contains(body, "Downloading 2 of 4: Test Book") || !regexp.MustCompile(`style="width:\s?25%;?"`).MatchString(body) {
 		t.Error("import tab misses the progress label or bar")
 	}
@@ -185,7 +186,7 @@ func TestFiveToolsImportRunning(t *testing.T) {
 	e.app.fiveTools.update(func(j *views.FiveToolsJob) {
 		*j = views.FiveToolsJob{Msg: "5etools-phb: 3 entries imported, 0 removed"}
 	})
-	if body := e.do(t, http.MethodGet, "/compendium?import="+views.ImportTabFiveTools, gm, nil, false).Body.String(); !strings.Contains(body, "3 entries imported") || strings.Contains(body, "Downloading") {
+	if body := e.do(t, http.MethodGet, route.Compendium+"?import="+views.ImportTabFiveTools, gm, nil, false).Body.String(); !strings.Contains(body, "3 entries imported") || strings.Contains(body, "Downloading") {
 		t.Error("finished import shows no summary, or still its progress")
 	}
 }
@@ -242,7 +243,7 @@ func TestFiveToolsRemove(t *testing.T) {
 	if err := os.MkdirAll(folder, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	w := e.do(t, http.MethodPost, "/compendium/5etools/phb/delete", gm, nil, true)
+	w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumFiveToolsBookDelete, "phb"), gm, nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("remove: %d %s", w.Code, w.Body)
 	}
@@ -259,7 +260,7 @@ func TestFiveToolsRemove(t *testing.T) {
 		t.Errorf("another book's entry went too: %v", err)
 	}
 	// A path-like id is refused, never joined onto the folder.
-	if w := e.do(t, http.MethodPost, "/compendium/5etools/..%2Fx/delete", gm, nil, true); strings.Contains(w.Body.String(), "Removed") {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumFiveTools+"/..%2Fx/delete", gm, nil, true); strings.Contains(w.Body.String(), "Removed") {
 		t.Errorf("bad id accepted: %d", w.Code)
 	}
 }
@@ -289,7 +290,7 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The GM reads the whole compendium, the player their campaign's.
-	mine := fmt.Sprintf("/campaigns/%d/compendium", e.campaignID)
+	mine := route.Path(route.CampaignCompendium, e.campaignID)
 	link := func(base, slug, label string) string {
 		return fmt.Sprintf(`<a href="%s/entries/%d">%s</a>`, base, scoped[slug], label)
 	}
@@ -298,11 +299,11 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 		name, cookie, path string
 		want, notWant      []string
 	}{
-		{"older names the newer", gm, fmt.Sprintf("/compendium/entries/%d", older), []string{"Also in", fmt.Sprintf(`href="/compendium/entries/%d"`, newer), "book-new, 2024"}, nil},
+		{"older names the newer", gm, route.Compendium + route.Path(route.CompendiumEntry, older), []string{"Also in", fmt.Sprintf(`href="%s%s"`, route.Compendium, route.Path(route.CompendiumEntry, newer)), "book-new, 2024"}, nil},
 		{"newer names the older", player, fmt.Sprintf("%s/entries/%d", mine, newer), []string{"Also in", fmt.Sprintf(`href="%s/entries/%d"`, mine, older)}, nil},
 		{"token links the winner, missing is plain", player, fmt.Sprintf("%s/entries/%d", mine, pointer),
-			[]string{fmt.Sprintf(`<a href="%s/entries/%d">Alert</a>`, mine, newer), "Ghost", "Secret", link(mine, "shared", "Shared")}, []string{"Also in", "[[compendium", "/entries/" + fmt.Sprint(older), link(mine, "secret", "Secret")}},
-		{"the GM sees every homebrew link", gm, fmt.Sprintf("/compendium/entries/%d", pointer), []string{link("/compendium", "secret", "Secret"), link("/compendium", "shared", "Shared")}, nil},
+			[]string{fmt.Sprintf(`<a href="%s/entries/%d">Alert</a>`, mine, newer), "Ghost", "Secret", link(mine, "shared", "Shared")}, []string{"Also in", "[[compendium", route.Path(route.CompendiumEntry, older), link(mine, "secret", "Secret")}},
+		{"the GM sees every homebrew link", gm, route.Compendium + route.Path(route.CompendiumEntry, pointer), []string{link(route.Compendium, "secret", "Secret"), link(route.Compendium, "shared", "Shared")}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -317,7 +318,7 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 					t.Errorf("unexpected %q", s)
 				}
 			}
-			if strings.Contains(body, `href="/compendium/entries/0"`) || strings.Contains(body, ">Ghost</a>") {
+			if strings.Contains(body, `href="`+route.Compendium+route.Path(route.CompendiumEntry, 0)+`"`) || strings.Contains(body, ">Ghost</a>") {
 				t.Error("link to a missing entry")
 			}
 		})
@@ -341,7 +342,7 @@ func TestSourceDeleteUsed(t *testing.T) {
 		}
 	}
 	pin(`{"species_source":"my-folder"}`)
-	w := e.do(t, http.MethodPost, "/compendium/sources/my-folder/delete", gm, nil, true)
+	w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumSourceDelete, "my-folder"), gm, nil, true)
 	if !strings.Contains(w.Body.String(), "my-folder is used by") || !strings.Contains(w.Body.String(), "Switch their sources first.") {
 		t.Errorf("no refusal naming users: %d %s", w.Code, w.Body)
 	}
@@ -357,13 +358,13 @@ func TestSourceDeleteUsed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodPost, "/compendium/sources/my-folder/delete", gm, nil, true); !strings.Contains(w.Body.String(), "my-folder is used by Goblin boss.") {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumSourceDelete, "my-folder"), gm, nil, true); !strings.Contains(w.Body.String(), "my-folder is used by Goblin boss.") {
 		t.Errorf("entity link not counted: %d %s", w.Code, w.Body)
 	}
 	if err := e.q().DeleteEntity(t.Context(), ent.ID); err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodPost, "/compendium/sources/my-folder/delete", gm, nil, true); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumSourceDelete, "my-folder"), gm, nil, true); w.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", w.Code, w.Body)
 	}
 	if _, err := e.q().GetCompendiumSource(t.Context(), "my-folder"); err == nil {

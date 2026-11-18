@@ -115,7 +115,7 @@ func TestCatchUp(t *testing.T) {
 			if len(msgs) != 1 {
 				t.Fatalf("got %d messages, want 1", len(msgs))
 			}
-			if gotReload := msgs[0].control == controlReload; gotReload != tt.wantReload {
+			if gotReload := msgs[0].control == MsgReload; gotReload != tt.wantReload {
 				t.Fatalf("reload = %v, want %v", gotReload, tt.wantReload)
 			}
 			if !tt.wantReload {
@@ -152,7 +152,7 @@ func TestCloseSessionAndCharacter(t *testing.T) {
 	}
 
 	h.CloseSession(100)
-	if m := drain(alice); len(m) != 1 || m[0].control != controlReload || !m[0].close {
+	if m := drain(alice); len(m) != 1 || m[0].control != MsgReload || !m[0].close {
 		t.Errorf("alice: %+v", m)
 	}
 	if len(drain(bob))+len(drain(gm)) != 0 {

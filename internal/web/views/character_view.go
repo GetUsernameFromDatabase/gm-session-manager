@@ -14,6 +14,7 @@ import (
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	selectcomp "gm-session-manager/internal/web/components/select"
 )
 
@@ -138,7 +139,7 @@ func (t EffectTarget) fieldsURL() string {
 
 // EffectFieldsURL is where an add-effect form loads its fields and rows.
 func EffectFieldsURL(campaignID, characterID, combatantID int64) string {
-	return fmt.Sprintf("/campaigns/%d/effect/spell?%s", campaignID, effectQuery(characterID, combatantID))
+	return route.Path(route.CampaignEffectSpell, campaignID) + "?" + effectQuery(characterID, combatantID)
 }
 
 // rowURL loads stat-change row i, with the button for the next.
@@ -178,7 +179,7 @@ var effectEnds = []struct{ Value, Label string }{
 	{string(enum.EffectEndLongRest), "Long rest"},
 }
 
-func (s SheetView) cmdURL() string { return fmt.Sprintf("/characters/%d/cmd", s.ID) }
+func (s SheetView) cmdURL() string { return route.Path(route.CharacterCmd, s.ID) }
 
 func (s SheetView) condition(slug string) (sqlc.Condition, bool) {
 	i := slices.IndexFunc(s.Conditions, func(c sqlc.Condition) bool { return c.Slug == slug })

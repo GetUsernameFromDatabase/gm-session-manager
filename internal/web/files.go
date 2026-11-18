@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -62,7 +62,7 @@ func (a *App) attachmentUses(ctx context.Context) (map[int64][]views.FileUse, er
 	}
 	byBlock := map[int64]views.FileUse{}
 	for _, b := range blocks {
-		u := views.FileUse{Kind: views.FileUseNote, URL: fmt.Sprintf("/notes/%d", b.NoteID), Label: b.Title}
+		u := views.FileUse{Kind: views.FileUseNote, URL: route.Path(route.Note, b.NoteID), Label: b.Title}
 		if b.Visibility == enum.VisOwner {
 			// The GM never reads a player's own blocks, so not even the note's title.
 			u = views.FileUse{Kind: views.FileUseNote, Private: true}
@@ -78,7 +78,7 @@ func (a *App) attachmentUses(ctx context.Context) (map[int64][]views.FileUse, er
 		}
 	}
 	for _, img := range images {
-		add(img.AttachmentID.Int64, views.FileUse{Kind: views.FileUseImage, URL: fmt.Sprintf("/images/%d", img.ID), Label: img.Name})
+		add(img.AttachmentID.Int64, views.FileUse{Kind: views.FileUseImage, URL: route.Path(route.Image, img.ID), Label: img.Name})
 	}
 	return uses, nil
 }

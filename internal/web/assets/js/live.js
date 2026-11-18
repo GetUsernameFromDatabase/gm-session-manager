@@ -3,6 +3,8 @@
 // keys with data-bind="target=key ..." (target: text, value, show, reveal, or an
 // attribute name). A change no bound element can show (new markup, a list
 // row added or removed) refetches the view's HTML from /live instead.
+import { ROUTES } from "/assets/js/shared.js";
+
 (function () {
   "use strict";
   const gsm = window.gsm;
@@ -93,7 +95,7 @@
     inflight.set(view, false);
     // The page's campaign keeps the view's compendium links in it.
     const q = new URLSearchParams({ v: view, campaign: document.body.dataset.campaign ?? "" });
-    htmx.ajax("GET", "/live?" + q, { source: document.body, swap: "none" }).finally(() => {
+    htmx.ajax("GET", ROUTES.live + "?" + q, { source: document.body, swap: "none" }).finally(() => {
       const again = inflight.get(view);
       inflight.delete(view);
       if (again) gsm.refetch(view);

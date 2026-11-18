@@ -23,6 +23,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -202,7 +203,7 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 		return err
 	}
 	a.sweepFiles(c)
-	redirect(c, fmt.Sprintf("/images/%d", img.ID))
+	redirect(c, route.Path(route.Image, img.ID))
 	return nil
 }
 
@@ -369,7 +370,7 @@ func (a *App) deleteImage(c *gin.Context) error {
 	}
 	a.sweepFiles(c)
 	a.Hub.Publish(img.CampaignID, topics...)
-	redirect(c, fmt.Sprintf("/campaigns/%d/images", img.CampaignID))
+	redirect(c, route.Path(route.CampaignImages, img.CampaignID))
 	return nil
 }
 

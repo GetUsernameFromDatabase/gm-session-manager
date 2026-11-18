@@ -23,44 +23,45 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
 // compendiumRoutes are the compendium's pages under one base (g).
 func (a *App) compendiumRoutes(g *gin.RouterGroup, gm gin.HandlerFunc) {
 	g.GET("", a.h(a.compendiumPage))
-	g.GET("/search", a.h(a.compendiumSearch))
-	g.GET("/random", a.h(a.compendiumRandom))
-	g.GET("/lookup", a.h(a.compendiumLookup))
-	g.GET("/find/:kind/:slug", a.h(a.compendiumFind))
-	g.GET("/entries/:entry", a.h(a.compendiumEntry))
-	g.GET("/compare/:kind/:slug", gm, a.h(a.compendiumCompare))
+	g.GET(route.CompendiumSearch, a.h(a.compendiumSearch))
+	g.GET(route.CompendiumRandom, a.h(a.compendiumRandom))
+	g.GET(route.CompendiumLookup, a.h(a.compendiumLookup))
+	g.GET(route.CompendiumFind, a.h(a.compendiumFind))
+	g.GET(route.CompendiumEntry, a.h(a.compendiumEntry))
+	g.GET(route.CompendiumCompare, gm, a.h(a.compendiumCompare))
 	// Homebrew: the handlers check who may write (perm.CanEditHomebrew).
-	g.GET("/entries/:entry/edit", a.h(a.homebrewEdit))
-	g.POST("/entries/:entry", a.h(a.homebrewUpdate))
-	g.POST("/entries/:entry/delete", a.h(a.homebrewDelete))
-	g.POST("/entries/:entry/campaigns", gm, a.h(a.homebrewLink))
-	g.POST("/entries/:entry/campaigns/:linked/delete", gm, a.h(a.homebrewUnlink))
-	g.POST("/entries/:entry/image", gm, a.h(a.compendiumImage))
-	g.GET("/habitats", gm, a.h(a.habitatsPage))
-	g.POST("/habitats/cell", gm, a.h(a.habitatCell))
-	g.POST("/habitats/any", gm, a.h(a.habitatAny))
-	g.POST("/habitats/batch", gm, a.h(a.habitatBatch))
-	g.POST("/habitats/fill", gm, a.h(a.habitatFill))
-	g.POST("/habitats/copy", gm, a.h(a.habitatCopy))
-	g.GET("/homebrew/new", a.homebrewNew)
-	g.POST("/homebrew", a.h(a.homebrewCreate))
-	g.POST("/import", gm, a.h(a.compendiumImport))
-	g.POST("/folder", gm, a.h(a.compendiumFolder))
-	g.GET("/5etools", gm, a.h(a.fiveToolsList))
-	g.POST("/5etools", gm, a.h(a.fiveToolsImport))
-	g.POST("/5etools/:book/delete", gm, a.h(a.fiveToolsRemove))
-	g.POST("/5etools/auto", gm, a.h(a.fiveToolsAuto))
-	g.POST("/sources/:key/move", gm, a.h(a.sourceMove))
-	g.POST("/sources/:key/delete", gm, a.h(a.sourceDelete))
-	g.POST(views.CompendiumRest(views.SourceOrderPath), gm, a.h(a.sourceOrder))
-	g.POST("/page/preview", gm, a.h(a.compendiumPagePreview))
-	g.POST("/page", gm, a.h(a.compendiumPageSave))
+	g.GET(route.CompendiumEntryEdit, a.h(a.homebrewEdit))
+	g.POST(route.CompendiumEntry, a.h(a.homebrewUpdate))
+	g.POST(route.CompendiumEntryDelete, a.h(a.homebrewDelete))
+	g.POST(route.CompendiumEntryCampaigns, gm, a.h(a.homebrewLink))
+	g.POST(route.CompendiumEntryCampaignDelete, gm, a.h(a.homebrewUnlink))
+	g.POST(route.CompendiumEntryImage, gm, a.h(a.compendiumImage))
+	g.GET(route.CompendiumHabitats, gm, a.h(a.habitatsPage))
+	g.POST(route.CompendiumHabitatCell, gm, a.h(a.habitatCell))
+	g.POST(route.CompendiumHabitatAny, gm, a.h(a.habitatAny))
+	g.POST(route.CompendiumHabitatBatch, gm, a.h(a.habitatBatch))
+	g.POST(route.CompendiumHabitatFill, gm, a.h(a.habitatFill))
+	g.POST(route.CompendiumHabitatCopy, gm, a.h(a.habitatCopy))
+	g.GET(route.CompendiumHomebrewNew, a.homebrewNew)
+	g.POST(route.CompendiumHomebrew, a.h(a.homebrewCreate))
+	g.POST(route.CompendiumImport, gm, a.h(a.compendiumImport))
+	g.POST(route.CompendiumFolder, gm, a.h(a.compendiumFolder))
+	g.GET(route.CompendiumFiveTools, gm, a.h(a.fiveToolsList))
+	g.POST(route.CompendiumFiveTools, gm, a.h(a.fiveToolsImport))
+	g.POST(route.CompendiumFiveToolsBookDelete, gm, a.h(a.fiveToolsRemove))
+	g.POST(route.CompendiumFiveToolsAuto, gm, a.h(a.fiveToolsAuto))
+	g.POST(route.CompendiumSourceMove, gm, a.h(a.sourceMove))
+	g.POST(route.CompendiumSourceDelete, gm, a.h(a.sourceDelete))
+	g.POST(route.CompendiumSourceOrder, gm, a.h(a.sourceOrder))
+	g.POST(route.CompendiumPagePreview, gm, a.h(a.compendiumPagePreview))
+	g.POST(route.CompendiumPage, gm, a.h(a.compendiumPageSave))
 }
 
 // Keys for what compendiumCampaign resolved: the path's campaign and the
@@ -451,7 +452,7 @@ func (a *App) compendiumFind(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	c.Redirect(http.StatusSeeOther, compendiumPath(c, fmt.Sprintf("/entries/%d", e.ID)))
+	c.Redirect(http.StatusSeeOther, compendiumPath(c, route.Path(route.CompendiumEntry, e.ID)))
 	return nil
 }
 
@@ -623,7 +624,7 @@ func (a *App) compendiumRandom(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	redirect(c, compendiumPath(c, fmt.Sprintf("/entries/%d", id)))
+	redirect(c, compendiumPath(c, route.Path(route.CompendiumEntry, id)))
 	return nil
 }
 
@@ -658,7 +659,7 @@ func (a *App) compendiumImage(c *gin.Context) error {
 	for _, enc := range encounters {
 		a.Hub.Publish(enc.CampaignID, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
 	}
-	redirect(c, compendiumPath(c, fmt.Sprintf("/entries/%d", e.ID)))
+	redirect(c, compendiumPath(c, route.Path(route.CompendiumEntry, e.ID)))
 	return nil
 }
 
@@ -796,7 +797,7 @@ func (a *App) compendiumPageSave(c *gin.Context) error {
 	if err != nil || len(rows) == 0 {
 		return cmp.Or(err, errors.New("imported page has no entry"))
 	}
-	redirect(c, compendiumPath(c, fmt.Sprintf("/entries/%d?", rows[0].ID))+url.Values{"back": {back}}.Encode())
+	redirect(c, compendiumPath(c, route.Path(route.CompendiumEntry, rows[0].ID)+"?")+url.Values{"back": {back}}.Encode())
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/badge"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/combobox"
@@ -28,7 +29,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 			<div class="mr-auto">
 				@campaignSwitcher(l)
 			</div>
-			@button.Button(button.Props{Href: CompendiumPath(ctx, utils.IfElse(v.IsGM, "/homebrew/new", "/homebrew/new?kind=spell"))}) {
+			@button.Button(button.Props{Href: CompendiumPath(ctx, utils.IfElse(v.IsGM, route.CompendiumHomebrewNew, route.CompendiumHomebrewNew+"?kind=spell"))}) {
 				@icon.Plus()
 				New homebrew
 			}
@@ -108,7 +109,7 @@ templ compendiumSearchForm(v CompendiumView) {
 		<input type="hidden" name={ KindKey } value={ v.Kind }/>
 		<input type="hidden" name={ HabitatKey } value={ v.Habitat }/>
 		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{
-			"data-href": CompendiumPath(ctx, "/random"),
+			"data-href": CompendiumPath(ctx, route.CompendiumRandom),
 			"onclick":   templ.JSUnsafeFuncCall("window.open(this.dataset.href + '?' + new URLSearchParams(new FormData(this.form)), '_blank')"), "title": "Random entry of the chosen kind and habitat (new tab)",
 		}}) {
 			@icon.Dices()
@@ -195,7 +196,7 @@ templ homebrewTab(v CompendiumView) {
 	if v.IsGM {
 		<p class="mt-3 text-xs text-muted-foreground">
 			Your homebrew is in every campaign. A player's is in the campaigns it is linked to.
-			<a class="ml-2 underline underline-offset-4" href={ templ.SafeURL(CompendiumPath(ctx, "/habitats")) }>Monster habitats</a>
+			<a class="ml-2 underline underline-offset-4" href={ templ.SafeURL(CompendiumPath(ctx, route.CompendiumHabitats)) }>Monster habitats</a>
 		</p>
 	}
 }
@@ -217,7 +218,7 @@ templ homebrewLinks(v CompendiumView, entryID int64) {
 			<span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5">
 				{ l.CampaignName }
 				@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "size-4", Attributes: templ.Attributes{
-					"hx-post": CompendiumPath(ctx, fmt.Sprintf("/entries/%d/campaigns/%d/delete", entryID, l.CampaignID)), "aria-label": "Remove from " + l.CampaignName,
+					"hx-post": CompendiumPath(ctx, route.Path(route.CompendiumEntryCampaignDelete, entryID, l.CampaignID)), "aria-label": "Remove from " + l.CampaignName,
 				}}) {
 					@icon.X(icon.Props{Size: 12})
 				}
@@ -232,7 +233,7 @@ templ homebrewLinks(v CompendiumView, entryID int64) {
 			})
 		}}
 		if len(others) > 0 {
-			<form class="flex items-center gap-1" hx-post={ CompendiumPath(ctx, fmt.Sprintf("/entries/%d/campaigns", entryID)) }>
+			<form class="flex items-center gap-1" hx-post={ CompendiumPath(ctx, route.Path(route.CompendiumEntryCampaigns, entryID)) }>
 				@formSelect("", "campaign_id", selectItems(others, func(c sqlc.Campaign) string { return fmt.Sprint(c.ID) }, func(c sqlc.Campaign) string { return c.Name }), "", "h-6 text-xs", "")
 				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs, Variant: button.VariantOutline}) {
 					Add to campaign
@@ -425,7 +426,7 @@ templ habitatCounts(v CompendiumView) {
 		<p class="mt-2 text-xs text-muted-foreground">
 			No monster has a habitat yet.
 			if v.IsGM {
-				<a class="underline" href={ templ.SafeURL(CompendiumPath(ctx, "/habitats")) }>Set habitats</a>
+				<a class="underline" href={ templ.SafeURL(CompendiumPath(ctx, route.CompendiumHabitats)) }>Set habitats</a>
 			}
 		</p>
 	} else {
@@ -552,7 +553,7 @@ templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
 		// Combat picker is a dropdown: choosing a row adds the monster and closes it.
 		<li>
 			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start truncate", Attributes: templ.Attributes{
-				"hx-post":              fmt.Sprintf("/encounters/%d/combatants", t.EncounterID),
+				"hx-post":              route.Path(route.EncounterCombatants, t.EncounterID),
 				"hx-vals":              fmt.Sprintf(`{"kind":"monster","id":"%d"}`, r.ID),
 				"hx-on::after-request": templ.JSUnsafeFuncCall("const u = this.closest('ul'); u.previousElementSibling.value = ''; u.replaceChildren()"),
 			}}) {
@@ -561,7 +562,7 @@ templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
 		</li>
 	} else if t.CharacterID != 0 {
 		@pickRow(r.ID, templ.Attributes{
-			"hx-post": fmt.Sprintf("/characters/%d/cmd", t.CharacterID), "hx-vals": cmdVals("spell add " + r.Slug),
+			"hx-post": route.Path(route.CharacterCmd, t.CharacterID), "hx-vals": cmdVals("spell add " + r.Slug),
 			"hx-on::after-request": templ.JSUnsafeFuncCall("if (event.detail.successful) this.disabled = true"),
 		}) {
 			{ r.Name }
@@ -571,7 +572,7 @@ templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
 			<a class="truncate hover:underline" { pickerLinkAttrs(t)... } href={ templ.SafeURL(entryHref(ctx, r.ID)) }>{ r.Name }</a>
 			switch  {
 				case t.EntityID != 0:
-					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{"hx-post": fmt.Sprintf("/entities/%d/link", t.EntityID), "hx-vals": fmt.Sprintf(`{"entry":"%d"}`, r.ID)}}) {
+					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{"hx-post": route.Path(route.EntityLink, t.EntityID), "hx-vals": fmt.Sprintf(`{"entry":"%d"}`, r.ID)}}) {
 						Link
 					}
 			}

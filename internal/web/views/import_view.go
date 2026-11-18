@@ -11,6 +11,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
+	"gm-session-manager/internal/route"
 
 	"github.com/a-h/templ"
 )
@@ -19,7 +20,7 @@ import (
 const ImportTabFiveTools = "fivetools"
 
 // FiveToolsPath is the picker's endpoint.
-const FiveToolsPath = "/compendium/5etools"
+const FiveToolsPath = route.Compendium + route.CompendiumFiveTools
 
 // Element ids and form keys of the 5etools picker and the priority card.
 const (
@@ -30,7 +31,7 @@ const (
 	SourceUp       = "up"
 	SourceDown     = "down"
 	// SourceOrderPath takes every source key (SourceKeyField) in the new order.
-	SourceOrderPath = "/compendium/sources/order"
+	SourceOrderPath = route.Compendium + route.CompendiumSourceOrder
 	SourceKeyField  = "key"
 )
 
@@ -125,10 +126,11 @@ func NewFiveToolsView(books []compendium.Book, downloaded map[string]time.Time) 
 // copyLabel names an entry's copy in a source for the "Also in" line.
 func copyLabel(c sqlc.ListEntryCopiesRow) string { return SourceLabel(c.SourceKey, c.Edition) }
 
-// sourceURL is a source's priority action (move, delete) in the campaign ctx
-// renders in, whose overlap counts the answer shows.
+// sourceURL is a source's priority action (route.CompendiumSourceMove or
+// CompendiumSourceDelete) in the campaign ctx renders in, whose overlap
+// counts the answer shows.
 func sourceURL(ctx context.Context, key, action string) string {
-	return CompendiumPath(ctx, "/sources/"+url.PathEscape(key)+"/"+action)
+	return CompendiumPath(ctx, route.Path(action, key))
 }
 
 // SharedKey is the browse filter to one source's entries another source
@@ -173,7 +175,7 @@ func CopyKey(kind enum.CompendiumKind, slug string) string { return string(kind)
 
 // compareHref sets every copy of a kind and slug side by side.
 func compareHref(ctx context.Context, kind enum.CompendiumKind, slug string) string {
-	return CompendiumPath(ctx, "/compare/"+url.PathEscape(string(kind))+"/"+url.PathEscape(slug))
+	return CompendiumPath(ctx, route.Path(route.CompendiumCompare, kind, slug))
 }
 
 // CompareView is every copy of one entry the campaign sees, best first.

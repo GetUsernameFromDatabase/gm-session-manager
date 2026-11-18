@@ -1,13 +1,14 @@
-// Page glue for htmx and the websocket. Loaded as a classic script after
-// htmx, before any page content.
+// Page glue for htmx and the websocket. Loaded as a module after the classic
+// htmx scripts (modules run deferred, in order, once the page is parsed).
+import { CONSOLE_LEVELS, CONSOLE_MSG, CONSOLE_PAGE, CONSOLE_SIZE, MSG, ROUTES } from "/assets/js/shared.js";
+
 (function () {
   "use strict";
 
   // The tab's recent console and uncaught errors go with a bug report. Kept
-  // in sessionStorage so they survive page loads; first, to catch the most.
+  // in sessionStorage so they survive page loads. A module runs after the
+  // parse, so a load that failed during it (an image) is not seen.
   const CONSOLE_KEY = "gsm-console";
-  const CONSOLE_SIZE = 50;
-  const CONSOLE_MSG = 500;
   let consoleLog = [];
   try {
     consoleLog = JSON.parse(sessionStorage.getItem(CONSOLE_KEY)) || [];
@@ -23,12 +24,12 @@
   };
   const keepConsole = (level, args) => {
     const msg = args.map(consoleArg).join(" ").slice(0, CONSOLE_MSG);
-    consoleLog = [...consoleLog, { at: new Date().toISOString(), level, msg, page: location.pathname.slice(0, 512) }].slice(-CONSOLE_SIZE);
+    consoleLog = [...consoleLog, { at: new Date().toISOString(), level, msg, page: location.pathname.slice(0, CONSOLE_PAGE) }].slice(-CONSOLE_SIZE);
     try {
       sessionStorage.setItem(CONSOLE_KEY, JSON.stringify(consoleLog));
     } catch (_) {}
   };
-  for (const level of ["log", "info", "warn", "error"]) {
+  for (const level of CONSOLE_LEVELS) {
     const original = console[level].bind(console);
     console[level] = (...args) => {
       keepConsole(level, args);
@@ -960,7 +961,7 @@
   document.addEventListener("htmx:wsOpen", (e) => {
     gsm.socket = e.detail.socketWrapper;
     const st = document.getElementById("ws-state");
-    gsm.send({ type: "hello", epoch: st.dataset.epoch, seq: Number(st.dataset.seq), watch: gsm.watching() });
+    gsm.send({ type: MSG.hello, epoch: st.dataset.epoch, seq: Number(st.dataset.seq), watch: gsm.watching() });
     document.body.classList.remove("ws-down");
     document.dispatchEvent(new CustomEvent("gsm:wsopen"));
   });
@@ -975,9 +976,9 @@
   document.addEventListener("htmx:wsBeforeMessage", (e) => {
     e.preventDefault();
     const m = JSON.parse(e.detail.message);
-    if (m.type === "patch") gsm.applyPatch(m);
-    else if (m.type === "reload") window.location.reload();
-    else if (m.type === "gone") {
+    if (m.type === MSG.patch) gsm.applyPatch(m);
+    else if (m.type === MSG.reload) window.location.reload();
+    else if (m.type === MSG.gone) {
       // The join request ended while the phone slept: stop the spinner, offer a new one.
       document.querySelector("[data-pending-waiting]")?.setAttribute("hidden", "");
       document.querySelector("[data-pending-gone]")?.removeAttribute("hidden");
@@ -1082,8 +1083,8 @@
       const a = e.target.closest?.("a[data-switch-base]");
       if (!a) return;
       const path = location.pathname;
-      const i = path.indexOf("/compendium");
-      const rest = i < 0 ? "" : path.slice(i + "/compendium".length);
+      const i = path.indexOf(ROUTES.compendium);
+      const rest = i < 0 ? "" : path.slice(i + ROUTES.compendium.length);
       a.href = a.dataset.switchBase + rest + location.search;
     });
   }

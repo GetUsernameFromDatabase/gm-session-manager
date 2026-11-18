@@ -2,7 +2,6 @@ package web
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"slices"
 
@@ -13,6 +12,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -130,10 +130,10 @@ func (a *App) saveHomebrew(c *gin.Context, w who, id int64) error {
 			return err
 		}
 		a.Hub.Publish(w.character.CampaignID, topics...)
-		c.Redirect(http.StatusSeeOther, fmt.Sprintf("/characters/%d", w.character.ID))
+		c.Redirect(http.StatusSeeOther, route.Path(route.Character, w.character.ID))
 		return nil
 	}
-	c.Redirect(http.StatusSeeOther, compendiumPath(c, fmt.Sprintf("/entries/%d", id)))
+	c.Redirect(http.StatusSeeOther, compendiumPath(c, route.Path(route.CompendiumEntry, id)))
 	return nil
 }
 

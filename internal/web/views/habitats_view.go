@@ -8,6 +8,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 
 	"github.com/a-h/templ"
 )
@@ -34,5 +35,5 @@ func everyHabitat(has map[enum.Habitat]bool) bool {
 
 // habitatsURL opens the grid filtered to name.
 func habitatsURL(ctx context.Context, name string) templ.SafeURL {
-	return templ.SafeURL(CompendiumPath(ctx, "/habitats?"+url.Values{"q": {name}}.Encode()))
+	return templ.SafeURL(CompendiumPath(ctx, route.CompendiumHabitats+"?"+url.Values{"q": {name}}.Encode()))
 }

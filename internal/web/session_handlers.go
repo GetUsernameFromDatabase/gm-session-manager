@@ -17,6 +17,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -50,9 +51,9 @@ func (a *App) home(c *gin.Context) error {
 		}
 		a.render(c, http.StatusOK, views.GMHome(a.layout(w, "Campaigns", views.NavHome, nil, false), campaigns, a.joinInfo(0), a.feedbackPath()))
 	case w.character != nil:
-		c.Redirect(http.StatusSeeOther, fmt.Sprintf("/characters/%d", w.character.ID))
+		c.Redirect(http.StatusSeeOther, route.Path(route.Character, w.character.ID))
 	default:
-		c.Redirect(http.StatusSeeOther, PathJoin)
+		c.Redirect(http.StatusSeeOther, route.Join)
 	}
 	return nil
 }
@@ -70,9 +71,9 @@ func (a *App) joinURLs(path string) []string {
 // list when campaignID is 0.
 func joinPath(campaignID int64) string {
 	if campaignID == 0 {
-		return PathJoin
+		return route.Join
 	}
-	return fmt.Sprintf("%s/%d", PathJoin, campaignID)
+	return route.Path(route.JoinCampaign, campaignID)
 }
 
 func (a *App) joinInfo(campaignID int64) views.JoinInfo {
@@ -114,7 +115,7 @@ const titleAdminLogin = "GM login"
 
 func (a *App) adminLoginForm(c *gin.Context) {
 	if auth.FromContext(c).Session != nil {
-		c.Redirect(http.StatusSeeOther, PathHome)
+		c.Redirect(http.StatusSeeOther, route.Home)
 		return
 	}
 	a.render(c, http.StatusOK, views.AdminLogin(views.Layout{Title: titleAdminLogin}, ""))
@@ -145,7 +146,7 @@ func (a *App) adminLogin(c *gin.Context) error {
 	}
 
 	auth.SetCookie(c, token)
-	c.Redirect(http.StatusSeeOther, PathHome)
+	c.Redirect(http.StatusSeeOther, route.Home)
 	return nil
 }
 
@@ -167,14 +168,14 @@ func (a *App) logout(c *gin.Context) error {
 		}
 	}
 	auth.ClearCookie(c)
-	c.Redirect(http.StatusSeeOther, PathHome)
+	c.Redirect(http.StatusSeeOther, route.Home)
 	return nil
 }
 
 // visitorOnly refuses join actions from a device that already has a role.
 func visitorOnly(c *gin.Context) bool {
 	if auth.FromContext(c).Session != nil {
-		c.Redirect(http.StatusSeeOther, PathHome)
+		c.Redirect(http.StatusSeeOther, route.Home)
 		return false
 	}
 	return true
@@ -328,7 +329,7 @@ func (a *App) startRequest(c *gin.Context, camp sqlc.Campaign, kind hub.PendingK
 		return
 	}
 	epoch, seq := a.Hub.Position()
-	l := views.Layout{Title: "Waiting", WS: &views.WS{URL: "/ws?pending=" + p.Secret, Epoch: epoch, Seq: seq}}
+	l := views.Layout{Title: "Waiting", WS: &views.WS{URL: route.WS + "?pending=" + p.Secret, Epoch: epoch, Seq: seq}}
 	a.render(c, http.StatusOK, views.JoinWaiting(l, views.Waiting{Secret: p.Secret, Name: p.Name, State: "waiting"}))
 }
 
@@ -345,7 +346,7 @@ func (a *App) completeRequest(c *gin.Context) error {
 		return nil
 	}
 	var err error
-	next := PathHome
+	next := route.Home
 	if p.Kind == hub.PendingCreate {
 		var id int64
 		id, err = a.createAndLogin(c, p.CampaignID, p.Name)

@@ -5,17 +5,16 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-)
 
-// PathFiles is the admin page of every attachment and where it is used.
-const PathFiles = "/files"
+	"gm-session-manager/internal/route"
+)
 
 // FilesBase is the Files page of campaign (0: every campaign).
 func FilesBase(campaign int64) string {
 	if campaign == 0 {
-		return PathFiles
+		return route.Files
 	}
-	return fmt.Sprintf("/campaigns/%d/files", campaign)
+	return route.Path(route.CampaignFiles, campaign)
 }
 
 // Tabs of the Files page.

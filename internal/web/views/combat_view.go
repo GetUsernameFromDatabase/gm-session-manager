@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/route"
 	selectcomp "gm-session-manager/internal/web/components/select"
 	"gm-session-manager/internal/web/utils"
 
@@ -116,7 +117,7 @@ func currentID(v CombatView) int64 {
 }
 
 func (e EncounterView) url(action string) string {
-	return fmt.Sprintf("/encounters/%d/%s", e.Encounter.ID, action)
+	return route.Path(route.EncounterAction, e.Encounter.ID, action)
 }
 
 // The turn the tracker showed, posted with Next and Previous so a repeated

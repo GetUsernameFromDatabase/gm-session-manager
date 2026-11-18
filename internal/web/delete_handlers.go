@@ -13,6 +13,7 @@ import (
 	"gm-session-manager/internal/export"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -67,7 +68,7 @@ func (a *App) removeCharacter(c *gin.Context) error {
 		a.render(c, http.StatusOK, views.Flash("Deleted "+ch.Name+". You can restore it below.", false))
 		return nil
 	}
-	redirect(c, PathHome)
+	redirect(c, route.Home)
 	return nil
 }
 

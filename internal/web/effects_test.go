@@ -17,6 +17,7 @@ import (
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -87,12 +88,12 @@ func acBonusForm(name string, holder int64) url.Values {
 
 func (f effectFix) effect(t *testing.T, cookie string, characterID int64, form url.Values) *httptest.ResponseRecorder {
 	t.Helper()
-	return f.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/effect", characterID), cookie, form, true)
+	return f.do(t, http.MethodPost, route.Path(route.CharacterEffect, characterID), cookie, form, true)
 }
 
 func (f effectFix) cmd(t *testing.T, cookie string, characterID int64, line string) {
 	t.Helper()
-	if w := f.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", characterID), cookie, url.Values{"cmd": {line}}, true); w.Code != http.StatusOK {
+	if w := f.do(t, http.MethodPost, route.Path(route.CharacterCmd, characterID), cookie, url.Values{"cmd": {line}}, true); w.Code != http.StatusOK {
 		t.Fatalf("%s: %d %s", line, w.Code, w.Body)
 	}
 }
@@ -147,9 +148,9 @@ func TestEffectPermissions(t *testing.T) {
 	}
 	farConc := f.concentrating(t, farChar.ID, 0)
 
-	aliceFx, bramFx, mageFx := func() string { return fmt.Sprintf("/characters/%d/effect", f.characterID) },
-		func() string { return fmt.Sprintf("/characters/%d/effect", f.bram.ID) },
-		func() string { return fmt.Sprintf("/combatants/%d/condition", f.mage.ID) }
+	aliceFx, bramFx, mageFx := func() string { return route.Path(route.CharacterEffect, f.characterID) },
+		func() string { return route.Path(route.CharacterEffect, f.bram.ID) },
+		func() string { return route.Path(route.CombatantAction, f.mage.ID, "condition") }
 	tests := []struct {
 		name   string
 		cookie string
@@ -283,16 +284,16 @@ func TestConcentrationCascade(t *testing.T) {
 		{"concentrate end", false, func(t *testing.T, f effectFix) { f.cmd(t, f.gm, f.cass.ID, "concentrate end") }},
 		{"a new concentration replaces it", false, func(t *testing.T, f effectFix) { f.cmd(t, f.gm, f.cass.ID, "concentrate Bless") }},
 		{"the caster's character is deleted", false, func(t *testing.T, f effectFix) {
-			f.post200(t, fmt.Sprintf("/characters/%d/delete", f.cass.ID))
+			f.post200(t, route.Path(route.CharacterDelete, f.cass.ID))
 		}},
 		{"the caster's character is removed", false, func(t *testing.T, f effectFix) {
-			f.post200(t, fmt.Sprintf("/characters/%d/remove", f.cass.ID))
+			f.post200(t, route.Path(route.CharacterRemove, f.cass.ID))
 		}},
 		{"the caster's combatant is deleted", true, func(t *testing.T, f effectFix) {
-			f.post200(t, fmt.Sprintf("/combatants/%d/delete", f.mage.ID))
+			f.post200(t, route.Path(route.CombatantAction, f.mage.ID, "delete"))
 		}},
 		{"the encounter is deleted", true, func(t *testing.T, f effectFix) {
-			f.post200(t, fmt.Sprintf("/encounters/%d/delete", f.enc.ID))
+			f.post200(t, route.Path(route.EncounterAction, f.enc.ID, "delete"))
 		}},
 		{"the caster drops to 0 HP", false, func(t *testing.T, f effectFix) {
 			if err := f.app.updateCharacter(t.Context(), f.cass.ID, func(_ *sqlc.Queries, dc *dnd5e.Character) error {
@@ -311,10 +312,10 @@ func TestConcentrationCascade(t *testing.T) {
 			if err := f.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: f.enc.ID, Status: enum.EncounterActive, Round: 1, ActiveCombatantID: nullID(f.mage.ID)}); err != nil {
 				t.Fatal(err)
 			}
-			f.post200(t, fmt.Sprintf("/encounters/%d/next", f.enc.ID)) // the mage's next turn, round 2
+			f.post200(t, route.Path(route.EncounterAction, f.enc.ID, "next")) // the mage's next turn, round 2
 		}},
 		{"the caster monster drops to 0 HP", true, func(t *testing.T, f effectFix) {
-			if w := f.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/hp", f.mage.ID), f.gm, url.Values{"amount": {"99"}}, true); w.Code >= http.StatusBadRequest {
+			if w := f.do(t, http.MethodPost, route.Path(route.CombatantAction, f.mage.ID, "hp"), f.gm, url.Values{"amount": {"99"}}, true); w.Code >= http.StatusBadRequest {
 				t.Fatalf("%d %s", w.Code, w.Body)
 			}
 		}},
@@ -379,7 +380,7 @@ func TestIncapacitatingEndsConcentration(t *testing.T) {
 				switch how {
 				case "combatant form":
 					f.concentrating(t, 0, f.mage.ID)
-					if w := f.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/condition", f.mage.ID), f.gm, url.Values{"slug": {s.slug}}, true); w.Code != http.StatusOK {
+					if w := f.do(t, http.MethodPost, route.Path(route.CombatantAction, f.mage.ID, "condition"), f.gm, url.Values{"slug": {s.slug}}, true); w.Code != http.StatusOK {
 						t.Fatalf("%d %s", w.Code, w.Body)
 					}
 				case "character form":
@@ -467,11 +468,11 @@ func TestEffectShownOnSheet(t *testing.T) {
 	if !named {
 		t.Errorf("the AC breakdown does not name the effect: %+v", sheet.Explain(dnd5e.ModAC))
 	}
-	if w := f.do(t, http.MethodGet, fmt.Sprintf("/characters/%d", f.characterID), f.alice, nil, false); w.Code != http.StatusOK {
+	if w := f.do(t, http.MethodGet, route.Path(route.Character, f.characterID), f.alice, nil, false); w.Code != http.StatusOK {
 		t.Errorf("sheet page: %d", w.Code)
 	}
 	cond := f.conds(t, f.characterID)[0]
-	if w := f.do(t, http.MethodPost, fmt.Sprintf("/conditions/%d/delete", cond.ID), f.alice, nil, true); w.Code != http.StatusOK {
+	if w := f.do(t, http.MethodPost, route.Path(route.ConditionDelete, cond.ID), f.alice, nil, true); w.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", w.Code, w.Body)
 	}
 	sheet = f.shown(t, f.characterID)
@@ -518,7 +519,7 @@ func TestTrackerShowsEffects(t *testing.T) {
 			t.Fatalf("%d %s", w.Code, w.Body)
 		}
 	}
-	if w := f.do(t, http.MethodPost, fmt.Sprintf("/combatants/%d/condition", f.mage.ID), f.gm, acBonusForm("Mage Armor", 0), true); w.Code != http.StatusOK {
+	if w := f.do(t, http.MethodPost, route.Path(route.CombatantAction, f.mage.ID, "condition"), f.gm, acBonusForm("Mage Armor", 0), true); w.Code != http.StatusOK {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 
@@ -578,7 +579,7 @@ func TestEncounterEndClearsTimedEffects(t *testing.T) {
 	if w := f.effect(t, f.alice, f.characterID, url.Values{"slug": {"custom"}, "name": {"Early"}, "rounds": {"3"}}); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("rounds outside a fight: %d, want 422", w.Code)
 	}
-	if w := f.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/start", f.enc.ID), f.gm, nil, true); w.Code != http.StatusOK {
+	if w := f.do(t, http.MethodPost, route.Path(route.EncounterAction, f.enc.ID, "start"), f.gm, nil, true); w.Code != http.StatusOK {
 		t.Fatalf("start: %d %s", w.Code, w.Body)
 	}
 	if w := f.effect(t, f.alice, f.characterID, url.Values{"slug": {"custom"}, "name": {"Timed"}, "rounds": {"3"}}); w.Code != http.StatusOK {
@@ -592,7 +593,7 @@ func TestEncounterEndClearsTimedEffects(t *testing.T) {
 		t.Fatalf("held: %d %s", w.Code, w.Body)
 	}
 	wait := watchSheets(t, f, f.bram.ID)
-	if w := f.do(t, http.MethodPost, fmt.Sprintf("/encounters/%d/end", f.enc.ID), f.gm, nil, true); w.Code != http.StatusOK {
+	if w := f.do(t, http.MethodPost, route.Path(route.EncounterAction, f.enc.ID, "end"), f.gm, nil, true); w.Code != http.StatusOK {
 		t.Fatalf("end: %d %s", w.Code, w.Body)
 	}
 	if got := notes(f.conds(t, f.characterID)); strings.Join(got, ",") != "Untimed" {
@@ -691,7 +692,7 @@ func TestEffectFields(t *testing.T) {
 	}
 	f.allowEntrySources(t)
 	get := func(cookie, query string) *httptest.ResponseRecorder {
-		return f.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d/effect/spell?%s", f.campaignID, query), cookie, nil, false)
+		return f.do(t, http.MethodGet, route.Path(route.CampaignEffectSpell, f.campaignID)+"?"+query, cookie, nil, false)
 	}
 	for _, tt := range []struct {
 		name, cookie, query string
@@ -737,7 +738,7 @@ func TestEffectModRows(t *testing.T) {
 	f := newEffectFix(t)
 	get := func(query string) string {
 		t.Helper()
-		w := f.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d/effect/spell?character=%d%s", f.campaignID, f.characterID, query), f.alice, nil, false)
+		w := f.do(t, http.MethodGet, fmt.Sprintf("%s?character=%d%s", route.Path(route.CampaignEffectSpell, f.campaignID), f.characterID, query), f.alice, nil, false)
 		if w.Code != http.StatusOK {
 			t.Fatalf("%s: status %d: %s", query, w.Code, w.Body)
 		}
@@ -764,7 +765,7 @@ func TestEffectModRows(t *testing.T) {
 			}
 		})
 	}
-	if w := f.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d/effect/spell?character=%d&row=10", f.campaignID, f.characterID), f.alice, nil, false); w.Code == http.StatusOK {
+	if w := f.do(t, http.MethodGet, fmt.Sprintf("%s?character=%d&row=10", route.Path(route.CampaignEffectSpell, f.campaignID), f.characterID), f.alice, nil, false); w.Code == http.StatusOK {
 		t.Error("an 11th row must be refused")
 	}
 
@@ -792,7 +793,7 @@ func TestEffectModsReadOnly(t *testing.T) {
 	if w := f.effect(t, f.gm, f.characterID, acBonusForm("Haste", 0)); w.Code != http.StatusOK {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	w := f.do(t, http.MethodGet, fmt.Sprintf("/characters/%d", f.characterID), f.alice, nil, false) // only the player edits the sheet
+	w := f.do(t, http.MethodGet, route.Path(route.Character, f.characterID), f.alice, nil, false) // only the player edits the sheet
 	body := w.Body.String()
 	if !strings.Contains(body, `aria-label="Edit modifier Boots"`) {
 		t.Error("the sheet's own modifier cannot be edited")
@@ -855,11 +856,11 @@ func TestExportCarriesNoEffects(t *testing.T) {
 	if w := f.effect(t, f.gm, f.characterID, acBonusForm(shieldOfFaith, conc.ID)); w.Code != http.StatusOK {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	w := f.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/download", f.characterID), f.gm, nil, false)
+	w := f.do(t, http.MethodGet, route.Path(route.CharacterDownload, f.characterID), f.gm, nil, false)
 	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), shieldOfFaith) {
 		t.Errorf("download: %d, effect in file: %v", w.Code, strings.Contains(w.Body.String(), shieldOfFaith))
 	}
-	w = f.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d/export", f.campaignID), f.gm, nil, false)
+	w = f.do(t, http.MethodGet, route.Path(route.CampaignExport, f.campaignID), f.gm, nil, false)
 	if w.Code != http.StatusOK {
 		t.Fatalf("export: %d", w.Code)
 	}

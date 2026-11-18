@@ -8,16 +8,21 @@ import (
 	"strings"
 
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 )
 
-// wikiLinkPattern is a [[kind:id|label]] link in plain text (NPC fields),
+// WikiLinkPattern is a [[kind:id|label]] link in plain text (NPC fields),
 // with an optional |left, |right, |inline or |break layout for images (default left); notes keep theirs as
-// editor nodes. fields.js writes them.
+// editor nodes. fields.js writes them and compiles this same source (shared.js
+// WIKILINK), so it uses only syntax RE2 and JS read alike: (?<name>…) groups,
+// no flags.
 // The compendium kind (cross-references in imported 5etools text) names its
 // target by "<entry kind>/<slug>" instead of an id; ParseWiki finds it, but
 // WikiLinks does not list it: it has no row id (the server resolves it, see
 // web.resolveCompendiumLinks).
-var wikiLinkPattern = regexp.MustCompile(`\[\[(?:(note|entity|image):(\d+)|(compendium):([a-z]+)/([^|\]/]+))\|([^\]|]*)(?:\|(left|right|inline|break))?\]\]`)
+const WikiLinkPattern = `\[\[(?:(?<kind>note|entity|image):(?<id>\d+)|(?<compendium>compendium):(?<entryKind>[a-z]+)/(?<slug>[^|\]/]+))\|(?<label>[^\]|]*)(?:\|(?<float>left|right|inline|break))?\]\]`
+
+var wikiLinkPattern = regexp.MustCompile(WikiLinkPattern)
 
 // LinkCompendium is the WikiLink.Kind of a compendium cross-reference.
 const LinkCompendium = "compendium"
@@ -46,7 +51,7 @@ func (l WikiLink) URL() string {
 	if l.Kind == LinkCompendium {
 		return ""
 	}
-	return map[string]string{string(enum.LinkNote): "/notes/", string(enum.LinkEntity): "/entities/", string(enum.LinkImage): "/images/"}[l.Kind] + strconv.FormatInt(l.ID, 10)
+	return route.Path(map[string]string{string(enum.LinkNote): route.Note, string(enum.LinkEntity): route.Entity, string(enum.LinkImage): route.Image}[l.Kind], l.ID)
 }
 
 // WikiPart is a run of plain text, or one link.

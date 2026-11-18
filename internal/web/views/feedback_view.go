@@ -1,8 +1,5 @@
 package views
 
-// PathFeedback takes bug reports and ideas; they are saved as files on the host.
-const PathFeedback = "/feedback"
-
 // Report kinds: a person picks a bug or an idea; the server writes error
 // reports itself for a 500.
 const (

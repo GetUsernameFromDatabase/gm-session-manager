@@ -2,7 +2,6 @@ package web
 
 import (
 	"database/sql"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,6 +12,7 @@ import (
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 )
 
 // session is the device row behind a token.
@@ -35,10 +35,10 @@ func TestRequestLog(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
 	other := e.token(t, enum.RolePlayer)
-	charPath := fmt.Sprintf("/characters/%d", e.characterID)
+	charPath := route.Path(route.Character, e.characterID)
 
 	e.do(t, http.MethodGet, charPath, player, nil, false)
-	e.do(t, http.MethodGet, "/notes/9999", player, nil, true)
+	e.do(t, http.MethodGet, route.Path(route.Note, 9999), player, nil, true)
 	e.do(t, http.MethodGet, "/assets/js/app.js", player, nil, false)
 	e.do(t, http.MethodGet, charPath, "", nil, false) // a visitor
 
@@ -46,7 +46,7 @@ func TestRequestLog(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("got %d entries, want 2: %+v", len(got), got)
 	}
-	if got[0].Path != "/notes/9999" || got[0].Status != http.StatusNotFound || got[0].Error != "Not found." {
+	if got[0].Path != route.Path(route.Note, 9999) || got[0].Status != http.StatusNotFound || got[0].Error != "Not found." {
 		t.Errorf("newest = %+v, want the 404 with its message", got[0])
 	}
 	if got[1].Path != charPath || got[1].Status != http.StatusOK || got[1].Error != "" {
@@ -67,7 +67,7 @@ func TestRequestLog(t *testing.T) {
 	}
 
 	id := e.device(t, player)
-	e.do(t, http.MethodPost, PathLogout, player, nil, false)
+	e.do(t, http.MethodPost, route.Logout, player, nil, false)
 	if n := len(e.app.reqs.recent(id)); n != 0 {
 		t.Errorf("logout kept %d entries", n)
 	}
@@ -81,7 +81,7 @@ func TestRequestLogReusedID(t *testing.T) {
 	ctx := t.Context()
 	old := e.token(t, enum.RolePlayer)
 	oldSession := e.session(t, old)
-	e.do(t, http.MethodGet, "/notes/9999", old, nil, true)
+	e.do(t, http.MethodGet, route.Path(route.Note, 9999), old, nil, true)
 	if err := e.q().DeleteCharacterSessions(ctx, sql.NullInt64{Int64: e.characterID, Valid: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -132,16 +132,22 @@ func TestErrorText(t *testing.T) {
 func TestRequestSent(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
-	cmd := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	cmd := route.Path(route.CharacterCmd, e.characterID)
 	e.do(t, http.MethodPost, cmd, player, url.Values{"hp_op": {"damage"}, "hp_amount": {"five"}}, true)
-	e.do(t, http.MethodPost, "/blocks/1/steps", player, url.Values{"text": {"my secret"}}, true)
-	e.do(t, http.MethodGet, cmd+"?x=1", player, nil, true)
-	e.do(t, http.MethodPost, fmt.Sprintf("/campaigns/%d/notes", e.campaignID), player, url.Values{"title": {"secret plot"}}, true)
 	note, err := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Maps"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.do(t, http.MethodPost, fmt.Sprintf("/notes/%d/rename", note.ID), player, url.Values{"title": {"secret plot"}}, true)
+	// One the player may edit, so its handler reads the body.
+	block, err := e.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisPlayers, PlayersCanEdit: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Paths from the route constants, so a renamed route stays covered.
+	e.do(t, http.MethodPost, route.Path(route.BlockSteps, block.ID), player, url.Values{"text": {"my secret"}}, true)
+	e.do(t, http.MethodGet, cmd+"?x=1", player, nil, true)
+	e.do(t, http.MethodPost, route.Path(route.CampaignNotes, e.campaignID), player, url.Values{"title": {"secret plot"}}, true)
+	e.do(t, http.MethodPost, route.Path(route.NoteRename, note.ID), player, url.Values{"title": {"secret plot"}}, true)
 
 	got := e.app.reqs.recent(e.device(t, player))
 	if len(got) != 5 {
@@ -180,10 +186,10 @@ func TestSentText(t *testing.T) {
 // TestAdminLoginNotKept: the login form never reaches the log.
 func TestAdminLoginNotKept(t *testing.T) {
 	e := newTestEnv(t)
-	e.post(t, PathAdminLogin, loopbackAddr, adminCreds, "")
+	e.post(t, route.AdminLogin, loopbackAddr, adminCreds, "")
 	for _, log := range e.app.reqs.devices {
 		for _, en := range log {
-			if strings.Contains(en.Sent, testAdminPass) || en.Sent != "" && en.Path == PathAdminLogin {
+			if strings.Contains(en.Sent, testAdminPass) || en.Sent != "" && en.Path == route.AdminLogin {
 				t.Errorf("login kept: %+v", en)
 			}
 		}

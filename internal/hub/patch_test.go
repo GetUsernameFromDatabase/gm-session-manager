@@ -150,7 +150,7 @@ func TestPatch(t *testing.T) {
 				if err := json.Unmarshal(raw, &got); err != nil {
 					t.Fatal(err)
 				}
-				if got.Type != msgPatch || got.Epoch != h.epoch {
+				if got.Type != MsgPatch || got.Epoch != h.epoch {
 					t.Errorf("step %d: header %+v", i, got)
 				}
 				if len(got.Views) != len(st.want) {

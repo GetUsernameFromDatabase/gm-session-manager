@@ -26,6 +26,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -43,6 +44,13 @@ func (a *App) mountAssets(r *gin.Engine) {
 		p := c.Param("path")
 		if strings.HasSuffix(p, "/") {
 			c.Status(http.StatusNotFound) // no directory listings
+			return
+		}
+		if p == "/js/shared.js" { // built in Go, not an embedded file
+			c.Header("Cache-Control", "no-cache")
+			c.Header("ETag", sharedJSETag)
+			c.Header("Content-Type", "text/javascript; charset=utf-8")
+			http.ServeContent(c.Writer, c.Request, "", time.Time{}, bytes.NewReader(sharedJS))
 			return
 		}
 		if immutableAsset(p) {
@@ -212,7 +220,7 @@ const (
 // fail reports an error: as an out-of-band flash for htmx requests (status
 // 422, which app.js tells htmx to swap), or as a plain page.
 func (a *App) fail(c *gin.Context, status int, msg string) {
-	a.failBack(c, status, msg, PathHome, "Back to the start")
+	a.failBack(c, status, msg, route.Home, "Back to the start")
 }
 
 // gmOnly shows the error page to a player who opens a GM page; htmx
@@ -286,7 +294,7 @@ func (a *App) changedWith(c *gin.Context, campaignID int64, res templ.Component,
 	if !isHTMX(c) {
 		back := c.GetHeader("Referer")
 		if back == "" {
-			back = PathHome
+			back = route.Home
 		}
 		c.Redirect(http.StatusSeeOther, back)
 		return
@@ -307,9 +315,9 @@ func (a *App) layout(w who, title, active string, camp *sqlc.Campaign, live bool
 	// The GM's pages are all live: join requests show wherever they are.
 	if live && camp != nil || w.isGM() {
 		epoch, seq := a.Hub.Position()
-		url := "/ws"
+		url := route.WS
 		if w.isGM() {
-			url = fmt.Sprintf("/ws?campaign=%d", l.CampaignID)
+			url = fmt.Sprintf("%s?campaign=%d", route.WS, l.CampaignID)
 			l.Requests = a.pendingViews()
 		}
 		l.WS = &views.WS{URL: url, Epoch: epoch, Seq: seq}

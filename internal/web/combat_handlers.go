@@ -18,6 +18,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -75,7 +76,7 @@ func (a *App) createEncounter(c *gin.Context) error {
 		return err
 	}
 	a.Hub.Publish(id, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/campaigns/%d/combat?encounter=%d", id, enc.ID))
+	c.Redirect(http.StatusSeeOther, fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, id), enc.ID))
 	return nil
 }
 
@@ -282,7 +283,7 @@ func (a *App) encounterAction(c *gin.Context) error {
 			return err
 		}
 		a.publish(c, enc.CampaignID, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
-		redirect(c, fmt.Sprintf("/campaigns/%d/combat", enc.CampaignID))
+		redirect(c, route.Path(route.CampaignCombat, enc.CampaignID))
 		return nil
 	}
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {

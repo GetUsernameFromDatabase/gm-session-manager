@@ -17,6 +17,7 @@ import (
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 )
 
 const (
@@ -138,7 +139,7 @@ func TestAdminLogin(t *testing.T) {
 			e := newTestEnv(t)
 			existing := e.token(t, tt.existing)
 
-			w := e.post(t, PathAdminLogin, lanAddr, tt.form, existing)
+			w := e.post(t, route.AdminLogin, lanAddr, tt.form, existing)
 			if w.Code != tt.wantStatus {
 				t.Fatalf("status %d, want %d", w.Code, tt.wantStatus)
 			}
@@ -179,7 +180,7 @@ func TestLogout(t *testing.T) {
 			e := newTestEnv(t)
 			tok := e.token(t, tt.role)
 
-			w := e.post(t, PathLogout, tt.remoteAddr, nil, tok)
+			w := e.post(t, route.Logout, tt.remoteAddr, nil, tok)
 			if w.Code != http.StatusSeeOther {
 				t.Fatalf("status %d", w.Code)
 			}
@@ -198,7 +199,7 @@ func TestLogout(t *testing.T) {
 func TestCrossSiteRefused(t *testing.T) {
 	e := newTestEnv(t)
 	for site, want := range map[string]int{"cross-site": http.StatusForbidden, "same-origin": http.StatusSeeOther, "": http.StatusSeeOther} {
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, fmt.Sprintf("/campaigns/%d/open-join", e.campaignID), nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, route.Path(route.CampaignOpenJoin, e.campaignID), nil)
 		req.RemoteAddr = loopbackAddr
 		if site != "" {
 			req.Header.Set("Sec-Fetch-Site", site)
@@ -224,9 +225,9 @@ func TestCampaignJoinLinks(t *testing.T) {
 	cases := []struct {
 		path, url, qr string
 	}{
-		{"/", "https://192.168.1.10:8080/join<", `src="/join.png"`},
-		{fmt.Sprintf("/campaigns/%d", e.campaignID), fmt.Sprintf("https://192.168.1.10:8080/join/%d<", e.campaignID), fmt.Sprintf(`src="/join.png?campaign=%d"`, e.campaignID)},
-		{fmt.Sprintf("/campaigns/%d/images", e.campaignID), "Show join QR", fmt.Sprintf(`data-src="/join.png?campaign=%d"`, e.campaignID)},
+		{"/", "https://192.168.1.10:8080" + route.Join + "<", `src="` + route.JoinQR + `"`},
+		{route.Path(route.Campaign, e.campaignID), "https://192.168.1.10:8080" + route.Path(route.JoinCampaign, e.campaignID) + "<", fmt.Sprintf(`src="%s?campaign=%d"`, route.JoinQR, e.campaignID)},
+		{route.Path(route.CampaignImages, e.campaignID), "Show join QR", fmt.Sprintf(`data-src="%s?campaign=%d"`, route.JoinQR, e.campaignID)},
 	}
 	for _, tc := range cases {
 		body := e.do(t, http.MethodGet, tc.path, gm, nil, false).Body.String()
@@ -236,8 +237,8 @@ func TestCampaignJoinLinks(t *testing.T) {
 	}
 
 	for q, want := range map[string]int{"": http.StatusOK, "?campaign=1": http.StatusOK, "?campaign=x": http.StatusBadRequest, "?campaign=0": http.StatusBadRequest} {
-		if w := e.do(t, http.MethodGet, "/join.png"+q, gm, nil, false); w.Code != want {
-			t.Errorf("/join.png%s: %d, want %d", q, w.Code, want)
+		if w := e.do(t, http.MethodGet, route.JoinQR+q, gm, nil, false); w.Code != want {
+			t.Errorf("%s%s: %d, want %d", route.JoinQR, q, w.Code, want)
 		}
 	}
 }

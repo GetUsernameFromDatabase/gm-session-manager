@@ -5,6 +5,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/checkbox"
 	"gm-session-manager/internal/web/components/empty"
@@ -27,7 +28,7 @@ templ HabitatsPage(l Layout, v HabitatView) {
 		<form
 			method="get"
 			class="mb-4 flex flex-wrap items-center gap-2"
-			hx-get={ CompendiumPath(ctx, "/habitats") }
+			hx-get={ CompendiumPath(ctx, route.CompendiumHabitats) }
 			hx-trigger="submit, input[target.id==='habitat-q'] delay:200ms"
 			hx-target={ "#" + HabitatGridID }
 			hx-swap="outerHTML"
@@ -42,7 +43,7 @@ templ HabitatsPage(l Layout, v HabitatView) {
 			// Monsters with no habitats take those of the same monster in another source.
 			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{
 				"type": "button", "title": "Every matching monster with no habitats takes those of its copy in another source",
-				"hx-post": CompendiumPath(ctx, "/habitats/fill"), "hx-include": "#habitat-q",
+				"hx-post": CompendiumPath(ctx, route.CompendiumHabitatFill), "hx-include": "#habitat-q",
 				"hx-target": "#" + HabitatGridID, "hx-swap": "outerHTML", "hx-push-url": "false",
 			}}) {
 				@icon.Copy()
@@ -122,7 +123,7 @@ templ HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) {
 				{{ what := utils.IfElse(every, "Clear every habitat for ", "Set every habitat for ") + m.Name }}
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Class: anyPressed, Attributes: templ.Attributes{
 					"type": "button", "aria-pressed": fmt.Sprint(every), "title": what, "aria-label": what,
-					"hx-post": CompendiumPath(ctx, "/habitats/any"), "hx-vals": toJSON(map[string]any{"entry_id": m.ID}),
+					"hx-post": CompendiumPath(ctx, route.CompendiumHabitatAny), "hx-vals": toJSON(map[string]any{"entry_id": m.ID}),
 					"hx-target": "closest tr", "hx-swap": "outerHTML",
 				}}) {
 					Any
@@ -132,7 +133,7 @@ templ HabitatRow(m sqlc.ListMonstersByNameRow, has map[enum.Habitat]bool) {
 		for _, h := range compendium.Habitats {
 			// A tint on ticked cells shows each habitat's coverage at a glance.
 			@table.Cell(table.CellProps{Class: "text-center has-checked:bg-emerald-500/10"}) {
-				<form class="flex justify-center" hx-post={ CompendiumPath(ctx, "/habitats/cell") } hx-trigger="change" hx-vals={ toJSON(map[string]any{"entry_id": m.ID, "habitat": h}) }>
+				<form class="flex justify-center" hx-post={ CompendiumPath(ctx, route.CompendiumHabitatCell) } hx-trigger="change" hx-vals={ toJSON(map[string]any{"entry_id": m.ID, "habitat": h}) }>
 					@checkbox.Checkbox(checkbox.Props{Name: "on", Value: "true", DefaultChecked: has[h], Attributes: templ.Attributes{"aria-label": string(h) + ": " + m.Name}})
 				</form>
 			}
@@ -145,7 +146,7 @@ templ habitatBatchButton(v HabitatView, h enum.Habitat, on bool) {
 	{{ what := fmt.Sprintf(utils.IfElse(on, "Add %s to all %d monsters shown", "Remove %s from all %d monsters shown"), h, len(v.Monsters)) }}
 	@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Attributes: templ.Attributes{
 		"type": "button", "title": what, "aria-label": what,
-		"hx-post": CompendiumPath(ctx, "/habitats/batch"), "hx-vals": toJSON(map[string]any{"q": v.Filter, "habitat": h, "on": on}),
+		"hx-post": CompendiumPath(ctx, route.CompendiumHabitatBatch), "hx-vals": toJSON(map[string]any{"q": v.Filter, "habitat": h, "on": on}),
 		"hx-confirm": what + "?", "hx-target": "#" + HabitatGridID, "hx-swap": "outerHTML",
 	}}) {
 		if on {

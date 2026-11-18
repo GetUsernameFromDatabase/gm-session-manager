@@ -12,6 +12,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -212,11 +213,11 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 func combatantLink(r sqlc.ListCombatantsRow, campaignID int64) string {
 	switch {
 	case r.CharacterID.Valid:
-		return fmt.Sprintf("/characters/%d", r.CharacterID.Int64)
+		return route.Path(route.Character, r.CharacterID.Int64)
 	case r.EntityID.Valid:
-		return fmt.Sprintf("/entities/%d", r.EntityID.Int64)
+		return route.Path(route.Entity, r.EntityID.Int64)
 	case r.MonsterRef.Valid:
-		return fmt.Sprintf("%s/entries/%d", views.CompendiumBase(campaignID), r.MonsterRef.Int64)
+		return views.CompendiumBase(campaignID) + route.Path(route.CompendiumEntry, r.MonsterRef.Int64)
 	}
 	return ""
 }
@@ -294,7 +295,7 @@ func author(v perm.Viewer, names map[int64]string, characterID int64) views.Auth
 	}
 	au := views.Author{Name: names[characterID]}
 	if perm.CanCharacter(v, characterID, perm.ScopeView) {
-		au.Href = fmt.Sprintf("/characters/%d", characterID)
+		au.Href = route.Path(route.Character, characterID)
 	}
 	return au
 }

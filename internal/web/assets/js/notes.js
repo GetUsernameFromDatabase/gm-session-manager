@@ -7,8 +7,11 @@ import { StarterKit } from "/assets/vendor/tiptap-starter.js";
 import { Image } from "/assets/vendor/tiptap-image.js";
 import { collab, getVersion, receiveTransaction, sendableSteps } from "/assets/vendor/pm-collab.js";
 import { Step } from "/assets/vendor/pm-transform.js";
-import { KEEP_IMAGES, KeepImages, LINK_PATHS, WikiLink, keepCaretBeside, linkClick, mentionActions, mentionMenu, pickFile, showMenu, touchDrag } from "/assets/js/wikilink.js";
+import { KEY, MAX_STEPS, MSG, ROUTES } from "/assets/js/shared.js";
+import { KEEP_IMAGES, KeepImages, LINK_PATHS, WikiLink, keepCaretBeside, linkClick, mentionActions, mentionMenu, pickFile, routePath, showMenu, touchDrag } from "/assets/js/wikilink.js";
 
+const ATTACHMENT_PREFIX = routePath(ROUTES.attachment, ""); // "/attachments/"
+const ATTACHMENT_SRC = new RegExp(`^${ATTACHMENT_PREFIX}(\\d+)$`);
 const SNAPSHOT_EVERY_MS = 10000;
 const SETTLE_MS = 300; // after compositionend, before a peer's steps may redraw the text
 const editors = new Map(); // block id -> BlockEditor
@@ -66,7 +69,7 @@ class BlockEditor {
   }
 
   async start() {
-    const data = await json(await fetch(`/blocks/${this.id}/doc`));
+    const data = await json(await fetch(routePath(ROUTES.blockDoc, this.id)));
     if (this.destroyed) return;
     // After a 410 (fell behind a snapshot): edits not yet confirmed, to replay onto the fresh doc.
     const unsent = this.editor && sendableSteps(this.editor.state)?.steps.map((s) => s.toJSON());
@@ -75,15 +78,15 @@ class BlockEditor {
     this.editor?.destroy();
     this.editor = new Editor({
       element: this.el,
-      editable: data.editable,
-      content: data.doc,
+      editable: data[KEY.editable],
+      content: data[KEY.doc],
       extensions: [
         StarterKit.configure({ link: { openOnClick: false } }),
         // Attached pictures from before they became [[links]] (attachedPicture).
         Image,
         WikiLink,
         KeepImages,
-        Collab.configure({ version: data.docVersion, clientID: this.clientID }),
+        Collab.configure({ version: data[KEY.docVersion], clientID: this.clientID }),
       ],
       onUpdate: () => this.send(),
       onSelectionUpdate: keepCaretBeside,
@@ -94,11 +97,11 @@ class BlockEditor {
       this.settled = performance.now() + SETTLE_MS;
       if (this.waiting) this.hold();
     });
-    this.lastSnapshot = data.docVersion;
-    this.receive({ version: data.docVersion, steps: data.steps, clientIDs: data.clientIDs });
+    this.lastSnapshot = data[KEY.docVersion];
+    this.receive({ version: data[KEY.docVersion], steps: data[KEY.steps], clientIDs: data[KEY.clientIDs] });
     if (unsent?.length) this.replay(unsent);
     if (caret) this.editor.commands.focus(caret);
-    gsm.send({ type: "sub", blocks: [this.id] });
+    gsm.send({ type: MSG.sub, blocks: [this.id] });
     // Steps committed between /doc and the subscription are never pushed.
     this.catchUp();
     clearInterval(this.timer); // start() runs again after a 410
@@ -153,7 +156,7 @@ class BlockEditor {
 
   async catchUp() {
     if (!this.editor) return;
-    const res = await fetch(`/blocks/${this.id}/steps?since=${this.version()}`).catch(() => null);
+    const res = await fetch(`${routePath(ROUTES.blockSteps, this.id)}?since=${this.version()}`).catch(() => null);
     if (res?.status === 410) return this.start(); // trimmed behind a snapshot
     if (res?.ok) return this.receive(await res.json());
     // While held, sending waits on this fetch: keep trying.
@@ -182,10 +185,10 @@ class BlockEditor {
     if (!s) return;
     this.inflight = true;
     try {
-      const res = await fetch(`/blocks/${this.id}/steps`, {
+      const res = await fetch(routePath(ROUTES.blockSteps, this.id), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ version: s.version, clientID: String(s.clientID), steps: s.steps.map((x) => x.toJSON()) }),
+        body: JSON.stringify({ version: s.version, clientID: String(s.clientID), steps: s.steps.slice(0, MAX_STEPS).map((x) => x.toJSON()) }), // the rest go once these are confirmed
       });
       this.inflight = false;
       if (res.status === 409) {
@@ -216,7 +219,7 @@ class BlockEditor {
     if (v <= this.lastSnapshot || sendableSteps(this.editor.state)) return;
     this.lastSnapshot = v;
     const doc = this.editor.getJSON();
-    fetch(`/blocks/${this.id}/snapshot`, {
+    fetch(routePath(ROUTES.blockSnapshot, this.id), {
       method: "POST",
       keepalive,
       headers: { "Content-Type": "application/json" },
@@ -228,10 +231,10 @@ class BlockEditor {
   async upload(file) {
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(`/blocks/${this.id}/attachments`, { method: "POST", body: form });
+    const res = await fetch(routePath(ROUTES.blockAttachments, this.id), { method: "POST", body: form });
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error || "Upload failed");
+      alert(data[KEY.error] || "Upload failed");
       return null;
     }
     return data;
@@ -241,8 +244,8 @@ class BlockEditor {
     const data = await this.upload(file);
     if (!data) return;
     const chain = this.editor.chain().focus("end");
-    if (data.image) chain.insertContent(attachedPicture(data.id, data.name, "break")).run();
-    else chain.insertContent({ type: "text", text: data.name, marks: [{ type: "link", attrs: { href: data.url } }] }).run();
+    if (data[KEY.image]) chain.insertContent(attachedPicture(data[KEY.id], data[KEY.name], "break")).run();
+    else chain.insertContent({ type: "text", text: data[KEY.name], marks: [{ type: "link", attrs: { href: data[KEY.url] } }] }).run();
   }
 
   destroy() {
@@ -250,7 +253,7 @@ class BlockEditor {
     clearInterval(this.timer);
     clearTimeout(this.retry);
     this.snapshot(true);
-    gsm.send({ type: "unsub", blocks: [this.id] });
+    gsm.send({ type: MSG.unsub, blocks: [this.id] });
     this.editor?.destroy();
   }
 }
@@ -284,13 +287,13 @@ function sync() {
 
 document.addEventListener("gsm:json", (e) => {
   const m = e.detail;
-  if (m.type === "steps") editors.get(m.block)?.receive(m);
+  if (m.type === MSG.steps) editors.get(m.block)?.receive(m);
 });
 
 // After a reconnect, resubscribe and fetch whatever was missed.
 document.addEventListener("gsm:wsopen", () => {
   if (!editors.size) return;
-  gsm.send({ type: "sub", blocks: [...editors.keys()] });
+  gsm.send({ type: MSG.sub, blocks: [...editors.keys()] });
   editors.forEach((ed) => ed.catchUp());
 });
 
@@ -317,7 +320,7 @@ function nodeActions(ed, target, e) {
   const node = pos >= 0 ? view.state.doc.nodeAt(pos) : null;
   if (target.closest("img") && node && node.type.name === "image") {
     const point = { left: e.clientX, top: e.clientY, bottom: e.clientY };
-    const attached = /^\/attachments\/(\d+)$/.exec(node.attrs.src);
+    const attached = ATTACHMENT_SRC.exec(node.attrs.src);
     if (!attached) {
       showMenu(point, [
         ["Open", () => openWeb(node.attrs.src), "external-link"],
@@ -343,13 +346,13 @@ function nodeActions(ed, target, e) {
     null,
     ["Remove", () => select().deleteSelection().run(), "trash-2", true],
   ];
-  if (href.startsWith("/attachments/")) {
+  if (href.startsWith(ATTACHMENT_PREFIX)) {
     actions.splice(2, 0, [
       "Replace…",
       () =>
         pickFile("", async (file) => {
           const data = await ed.upload(file);
-          if (data) select().insertContent({ type: "text", text: data.name, marks: [{ type: "link", attrs: { href: data.url } }] }).run();
+          if (data) select().insertContent({ type: "text", text: data[KEY.name], marks: [{ type: "link", attrs: { href: data[KEY.url] } }] }).run();
         }),
       "pencil",
     ]);

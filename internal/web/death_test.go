@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -9,6 +8,7 @@ import (
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
+	"gm-session-manager/internal/route"
 )
 
 // deathFix is the effects fixture with Cass in the encounter at 0 HP and
@@ -44,7 +44,7 @@ func (f effectFix) saves(t *testing.T) dnd5e.DeathSaves {
 
 func TestTrackerRefusesWhileDead(t *testing.T) {
 	f, cb := deathFix(t, dnd5e.DeathSaves{Failures: dnd5e.MaxDeathSaves})
-	hp := fmt.Sprintf("/combatants/%d/hp", cb.ID)
+	hp := route.Path(route.CombatantAction, cb.ID, "hp")
 	for name, form := range map[string]url.Values{
 		"heal":     {"op": {"heal"}, "amount": {"5"}},
 		"set hp":   {"op": {"set"}, "hp": {"5"}},
@@ -67,7 +67,7 @@ func TestTrackerRefusesWhileDead(t *testing.T) {
 func TestQuickFormCritAtZeroHP(t *testing.T) {
 	f, _ := deathFix(t, dnd5e.DeathSaves{})
 	form := url.Values{"hp_op": {"damage"}, "hp_amount": {"2"}, "hp_crit": {"true"}}
-	if w := f.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/cmd", f.cass.ID), f.gm, form, true); w.Code != http.StatusOK {
+	if w := f.do(t, http.MethodPost, route.Path(route.CharacterCmd, f.cass.ID), f.gm, form, true); w.Code != http.StatusOK {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	if got := f.saves(t); got.Failures != 2 {
@@ -77,7 +77,7 @@ func TestQuickFormCritAtZeroHP(t *testing.T) {
 
 func TestTrackerCritAtZeroHP(t *testing.T) {
 	f, cb := deathFix(t, dnd5e.DeathSaves{})
-	hp := fmt.Sprintf("/combatants/%d/hp", cb.ID)
+	hp := route.Path(route.CombatantAction, cb.ID, "hp")
 	if w := f.do(t, http.MethodPost, hp, f.gm, url.Values{"op": {"damage"}, "amount": {"3"}, "crit": {"true"}}, true); w.Code != http.StatusOK {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
@@ -95,7 +95,7 @@ func TestTrackerCritAtZeroHP(t *testing.T) {
 // A monster or NPC at 0 HP takes damage and heals as before, crit or not.
 func TestMonsterAtZeroHPUnaffected(t *testing.T) {
 	f := newEffectFix(t)
-	hp := fmt.Sprintf("/combatants/%d/hp", f.mage.ID)
+	hp := route.Path(route.CombatantAction, f.mage.ID, "hp")
 	for _, form := range []url.Values{
 		{"op": {"damage"}, "amount": {"10"}, "crit": {"true"}},
 		{"op": {"damage"}, "amount": {"4"}},
@@ -118,7 +118,7 @@ func TestDeathClearsConditions(t *testing.T) {
 		fire func(t *testing.T, f effectFix, cb sqlc.Combatant)
 	}{
 		{"tracker crit damage", func(t *testing.T, f effectFix, cb sqlc.Combatant) {
-			f.postForm(t, fmt.Sprintf("/combatants/%d/hp", cb.ID), url.Values{"op": {"damage"}, "amount": {"2"}, "crit": {"true"}})
+			f.postForm(t, route.Path(route.CombatantAction, cb.ID, "hp"), url.Values{"op": {"damage"}, "amount": {"2"}, "crit": {"true"}})
 		}},
 		{"sheet deathsave fail", func(t *testing.T, f effectFix, _ sqlc.Combatant) {
 			tok, _, err := f.mgr.IssuePlayer(t.Context(), f.cass.ID) // deathsave is the owner's

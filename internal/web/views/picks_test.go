@@ -3,6 +3,8 @@ package views
 import (
 	"strings"
 	"testing"
+
+	"gm-session-manager/internal/route"
 )
 
 // TestPickRowActs checks a pick's button posts its action with no hx-target
@@ -14,13 +16,13 @@ func TestPickRowActs(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := b.String()
-	if !strings.Contains(html, `hx-post="/characters/1/cmd"`) {
+	if !strings.Contains(html, `hx-post="`+route.Path(route.CharacterCmd, 1)+`"`) {
 		t.Errorf("no action in %s", html)
 	}
 	if strings.Contains(html, "hx-target") {
 		t.Errorf("a target the button would inherit in %s", html)
 	}
-	if !strings.Contains(html, `/compendium/entries/7?preview=1`) {
+	if !strings.Contains(html, route.Compendium+route.Path(route.CompendiumEntry, 7)+"?preview=1") {
 		t.Errorf("no details loader in %s", html)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -87,7 +88,7 @@ func TestSpellCounts(t *testing.T) {
 	}
 	e.allowEntrySources(t)
 	player := e.token(t, enum.RolePlayer)
-	create := fmt.Sprintf("/characters/%d/create/", e.characterID)
+	create := route.Path(route.CharacterCreate, e.characterID) + "/"
 	for _, step := range []string{"class=testlock", "species=human", "background=testfolk"} {
 		step, p, _ := strings.Cut(step, "=")
 		if w := e.do(t, http.MethodPost, create+step, player, url.Values{"pick": {p}}, false); w.Code != http.StatusSeeOther {
@@ -96,7 +97,7 @@ func TestSpellCounts(t *testing.T) {
 	}
 	const pick = "class_eldritch-invocation"
 	choices := url.Values{"language": {"Elvish", "Dwarvish"}, "trait_versatile": {"Alert"}, pick: {"Armor of Shadows"}}
-	levelUp, level2 := fmt.Sprintf("/characters/%d/levelup", e.characterID), url.Values{"class": {"testlock"}, pick: {"Agonizing Blast", "Shadow Step"}}
+	levelUp, level2 := route.Path(route.CharacterLevelup, e.characterID), url.Values{"class": {"testlock"}, pick: {"Agonizing Blast", "Shadow Step"}}
 	// From level 3 the class keeps a spellbook: one spell, plus one per level.
 	book := lock
 	book.ContentHash = "book" // the upsert skips an unchanged hash
@@ -165,7 +166,7 @@ func TestPrepareCapCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/characters/%d/create/class", e.characterID), player, url.Values{"pick": {"testlock"}}, false); w.Code != http.StatusSeeOther {
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterCreateStep, e.characterID, "class"), player, url.Values{"pick": {"testlock"}}, false); w.Code != http.StatusSeeOther {
 		t.Fatalf("class: %d %s", w.Code, w.Body)
 	}
 	ch, _ := e.q().GetCharacter(t.Context(), e.characterID)
@@ -175,7 +176,7 @@ func TestPrepareCapCommand(t *testing.T) {
 	if err := e.q().UpdateCharacterSheet(t.Context(), sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
 		t.Fatal(err)
 	}
-	cmdPath := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	cmdPath := route.Path(route.CharacterCmd, e.characterID)
 	if w := e.do(t, http.MethodPost, cmdPath, player, url.Values{"cmd": {"spell prepare test-ward"}}, true); w.Code != http.StatusOK {
 		t.Fatalf("first prepare: %d %s", w.Code, w.Body)
 	}

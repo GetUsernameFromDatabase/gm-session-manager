@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components"
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/button"
@@ -28,8 +29,8 @@ templ page(l Layout) {
 			<script src="/assets/vendor/htmx.min.js"></script>
 			<script src="/assets/vendor/htmx-ws.js"></script>
 			<script src="/assets/vendor/sortable.js"></script>
-			<script src="/assets/js/app.js"></script>
-			<script src="/assets/js/live.js"></script>
+			<script type="module" src="/assets/js/app.js"></script>
+			<script type="module" src="/assets/js/live.js"></script>
 			@components.Scripts()
 			for _, m := range l.Modules {
 				<script type="module" src={ m }></script>
@@ -130,7 +131,7 @@ templ navbar(l Layout) {
 }
 
 templ logoutButton(class string) {
-	<form method="post" action="/logout" class={ class }>
+	<form method="post" action={ templ.SafeURL(route.Logout) } class={ class }>
 		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
 			@icon.LogOut()
 			Log out
@@ -141,15 +142,15 @@ templ logoutButton(class string) {
 templ navLinks(l Layout) {
 	if l.CampaignID != 0 {
 		if l.IsGM {
-			@navLink(fmt.Sprintf("/campaigns/%d", l.CampaignID), l.CampaignName, l.Active == NavHome, nil)
+			@navLink(route.Path(route.Campaign, l.CampaignID), l.CampaignName, l.Active == NavHome, nil)
 		} else if l.CharacterID != 0 {
-			@navLink(fmt.Sprintf("/characters/%d", l.CharacterID), "Character", l.Active == NavCharacter, nil)
+			@navLink(route.Path(route.Character, l.CharacterID), "Character", l.Active == NavCharacter, nil)
 		}
-		@navLink(fmt.Sprintf("/campaigns/%d/combat", l.CampaignID), "Combat", l.Active == NavCombat, nil)
-		@navLink(fmt.Sprintf("/campaigns/%d/notes", l.CampaignID), "Notes", l.Active == NavNotes, nil)
-		@navLink(fmt.Sprintf("/campaigns/%d/entities", l.CampaignID), "NPCs", l.Active == NavEntities, nil)
+		@navLink(route.Path(route.CampaignCombat, l.CampaignID), "Combat", l.Active == NavCombat, nil)
+		@navLink(route.Path(route.CampaignNotes, l.CampaignID), "Notes", l.Active == NavNotes, nil)
+		@navLink(route.Path(route.CampaignEntities, l.CampaignID), "NPCs", l.Active == NavEntities, nil)
 		if l.IsGM {
-			@navLink(fmt.Sprintf("/campaigns/%d/images", l.CampaignID), "Images", l.Active == NavImages, nil)
+			@navLink(route.Path(route.CampaignImages, l.CampaignID), "Images", l.Active == NavImages, nil)
 		}
 	}
 	if l.IsGM || l.CharacterID != 0 {
@@ -226,7 +227,7 @@ templ switcher(campaignID int64) {
 		<div class="p-3">
 			@input.Input(input.Props{Name: "q", Type: "search", Placeholder: "Jump to a note or NPC…", Attributes: templ.Attributes{
 				"autocomplete": "off",
-				"hx-get":       fmt.Sprintf("/campaigns/%d/switcher", campaignID),
+				"hx-get":       route.Path(route.CampaignSwitcher, campaignID),
 				"hx-trigger":   "input changed delay:150ms, search",
 				"hx-target":    "#switcher-results",
 				"hx-swap":      "innerHTML",

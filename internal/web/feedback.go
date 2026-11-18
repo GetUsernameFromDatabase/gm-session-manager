@@ -49,8 +49,15 @@ type feedbackForm struct {
 	Console string `form:"console" validate:"max=40000"`
 }
 
-// consoleSize is how many console entries app.js keeps per tab.
-const consoleSize = 50
+// The console limits app.js keeps to; tags cannot name constants (TestSharedLimitsMatchTags).
+const (
+	consoleSize = 50  // entries per tab
+	consoleMsg  = 500 // bytes of one message
+	consolePage = 512 // bytes of the page path
+)
+
+// consoleLevels are the console methods app.js wraps; the report also accepts "uncaught".
+var consoleLevels = []string{"log", "info", "warn", "error"}
 
 type consoleEntry struct {
 	At    string `json:"at"    validate:"max=40"`

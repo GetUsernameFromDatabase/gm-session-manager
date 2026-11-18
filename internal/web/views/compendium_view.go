@@ -11,6 +11,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	selectcomp "gm-session-manager/internal/web/components/select"
 
 	"github.com/a-h/templ"
@@ -174,9 +175,9 @@ func habitatCountMap(rows []sqlc.CountHabitatsRow) map[enum.Habitat]int64 {
 // an address shows the same view to whoever opens it.
 func CompendiumBase(campaign int64) string {
 	if campaign == 0 {
-		return "/compendium"
+		return route.Compendium
 	}
-	return fmt.Sprintf("/campaigns/%d/compendium", campaign)
+	return route.Path(route.CampaignCompendium, campaign)
 }
 
 // CompendiumURL is the compendium list of campaign with query q.
@@ -201,7 +202,7 @@ func CompendiumPath(ctx context.Context, rest string) string {
 
 // entryHref is an entry's page in the campaign ctx renders in.
 func entryHref(ctx context.Context, id int64) string {
-	return CompendiumPath(ctx, fmt.Sprintf("/entries/%d", id))
+	return CompendiumPath(ctx, route.Path(route.CompendiumEntry, id))
 }
 
 // kindBase is what the kind chips keep: the search, or the shared list and
@@ -223,7 +224,7 @@ func (v CompendiumView) kindBase() url.Values {
 // CompendiumRest is path without its compendium base ("" for the list), so
 // the GM's switcher can open the same page in another campaign.
 func CompendiumRest(path string) string {
-	if _, rest, ok := strings.Cut(path, "/compendium"); ok {
+	if _, rest, ok := strings.Cut(path, route.Compendium); ok {
 		return rest
 	}
 	return ""
@@ -443,7 +444,7 @@ func commaPrefixed(s string) string {
 
 // compendiumFindURL opens the entry of kind and slug the viewer would see.
 func compendiumFindURL(ctx context.Context, kind enum.CompendiumKind, slug string) string {
-	return CompendiumPath(ctx, fmt.Sprintf("/find/%s/%s", kind, url.PathEscape(slug)))
+	return CompendiumPath(ctx, route.Path(route.CompendiumFind, kind, slug))
 }
 
 func levelsText(levels []int) string {
@@ -484,7 +485,7 @@ const homebrewFormID = "homebrew-form"
 
 func homebrewAction(id int64) string {
 	if id == 0 {
-		return "/homebrew"
+		return route.CompendiumHomebrew
 	}
-	return fmt.Sprintf("/entries/%d", id)
+	return route.Path(route.CompendiumEntry, id)
 }

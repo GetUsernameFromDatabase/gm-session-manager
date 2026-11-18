@@ -18,6 +18,7 @@ import (
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -53,7 +54,7 @@ func TestImageAccess(t *testing.T) {
 	gm := e.token(t, enum.RoleAdmin)
 	player := e.token(t, enum.RolePlayer)
 
-	w := e.doFile(t, fmt.Sprintf("/campaigns/%d/images", e.campaignID), gm, url.Values{
+	w := e.doFile(t, route.Path(route.CampaignImages, e.campaignID), gm, url.Values{
 		"name": {"Red dragon"}, "url": {"https://example.com/dragon.png"}, "category": {"Monster"}, "description": {"Secret lair notes"},
 	}, "", "", "")
 	if w.Code != http.StatusSeeOther {
@@ -64,9 +65,9 @@ func TestImageAccess(t *testing.T) {
 		t.Fatalf("images %+v", imgs)
 	}
 	img := imgs[0]
-	page, file := fmt.Sprintf("/images/%d", img.ID), fmt.Sprintf("/images/%d/file", img.ID)
+	page, file := route.Path(route.Image, img.ID), route.Path(route.ImageFile, img.ID)
 
-	for _, path := range []string{fmt.Sprintf("/campaigns/%d/images", e.campaignID), views.DisplayURL(e.campaignID), page, file} {
+	for _, path := range []string{route.Path(route.CampaignImages, e.campaignID), views.DisplayURL(e.campaignID), page, file} {
 		if w := e.do(t, http.MethodGet, path, player, nil, false); w.Code < 400 {
 			t.Errorf("player %s: %d", path, w.Code)
 		}
@@ -88,7 +89,7 @@ func TestImageAccess(t *testing.T) {
 		if err := e.q().SetBlockVersion(ctx, sqlc.SetBlockVersionParams{ID: blockID, Version: 1}); err != nil {
 			t.Fatal(err)
 		}
-		if w := e.doJSON(t, fmt.Sprintf("/blocks/%d/snapshot", blockID), cookie, snap); w.Code != http.StatusNoContent {
+		if w := e.doJSON(t, route.Path(route.BlockSnapshot, blockID), cookie, snap); w.Code != http.StatusNoContent {
 			t.Fatalf("snapshot with an image link: %d %s", w.Code, w.Body)
 		}
 	}
@@ -133,7 +134,7 @@ func TestImageAccess(t *testing.T) {
 func TestImageUploadOnlyPictures(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
-	path := fmt.Sprintf("/campaigns/%d/images", e.campaignID)
+	path := route.Path(route.CampaignImages, e.campaignID)
 	if w := e.doFile(t, path, gm, url.Values{"name": {"Notes"}}, "file", "x.png", "<html>not a picture</html>"); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("html upload: %d", w.Code)
 	}
@@ -148,7 +149,7 @@ func TestImageUploadOnlyPictures(t *testing.T) {
 	if len(imgs) != 1 || !imgs[0].AttachmentID.Valid {
 		t.Fatalf("images %+v", imgs)
 	}
-	w := e.do(t, http.MethodGet, fmt.Sprintf("/images/%d/file", imgs[0].ID), gm, nil, false)
+	w := e.do(t, http.MethodGet, route.Path(route.ImageFile, imgs[0].ID), gm, nil, false)
 	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" {
 		t.Errorf("file: %d %s", w.Code, w.Header().Get("Content-Type"))
 	}
@@ -162,7 +163,7 @@ func TestImageUploadOnlyPictures(t *testing.T) {
 	if err := os.Chtimes(filepath.Join(e.app.attachmentsDir(), files[0].Name()), old, old); err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("/images/%d/delete", imgs[0].ID), gm, nil, true); w.Code >= http.StatusMultipleChoices {
+	if w := e.do(t, http.MethodPost, route.Path(route.ImageDelete, imgs[0].ID), gm, nil, true); w.Code >= http.StatusMultipleChoices {
 		t.Fatalf("delete: %d", w.Code)
 	}
 	if files, _ := os.ReadDir(e.app.attachmentsDir()); len(files) != 0 {
@@ -179,7 +180,7 @@ func TestImageFileCache(t *testing.T) {
 	create := func(name, field, file, content string, form url.Values) sqlc.GetImageRow {
 		t.Helper()
 		form.Set("name", name)
-		if w := e.doFile(t, fmt.Sprintf("/campaigns/%d/images", e.campaignID), gm, form, field, file, content); w.Code != http.StatusSeeOther {
+		if w := e.doFile(t, route.Path(route.CampaignImages, e.campaignID), gm, form, field, file, content); w.Code != http.StatusSeeOther {
 			t.Fatalf("create %s: %d %s", name, w.Code, w.Body)
 		}
 		imgs, _ := e.q().ListImages(ctx, sqlc.ListImagesParams{CampaignID: e.campaignID, Q: name})
@@ -193,12 +194,12 @@ func TestImageFileCache(t *testing.T) {
 	uploaded := create("Uploaded", "file", "map.png", "\x89PNG\r\n\x1a\n"+strings.Repeat("\x00", 32), url.Values{})
 	oldLink := imageVersion(linked.Url, linked.AttachmentID)
 	relink := url.Values{"name": {"Linked"}, "url": {"https://example.com/b.png"}, "was_name": {"Linked"}, "was_url": {"https://example.com/a.png"}, "was_source": {oldLink}}
-	if w := e.doFile(t, fmt.Sprintf("/images/%d", linked.ID), gm, relink, "", "", ""); w.Code != http.StatusSeeOther {
+	if w := e.doFile(t, route.Path(route.Image, linked.ID), gm, relink, "", "", ""); w.Code != http.StatusSeeOther {
 		t.Fatalf("relink: %d", w.Code)
 	}
 	linked, _ = e.q().GetImage(ctx, linked.ID)
 
-	list := e.do(t, http.MethodGet, fmt.Sprintf("/campaigns/%d/images", e.campaignID), gm, nil, false).Body.String()
+	list := e.do(t, http.MethodGet, route.Path(route.CampaignImages, e.campaignID), gm, nil, false).Body.String()
 	for _, img := range []sqlc.GetImageRow{linked, uploaded} {
 		if want := imageItem(img).Src(); !strings.Contains(list, want) {
 			t.Errorf("list lacks %s", want)
@@ -217,7 +218,7 @@ func TestImageFileCache(t *testing.T) {
 		{"upload current", uploaded, imageVersion(uploaded.Url, uploaded.AttachmentID), cacheForever},
 		{"upload bare", uploaded, "", cacheAttachment},
 	} {
-		w := e.do(t, http.MethodGet, fmt.Sprintf("/images/%d/file?v=%s", tc.img.ID, tc.v), gm, nil, false)
+		w := e.do(t, http.MethodGet, route.Path(route.ImageFile, tc.img.ID)+"?v="+tc.v, gm, nil, false)
 		if got := w.Header().Get("Cache-Control"); w.Code >= 400 || got != tc.want {
 			t.Errorf("%s: %d %q, want %q", tc.name, w.Code, got, tc.want)
 		}
@@ -264,7 +265,7 @@ func TestImageImport(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	csvFile := "Title,Kind,Image\nMira,Person,https://x.test/mira.png\nOld Tom,person,https://x.test/tom.png\nThe Keep,Area,https://x.test/keep.png\nBroken,Area,not a link\n"
-	w := e.doFile(t, fmt.Sprintf("/campaigns/%d/images/import", e.campaignID), gm, nil, "file", "all.csv", csvFile)
+	w := e.doFile(t, route.Path(route.CampaignImagesImport, e.campaignID), gm, nil, "file", "all.csv", csvFile)
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("upload: %d %s", w.Code, w.Body)
 	}
@@ -322,7 +323,7 @@ func TestImageImport(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Errorf("import kept after commit: %d", w.Code)
 	}
-	if back := fmt.Sprintf(`href="/campaigns/%d/images/import"`, e.campaignID); !strings.Contains(w.Body.String(), back) {
+	if back := `href="` + route.Path(route.CampaignImagesImport, e.campaignID) + `"`; !strings.Contains(w.Body.String(), back) {
 		t.Errorf("expired import does not link back to the upload page")
 	}
 }
@@ -330,7 +331,7 @@ func TestImageImport(t *testing.T) {
 // TestImageImportByLink: the CSV can come from a link instead of a file.
 func TestImageImportByLink(t *testing.T) {
 	csvServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/images.csv" {
+		if r.URL.Path != "/list.csv" {
 			http.NotFound(w, r)
 			return
 		}
@@ -339,8 +340,8 @@ func TestImageImportByLink(t *testing.T) {
 	defer csvServer.Close()
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
-	path := fmt.Sprintf("/campaigns/%d/images/import", e.campaignID)
-	w := e.doFile(t, path, gm, url.Values{"url": {csvServer.URL + "/images.csv"}}, "", "", "")
+	path := route.Path(route.CampaignImagesImport, e.campaignID)
+	w := e.doFile(t, path, gm, url.Values{"url": {csvServer.URL + "/list.csv"}}, "", "", "")
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("link import: %d %s", w.Code, w.Body)
 	}
@@ -396,7 +397,7 @@ func TestImageImportKeepOnly(t *testing.T) {
 		"Tom,https://x.test/1.png,Other\n" +
 		"Keep,https://x.test/2.png,brilinta\n" +
 		"Inn,https://x.test/3.png,Brilinta\n"
-	w := e.doFile(t, fmt.Sprintf("/campaigns/%d/images/import", e.campaignID), gm, nil, "file", "all.csv", csvFile)
+	w := e.doFile(t, route.Path(route.CampaignImagesImport, e.campaignID), gm, nil, "file", "all.csv", csvFile)
 	review := w.Header().Get("Location")
 	if w := e.do(t, http.MethodGet, review, gm, nil, false); !strings.Contains(w.Body.String(), "Campaign") || !strings.Contains(w.Body.String(), "Brilinta") {
 		t.Fatalf("overview misses the Campaign column")
@@ -516,12 +517,12 @@ func TestImageNPCLooks(t *testing.T) {
 	}
 	travel, gown := newImage(e.campaignID, "travel", "Wears a grey cloak"), newImage(e.campaignID, "gown", "")
 
-	w := e.do(t, http.MethodPost, fmt.Sprintf("/images/%d/npc", travel.ID), gm, url.Values{}, true)
+	w := e.do(t, http.MethodPost, route.Path(route.ImageNpc, travel.ID), gm, url.Values{}, true)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("create NPC: %d %s", w.Code, w.Body)
 	}
 	npcs, _ := e.q().ListEntitiesByCampaign(ctx, e.campaignID)
-	if len(npcs) != 1 || npcs[0].Name != "travel" || w.Header().Get("HX-Redirect") != fmt.Sprintf("/entities/%d", npcs[0].ID) {
+	if len(npcs) != 1 || npcs[0].Name != "travel" || w.Header().Get("HX-Redirect") != route.Path(route.Entity, npcs[0].ID) {
 		t.Fatalf("NPCs %+v, redirect %q", npcs, w.Header().Get("HX-Redirect"))
 	}
 	npc := npcs[0]
@@ -543,7 +544,7 @@ func TestImageNPCLooks(t *testing.T) {
 	if got := looks(); got != "travel:true:false" {
 		t.Fatalf("looks after create: %s", got)
 	}
-	base := fmt.Sprintf("/entities/%d/images", npc.ID)
+	base := route.Path(route.EntityImages, npc.ID)
 	if w := e.do(t, http.MethodPost, base, gm, url.Values{"image": {fmt.Sprint(gown.ID)}}, true); w.Code != http.StatusOK {
 		t.Fatalf("add look: %d %s", w.Code, w.Body)
 	}
@@ -557,15 +558,15 @@ func TestImageNPCLooks(t *testing.T) {
 	if w := e.do(t, http.MethodPost, base, gm, url.Values{"image": {fmt.Sprint(newImage(other.ID, "stray", "").ID)}}, true); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("another campaign's image: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodGet, fmt.Sprintf("/images/%d", gown.ID), gm, nil, false); !strings.Contains(w.Body.String(), fmt.Sprintf("/entities/%d", npc.ID)) {
+	if w := e.do(t, http.MethodGet, route.Path(route.Image, gown.ID), gm, nil, false); !strings.Contains(w.Body.String(), route.Path(route.Entity, npc.ID)) {
 		t.Error("image page does not mention the NPC")
 	}
 
 	if err := e.q().UpdateEntity(ctx, sqlc.UpdateEntityParams{ID: npc.ID, Name: npc.Name, IsRevealed: true, FieldsJson: npc.FieldsJson}); err != nil {
 		t.Fatal(err)
 	}
-	page, file := fmt.Sprintf("/entities/%d", npc.ID), fmt.Sprintf("/images/%d/file", gown.ID)
-	src := fmt.Sprintf("/images/%d/file?v=", gown.ID)
+	page, file := route.Path(route.Entity, npc.ID), route.Path(route.ImageFile, gown.ID)
+	src := file + "?v="
 	if w := e.do(t, http.MethodGet, file, player, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("hidden look file: %d", w.Code)
 	}
@@ -604,7 +605,7 @@ func TestCharacterLooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	add := fmt.Sprintf("/characters/%d/images", e.characterID)
+	add := route.Path(route.CharacterImages, e.characterID)
 	addLook := func(cookie, name string) *httptest.ResponseRecorder {
 		t.Helper()
 		return e.doFile(t, add, cookie, url.Values{"name": {name}, "url": {"https://example.com/" + name + ".png"}}, "", "", "")
@@ -632,7 +633,7 @@ func TestCharacterLooks(t *testing.T) {
 			t.Errorf("someone else reveals a look: %d", w.Code)
 		}
 	}
-	file := func(name string) string { return fmt.Sprintf("/images/%d/file", ids[name]) }
+	file := func(name string) string { return route.Path(route.ImageFile, ids[name]) }
 	for _, tc := range []struct {
 		cookie, name string
 		want         int
@@ -652,7 +653,7 @@ func TestCharacterLooks(t *testing.T) {
 	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
 		t.Fatal(err)
 	}
-	combat := fmt.Sprintf("/campaigns/%d/combat", e.campaignID)
+	combat := route.Path(route.CampaignCombat, e.campaignID)
 	if body := e.do(t, http.MethodGet, combat, bob, nil, false).Body.String(); !strings.Contains(body, file("travel")+"?v=") {
 		t.Error("combat misses the revealed portrait")
 	}
@@ -665,7 +666,7 @@ func TestCharacterLooks(t *testing.T) {
 
 	// Exclusive: a character's image cannot become an NPC's look, nor the reverse.
 	bind := func(imageID int64, form url.Values) int {
-		return e.do(t, http.MethodPost, fmt.Sprintf("/images/%d/npc", imageID), gm, form, true).Code
+		return e.do(t, http.MethodPost, route.Path(route.ImageNpc, imageID), gm, form, true).Code
 	}
 	if code := bind(ids["travel"], url.Values{}); code != http.StatusUnprocessableEntity {
 		t.Errorf("NPC from a character's image: %d", code)
@@ -702,29 +703,29 @@ func TestEntityFieldLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	npc, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: "{}"})
-	page, file := fmt.Sprintf("/entities/%d", npc.ID), fmt.Sprintf("/images/%d/file", tavern.ID)
+	page, file := route.Path(route.Entity, npc.ID), route.Path(route.ImageFile, tavern.ID)
 	post := func(path string, form url.Values) {
 		t.Helper()
 		if w := e.do(t, http.MethodPost, page+path, gm, form, true); w.Code != http.StatusOK {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
 	}
-	post("/reveal", url.Values{"revealed": {"true"}})
+	post(route.Reveal, url.Values{"revealed": {"true"}})
 	for key, value := range map[string]string{
 		"location": fmt.Sprintf("Upstairs at [[image:%d|Tavern]]", tavern.ID),
 		"plots":    fmt.Sprintf("See [[note:%d|Secret plans]]", plans.ID),
 	} {
-		post("/fields", url.Values{"key": {key}})
-		post("/fields/text", url.Values{"key": {key}, "value": {value}})
+		post(route.Fields, url.Values{"key": {key}})
+		post(route.FieldsText, url.Values{"key": {key}, "value": {value}})
 	}
-	post("/fields/reveal", url.Values{"key": {"plots"}, "revealed": {"true"}})
+	post(route.FieldsReveal, url.Values{"key": {"plots"}, "revealed": {"true"}})
 	revealLocation := func(on bool) {
 		t.Helper()
 		form := url.Values{"key": {"location"}}
 		if on {
 			form.Set("revealed", "true")
 		}
-		post("/fields/reveal", form)
+		post(route.FieldsReveal, form)
 	}
 
 	revealLocation(true)
@@ -732,13 +733,13 @@ func TestEntityFieldLinks(t *testing.T) {
 		t.Errorf("image from a revealed field: %d", w.Code)
 	}
 	body := e.do(t, http.MethodGet, page, player, nil, false).Body.String()
-	if !strings.Contains(body, fmt.Sprintf(`href="/images/%d"`, tavern.ID)) || !strings.Contains(body, fmt.Sprintf(`src="/images/%d/file"`, tavern.ID)) {
+	if !strings.Contains(body, `href="`+route.Path(route.Image, tavern.ID)+`"`) || !strings.Contains(body, `src="`+route.Path(route.ImageFile, tavern.ID)+`"`) {
 		t.Error("player page misses the image link")
 	}
-	if strings.Contains(body, fmt.Sprintf(`href="/notes/%d"`, plans.ID)) || !strings.Contains(body, "Secret plans") {
+	if strings.Contains(body, `href="`+route.Path(route.Note, plans.ID)+`"`) || !strings.Contains(body, "Secret plans") {
 		t.Error("a note the player cannot read should show as its label only")
 	}
-	for _, path := range []string{fmt.Sprintf("/images/%d", tavern.ID), fmt.Sprintf("/notes/%d", plans.ID)} {
+	for _, path := range []string{route.Path(route.Image, tavern.ID), route.Path(route.Note, plans.ID)} {
 		if body := e.do(t, http.MethodGet, path, gm, nil, false).Body.String(); !strings.Contains(body, page) {
 			t.Errorf("%s does not mention the NPC", path)
 		}
@@ -771,7 +772,7 @@ func TestCombatNPCPortrait(t *testing.T) {
 	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
 		t.Fatal(err)
 	}
-	combat, src := fmt.Sprintf("/campaigns/%d/combat?encounter=%d", e.campaignID, enc.ID), fmt.Sprintf("/images/%d/file", mask.ID)
+	combat, src := fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, e.campaignID), enc.ID), route.Path(route.ImageFile, mask.ID)
 	for _, tt := range []struct {
 		name                      string
 		npcRevealed, lookRevealed bool
@@ -811,7 +812,7 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := fmt.Sprintf("/images/%d", img.ID)
+	path := route.Path(route.Image, img.ID)
 	version := imageVersion(img.Url, img.AttachmentID)
 	page := e.do(t, http.MethodGet, path, gm, nil, false).Body.String()
 	for _, want := range []string{`name="was_name" value="Camp"`, `name="was_description" value="Smoky"`, `name="was_url" value="` + link + `"`, `name="was_source" value="` + version + `"`, `hx-encoding="multipart/form-data"`} {

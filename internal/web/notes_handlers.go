@@ -24,6 +24,7 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -105,7 +106,7 @@ func (a *App) createNote(c *gin.Context) error {
 		return err
 	}
 	a.Hub.Publish(id, hub.Topic{Kind: hub.TopicNotes, ID: id})
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/notes/%d", note.ID))
+	c.Redirect(http.StatusSeeOther, route.Path(route.Note, note.ID))
 	return nil
 }
 
@@ -207,7 +208,7 @@ func (a *App) deleteNote(c *gin.Context) error {
 	}
 	a.sweepFiles(c)
 	a.Hub.Publish(note.CampaignID, hub.Topic{Kind: hub.TopicNotes, ID: note.CampaignID})
-	redirect(c, fmt.Sprintf("/campaigns/%d/notes", note.CampaignID))
+	redirect(c, route.Path(route.CampaignNotes, note.CampaignID))
 	return nil
 }
 
@@ -426,6 +427,9 @@ func (a *App) sweepFiles(c *gin.Context) {
 }
 
 // stepsPayload is a run of ProseMirror steps starting after Version.
+// msgSteps is the websocket message type carrying note steps (MSG.steps in the JS).
+const msgSteps = "steps"
+
 type stepsPayload struct {
 	Type      string            `json:"type,omitempty"`
 	Block     int64             `json:"block,omitempty"`
@@ -511,6 +515,12 @@ func (a *App) blockSteps(c *gin.Context) error {
 	return nil
 }
 
+// Limits of submitBody.Steps; tags cannot name constants (TestSharedLimitsMatchTags), shared.js sends them to the browser.
+const (
+	maxSteps     = 500
+	maxStepBytes = 262144
+)
+
 type submitBody struct {
 	Version  int64             `json:"version"  validate:"min=0"`
 	ClientID string            `json:"clientID" validate:"required,max=64"`
@@ -576,7 +586,7 @@ func (a *App) submitSteps(c *gin.Context) error {
 	for i := range ids {
 		ids[i] = body.ClientID
 	}
-	a.broadcastSteps(ctx, b, stepsPayload{Type: "steps", Block: b.ID, Version: body.Version, Steps: body.Steps, ClientIDs: ids})
+	a.broadcastSteps(ctx, b, stepsPayload{Type: msgSteps, Block: b.ID, Version: body.Version, Steps: body.Steps, ClientIDs: ids})
 	c.JSON(http.StatusOK, gin.H{keyVersion: body.Version + int64(len(body.Steps))})
 	return nil
 }
@@ -716,7 +726,7 @@ func (a *App) uploadAttachment(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		keyID: att.ID, keyURL: fmt.Sprintf("/attachments/%d", att.ID), keyName: att.Name, keyMime: att.Mime,
+		keyID: att.ID, keyURL: route.Path(route.Attachment, att.ID), keyName: att.Name, keyMime: att.Mime,
 		keyImage: slices.Contains(inlineTypes, att.Mime),
 	})
 }
@@ -843,6 +853,10 @@ const cacheAttachment = "private, max-age=3600"
 
 func (a *App) serveAttachment(c *gin.Context, att sqlc.Attachment, cacheControl string) {
 	f, err := os.Open(filepath.Join(a.attachmentsDir(), filepath.Base(att.Path)))
+	if errors.Is(err, os.ErrNotExist) { // the data folder lost it: nothing a report can fix
+		a.fail(c, http.StatusNotFound, "Not found.")
+		return
+	}
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -919,7 +933,7 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 	}
 	for _, n := range notes {
 		if note := string(enum.LinkNote); want(note, n.Title) {
-			items = append(items, views.LinkItem{ID: fmt.Sprintf("%s:%d", note, n.ID), Label: n.Title, Kind: note, URL: fmt.Sprintf("/notes/%d", n.ID)})
+			items = append(items, views.LinkItem{ID: fmt.Sprintf("%s:%d", note, n.ID), Label: n.Title, Kind: note, URL: route.Path(route.Note, n.ID)})
 		}
 	}
 	ents, err := a.entityList(ctx, w.viewer, campaignID)
@@ -928,7 +942,7 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 	}
 	for _, e := range ents.Entities {
 		if npc := string(enum.EntityNPC); want(npc, e.Name) {
-			items = append(items, views.LinkItem{ID: fmt.Sprintf("entity:%d", e.ID), Label: e.Name, Kind: npc, URL: fmt.Sprintf("/entities/%d", e.ID)})
+			items = append(items, views.LinkItem{ID: fmt.Sprintf("entity:%d", e.ID), Label: e.Name, Kind: npc, URL: route.Path(route.Entity, e.ID)})
 		}
 	}
 	if image := string(enum.LinkImage); w.isGM() && (kind == "" || kind == image) {
@@ -937,7 +951,7 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 			return nil, err
 		}
 		for _, img := range imgs {
-			items = append(items, views.LinkItem{ID: fmt.Sprintf("%s:%d", image, img.ID), Label: img.Name, Kind: image, URL: fmt.Sprintf("/images/%d", img.ID)})
+			items = append(items, views.LinkItem{ID: fmt.Sprintf("%s:%d", image, img.ID), Label: img.Name, Kind: image, URL: route.Path(route.Image, img.ID)})
 		}
 	}
 	return items[:min(len(items), maxLinkSuggestions)], nil

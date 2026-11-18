@@ -3,6 +3,8 @@ package views
 import (
 	"reflect"
 	"testing"
+
+	"gm-session-manager/internal/route"
 )
 
 func TestParseWiki(t *testing.T) {
@@ -43,7 +45,7 @@ func TestReplaceCompendiumLinks(t *testing.T) {
 		t.Errorf("WikiLinks lists compendium links: %+v", got)
 	}
 	ids := map[string]int64{"compendium:spell/fire-bolt": 7}
-	want := "Cast [Fire Bolt](/campaigns/2/compendium/entries/7) at orcs, see [[note:3|Plans]]."
+	want := "Cast [Fire Bolt](" + route.Path(route.CampaignCompendium+route.CompendiumEntry, 2, 7) + ") at orcs, see [[note:3|Plans]]."
 	if got := ReplaceCompendiumLinks(in, ids, CompendiumBase(2)); got != want {
 		t.Errorf("ReplaceCompendiumLinks = %q, want %q", got, want)
 	}

@@ -2,8 +2,9 @@ package views
 
 import (
 	"cmp"
-	"fmt"
 	"strings"
+
+	"gm-session-manager/internal/route"
 )
 
 // CampaignSourcesID is the Sources card on the campaign page, which every
@@ -70,7 +71,7 @@ func (g sourceGroup) groupKeys(on bool) []string {
 }
 
 func (v CampaignSourcesView) postURL() string {
-	return fmt.Sprintf("/campaigns/%d/sources", v.CampaignID)
+	return route.Path(route.CampaignSources, v.CampaignID)
 }
 
 func sourceRowTitle(s CampaignSource, locked bool) string {

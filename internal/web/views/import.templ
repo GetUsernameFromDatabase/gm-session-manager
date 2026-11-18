@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/components/alert"
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/card"
@@ -23,7 +24,7 @@ templ FiveToolsPicker(v FiveToolsView) {
 	<form
 		id={ FiveToolsID }
 		method="post"
-		action={ templ.SafeURL(CompendiumPath(ctx, "/5etools")) }
+		action={ templ.SafeURL(CompendiumPath(ctx, route.CompendiumFiveTools)) }
 		class="group/busy space-y-4"
 		data-busy
 		hx-target={ "#" + FiveToolsID }
@@ -62,7 +63,7 @@ templ FiveToolsPicker(v FiveToolsView) {
 									}
 									// Not removeButton: that one is 16px, too small to tap.
 									@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: quietDestructive, Attributes: templ.Attributes{
-										"aria-label": "Remove " + b.Name, "hx-post": FiveToolsPath + "/" + b.ID + "/delete",
+										"aria-label": "Remove " + b.Name, "hx-post": route.Compendium + route.Path(route.CompendiumFiveToolsBookDelete, b.ID),
 										"hx-confirm": "Remove " + b.Name + " and its entries from the compendium?",
 									}}) {
 										@icon.X(icon.Props{Size: 16})
@@ -133,7 +134,7 @@ templ StaleBooksBanner(books []compendium.Book, auto bool) {
 						Download again
 					}
 				</form>
-				<form hx-post={ FiveToolsPath + "/auto" } hx-trigger="change" hx-swap="none">
+				<form hx-post={ route.Compendium + route.CompendiumFiveToolsAuto } hx-trigger="change" hx-swap="none">
 					@label.Label(label.Props{For: "fivetools-auto", Class: "font-normal"}) {
 						@switchcomp.Switch(switchcomp.Props{ID: "fivetools-auto", Name: "on", Value: "true", DefaultChecked: auto, Size: switchcomp.SizeSm})
 						Do this automatically from now on
@@ -193,7 +194,7 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 
 templ sourceDeleteButton(key string) {
 	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Class: quietDestructive, Attributes: templ.Attributes{
-		"aria-label": "Delete " + key, "title": "Delete " + key, "hx-post": sourceURL(ctx, key, "delete"),
+		"aria-label": "Delete " + key, "title": "Delete " + key, "hx-post": sourceURL(ctx, key, route.CompendiumSourceDelete),
 		"hx-confirm": "Delete " + key + " and all its entries?",
 	}}) {
 		@icon.Trash2()
@@ -202,7 +203,7 @@ templ sourceDeleteButton(key string) {
 
 templ sourceMoveButton(key, dir, label string, disabled bool) {
 	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Disabled: disabled, Attributes: templ.Attributes{
-		"aria-label": label, "title": label, "hx-post": sourceURL(ctx, key, "move"), "hx-vals": toJSON(map[string]string{SourceDirField: dir}),
+		"aria-label": label, "title": label, "hx-post": sourceURL(ctx, key, route.CompendiumSourceMove), "hx-vals": toJSON(map[string]string{SourceDirField: dir}),
 	}}) {
 		if dir == SourceUp {
 			@icon.ArrowUp()
@@ -233,7 +234,7 @@ templ importTabs(n ImportNotice) {
 		// Each panel: what it does, the action, its result, then the fine print.
 		@tabs.Content(tabs.ContentProps{Value: ImportTabPage, Class: "space-y-3 text-sm"}) {
 			<p class="text-muted-foreground">Import one entry from a page of the sites below: open one, find the page and paste its link.</p>
-			<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, "/page/preview")) } class="group/busy flex flex-wrap items-center gap-2" data-busy>
+			<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, route.CompendiumPagePreview)) } class="group/busy flex flex-wrap items-center gap-2" data-busy>
 				<input type="hidden" name="back" value={ n.Back }/>
 				// Focused when coming back from an import, ready for the next page.
 				@input.Input(input.Props{Name: "page", Value: n.Page, Placeholder: "Paste a page link", Class: "max-w-md", Attributes: templ.Attributes{"required": true, "aria-label": "Page link", "autocomplete": "off", "autofocus": n.Tab == ImportTabPage}})
@@ -283,12 +284,12 @@ templ importTabs(n ImportNotice) {
 					@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-[copied]:block"})
 				}
 				if n.OnHost {
-					@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": "/compendium/folder", "hx-swap": "none"}}) {
+					@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": route.Compendium + route.CompendiumFolder, "hx-swap": "none"}}) {
 						@icon.FolderOpen()
 						Open folder
 					}
 				}
-				<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, "/import")) } class="group/busy" data-busy>
+				<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, route.CompendiumImport)) } class="group/busy" data-busy>
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
 						@icon.Download()
 						Import now

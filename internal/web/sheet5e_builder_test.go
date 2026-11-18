@@ -13,6 +13,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/route"
 )
 
 // TestBuilderInventory covers the coin form (one change per coin, as a
@@ -20,7 +21,7 @@ import (
 func TestBuilderInventory(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
-	cmdPath := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	cmdPath := route.Path(route.CharacterCmd, e.characterID)
 	coins := func(gp, wasGP string) url.Values {
 		f := url.Values{}
 		for _, k := range []string{"pp", "ep", "sp", "cp"} {
@@ -53,7 +54,7 @@ func TestBuilderInventory(t *testing.T) {
 			t.Errorf("sheet lacks %s: %s", want, ch.SheetJson)
 		}
 	}
-	base := fmt.Sprintf("/characters/%d/builder?verb=", e.characterID)
+	base := route.Path(route.CharacterBuilder, e.characterID) + "?verb="
 	for path, want := range map[string]string{
 		"coins&op=coin-edit":                          `name="coin_gp"`,
 		"items&op=item-edit&subject=Rope+%2850+ft%29": `value="3"`,
@@ -77,11 +78,11 @@ func TestBuilderFeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
-	form := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/builder?verb=features&op=feature-add&entry=%d", e.characterID, feat.ID), player, nil, true).Body.String()
+	form := e.do(t, http.MethodGet, fmt.Sprintf("%s?verb=features&op=feature-add&entry=%d", route.Path(route.CharacterBuilder, e.characterID), feat.ID), player, nil, true).Body.String()
 	if !strings.Contains(form, `name="feat_source" value="test"`) {
 		t.Fatalf("form lacks the feat's source: %s", form)
 	}
-	cmd := fmt.Sprintf("/characters/%d/cmd", e.characterID)
+	cmd := route.Path(route.CharacterCmd, e.characterID)
 	add := url.Values{"prefix": {"feature add"}, "subject": {"Test Alert"}, "source": {"Feat"}, "text": {"Initiative."}, "feat_source": {"test"}}
 	if w := e.do(t, http.MethodPost, cmd, player, add, true); w.Code != http.StatusOK {
 		t.Fatalf("add: %d %s", w.Code, w.Body)
@@ -123,19 +124,19 @@ func TestBuilderCompendium(t *testing.T) {
 	player := e.token(t, enum.RolePlayer)
 	id := e.characterID
 	for _, tt := range []struct{ path, want string }{
-		{fmt.Sprintf("/characters/%d/picks?pick=weapon&q=rapi", id), fmt.Sprintf("entry=%d", rapier.ID)},
-		{fmt.Sprintf("/characters/%d/picks?pick=feature&q=arcane", id), "Arcane Recovery"},
-		{fmt.Sprintf("/characters/%d/builder?verb=weapons&op=weapon-add&entry=%d", id, rapier.ID), `value="1d8"`},
-		{fmt.Sprintf("/characters/%d/builder?verb=weapons&op=weapon-add&entry=%d", id, rapier.ID), `value="finesse"`},
-		{fmt.Sprintf("/characters/%d/builder?verb=features&op=feature-add&entry=%d&feature=Arcane+Recovery", id, wizard.ID), `value="Arcane Recovery"`},
-		{fmt.Sprintf("/characters/%d/builder?verb=details&op=set-species", id), "data-combobox-create-input"},
-		{fmt.Sprintf("/characters/%d/picks?pick=feature&format=combobox&q=arcane", id), fmt.Sprintf("entry=%d&amp;feature=Arcane+Recovery", wizard.ID)},
-		{fmt.Sprintf("/characters/%d/builder?verb=features&op=feature-add", id), "pick=feature&amp;format=combobox"},
-		{fmt.Sprintf("/characters/%d/builder?verb=features&op=feature-remove", id), "data-reload="},
-		{"/compendium/search?kind=item&format=combobox&q=rap", `data-templ-value="Rapier"`},
-		{"/compendium/lookup?kind=spell&slug=fire-bolt", "mote of fire"},
-		{fmt.Sprintf("/characters/%d/complete?words=spell+add&slot=%%3Cslug%%3E&q=fire", id), `"fire-bolt"`},
-		{fmt.Sprintf("/characters/%d/complete?words=toggle&slot=%%3Ccondition%%3E&q=PR", id), `["prone"]`},
+		{route.Path(route.CharacterPicks, id) + "?pick=weapon&q=rapi", fmt.Sprintf("entry=%d", rapier.ID)},
+		{route.Path(route.CharacterPicks, id) + "?pick=feature&q=arcane", "Arcane Recovery"},
+		{fmt.Sprintf("%s?verb=weapons&op=weapon-add&entry=%d", route.Path(route.CharacterBuilder, id), rapier.ID), `value="1d8"`},
+		{fmt.Sprintf("%s?verb=weapons&op=weapon-add&entry=%d", route.Path(route.CharacterBuilder, id), rapier.ID), `value="finesse"`},
+		{fmt.Sprintf("%s?verb=features&op=feature-add&entry=%d&feature=Arcane+Recovery", route.Path(route.CharacterBuilder, id), wizard.ID), `value="Arcane Recovery"`},
+		{route.Path(route.CharacterBuilder, id) + "?verb=details&op=set-species", "data-combobox-create-input"},
+		{route.Path(route.CharacterPicks, id) + "?pick=feature&format=combobox&q=arcane", fmt.Sprintf("entry=%d&amp;feature=Arcane+Recovery", wizard.ID)},
+		{route.Path(route.CharacterBuilder, id) + "?verb=features&op=feature-add", "pick=feature&amp;format=combobox"},
+		{route.Path(route.CharacterBuilder, id) + "?verb=features&op=feature-remove", "data-reload="},
+		{route.Compendium + route.CompendiumSearch + "?kind=item&format=combobox&q=rap", `data-templ-value="Rapier"`},
+		{route.Compendium + route.CompendiumLookup + "?kind=spell&slug=fire-bolt", "mote of fire"},
+		{route.Path(route.CharacterComplete, id) + "?words=spell+add&slot=%3Cslug%3E&q=fire", `"fire-bolt"`},
+		{route.Path(route.CharacterComplete, id) + "?words=toggle&slot=%3Ccondition%3E&q=PR", `["prone"]`},
 	} {
 		w := e.do(t, http.MethodGet, tt.path, player, nil, true)
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), tt.want) {
@@ -143,7 +144,7 @@ func TestBuilderCompendium(t *testing.T) {
 		}
 	}
 	// The coin tapped on the sheet is the one the coin form focuses.
-	w := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/builder?verb=coins&op=coin-edit&subject=sp", id), player, nil, true)
+	w := e.do(t, http.MethodGet, route.Path(route.CharacterBuilder, id)+"?verb=coins&op=coin-edit&subject=sp", player, nil, true)
 	for _, coin := range []string{"sp", "gp"} {
 		tag := regexp.MustCompile(`<input[^>]*id="coin-` + coin + `"[^>]*>`).FindString(w.Body.String())
 		if strings.Contains(tag, "autofocus") != (coin == "sp") {
@@ -180,7 +181,7 @@ func TestItemLookupByName(t *testing.T) {
 	}
 	player := e.token(t, enum.RolePlayer)
 	for _, tt := range []struct{ name, want string }{{"rapier", "1d8 piercing"}, {"Lucky pebble", ""}} {
-		w := e.do(t, http.MethodGet, "/compendium/lookup?kind=item&name="+url.QueryEscape(tt.name), player, nil, true)
+		w := e.do(t, http.MethodGet, route.Compendium+route.CompendiumLookup+"?kind=item&name="+url.QueryEscape(tt.name), player, nil, true)
 		if body := w.Body.String(); w.Code != http.StatusOK || (tt.want == "") != (body == "") || !strings.Contains(body, tt.want) {
 			t.Errorf("%s: %d %q, want %q", tt.name, w.Code, body, tt.want)
 		}
@@ -192,7 +193,7 @@ func TestItemLookupByName(t *testing.T) {
 func TestLanguagesForm(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
-	body := e.do(t, http.MethodGet, fmt.Sprintf("/characters/%d/builder?verb=profs&op=lang-add", e.characterID), player, nil, true).Body.String()
+	body := e.do(t, http.MethodGet, route.Path(route.CharacterBuilder, e.characterID)+"?verb=profs&op=lang-add", player, nil, true).Body.String()
 	for _, want := range []string{`aria-label="Remove Common"`, "prof remove language", "Add a language"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
