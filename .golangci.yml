@@ -1,5 +1,8 @@
 version: "2"
 
+run:
+  build-tags: [nomsgpack] # same build as release (build.sh): a gin msgpack use fails here, not at release
+
 linters:
   default: standard
   enable:

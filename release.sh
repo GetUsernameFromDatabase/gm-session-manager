@@ -4,6 +4,7 @@
 #   ./release.sh 0.1.5 --force   allow a version older than the newest tag
 set -Eeuo pipefail
 cd "$(dirname "$0")"
+export GOFLAGS="${GOFLAGS:+$GOFLAGS }-tags=nomsgpack" # same build as release (build.sh)
 
 die() { echo "release.sh: $*" >&2; exit 1; }
 semver='^v[0-9]+\.[0-9]+\.[0-9]+$' # no pre-release suffixes

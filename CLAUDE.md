@@ -8,6 +8,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 
 - Go, no CGO, gin; tools (`templ`, `shadcn-templ`) are `tool` deps in `go.mod`.
 - SQLite (`modernc.org/sqlite`) through `sqlc`. Views: `templ` + [shadcn-templ](https://shadcn-templ.com/llms.txt) + Tailwind standalone CLI + `htmx` websocket extension. Notes: TipTap collab.
+- Builds use the `nomsgpack` tag (gin without its msgpack codec, -6.5 MB): `GOFLAGS` in `build.sh`, `run.sh`, `release.sh` and `build-tags` in `.golangci.yml`, so a gin msgpack use fails the lint.
 - **No node or npm.** Browser libraries are vendored by `cmd/vendorjs`; everything ships in one binary via `go:embed`.
 - HTTPS only, self-signed certificate in `DATA_DIR/tls`.
 - Layout: [README.md](README.md#project-layout).

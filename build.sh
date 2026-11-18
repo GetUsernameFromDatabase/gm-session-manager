@@ -14,6 +14,9 @@ stage=build/stage               # scratch folders packed into the archives; buil
 
 VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}
 export CGO_ENABLED=0
+# nomsgpack: drops gin's unused msgpack codec (40.0 -> 33.5 MB, measured 2026-11-18). Every go
+# command here, run.sh, release.sh and .golangci.yml carry it, so dev and release build the same code.
+export GOFLAGS="${GOFLAGS:+$GOFLAGS }-tags=nomsgpack"
 
 current=setup
 step() { current=$*; printf '\n==> %s %s\n' "$(date +%T)" "$*"; }

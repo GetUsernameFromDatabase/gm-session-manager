@@ -14,6 +14,7 @@
 #                          touch data-test/.before/stop to quit.
 # A second start of a mode takes over from the first; each quits with its terminal.
 cd "$(dirname "$0")"
+export GOFLAGS="${GOFLAGS:+$GOFLAGS }-tags=nomsgpack" # same build as release (build.sh)
 pkg=./cmd/gm-session-manager
 exe=$(go env GOEXE)
 # Unique binary names, so a stray one can be stopped by name without touching any other instance.
