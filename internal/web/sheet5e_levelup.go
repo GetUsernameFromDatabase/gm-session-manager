@@ -16,7 +16,6 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
-	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
@@ -101,7 +100,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		if err != nil {
 			return v, err
 		}
-		if td == nil || !dnd5e.MeetsPrerequisite(td.Prerequisite, sheet, offer.plan.NewLevel, nil, compendium.Slugify) {
+		if td == nil || !dnd5e.MeetsPrerequisite(td.Prerequisite, sheet, offer.plan.NewLevel, nil, compendium.Slugify) || takenFeat(sheet, f.Name, td) {
 			continue
 		}
 		v.Feats = append(v.Feats, views.Option{Slug: f.Slug, Name: f.Name})
@@ -115,6 +114,12 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	}
 	v.LineageSpells, v.Groups, v.Spells, v.SpellNeed = offer.lineage, groupViews(offer.groups), offer.spells, offer.need
 	return v, nil
+}
+
+// takenFeat reports whether sheet has the feat already and it is not Repeatable.
+func takenFeat(sheet dnd5e.Sheet, name string, td *compendium.TextData) bool {
+	return slices.ContainsFunc(sheet.Feats, func(f string) bool { return strings.EqualFold(f, name) }) &&
+		!isRepeatable(compendium.NameDesc{Desc: textMarkdown(td)})
 }
 
 // levelUpClass is classSlug's class for the sheet: its pinned copy, or for
@@ -322,9 +327,13 @@ func (a *App) levelUp(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	choice := dnd5e.LevelUpChoice{Class: info, Subclass: strings.TrimSpace(c.PostForm("subclass"))}
+	posted := strings.TrimSpace(c.PostForm("subclass"))
+	choice := dnd5e.LevelUpChoice{Class: info, Subclass: posted}
 	// The form's level; a second submit (a double click, another device) finds it taken.
-	level, checkLevel := formInt(c, "level")
+	level, hasLevel := formInt(c, "level")
+	if !hasLevel {
+		return userError{errors.New("reload the page and try again")}
+	}
 	if err := a.withSubclass(ctx, &choice.Class, sheet, choice.Subclass, ch.CampaignID); err != nil {
 		return err
 	}
@@ -364,6 +373,10 @@ func (a *App) levelUp(c *gin.Context) error {
 	var spells []dnd5e.Spell
 	var spellErr error
 	var ue userError
+	var subErr error
+	if planErr == nil && posted != "" && !plan.NeedsSubclass {
+		subErr = userError{errors.New("this level does not choose a subclass")}
+	}
 	if planErr == nil { // else LevelUp refuses (level 20) and plan is empty
 		// A refusal waits for readPicks, so the page re-renders as for any other.
 		spells, spellErr = a.classSpellPicks(c, info.Slug, offer.spells, offer.need, ch.CampaignID)
@@ -388,7 +401,9 @@ func (a *App) levelUp(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		if planErr == nil && !dnd5e.MeetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel, nil, compendium.Slugify) {
+		if takenFeat(sheet, choice.Feat, td) {
+			featErr = fieldError{userError{fmt.Errorf("you have %s already", choice.Feat)}, views.FieldASI}
+		} else if planErr == nil && !dnd5e.MeetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel, nil, compendium.Slugify) {
 			featErr = fieldError{userError{fmt.Errorf("%s needs %s", choice.Feat, td.Prerequisite)}, views.FieldASI}
 		}
 		fg, err := a.featChoices(ctx, "feat_"+slug, choice.Feat, td, "", sheet, ch.CampaignID)
@@ -402,14 +417,14 @@ func (a *App) levelUp(c *gin.Context) error {
 		read = groups[:notFeat] // the feat's own choices are moot: it may not be taken at all
 	}
 	picks, err := readPicks(c, read)
-	err = errors.Join(featErr, err, spellErr)
+	err = errors.Join(featErr, err, spellErr, subErr)
 	if err == nil {
 		err = a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, dc *dnd5e.Character) error {
 			before, err := dc.Sheet.JSON()
 			if err != nil {
 				return err
 			}
-			if checkLevel && int64(dc.Sheet.Level()+1) != level {
+			if int64(dc.Sheet.Level()+1) != level {
 				return userError{fmt.Errorf("level %d was already taken", level)}
 			}
 			maxHP := dc.MaxHP
@@ -443,20 +458,28 @@ func (a *App) levelUp(c *gin.Context) error {
 		}
 		v.Error, v.Errors = formErrors(err, v.DrawsField)
 		v.Form = c.Request.PostForm
-		camp, _ := a.Store.GetCampaign(ctx, ch.CampaignID)
+		camp, err := a.Store.GetCampaign(ctx, ch.CampaignID)
+		if err != nil {
+			return err
+		}
 		a.render(c, http.StatusUnprocessableEntity, views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v))
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	a.Hub.Publish(ch.CampaignID, hub.Topic{Kind: hub.TopicCharacter, ID: ch.ID})
+	topics, err := a.characterTopics(ctx, ch.ID) // the tracker shows max HP too
+	if err != nil {
+		return err
+	}
+	a.Hub.Publish(ch.CampaignID, topics...)
 	c.Redirect(http.StatusSeeOther, route.Path(route.Character, ch.ID))
 	return nil
 }
 
 // revertLevelUp puts back the sheet and max HP from before the latest
-// level-up. Current HP is kept, up to that max.
+// level-up, keeping the gear and play state changed since (dnd5e.RevertSheet).
+// Current HP is kept, up to that max.
 func (a *App) revertLevelUp(c *gin.Context) error {
 	w, ch, ok := a.characterAccess(c)
 	if !ok {
@@ -475,9 +498,11 @@ func (a *App) revertLevelUp(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		if dc.Sheet, err = dnd5e.ParseSheet(snap.SheetJson); err != nil {
+		parsed, err := dnd5e.ParseSheet(snap.SheetJson)
+		if err != nil {
 			return err
 		}
+		dc.Sheet = dnd5e.RevertSheet(parsed, dc.Sheet)
 		dc.MaxHP = int(snap.MaxHp)
 		dc.HP = min(dc.HP, dc.MaxHP)
 		return q.DeleteLevelUp(ctx, snap.ID)

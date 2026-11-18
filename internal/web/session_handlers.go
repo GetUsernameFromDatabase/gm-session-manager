@@ -1,6 +1,7 @@
 package web
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -320,7 +321,12 @@ func (a *App) startRequest(c *gin.Context, camp sqlc.Campaign, kind hub.PendingK
 		return
 	}
 	ua := useragent.Parse(c.Request.UserAgent())
+	addr, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err != nil {
+		addr = c.Request.RemoteAddr
+	}
 	p, ok := a.Hub.AddPending(hub.Pending{
+		Addr:       addr,
 		CampaignID: camp.ID, CampaignName: camp.Name, Kind: kind, CharacterID: characterID, Name: name,
 		Player: strings.TrimSpace(form.Player), Device: userAgentSummary(ua), Phone: ua.Mobile, Host: lanHostname(c.Request.Context(), c.Request.RemoteAddr),
 	})
@@ -332,6 +338,9 @@ func (a *App) startRequest(c *gin.Context, camp sqlc.Campaign, kind hub.PendingK
 	l := views.Layout{Title: "Waiting", WS: &views.WS{URL: route.WS + "?pending=" + p.Secret, Epoch: epoch, Seq: seq}}
 	a.render(c, http.StatusOK, views.JoinWaiting(l, views.Waiting{Secret: p.Secret, Name: p.Name, State: "waiting"}))
 }
+
+// requestGone answers an approval whose character or campaign was deleted.
+const requestGone = "That character or campaign is gone. Please ask again."
 
 // completeRequest redeems an approved request: the session is created and
 // the cookie set on the device that asked.
@@ -348,12 +357,22 @@ func (a *App) completeRequest(c *gin.Context) error {
 	var err error
 	next := route.Home
 	if p.Kind == hub.PendingCreate {
+		// Deleted while the request waited (TestCompleteRequestGone).
+		if _, gerr := a.Store.GetCampaign(c.Request.Context(), p.CampaignID); errors.Is(gerr, sql.ErrNoRows) {
+			a.fail(c, http.StatusNotFound, requestGone)
+			return nil
+		} else if gerr != nil {
+			return gerr
+		}
 		var id int64
 		id, err = a.createAndLogin(c, p.CampaignID, p.Name)
 		next = wizardPath(id, wizardSteps[0].Key)
 	} else {
 		ch, gerr := a.Store.GetCharacter(c.Request.Context(), p.CharacterID)
-		if gerr != nil { // deleted while the request waited
+		if errors.Is(gerr, sql.ErrNoRows) { // deleted while the request waited
+			a.fail(c, http.StatusNotFound, requestGone)
+			return nil
+		} else if gerr != nil {
 			return gerr
 		}
 		err = a.login(c, ch)

@@ -24,12 +24,15 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
+// errStepSaved refuses a step saved since the page was loaded.
+var errStepSaved = userError{errors.New("this step was already saved, maybe on another device: reload to see it")}
+
 // setupOnce is a creation step's command: it applies the step once and
 // snapshots the sheet before it, so the step can be redone (wizardChange).
 func setupOnce(step string, apply func(s *dnd5e.Sheet, cc *dnd5e.Character) error) *dnd5e.Command {
 	cmd := dnd5e.NewCommand("create "+step, perm.ScopeSheet, func(cc *dnd5e.Character) error {
 		if cc.Sheet.SetUp(step) {
-			return nil
+			return errStepSaved
 		}
 		before := cc.Sheet
 		before.SetupSnapshots = nil
@@ -57,8 +60,11 @@ func (a *App) classStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command, erro
 		return nil, nil
 	}
 	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
-	if err != nil || sheet.SetUp(views.StepClass) {
-		return nil, err // chosen already: the skills would be ignored
+	if err != nil {
+		return nil, err
+	}
+	if sheet.SetUp(views.StepClass) {
+		return nil, errStepSaved
 	}
 	row, err := a.wizardPick(c.Request.Context(), enum.KindClass, pick, ch.CampaignID)
 	if err != nil {
@@ -139,6 +145,9 @@ func (a *App) backgroundStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command,
 		return nil, err
 	}
 	return setupOnce(views.StepBackground, func(s *dnd5e.Sheet, _ *dnd5e.Character) error {
+		if pickAgain != nil && len(s.Classes) == 0 { // the class was undone since the sheet was read
+			return userError{errors.New("choose a class first")}
+		}
 		if pickAgain != nil { // the class's picks are made again, with the background's known
 			class := s.Classes[0].Name
 			s.SkillProfs = slices.DeleteFunc(s.SkillProfs, func(k string) bool { return s.ProfSources[k] == class })

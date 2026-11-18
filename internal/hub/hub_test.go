@@ -2,9 +2,16 @@ package hub
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 
 	"gm-session-manager/internal/perm"
 )
@@ -224,6 +231,46 @@ func TestDisconnectDropsRequest(t *testing.T) {
 	}
 }
 
+// TestApprovedSurvivesDisconnect keeps an approved request for a phone that
+// slept before redeeming, until approvedTimeout.
+func TestApprovedSurvivesDisconnect(t *testing.T) {
+	h := New(fakeHandler{})
+	p, _ := h.AddPending(Pending{CampaignID: 1, Kind: PendingCreate, Name: "Newbie"})
+	visitor := NewClient(1, perm.Viewer{}, 0, "phone")
+	visitor.Pending, _ = h.PendingBySecret(p.Secret)
+	h.register(visitor)
+	h.Decide(1, p.ID, true)
+	h.unregister(visitor)
+	if _, ok := h.TakeApproved(p.Secret); !ok {
+		t.Fatal("approved request lost with its connection")
+	}
+
+	old, _ := h.AddPending(Pending{CampaignID: 1, Kind: PendingCreate, Name: "Late"})
+	h.Decide(1, old.ID, true)
+	h.mu.Lock()
+	h.pending[old.ID].decided = time.Now().Add(-2 * approvedTimeout)
+	h.mu.Unlock()
+	// No other join or GM page swept it: redeeming checks the age itself.
+	if _, ok := h.TakeApproved(old.Secret); ok {
+		t.Error("approved request outlived approvedTimeout")
+	}
+}
+
+func TestPendingCapPerAddr(t *testing.T) {
+	h := New(fakeHandler{})
+	for i := range MaxPendingPerAddr {
+		if _, ok := h.AddPending(Pending{CampaignID: 1, Kind: PendingCreate, Name: "N", Addr: "10.0.0.5"}); !ok {
+			t.Fatalf("request %d refused", i)
+		}
+	}
+	if _, ok := h.AddPending(Pending{CampaignID: 1, Kind: PendingCreate, Name: "N", Addr: "10.0.0.5"}); ok {
+		t.Fatal("request over the per-address cap accepted")
+	}
+	if _, ok := h.AddPending(Pending{CampaignID: 1, Kind: PendingCreate, Name: "N", Addr: "10.0.0.6"}); !ok {
+		t.Fatal("another address refused")
+	}
+}
+
 func TestDeviceAnnouncements(t *testing.T) {
 	h := New(fakeHandler{})
 	gm := NewClient(1, perm.GM, 0, "pc")
@@ -315,6 +362,47 @@ func TestLateHelloCatchesUp(t *testing.T) {
 	h.sync(c, epoch, rendered, true)
 	if m := drain(c); len(m) != 0 {
 		t.Errorf("second hello: %+v", m)
+	}
+}
+
+type countingHandler struct {
+	fakeHandler
+	n atomic.Int64
+}
+
+func (h *countingHandler) CanSubscribe(context.Context, *Client, int64) bool {
+	h.n.Add(1)
+	return true
+}
+
+// One sub message may not make the server check an unbounded list of blocks.
+func TestSubCapsBlocks(t *testing.T) {
+	ch := &countingHandler{}
+	h := New(ch)
+	c := NewClient(1, perm.Viewer{}, 1, "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.Serve(w, r, c) }))
+	t.Cleanup(srv.Close)
+	conn, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(srv.URL, "http"), nil) //nolint:bodyclose // the library owns the upgraded body
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.CloseNow() }()
+	ids := make([]int64, maxSubBlocks+1)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+	// A one-id sub after it marks when the long one is done: messages run in order.
+	for _, blocks := range [][]int64{ids, {9999}} {
+		msg, _ := json.Marshal(clientMessage{Type: MsgSub, Blocks: blocks})
+		if err := conn.Write(t.Context(), websocket.MessageText, msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for deadline := time.Now().Add(5 * time.Second); ch.n.Load() < maxSubBlocks+1 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := ch.n.Load(); got != maxSubBlocks+1 {
+		t.Errorf("CanSubscribe called %d times, want %d (capped sub + marker)", got, maxSubBlocks+1)
 	}
 }
 

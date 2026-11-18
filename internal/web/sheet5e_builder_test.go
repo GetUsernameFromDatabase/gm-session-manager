@@ -98,6 +98,19 @@ func TestBuilderFeat(t *testing.T) {
 	}
 }
 
+// A fixed use count must be a whole number of at least one.
+func TestBuilderFeatUsesN(t *testing.T) {
+	e := newTestEnv(t)
+	player := e.token(t, enum.RolePlayer)
+	cmd := route.Path(route.CharacterCmd, e.characterID)
+	for _, n := range []string{"-2", "x", "0"} {
+		add := url.Values{"prefix": {"feature add"}, "subject": {"Surge"}, "uses": {"n"}, "uses_n": {n}, "reset": {"long"}}
+		if w := e.do(t, http.MethodPost, cmd, player, add, true); w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("uses_n=%s: %d, want 422", n, w.Code)
+		}
+	}
+}
+
 // TestBuilderCompendium covers filling forms from the compendium: weapon
 // and feature look-ups, suggestions and spell details.
 func TestBuilderCompendium(t *testing.T) {

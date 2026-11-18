@@ -472,6 +472,7 @@ func (a *App) blockDoc(c *gin.Context) error {
 	}
 	ctx := c.Request.Context()
 	var steps stepsPayload
+	var complete bool
 	// One transaction, so a snapshot landing in between cannot pair the
 	// document with steps numbered after another version.
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
@@ -479,11 +480,15 @@ func (a *App) blockDoc(c *gin.Context) error {
 		if b, err = q.GetBlock(ctx, b.ID); err != nil {
 			return err
 		}
-		steps, _, err = a.stepsSince(ctx, q, b, b.DocVersion)
+		steps, complete, err = a.stepsSince(ctx, q, b, b.DocVersion)
 		return err
 	})
 	if err != nil {
 		return err
+	}
+	if !complete { // only a damaged database: snapshots never pass the version, trims keep the steps after them
+		c.Status(http.StatusGone)
+		return nil
 	}
 	c.JSON(http.StatusOK, gin.H{
 		keyDoc: json.RawMessage(b.DocJson), keyDocVersion: b.DocVersion, keySteps: steps.Steps,
@@ -537,14 +542,17 @@ func (a *App) submitSteps(c *gin.Context) error {
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCollabBody)
 	var body submitBody
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{keyError: err.Error()})
+	if c.ShouldBindJSON(&body) != nil {
+		// notes.js shows it; the limits are all a working editor can break.
+		c.JSON(http.StatusBadRequest, gin.H{keyError: errTooLarge})
 		return nil
 	}
 	// A raw step skips TipTap's link validation, so a script link is refused here.
-	if slices.ContainsFunc(body.Steps, hasUnsafeHref) {
-		c.JSON(http.StatusUnprocessableEntity, gin.H{keyError: errScriptLink})
-		return nil
+	for _, s := range body.Steps {
+		if msg := badStep(s); msg != "" {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{keyError: msg})
+			return nil
+		}
 	}
 	ctx := c.Request.Context()
 	var conflict *stepsPayload
@@ -610,7 +618,11 @@ func (a *App) broadcastSteps(ctx context.Context, b sqlc.GetBlockRow, p stepsPay
 	})
 }
 
-const errScriptLink = "links must not run scripts"
+const (
+	errScriptLink = "links must not run scripts"
+	errNoStepType = "a step needs a stepType"
+	errTooLarge   = "This edit is too large to save."
+)
 
 // safeSchemes run no script when followed: TipTap Link's defaults, which it
 // autolinks, so refusing one would stall the block's saving.
@@ -648,6 +660,23 @@ func unsafeHref(v any) bool {
 func hasUnsafeHref(raw json.RawMessage) bool {
 	var v any
 	return json.Unmarshal(raw, &v) != nil || unsafeHref(v)
+}
+
+// badStep returns why a raw collab step is refused, or "": it must be a JSON
+// object with a string stepType and no script link.
+func badStep(raw json.RawMessage) string {
+	var v any
+	if json.Unmarshal(raw, &v) != nil {
+		return errScriptLink
+	}
+	m, _ := v.(map[string]any)
+	if _, ok := m["stepType"].(string); !ok {
+		return errNoStepType
+	}
+	if unsafeHref(v) {
+		return errScriptLink
+	}
+	return ""
 }
 
 type snapshotBody struct {

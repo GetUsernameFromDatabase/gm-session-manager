@@ -19,6 +19,9 @@ const (
 	writeTimeout = 10 * time.Second
 	// ReadLimit caps one incoming message, decompressed.
 	ReadLimit = 64 << 10
+	// maxSubBlocks caps the ids one sub message may ask for.
+	// shortcut: 500 ids per message, raise it if a page ever shows more note blocks at once.
+	maxSubBlocks = 500
 )
 
 // clientMessage is what browsers send over the socket.
@@ -107,7 +110,7 @@ func (h *Hub) readLoop(ctx context.Context, conn *websocket.Conn, c *Client) {
 			c.setWatch(m.Watch)
 			h.sync(c, m.Epoch, m.Seq, true)
 		case MsgSub:
-			for _, id := range m.Blocks {
+			for _, id := range m.Blocks[:min(len(m.Blocks), maxSubBlocks)] {
 				if h.handler.CanSubscribe(ctx, c, id) {
 					c.subscribe(id, true)
 				}

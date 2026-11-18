@@ -7,6 +7,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,6 +88,35 @@ func TestSplitTLS(t *testing.T) {
 			}
 			if tt.wantBody != "" && string(body) != tt.wantBody {
 				t.Errorf("body %q, want %q", body, tt.wantBody)
+			}
+		})
+	}
+}
+
+// The redirect only echoes hosts this machine can be reached by.
+func TestRedirectHTTPSHost(t *testing.T) {
+	own, _ := os.Hostname()
+	tests := []struct {
+		host string
+		want int
+	}{
+		{"evil.example", http.StatusBadRequest},
+		{"evil.example:8443", http.StatusBadRequest},
+		{"192.168.1.20:8443", http.StatusPermanentRedirect},
+		{"[::1]:8443", http.StatusPermanentRedirect},
+		{"localhost:8443", http.StatusPermanentRedirect},
+		{strings.ToUpper(own) + ":8443", http.StatusPermanentRedirect},
+		{own + ".local:8443", http.StatusPermanentRedirect},
+		{own + ".evil.example", http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.host, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, routes.Notes, nil)
+			req.Host = tt.host
+			rec := httptest.NewRecorder()
+			RedirectHTTPS.ServeHTTP(rec, req)
+			if rec.Code != tt.want {
+				t.Errorf("got %d, want %d", rec.Code, tt.want)
 			}
 		})
 	}

@@ -48,7 +48,8 @@ func LoadOrCreateCert(dir string, ips []net.IP, now time.Time) (tls.Certificate,
 
 	// Missing, corrupt, expiring or outdated files are all simply replaced:
 	// the certificate holds no data worth keeping.
-	if existing, err := tls.LoadX509KeyPair(certPath, keyPath); err == nil && usable(existing.Leaf, ips, now) {
+	host, _ := os.Hostname()
+	if existing, err := tls.LoadX509KeyPair(certPath, keyPath); err == nil && usable(existing.Leaf, ips, host, now) {
 		return existing, false, nil
 	}
 
@@ -79,8 +80,13 @@ func Fingerprint(cert tls.Certificate) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func usable(leaf *x509.Certificate, ips []net.IP, now time.Time) bool {
+// usable reports whether leaf is current and covers the LAN addresses and the
+// computer's name (a renamed computer needs a new certificate).
+func usable(leaf *x509.Certificate, ips []net.IP, hostname string, now time.Time) bool {
 	if leaf == nil || now.Before(leaf.NotBefore) || now.Add(renewBefore).After(leaf.NotAfter) {
+		return false
+	}
+	if hostname != "" && leaf.VerifyHostname(hostname) != nil {
 		return false
 	}
 	for _, ip := range slices.Concat(localIPs, ips) {

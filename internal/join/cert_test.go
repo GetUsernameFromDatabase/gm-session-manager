@@ -43,7 +43,8 @@ func TestLoadOrCreateCert(t *testing.T) {
 			if created != tt.wantCreated {
 				t.Errorf("created = %v, want %v", created, tt.wantCreated)
 			}
-			if !usable(cert.Leaf, tt.ips, tt.now) {
+			own, _ := os.Hostname()
+			if !usable(cert.Leaf, tt.ips, own, tt.now) {
 				t.Error("returned certificate does not cover the requested addresses at now")
 			}
 			// Whatever was returned must be what is on disk, so the next start reuses it.
@@ -55,6 +56,21 @@ func TestLoadOrCreateCert(t *testing.T) {
 				t.Error("second call did not reuse the stored certificate")
 			}
 		})
+	}
+}
+
+// A certificate made for another computer name is replaced, not reused.
+func TestCertUsableHostname(t *testing.T) {
+	cert, _, err := LoadOrCreateCert(t.TempDir(), []net.IP{lanA}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own, _ := os.Hostname()
+	if !usable(cert.Leaf, []net.IP{lanA}, own, t0) {
+		t.Error("certificate not usable for the hostname it was made for")
+	}
+	if usable(cert.Leaf, []net.IP{lanA}, "renamed-host.example", t0) {
+		t.Error("certificate usable for a different hostname")
 	}
 }
 

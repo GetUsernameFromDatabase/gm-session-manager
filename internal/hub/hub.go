@@ -224,8 +224,9 @@ func (h *Hub) unregister(c *Client) {
 	delete(h.clients, c)
 	c.stop()
 	h.announceDevice(c)
-	if p := c.Pending; p != nil && h.pending[p.ID] == p {
-		// A dropped connection drops the request; the visitor asks again.
+	if p := c.Pending; p != nil && h.pending[p.ID] == p && p.State != Approved {
+		// A dropped connection drops an unanswered or denied request; an
+		// approved one waits for its visitor (see approvedTimeout).
 		delete(h.pending, p.ID)
 		h.publishLocked(p.CampaignID, Topic{Kind: TopicPending, ID: p.CampaignID})
 	}

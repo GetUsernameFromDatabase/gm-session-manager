@@ -523,6 +523,54 @@ func TestSubmitStepsRefusesScriptLinks(t *testing.T) {
 	}
 }
 
+func TestSubmitStepsLimits(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	note, _ := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
+	b, _ := e.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
+	valid := json.RawMessage(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}}`)
+	many := make([]json.RawMessage, maxSteps+1)
+	for i := range many {
+		many[i] = valid
+	}
+	big := mustJSON(t, map[string]any{"stepType": "replace", "pad": strings.Repeat("x", maxStepBytes)})
+	cases := []struct {
+		name  string
+		steps []json.RawMessage
+		want  int
+	}{
+		{"too many steps", many, http.StatusBadRequest},
+		{"step too big", []json.RawMessage{big}, http.StatusBadRequest},
+		{"empty object", []json.RawMessage{json.RawMessage(`{}`)}, http.StatusUnprocessableEntity},
+		{"stepType not a string", []json.RawMessage{json.RawMessage(`{"stepType":5}`)}, http.StatusUnprocessableEntity},
+		{"valid replace", []json.RawMessage{valid}, http.StatusOK},
+	}
+	for _, tc := range cases {
+		w := e.doJSON(t, route.Path(route.BlockSteps, b.ID), gm, map[string]any{"version": 0, "clientID": "c", "steps": tc.steps})
+		if w.Code != tc.want {
+			t.Errorf("%s: got %d, want %d", tc.name, w.Code, tc.want)
+		}
+		// notes.js shows this text in a toast.
+		if tc.want == http.StatusBadRequest && !strings.Contains(w.Body.String(), "too large") {
+			t.Errorf("%s: unreadable error %s", tc.name, w.Body)
+		}
+	}
+}
+
+func TestBlockDocGone(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	note, _ := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
+	b, _ := e.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players"})
+	// A version with no steps behind it: the document cannot be rebuilt.
+	if err := e.q().SetBlockVersion(t.Context(), sqlc.SetBlockVersionParams{ID: b.ID, Version: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do(t, http.MethodGet, route.Path(route.BlockDoc, b.ID), gm, nil, false); w.Code != http.StatusGone {
+		t.Errorf("got %d, want 410", w.Code)
+	}
+}
+
 func mustJSON(t *testing.T, v any) json.RawMessage {
 	t.Helper()
 	raw, err := json.Marshal(v)
@@ -666,6 +714,60 @@ func TestPlayerBlocksInGameSession(t *testing.T) {
 	}
 }
 
+// TestJoinRequestCapPerAddr refuses a fourth waiting request from one address.
+func TestJoinRequestCapPerAddr(t *testing.T) {
+	e := newTestEnv(t)
+	if err := e.q().SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
+		t.Fatal(err)
+	}
+	path := route.Path(route.JoinCreate, e.campaignID)
+	for i := range hub.MaxPendingPerAddr + 1 {
+		w := e.post(t, path, lanAddr, url.Values{"name": {"Ann"}, "player": {fmt.Sprintf("P%d", i)}}, "")
+		want := http.StatusOK
+		if i == hub.MaxPendingPerAddr {
+			want = http.StatusTooManyRequests
+		}
+		if w.Code != want {
+			t.Fatalf("request %d: status %d, want %d", i, w.Code, want)
+		}
+	}
+}
+
+// TestCompleteRequestGone answers an approval whose character or campaign
+// was deleted meanwhile with a 404, not a 500.
+func TestCompleteRequestGone(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		req    hub.Pending
+		delete func(t *testing.T, e testEnv)
+	}{
+		{"claimed character deleted", hub.Pending{Kind: hub.PendingClaim, Name: "Alice"}, func(t *testing.T, e testEnv) {
+			if err := e.q().SoftDeleteCharacter(t.Context(), e.characterID); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"campaign deleted", hub.Pending{Kind: hub.PendingCreate, Name: "Newbie"}, func(t *testing.T, e testEnv) {
+			if err := e.q().DeleteCampaign(t.Context(), e.campaignID); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEnv(t)
+			tt.req.CampaignID, tt.req.CharacterID = e.campaignID, e.characterID
+			p, ok := e.app.Hub.AddPending(tt.req)
+			if !ok || !e.app.Hub.Decide(e.campaignID, p.ID, true) {
+				t.Fatal("could not approve the request")
+			}
+			tt.delete(t, e)
+			w := e.post(t, route.RequestsComplete, lanAddr, url.Values{"secret": {p.Secret}}, "")
+			if w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "ask again") {
+				t.Fatalf("status %d, body %q", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
 // TestJoinRequestCap refuses new requests once the host-wide cap is reached.
 func TestJoinRequestCap(t *testing.T) {
 	e := newTestEnv(t)
@@ -673,12 +775,14 @@ func TestJoinRequestCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := route.Path(route.JoinCreate, e.campaignID)
+	// One address per request: a single address is capped lower (hub.MaxPendingPerAddr).
+	addr := func(i int) string { return fmt.Sprintf("192.168.1.%d:51000", 100+i) }
 	for i := range hub.MaxPending {
-		if w := e.do(t, http.MethodPost, path, "", url.Values{"name": {"Ann"}, "player": {fmt.Sprintf("P%d", i)}}, false); w.Code != http.StatusOK {
+		if w := e.post(t, path, addr(i), url.Values{"name": {"Ann"}, "player": {fmt.Sprintf("P%d", i)}}, ""); w.Code != http.StatusOK {
 			t.Fatalf("request %d: status %d", i, w.Code)
 		}
 	}
-	w := e.do(t, http.MethodPost, path, "", url.Values{"name": {"Ann"}, "player": {"Late"}}, false)
+	w := e.post(t, path, addr(hub.MaxPending), url.Values{"name": {"Ann"}, "player": {"Late"}}, "")
 	if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), "Too many people are waiting to join") {
 		t.Fatalf("status %d, body missing message", w.Code)
 	}

@@ -93,7 +93,6 @@ func TestCreationWizard(t *testing.T) {
 		{"class", url.Values{"pick": {"wizard"}}, "/background"},
 		{"background", url.Values{"pick": {"sage"}}, "/species"},
 		{"species", url.Values{"pick": {"goliath"}}, "/abilities"},
-		{"species", url.Values{"pick": {"goliath"}}, "/abilities"}, // once only
 		{"abilities", raised, "/choices"},
 		{"choices", url.Values{"trait_giant-ancestry": {"Cloud's Jaunt (Cloud Giant)"}, "trait_giant-ancestry_ability": {"Wisdom"}, "trait_keen-senses": {"Perception"},
 			"trait_versatile": {"Alert"}, "language": {"Elvish", "Dwarvish", "Elvish"}, "spell": {"fire-bolt"}}, "/equipment"},
@@ -271,6 +270,27 @@ func TestWizardChange(t *testing.T) {
 	}
 	if n, err := e.q().CountLevelUps(t.Context(), e.characterID); err != nil || n != 0 {
 		t.Errorf("level-ups left after the change: %d %v", n, err)
+	}
+}
+
+// A step saved on another device is refused, not saved twice.
+func TestWizardStepSavedTwice(t *testing.T) {
+	e := newTestEnv(t)
+	loadFeatFixtures(t, e)
+	player := e.token(t, enum.RolePlayer)
+	for _, step := range []struct {
+		step string
+		form url.Values
+		code int
+	}{
+		{views.StepClass, url.Values{"pick": {"wizard"}}, http.StatusSeeOther},
+		{views.StepBackground, url.Values{"pick": {"sage"}}, http.StatusSeeOther},
+		{views.StepBackground, url.Values{"pick": {"sage"}}, http.StatusUnprocessableEntity},
+		{views.StepClass, url.Values{"pick": {"wizard"}}, http.StatusUnprocessableEntity},
+	} {
+		if w := e.do(t, http.MethodPost, route.Path(route.CharacterCreateStep, e.characterID, step.step), player, step.form, false); w.Code != step.code {
+			t.Errorf("%s: %d, want %d: %s", step.step, w.Code, step.code, w.Body)
+		}
 	}
 }
 
@@ -567,6 +587,43 @@ func TestBackgroundRepicksClassSkill(t *testing.T) {
 	}
 }
 
+// TestBackgroundStepWithoutClass: the step is checked against the sheet read
+// before it, but runs in a transaction on the sheet as it is then: if the
+// class is gone by then the command refuses instead of indexing no class.
+func TestBackgroundStepWithoutClass(t *testing.T) {
+	e := newTestEnv(t)
+	for _, p := range []sqlc.UpsertCompendiumEntryParams{
+		{Kind: "class", Slug: "testmonk", Name: "Testmonk", SourceKey: "test", ContentHash: "x",
+			DataJson: `{"hit_die":8,"desc":"|Skill Proficiencies|Choose 2: Acrobatics, Athletics, History, Insight, Religion, or Stealth|"}`},
+		{Kind: "background", Slug: "testacolyte", Name: "Testacolyte", SourceKey: "test", ContentHash: "x",
+			DataJson: `{"desc":"","parts":[{"name":"Skill Proficiencies","type":"skill_proficiency","desc":"Insight, Religion"}]}`},
+	} {
+		if err := e.q().UpsertCompendiumEntry(t.Context(), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.allowEntrySources(t)
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterCreateStep, e.characterID, "class"), e.token(t, enum.RolePlayer), url.Values{"pick": {"testmonk"}, "skill": {"insight", "stealth"}}, false); w.Code != http.StatusSeeOther {
+		t.Fatalf("class: %d %s", w.Code, w.Body)
+	}
+	ch, err := e.q().GetCharacter(t.Context(), e.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(url.Values{"pick": {"testacolyte"}, "skill": {"stealth", "athletics"}}.Encode()))
+	c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	cmd, err := e.app.backgroundStep(c, ch)
+	if err != nil || cmd == nil {
+		t.Fatalf("backgroundStep: %v, %v", cmd, err)
+	}
+	// Another device undid the class between the check and the transaction.
+	_, err = cmd.Apply(&dnd5e.Character{Sheet: dnd5e.NewSheet()}, dnd5e.Env{})
+	if !errors.As(err, new(userError)) {
+		t.Errorf("apply without a class: %v, want a userError", err)
+	}
+}
+
 // TestClassSkillCount: the class step takes exactly its skill count, of its
 // listed skills, each once.
 func TestClassSkillCount(t *testing.T) {
@@ -604,8 +661,9 @@ func TestClassSkillCount(t *testing.T) {
 		if lost := lostPicks(w.Body.String(), form); tc.code == http.StatusUnprocessableEntity && (len(lost) > 0 || !errorAt(w.Body.String(), views.FieldSkill)) {
 			t.Errorf("%v: refused page lost %v or its error is not at the skills", tc.skills, lost)
 		}
-		// Chosen already, the step changes nothing and asks for no skills.
-		if w := e.do(t, http.MethodPost, path, player, url.Values{"pick": {"testfighter"}}, false); tc.code == http.StatusSeeOther && w.Code != http.StatusSeeOther {
+		// Chosen already, the step is refused as saved, not for missing skills.
+		if w := e.do(t, http.MethodPost, path, player, url.Values{"pick": {"testfighter"}}, false); tc.code == http.StatusSeeOther &&
+			(w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "already saved")) {
 			t.Errorf("class again: %d", w.Code)
 		}
 		if tc.code != http.StatusSeeOther {
@@ -711,9 +769,21 @@ func withSpells(form url.Values, offered []views.Option, need views.SpellNeed) u
 	return form
 }
 
+// withLevel is form with the level the next level-up reaches, as the page
+// posts it, unless form names one.
+func withLevel(t *testing.T, e testEnv, form url.Values) url.Values {
+	t.Helper()
+	form = maps.Clone(form)
+	if !form.Has("level") {
+		form.Set("level", fmt.Sprint(e.sheet(t).Level()+1))
+	}
+	return form
+}
+
 // wizardLevelUp is form with the spells a Wizard level-up asks for.
 func wizardLevelUp(t *testing.T, e testEnv, form url.Values) url.Values {
 	t.Helper()
+	form = withLevel(t, e, form)
 	ch, err := e.q().GetCharacter(t.Context(), e.characterID)
 	if err != nil {
 		t.Fatal(err)

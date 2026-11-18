@@ -199,12 +199,13 @@ func ParsePlainPage(body []byte) (Entry, error) {
 // pageTimeout keeps a dead page from hanging the import.
 const pageTimeout = 20 * time.Second
 
-// pageClient never follows a redirect off the host it was asked for.
+// pageClient never follows a redirect off the scheme, host and port it was asked for.
 var pageClient = &http.Client{
 	Timeout: pageTimeout,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) {
-			return errors.New("redirect off " + via[0].URL.Hostname())
+		if !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) ||
+			req.URL.Scheme != via[0].URL.Scheme || req.URL.Port() != via[0].URL.Port() {
+			return errors.New("redirect off " + via[0].URL.Host)
 		}
 		return nil
 	},

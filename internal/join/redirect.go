@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -60,8 +62,20 @@ func route(c net.Conn, t, p *connListener) {
 }
 
 // RedirectHTTPS sends a plain HTTP request to the same address over HTTPS.
-// 308 keeps the method, so a form posted over HTTP is posted again.
+// 308 keeps the method, so a form posted over HTTP is posted again. Hosts that
+// are not this machine's IP, "localhost" or computer name get 400, so a forged
+// Host header cannot bounce a visitor to another site.
 var RedirectHTTPS = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	own, _ := os.Hostname()
+	if net.ParseIP(strings.Trim(host, "[]")) == nil && !strings.EqualFold(host, "localhost") &&
+		!strings.EqualFold(host, own) && !strings.EqualFold(host, own+".local") { // .local: mDNS on the LAN
+		http.Error(w, "unknown host", http.StatusBadRequest)
+		return
+	}
 	http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusPermanentRedirect)
 })
 

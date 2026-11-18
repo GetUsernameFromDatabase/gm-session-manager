@@ -276,7 +276,11 @@ func featureCommand(c *gin.Context) (dnd5e.Command, error) {
 	case "":
 		f.Uses.Reset = ""
 	case "n":
-		f.Uses.Fixed, _ = strconv.Atoi(c.PostForm("uses_n"))
+		n, err := strconv.Atoi(strings.TrimSpace(c.PostForm("uses_n")))
+		if err != nil || n < 1 {
+			return dnd5e.Command{}, userError{errors.New("uses must be a whole number, at least 1")}
+		}
+		f.Uses.Fixed = n
 	case "prof":
 		f.Uses.Prof = true
 	case "table":

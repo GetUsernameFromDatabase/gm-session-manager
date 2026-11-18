@@ -61,7 +61,7 @@ func TestWeaponMastery(t *testing.T) {
 		{url.Values{"class": {"testfighter"}, views.FieldMastery: {"Dagger"}}, http.StatusUnprocessableEntity, []string{"Dagger", "Longsword"}},
 		{url.Values{"class": {"testfighter"}, views.FieldMastery: {"Club"}}, http.StatusSeeOther, []string{"Dagger", "Longsword", "Club"}},
 	} {
-		if w := e.do(t, http.MethodPost, levelUp, player, step.form, false); w.Code != step.code {
+		if w := e.do(t, http.MethodPost, levelUp, player, withLevel(t, e, step.form), false); w.Code != step.code {
 			t.Fatalf("%v: %d, want %d: %s", step.form, w.Code, step.code, w.Body)
 		}
 		if got := e.sheet(t).Masteries; !slices.Equal(got, step.want) {
@@ -118,8 +118,13 @@ var testKnight = sqlc.UpsertCompendiumEntryParams{Kind: "subclass", Slug: "test-
 func TestLevelUpSubclassCaster(t *testing.T) {
 	e := newTestEnv(t)
 	seedMastery(t, e)
-	if err := e.q().UpsertCompendiumEntry(t.Context(), testKnight); err != nil {
-		t.Fatal(err)
+	// A subclass is only chosen at the level the class says so.
+	withFeature := sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testfighter", Name: "Testfighter", SourceKey: "test", ContentHash: "y",
+		DataJson: `{"hit_die":10,"caster":"none","table":{"Weapon Mastery":{"1":"2","2":"2","3":"3"}},"features":[{"name":"Testfighter Subclass","levels":[3],"subclass":true}]}`}
+	for _, p := range []sqlc.UpsertCompendiumEntryParams{withFeature, testKnight} {
+		if err := e.q().UpsertCompendiumEntry(t.Context(), p); err != nil {
+			t.Fatal(err)
+		}
 	}
 	player := e.token(t, enum.RolePlayer)
 	levelUp := route.Path(route.CharacterLevelup, e.characterID)
@@ -128,7 +133,7 @@ func TestLevelUpSubclassCaster(t *testing.T) {
 		{"class": {"testfighter"}},
 		{"class": {"testfighter"}, "subclass": {"Test Knight"}, views.FieldMastery: {"Club"}},
 	} {
-		if w := e.do(t, http.MethodPost, levelUp, player, form, false); w.Code != http.StatusSeeOther {
+		if w := e.do(t, http.MethodPost, levelUp, player, withLevel(t, e, form), false); w.Code != http.StatusSeeOther {
 			t.Fatalf("%v: %d %s", form, w.Code, w.Body)
 		}
 	}

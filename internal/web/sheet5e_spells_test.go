@@ -140,7 +140,11 @@ func TestSpellCounts(t *testing.T) {
 		}
 		form := maps.Clone(step.form)
 		form["spell"] = step.spell
-		w := e.do(t, http.MethodPost, step.url, player, form, false)
+		posted := form
+		if step.url == levelUp {
+			posted = withLevel(t, e, form)
+		}
+		w := e.do(t, http.MethodPost, step.url, player, posted, false)
 		if w.Code != step.code || !strings.Contains(w.Body.String(), step.err) {
 			t.Fatalf("%v: %d, want %d with %q", form, w.Code, step.code, step.err)
 		}

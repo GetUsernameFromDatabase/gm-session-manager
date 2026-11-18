@@ -68,11 +68,12 @@ class BlockEditor {
     this.destroyed = false;
   }
 
-  async start() {
+  // replay false drops the unsent edits (the server refused them).
+  async start(replay = true) {
     const data = await json(await fetch(routePath(ROUTES.blockDoc, this.id)));
     if (this.destroyed) return;
     // After a 410 (fell behind a snapshot): edits not yet confirmed, to replay onto the fresh doc.
-    const unsent = this.editor && sendableSteps(this.editor.state)?.steps.map((s) => s.toJSON());
+    const unsent = replay && this.editor && sendableSteps(this.editor.state)?.steps.map((s) => s.toJSON());
     // Typing goes on into the new editor, at the same place.
     const caret = this.editor?.isFocused && this.editor.state.selection.from;
     this.editor?.destroy();
@@ -201,6 +202,11 @@ class BlockEditor {
         await this.catchUp();
         // Edits made while this POST was out: a confirmation that arrived meanwhile could not send them.
         this.send();
+      } else if (res.status === 400 || res.status === 413 || res.status === 422) {
+        // Refused for good: retrying would loop. Say why and reload without the refused edits.
+        const data = await res.json().catch(() => ({}));
+        window.templ.toast.add({ type: "error", description: data[KEY.error] || "This edit could not be saved." });
+        await this.start(false);
       } else if (res.status !== 403 && res.status !== 404) {
         // Not after 403/404 (gone or no longer editable): the refetch that follows redraws the block.
         setTimeout(() => this.send(), 2000);
@@ -217,14 +223,21 @@ class BlockEditor {
     if (!this.editor || !this.editor.isEditable) return;
     const v = this.version();
     if (v <= this.lastSnapshot || sendableSteps(this.editor.state)) return;
+    const previous = this.lastSnapshot;
     this.lastSnapshot = v;
     const doc = this.editor.getJSON();
+    // A failed save puts the mark back so the next tick retries.
+    const undo = () => {
+      if (this.lastSnapshot === v) this.lastSnapshot = previous;
+    };
     fetch(routePath(ROUTES.blockSnapshot, this.id), {
       method: "POST",
       keepalive,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ version: v, doc, text: this.editor.getText(), links: links(doc) }),
-    }).catch(() => {});
+    })
+      .then((res) => res.ok || undo())
+      .catch(undo);
   }
 
   // upload stores a file on this block; null (after telling the user) on failure.

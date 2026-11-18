@@ -29,11 +29,16 @@ const (
 )
 
 // attachTimeout is how long a request may wait for its visitor's websocket.
-// Requests live only while the visitor is connected.
+// A waiting request lives only while the visitor is connected.
 const attachTimeout = time.Minute
 
+// approvedTimeout is how long an approval waits to be redeemed, so a phone
+// that slept (dropping its websocket) can still join when it wakes.
+const approvedTimeout = 10 * time.Minute
+
 // Pending is a join request waiting for the GM. Requests live in memory
-// only; a dropped connection drops the request.
+// only; a dropped connection drops a waiting or denied request, but an
+// approved one is kept until redeemed or approvedTimeout.
 type Pending struct {
 	// ID is shown to the GM and used in approve/deny URLs.
 	ID string
@@ -52,18 +57,26 @@ type Pending struct {
 	Host    string // LAN hostname; empty when the network does not know it
 	Created time.Time
 	State   PendingState
+	// Addr is the visitor's address without port, for the per-address cap.
+	Addr string
 
 	attached bool
+	decided  time.Time
 }
 
 // MaxPending bounds memory and GM spam: waiting requests across all
 // campaigns. Answered ones do not count, so the GM can always clear it.
 const MaxPending = 10
 
-// dropStaleLocked deletes requests whose visitor never connected.
+// MaxPendingPerAddr keeps one device from filling MaxPending alone.
+const MaxPendingPerAddr = 3
+
+// dropStaleLocked deletes requests whose visitor never connected and
+// approvals nobody redeemed.
 func (h *Hub) dropStaleLocked() {
 	for id, p := range h.pending {
-		if !p.attached && time.Since(p.Created) > attachTimeout {
+		if (!p.attached && time.Since(p.Created) > attachTimeout) ||
+			(p.State == Approved && time.Since(p.decided) > approvedTimeout) {
 			delete(h.pending, id)
 		}
 	}
@@ -78,13 +91,16 @@ func (h *Hub) AddPending(req Pending) (Pending, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.dropStaleLocked()
-	waiting := 0
+	waiting, fromAddr := 0, 0
 	for _, q := range h.pending {
 		if q.State == Waiting {
 			waiting++
+			if p.Addr != "" && q.Addr == p.Addr {
+				fromAddr++
+			}
 		}
 	}
-	if waiting >= MaxPending {
+	if waiting >= MaxPending || fromAddr >= MaxPendingPerAddr {
 		return Pending{}, false
 	}
 	h.pending[p.ID] = p
@@ -138,6 +154,7 @@ func (h *Hub) Decide(campaignID int64, id string, approve bool) bool {
 	}
 	if approve {
 		p.State = Approved
+		p.decided = time.Now()
 	} else {
 		p.State = Denied
 	}
@@ -150,6 +167,7 @@ func (h *Hub) Decide(campaignID int64, id string, approve bool) bool {
 func (h *Hub) TakeApproved(secret string) (Pending, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.dropStaleLocked() // an approval older than approvedTimeout is spent
 	for id, p := range h.pending {
 		if secret != "" && subtle.ConstantTimeCompare([]byte(p.Secret), []byte(secret)) == 1 && p.State == Approved {
 			delete(h.pending, id)

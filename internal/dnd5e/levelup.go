@@ -479,3 +479,37 @@ func (s Sheet) withClassLevel(class ClassInfo, subclass string) Sheet {
 	s.Classes = append(s.Classes, cl)
 	return s
 }
+
+// RevertSheet is the sheet to put back when a level-up is undone: snap (the
+// sheet from before it) with the gear and play state of cur kept, so coins,
+// items, worn armor, backstory, inspiration and death saves changed since
+// are not lost. Spent hit dice, spell slots and feature uses are kept too,
+// but cannot exceed what the lower level has: maximums always come from snap.
+func RevertSheet(snap, cur Sheet) Sheet {
+	out := snap
+	out.Inventory = slices.Clone(cur.Inventory)
+	out.Weapons = slices.Clone(cur.Weapons)
+	out.Coins = cur.Coins
+	out.Shield = cur.Shield
+	out.Armor = nil
+	if cur.Armor != nil {
+		armor := *cur.Armor
+		out.Armor = &armor
+	}
+	out.Backstory = cur.Backstory
+	out.Inspiration = cur.Inspiration
+	out.DeathSaves = cur.DeathSaves
+	out.HitDiceUsed = min(cur.HitDiceUsed, snap.Level())
+	for i := range out.Slots {
+		out.Slots[i].Used = min(cur.Slots[i].Used, snap.Slots[i].Max)
+	}
+	out.Pact.Used = min(cur.Pact.Used, snap.Pact.Max)
+	out.Features = slices.Clone(snap.Features)
+	for i, f := range out.Features {
+		j := slices.IndexFunc(cur.Features, func(c Feature) bool { return c.Name == f.Name && c.Source == f.Source })
+		if j >= 0 && f.Uses.Limited() {
+			out.Features[i].Uses.Used = min(cur.Features[j].Uses.Used, snap.MaxUses(f.Uses))
+		}
+	}
+	return out
+}

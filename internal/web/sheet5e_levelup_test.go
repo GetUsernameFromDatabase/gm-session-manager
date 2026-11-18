@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
 	"testing"
 
+	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/dnd5e"
@@ -39,6 +41,14 @@ func TestRevertLevelUp(t *testing.T) {
 	if after[1] <= after[0] {
 		t.Fatalf("max HP did not grow: %v", after)
 	}
+	// Coins earned after the level-ups stay through the reverts.
+	cur, _ := e.q().GetCharacter(ctx, e.characterID)
+	curSheet, _ := dnd5e.ParseSheet(cur.SheetJson)
+	curSheet.Coins.GP += 77
+	earned, _ := curSheet.JSON()
+	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: earned}); err != nil {
+		t.Fatal(err)
+	}
 	for i, wantMax := range []int64{after[0], start.MaxHp} {
 		if w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelupRevert, e.characterID), player, nil, true); w.Code != http.StatusOK {
 			t.Fatalf("revert %d: %d %s", i+1, w.Code, w.Body)
@@ -50,8 +60,9 @@ func TestRevertLevelUp(t *testing.T) {
 	}
 	ch, _ := e.q().GetCharacter(ctx, e.characterID)
 	startSheet, _ := dnd5e.ParseSheet(start.SheetJson)
+	startSheet.Coins = curSheet.Coins
 	if want, _ := startSheet.JSON(); ch.SheetJson != want {
-		t.Errorf("sheet not restored:\n got %s\nwant %s", ch.SheetJson, want)
+		t.Errorf("sheet not restored (coins kept):\n got %s\nwant %s", ch.SheetJson, want)
 	}
 	if w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelupRevert, e.characterID), player, nil, true); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("revert with nothing left: %d, want 422", w.Code)
@@ -127,7 +138,7 @@ func TestLevelUpInvocations(t *testing.T) {
 		{url.Values{"class": {"testlock"}, replace: {"Armor of Shadows"}, "replace_eldritch-invocation_armor-of-shadows": {"Agonizing Blast"}}, http.StatusUnprocessableEntity, "@" + replace + ": choose one"},
 		{url.Values{"class": {"testlock"}, replace: {"Shadow Step"}, "replace_eldritch-invocation_shadow-step": {"Agonizing Blast"}}, http.StatusSeeOther, ""},
 	} {
-		w := e.do(t, http.MethodPost, base, player, step.form, false)
+		w := e.do(t, http.MethodPost, base, player, withLevel(t, e, step.form), false)
 		if w.Code != step.code || !hasError(w.Body.String(), step.err) {
 			t.Fatalf("%v: %d, want %d with %q", step.form, w.Code, step.code, step.err)
 		}
@@ -205,7 +216,7 @@ func TestLevelUpLineage(t *testing.T) {
 			}
 			form := url.Values{"class": {"testlock"}, "spell": {"faerie-fire"}}
 			// No checklist on the page: the refusal shows at the top.
-			if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusUnprocessableEntity || errorAt(w.Body.String(), views.FieldSpell) ||
+			if w := e.do(t, http.MethodPost, base, player, withLevel(t, e, form), false); w.Code != http.StatusUnprocessableEntity || errorAt(w.Body.String(), views.FieldSpell) ||
 				!strings.Contains(w.Body.String(), "choose spells from the list") || len(lostPicks(w.Body.String(), form)) > 0 {
 				t.Errorf("Faerie Fire as a class pick: %d, message not at the top or picks lost", w.Code)
 			}
@@ -222,12 +233,12 @@ func TestLevelUpLineage(t *testing.T) {
 				t.Errorf("Spell Change offers %+v", with)
 			}
 			form = url.Values{"class": {"testlock"}, change: {"Test Ward"}, change + "_test-ward": {"Faerie Fire"}}
-			w := e.do(t, http.MethodPost, base, player, form, false)
+			w := e.do(t, http.MethodPost, base, player, withLevel(t, e, form), false)
 			if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || !errorAt(body, change+"_test-ward") || strings.Count(body, `aria-invalid="true"`) != 1 || strings.Count(body, `aria-describedby="error-`+change+`_test-ward"`) != 1 || len(lostPicks(body, form)) > 0 {
 				t.Errorf("Faerie Fire as a Spell Change: %d, lost %v", w.Code, lostPicks(body, form))
 			}
 		}
-		if w := e.do(t, http.MethodPost, base, player, url.Values{"class": {"testlock"}, "class_eldritch-invocation": picks}, false); w.Code != http.StatusSeeOther {
+		if w := e.do(t, http.MethodPost, base, player, withLevel(t, e, url.Values{"class": {"testlock"}, "class_eldritch-invocation": picks}), false); w.Code != http.StatusSeeOther {
 			t.Fatalf("level up: %d %s", w.Code, w.Body)
 		}
 	}
@@ -442,7 +453,7 @@ func TestLevelUpEpicBoon(t *testing.T) {
 		t.Fatalf("Boon of Fate not offered: %s", body)
 	}
 	form := url.Values{"class": {"boonling"}, "feat": {"boon-of-fate"}, "feat_boon-of-fate_raise": {"Charisma"}}
-	if w := e.do(t, http.MethodPost, base, player, form, false); w.Code != http.StatusSeeOther {
+	if w := e.do(t, http.MethodPost, base, player, withLevel(t, e, form), false); w.Code != http.StatusSeeOther {
 		t.Fatalf("level up: %d %s", w.Code, w.Body)
 	}
 	ch, _ = e.q().GetCharacter(ctx, e.characterID)
@@ -603,4 +614,111 @@ func TestSubclassPanels(t *testing.T) {
 	if want := "None,Early,Late"; strings.Join(names, ",") != want {
 		t.Errorf("order = %v, want %s", names, want)
 	}
+}
+
+// TestLevelUpOwnedFeat: a feat the sheet has is not offered again nor
+// accepted, unless it is Repeatable.
+func TestLevelUpOwnedFeat(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	loadFeatFixtures(t, e)
+	e.feat(t, "test", "alert", "You are alert.")
+	e.feat(t, "test", "lucky-again", "**Repeatable.** You may take this feat more than once.")
+	e.allowEntrySources(t)
+	sh := e.sheet(t)
+	sh.Feats = []string{"Alert", "Lucky-Again"}
+	raw, _ := sh.JSON()
+	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, enum.RolePlayer)
+	base := route.Path(route.CharacterLevelup, e.characterID)
+	for range 3 { // Wizard 4 has the increase
+		if w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}, "level": {fmt.Sprint(e.sheet(t).Level() + 1)}}), false); w.Code != http.StatusSeeOther {
+			t.Fatalf("level up: %d %s", w.Code, w.Body)
+		}
+	}
+	body := e.do(t, http.MethodGet, base+"?class=wizard", player, nil, false).Body.String()
+	if strings.Contains(body, `value="alert"`) || !strings.Contains(body, `value="lucky-again"`) {
+		t.Errorf("offered: alert %v, repeatable %v", strings.Contains(body, `value="alert"`), strings.Contains(body, `value="lucky-again"`))
+	}
+	form := func(feat string) url.Values {
+		return wizardLevelUp(t, e, url.Values{"class": {"wizard"}, "feat": {feat}, "level": {fmt.Sprint(e.sheet(t).Level() + 1)}})
+	}
+	w := e.do(t, http.MethodPost, base, player, form("alert"), false)
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "you have alert already") || e.sheet(t).Level() != 3 {
+		t.Errorf("owned feat: %d, level %d: %s", w.Code, e.sheet(t).Level(), w.Body)
+	}
+	if w := e.do(t, http.MethodPost, base, player, form("lucky-again"), false); w.Code != http.StatusSeeOther {
+		t.Errorf("repeatable feat: %d %s", w.Code, w.Body)
+	}
+}
+
+// TestLevelUpRefusals: a subclass at a level that picks none, and a form
+// without its level, are refused and leave the sheet alone.
+func TestLevelUpRefusals(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		form url.Values
+		msg  string
+	}{
+		{"a subclass at Wizard 1", url.Values{"class": {"wizard"}, "level": {"1"}, "subclass": {"evoker"}}, "this level does not choose a subclass"},
+		{"no level", url.Values{"class": {"wizard"}}, "reload the page and try again"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newTestEnv(t)
+			loadFeatFixtures(t, e)
+			form := wizardLevelUp(t, e, tc.form)
+			if tc.name == "no level" {
+				form.Del("level") // wizardLevelUp adds it, as the page does
+			}
+			w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelup, e.characterID), e.token(t, enum.RolePlayer), form, true)
+			if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), tc.msg) {
+				t.Errorf("status %d, want 422 with %q: %s", w.Code, tc.msg, w.Body)
+			}
+			if sh := e.sheet(t); sh.Level() != 0 || len(sh.Classes) != 0 {
+				t.Errorf("sheet changed: %+v", sh.Classes)
+			}
+		})
+	}
+}
+
+// TestLevelUpPushesTracker: a level-up changes max HP, so the tracker of a
+// fight the character is in hears of it, not just the sheet.
+func TestLevelUpPushesTracker(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
+		t.Fatal(err)
+	}
+	enc, err := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, CharacterID: nullID(e.characterID), Name: "Alice"}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(e.router)
+	t.Cleanup(srv.Close)
+	tracker := views.LiveKey(views.LiveEncounter, enc.ID)
+	// httptest connects from 127.0.0.1: no cookie is the localhost GM.
+	gm := dial(t, e, srv, fmt.Sprintf("?campaign=%d", e.campaignID), "", tracker)
+	readUntil(t, gm, "the GM's hello", func(m wsMessage) bool { return m.Type == "patch" && len(m.Views) == 0 })
+
+	form := wizardLevelUp(t, e, url.Values{"class": {"wizard"}, "level": {"1"}})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+route.Path(route.CharacterLevelup, e.characterID), strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: e.token(t, enum.RolePlayer)})
+	res, err := (&http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("level up: %d", res.StatusCode)
+	}
+	readUntil(t, gm, "the tracker's update", func(m wsMessage) bool {
+		_, ok := patchOf(m, tracker)
+		return ok
+	})
 }
