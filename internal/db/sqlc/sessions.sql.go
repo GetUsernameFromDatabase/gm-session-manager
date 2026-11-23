@@ -170,6 +170,33 @@ func (q *Queries) ListPlayerSessionsByCampaign(ctx context.Context, campaignID i
 	return items, nil
 }
 
+const listSessionTokenHashes = `-- name: ListSessionTokenHashes :many
+SELECT token_hash FROM sessions
+`
+
+func (q *Queries) ListSessionTokenHashes(ctx context.Context) ([][]byte, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionTokenHashes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var token_hash []byte
+		if err := rows.Scan(&token_hash); err != nil {
+			return nil, err
+		}
+		items = append(items, token_hash)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const touchSession = `-- name: TouchSession :exec
 UPDATE sessions
 SET last_seen_at = CURRENT_TIMESTAMP

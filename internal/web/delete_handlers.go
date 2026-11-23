@@ -59,6 +59,7 @@ func (a *App) removeCharacter(c *gin.Context) error {
 		return err
 	}
 	a.Hub.CloseCharacter(ch.ID)
+	a.forgetGoneDevices(c.Request.Context())
 	topics := []hub.Topic{{Kind: hub.TopicCampaign, ID: ch.CampaignID}, {Kind: hub.TopicNotes, ID: ch.CampaignID}}
 	for _, e := range encounters {
 		topics = append(topics, hub.Topic{Kind: hub.TopicEncounter, ID: e})

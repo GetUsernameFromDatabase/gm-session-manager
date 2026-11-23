@@ -95,6 +95,33 @@ func TestRequestLogReusedID(t *testing.T) {
 	}
 }
 
+// TestRequestLogCharacterRemoved: removing a character deletes its sessions
+// without a logout, so their logs go too; the GM's stays.
+func TestRequestLogCharacterRemoved(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	player := e.token(t, enum.RolePlayer)
+	playerKey := e.device(t, player)
+	e.do(t, http.MethodGet, route.Path(route.Character, e.characterID), player, nil, false)
+
+	e.do(t, http.MethodPost, route.Path(route.CharacterRemove, e.characterID), gm, nil, true)
+	if n := len(e.app.reqs.recent(playerKey)); n != 0 {
+		t.Errorf("removed character's device kept %d requests", n)
+	}
+	if n := len(e.app.reqs.recent(e.device(t, gm))); n == 0 {
+		t.Error("the GM's log was dropped")
+	}
+
+	// The player removing it themselves: that request must not start a new log.
+	e = newTestEnv(t)
+	player = e.token(t, enum.RolePlayer)
+	playerKey = e.device(t, player)
+	e.do(t, http.MethodPost, route.Path(route.CharacterRemove, e.characterID), player, nil, true)
+	if n := len(e.app.reqs.recent(playerKey)); n != 0 {
+		t.Errorf("self-removed character's device kept %d requests", n)
+	}
+}
+
 func TestErrorText(t *testing.T) {
 	tests := []struct {
 		name  string

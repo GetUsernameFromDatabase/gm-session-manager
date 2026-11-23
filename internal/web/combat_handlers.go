@@ -71,6 +71,10 @@ func (a *App) createEncounter(c *gin.Context) error {
 	if !a.bindForm(c, &form) {
 		return nil
 	}
+	// A stale tab of a deleted campaign gets a 404, not a foreign key 500.
+	if _, err := a.Store.GetCampaign(c.Request.Context(), id); err != nil {
+		return err
+	}
 	enc, err := a.Store.CreateEncounter(c.Request.Context(), sqlc.CreateEncounterParams{CampaignID: id, Name: strings.TrimSpace(form.Name)})
 	if err != nil {
 		return err
@@ -483,7 +487,7 @@ func (a *App) combatantAction(c *gin.Context) error {
 // rollInitiative rolls d20 plus the combatant's initiative bonus: the one
 // roll the app makes, so the GM can set up a fight quickly.
 func (a *App) rollInitiative(ctx context.Context, cb sqlc.Combatant) (sql.NullInt64, error) {
-	r, err := a.combatantRow(ctx, cb)
+	r, err := combatantRow(ctx, a.Store.Queries, cb)
 	if err != nil {
 		return sql.NullInt64{}, err
 	}
@@ -501,8 +505,8 @@ func rollFor(r sqlc.ListCombatantsRow, conds []sqlc.Condition) sql.NullInt64 {
 }
 
 // combatantRow is cb with its character's or statblock's data.
-func (a *App) combatantRow(ctx context.Context, cb sqlc.Combatant) (sqlc.ListCombatantsRow, error) {
-	rows, err := a.Store.ListCombatants(ctx, cb.EncounterID)
+func combatantRow(ctx context.Context, q *sqlc.Queries, cb sqlc.Combatant) (sqlc.ListCombatantsRow, error) {
+	rows, err := q.ListCombatants(ctx, cb.EncounterID)
 	if err != nil {
 		return sqlc.ListCombatantsRow{}, err
 	}
@@ -540,21 +544,24 @@ func (a *App) combatantHP(c *gin.Context, cb sqlc.Combatant) error {
 	if heal {
 		return a.updateMonster(ctx, cb.ID, healHP(int(n)))
 	}
-	r, err := a.combatantRow(ctx, cb)
-	if err != nil {
-		return err
-	}
-	conds, err := a.Store.ListConditionsByEncounter(ctx, cb.EncounterID)
-	if err != nil {
-		return err
-	}
-	conds = slices.DeleteFunc(conds, func(c sqlc.Condition) bool { return c.CombatantID.Int64 != cb.ID })
-	d := combatantDefenses(r, pcSheet(r), conds)
-	kind, when, err := damageChoice(kind, d)
-	if err != nil {
-		return err
-	}
-	return a.updateMonster(ctx, cb.ID, damageHP(int(n), d, kind, when))
+	// Defenses are read in the damage's transaction, so a condition added meanwhile counts.
+	return a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		r, err := combatantRow(ctx, q, cb)
+		if err != nil {
+			return err
+		}
+		conds, err := q.ListConditionsByEncounter(ctx, cb.EncounterID)
+		if err != nil {
+			return err
+		}
+		conds = slices.DeleteFunc(conds, func(c sqlc.Condition) bool { return c.CombatantID.Int64 != cb.ID })
+		d := combatantDefenses(r, pcSheet(r), conds)
+		kind, when, err := damageChoice(kind, d)
+		if err != nil {
+			return err
+		}
+		return monsterHP(ctx, q, cb.ID, damageHP(int(n), d, kind, when))
+	})
 }
 
 // combatantSetHP sets the fields the HP dialog sends: only those the GM

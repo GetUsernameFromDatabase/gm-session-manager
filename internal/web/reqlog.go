@@ -1,7 +1,9 @@
 package web
 
 import (
+	"context"
 	"io"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/url"
@@ -119,6 +121,8 @@ func (a *App) recordRequest(c *gin.Context) {
 	}
 	if e.Status >= http.StatusBadRequest {
 		e.Error = errorText(c, w)
+	} else if c.FullPath() == route.CharacterRemove && !auth.FromContext(c).IsAdmin() {
+		return // the player removed their own character, ending this session like a logout
 	}
 	a.reqs.add(key, e)
 	if c.GetString(serverErrKey) != "" && a.reqs.autoReportDue(key, e.At) {
@@ -230,6 +234,30 @@ func (l *reqLog) forget(key string) {
 	defer l.mu.Unlock()
 	delete(l.devices, key)
 	delete(l.lastAuto, key)
+}
+
+// keepOnly drops the logs of every device but the host and those in live.
+func (l *reqLog) keepOnly(live map[string]bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	gone := func(key string) bool { return key != hostDevice && !live[key] }
+	maps.DeleteFunc(l.devices, func(key string, _ []reqEntry) bool { return gone(key) })
+	maps.DeleteFunc(l.lastAuto, func(key string, _ time.Time) bool { return gone(key) })
+}
+
+// forgetGoneDevices drops the logs of sessions a delete removed without a
+// logout or kick (a character's or campaign's); a failure is only logged.
+func (a *App) forgetGoneDevices(ctx context.Context) {
+	hashes, err := a.Store.ListSessionTokenHashes(ctx)
+	if err != nil {
+		slog.Error("forget deleted devices", "err", err)
+		return
+	}
+	live := make(map[string]bool, len(hashes))
+	for _, h := range hashes {
+		live[string(h)] = true
+	}
+	a.reqs.keepOnly(live)
 }
 
 // errBodyWriter keeps the start of an error response's body.

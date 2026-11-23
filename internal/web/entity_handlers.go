@@ -48,6 +48,10 @@ func (a *App) createEntity(c *gin.Context) error {
 	if !a.bindForm(c, &form) {
 		return nil
 	}
+	// A stale tab of a deleted campaign gets a 404, not a foreign key 500.
+	if _, err := a.Store.GetCampaign(c.Request.Context(), id); err != nil {
+		return err
+	}
 	e, err := a.Store.CreateEntity(c.Request.Context(), sqlc.CreateEntityParams{
 		CampaignID: id, Kind: enum.EntityNPC, Name: strings.TrimSpace(form.Name), FieldsJson: "{}",
 	})

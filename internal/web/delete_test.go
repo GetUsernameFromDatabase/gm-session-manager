@@ -11,6 +11,19 @@ import (
 	"gm-session-manager/internal/route"
 )
 
+// TestCreateInMissingCampaign: a stale tab of a deleted campaign gets a 404,
+// not a foreign key 500 (which would also write an automatic bug report).
+func TestCreateInMissingCampaign(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	for _, r := range []string{route.CampaignEncounters, route.CampaignEntities, route.CampaignImages} {
+		w := e.do(t, http.MethodPost, route.Path(r, 9999), gm, url.Values{"name": {"Goblin"}}, false)
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", r, w.Code)
+		}
+	}
+}
+
 // TestDeleteRestoreImport: a player deletes their character, which hides it
 // and logs them out; the GM restores it, downloads it and imports the file
 // as a new character.

@@ -147,6 +147,10 @@ func (a *App) createImage(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
+	// A stale tab of a deleted campaign gets a 404, not a foreign key 500.
+	if _, err := a.Store.GetCampaign(c.Request.Context(), id); err != nil {
+		return err
+	}
 	return a.saveImage(c, sqlc.GetImageRow{CampaignID: id})
 }
 

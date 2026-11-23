@@ -241,22 +241,25 @@ func (a *App) changeCharacterHP(ctx context.Context, id int64, fn hpChange) erro
 // updateMonster reads, changes and writes a monster's HP in one
 // transaction, so changes sent from two devices at once both land.
 func (a *App) updateMonster(ctx context.Context, id int64, fn hpChange) error {
-	return a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		cb, err := q.GetCombatant(ctx, id)
-		if err != nil {
+	return a.Store.InTx(ctx, func(q *sqlc.Queries) error { return monsterHP(ctx, q, id, fn) })
+}
+
+// monsterHP is updateMonster inside the caller's transaction.
+func monsterHP(ctx context.Context, q *sqlc.Queries, id int64, fn hpChange) error {
+	cb, err := q.GetCombatant(ctx, id)
+	if err != nil {
+		return err
+	}
+	m := dnd5e.Character{HP: int(cb.Hp), MaxHP: int(cb.MaxHp), TempHP: int(cb.TempHp)}
+	if err := fn(&m); err != nil { // m has an empty sheet, so it is never dead
+		return userError{err}
+	}
+	if cb.Hp > 0 && m.HP <= 0 { // a downed caster stops concentrating
+		if err := endConcentration(ctx, q, condOwner{combatantID: id}); err != nil {
 			return err
 		}
-		m := dnd5e.Character{HP: int(cb.Hp), MaxHP: int(cb.MaxHp), TempHP: int(cb.TempHp)}
-		if err := fn(&m); err != nil { // m has an empty sheet, so it is never dead
-			return userError{err}
-		}
-		if cb.Hp > 0 && m.HP <= 0 { // a downed caster stops concentrating
-			if err := endConcentration(ctx, q, condOwner{combatantID: id}); err != nil {
-				return err
-			}
-		}
-		return q.SetCombatantHP(ctx, sqlc.SetCombatantHPParams{ID: id, Hp: int64(m.HP), MaxHp: int64(m.MaxHP), TempHp: int64(m.TempHP)})
-	})
+	}
+	return q.SetCombatantHP(ctx, sqlc.SetCombatantHPParams{ID: id, Hp: int64(m.HP), MaxHp: int64(m.MaxHP), TempHp: int64(m.TempHP)})
 }
 
 // monsterStats fills name, AC and HP from a compendium monster.

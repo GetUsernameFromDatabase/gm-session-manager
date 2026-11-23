@@ -113,6 +113,7 @@ func (a *App) deleteCampaign(c *gin.Context) error {
 	}
 	a.sweepFiles(c)
 	a.Hub.CloseCampaign(id)
+	a.forgetGoneDevices(c.Request.Context())
 	redirect(c, route.Home)
 	return nil
 }
@@ -172,6 +173,7 @@ func (a *App) deleteCharacter(c *gin.Context) error {
 	}
 	a.sweepFiles(c)
 	a.Hub.CloseCharacter(id)
+	a.forgetGoneDevices(ctx)
 	a.changed(c, ch.CampaignID, hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID}, hub.Topic{Kind: hub.TopicNotes, ID: ch.CampaignID})
 	return nil
 }

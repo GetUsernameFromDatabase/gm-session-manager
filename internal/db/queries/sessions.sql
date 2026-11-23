@@ -42,6 +42,9 @@ JOIN characters AS c ON c.id = s.character_id
 WHERE c.campaign_id = ? AND c.deleted_at IS NULL
 ORDER BY c.name, s.created_at;
 
+-- name: ListSessionTokenHashes :many
+SELECT token_hash FROM sessions;
+
 -- name: DeleteCharacterSessions :exec
 DELETE FROM sessions
 WHERE character_id = ?;
