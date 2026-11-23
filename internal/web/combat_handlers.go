@@ -206,9 +206,10 @@ func uniqueName(ctx context.Context, q *sqlc.Queries, encounterID int64, name st
 }
 
 // stepTurn moves the turn from index i by dir (1 or -1), past combatants out
-// of the fight, wrapping into the next or previous round. It returns the new
-// index and round and the names it skipped.
-func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int) (int, int64, []string, error) {
+// of the fight and those gone matches (nil for none), wrapping into the next
+// or previous round. It returns the new index and round and the names it
+// skipped. From i = -1 it finds the first turn of a fight.
+func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int, gone func(sqlc.ListCombatantsRow) bool) (int, int64, []string, error) {
 	var skipped []string
 	for range rows {
 		i += dir
@@ -221,10 +222,11 @@ func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int) (int, 
 		if round < 1 {
 			return 0, 0, nil, userError{errors.New("this is the first turn")}
 		}
-		if !outOfFight(rows[i], pcSheet(rows[i])) {
+		r := rows[i] //nolint:gosec // the switch above wraps i into range
+		if (gone == nil || !gone(r)) && !outOfFight(r, pcSheet(r)) {
 			return i, round, skipped, nil
 		}
-		skipped = append(skipped, rows[i].Name)
+		skipped = append(skipped, r.Name)
 	}
 	return 0, 0, nil, userError{errors.New("everyone is out of the fight")}
 }
@@ -232,7 +234,7 @@ func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int) (int, 
 // passTurn hands the turn on before the combatants that gone matches are
 // deleted, so removing the active one neither restarts the order (the foreign
 // key would null it) nor skips anyone still in the fight. Passing the last one's turn starts the
-// next round, as Next does.
+// next round, as Next does; with nobody left in the fight, nobody is active.
 func passTurn(ctx context.Context, q *sqlc.Queries, encounterID int64, gone func(sqlc.ListCombatantsRow) bool) error {
 	enc, err := q.GetEncounter(ctx, encounterID)
 	if err != nil || enc.Status != enum.EncounterActive || !enc.ActiveCombatantID.Valid {
@@ -247,14 +249,9 @@ func passTurn(ctx context.Context, q *sqlc.Queries, encounterID int64, gone func
 		return nil
 	}
 	next := sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: enc.Status, Round: enc.Round}
-	for j := i + 1; j <= i+len(rows); j++ {
-		if r := rows[j%len(rows)]; !gone(r) && !outOfFight(r, pcSheet(r)) {
-			next.ActiveCombatantID = nullID(r.ID)
-			if j >= len(rows) {
-				next.Round++
-			}
-			break
-		}
+	// Forward, stepTurn's only error is "everyone is out of the fight".
+	if j, round, _, err := stepTurn(rows, i, enc.Round, 1, gone); err == nil {
+		next.ActiveCombatantID, next.Round = nullID(rows[j].ID), round
 	}
 	return q.UpdateEncounterState(ctx, next)
 }
@@ -315,7 +312,12 @@ func (a *App) encounterAction(c *gin.Context) error {
 			if err := needInitiative(); err != nil {
 				return err
 			}
-			next.Status, next.Round, next.ActiveCombatantID = enum.EncounterActive, 1, nullID(rows[0].ID)
+			// The first turn passes over anyone already out, as Next does.
+			first, _, _, err := stepTurn(rows, -1, 1, 1, nil)
+			if err != nil {
+				return err
+			}
+			next.Status, next.Round, next.ActiveCombatantID = enum.EncounterActive, 1, nullID(rows[first].ID)
 		case "roll":
 			// Monsters and NPCs only: players say their own rolls.
 			for _, r := range rows {
@@ -345,7 +347,7 @@ func (a *App) encounterAction(c *gin.Context) error {
 				dir = -1
 			}
 			// The turn card names whom this skipped (turnSkipped).
-			if i, next.Round, _, err = stepTurn(rows, i, enc.Round, dir); err != nil {
+			if i, next.Round, _, err = stepTurn(rows, i, enc.Round, dir, nil); err != nil {
 				return err
 			}
 			next.ActiveCombatantID = nullID(rows[i].ID)

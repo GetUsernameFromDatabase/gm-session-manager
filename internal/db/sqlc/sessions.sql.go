@@ -83,8 +83,12 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (Session, error) {
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
 SELECT id, token_hash, role, character_id, last_seen_at, created_at, user_agent FROM sessions
 WHERE token_hash = ?
+  AND (character_id IS NULL OR character_id IN (SELECT id FROM characters WHERE deleted_at IS NULL))
 `
 
+// GetSessionByTokenHash skips a session of a deleted character: one issued
+// while the GM deleted it would otherwise leave the device neither player
+// nor visitor.
 func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error) {
 	row := q.db.QueryRowContext(ctx, getSessionByTokenHash, tokenHash)
 	var i Session

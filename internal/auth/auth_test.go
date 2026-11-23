@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -313,6 +314,24 @@ func TestResolveTouchesStaleSession(t *testing.T) {
 	}
 	if age := time.Since(got.LastSeenAt); age >= touchEvery {
 		t.Errorf("last seen %v ago after a request, want under %v", age, touchEvery)
+	}
+}
+
+// TestResolveDeletedCharacter: a session issued while its character was being
+// deleted resolves to none, so the middleware clears the cookie and the device
+// is a visitor again, not stuck between player and visitor.
+func TestResolveDeletedCharacter(t *testing.T) {
+	f := newFixture(t)
+	ctx := t.Context()
+	tok, _, err := f.mgr.IssuePlayer(ctx, f.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.q.SoftDeleteCharacter(ctx, f.characterID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.mgr.Resolve(ctx, tok); !errors.Is(err, ErrNoSession) {
+		t.Errorf("Resolve = %v, want ErrNoSession", err)
 	}
 }
 

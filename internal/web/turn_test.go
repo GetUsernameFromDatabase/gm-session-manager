@@ -43,10 +43,11 @@ func TestStepTurn(t *testing.T) {
 		{"prev skips back", []sqlc.ListCombatantsRow{alive, down, alive}, 2, 1, -1, 0, 1, []string{"Goblin"}, false},
 		{"prev stops at the first turn", []sqlc.ListCombatantsRow{alive, alive}, 0, 1, -1, 0, 0, nil, true},
 		{"everyone down", []sqlc.ListCombatantsRow{down, down}, 0, 1, 1, 0, 0, nil, true},
+		{"start skips a downed first", []sqlc.ListCombatantsRow{down, alive}, -1, 1, 1, 1, 1, []string{"Goblin"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			i, round, skipped, err := stepTurn(tt.rows, tt.from, tt.round, tt.dir)
+			i, round, skipped, err := stepTurn(tt.rows, tt.from, tt.round, tt.dir, nil)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, want error %v", err, tt.wantErr)
 			}
@@ -54,6 +55,16 @@ func TestStepTurn(t *testing.T) {
 				t.Errorf("got %d round %d skipped %v, want %d round %d skipped %v", i, round, skipped, tt.want, tt.wantRound, tt.wantSkipped)
 			}
 		})
+	}
+
+	// gone combatants (being deleted) are passed over like those out of the fight.
+	bo := sqlc.ListCombatantsRow{Name: "Bo", Hp: 5, MaxHp: 5}
+	isBo := func(r sqlc.ListCombatantsRow) bool { return r.Name == bo.Name }
+	if i, round, _, err := stepTurn([]sqlc.ListCombatantsRow{alive, bo, bo}, 0, 1, 1, isBo); err != nil || i != 0 || round != 2 {
+		t.Errorf("gone: got %d round %d err %v, want 0 round 2", i, round, err)
+	}
+	if _, _, _, err := stepTurn([]sqlc.ListCombatantsRow{bo, down}, 0, 1, 1, isBo); err == nil {
+		t.Error("everyone gone or down: no error")
 	}
 }
 

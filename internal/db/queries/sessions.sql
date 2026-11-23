@@ -3,9 +3,13 @@ INSERT INTO sessions (token_hash, role, character_id)
 VALUES (?, ?, ?)
 RETURNING *;
 
+-- GetSessionByTokenHash skips a session of a deleted character: one issued
+-- while the GM deleted it would otherwise leave the device neither player
+-- nor visitor.
 -- name: GetSessionByTokenHash :one
 SELECT * FROM sessions
-WHERE token_hash = ?;
+WHERE token_hash = ?
+  AND (character_id IS NULL OR character_id IN (SELECT id FROM characters WHERE deleted_at IS NULL));
 
 -- name: GetSession :one
 SELECT * FROM sessions
