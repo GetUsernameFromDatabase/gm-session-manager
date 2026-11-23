@@ -202,14 +202,10 @@ func (a *App) abilitiesStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command, 
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
-	return setupOnce(views.StepAbilities, func(s *dnd5e.Sheet, cc *dnd5e.Character) error {
-		before := s.Mod("con")
+	return setupOnce(views.StepAbilities, func(s *dnd5e.Sheet, _ *dnd5e.Character) error {
 		for ab, n := range scores {
-			s.Scores[ab] = n + raises[ab]
+			s.Scores[ab] = n + raises[ab] // Apply moves hit points with Constitution
 		}
-		// Hit points already gained follow the new Constitution.
-		delta := (s.Mod("con") - before) * s.Level()
-		cc.MaxHP, cc.HP = max(cc.MaxHP+delta, 0), max(cc.HP+delta, 0)
 		return nil
 	}), nil
 }

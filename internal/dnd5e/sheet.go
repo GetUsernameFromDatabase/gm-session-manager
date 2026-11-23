@@ -878,8 +878,12 @@ func (s Sheet) SpellAbility() string {
 	return ""
 }
 
-// SpellAbilityOf is the ability sp is cast with: its own, else the class's.
-func (s Sheet) SpellAbilityOf(sp Spell) string { return cmp.Or(sp.Ability, s.SpellAbility()) }
+// SpellAbilityOf is the ability sp is cast with: its own, else that of the
+// class whose list taught it (a slug, as spellAbilities keys), else the
+// first casting class's.
+func (s Sheet) SpellAbilityOf(sp Spell) string {
+	return cmp.Or(sp.Ability, spellAbilities[sp.Class], s.SpellAbility())
+}
 
 // SpellAttack is the spell attack bonus with ability.
 func (s Sheet) SpellAttack(ability string) int { return s.ProficiencyBonus() + s.Mod(ability) }

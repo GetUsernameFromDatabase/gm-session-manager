@@ -73,9 +73,7 @@ func parseSet(args []string) (Command, error) {
 			return Command{}, errors.New("usage: set ability str 16")
 		}
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
-			oldMod := c.Sheet.Mod(Con)
-			c.Sheet.Scores[ab] = n
-			c.shiftConHP(oldMod)
+			c.Sheet.Scores[ab] = n // Apply moves hit points with Constitution
 			return nil
 		}), nil
 	}

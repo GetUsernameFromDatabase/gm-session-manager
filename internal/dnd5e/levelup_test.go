@@ -1,6 +1,9 @@
 package dnd5e
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestRevertSheet(t *testing.T) {
 	snap := Sheet{
@@ -37,6 +40,15 @@ func TestRevertSheet(t *testing.T) {
 	cur.Features = []Feature{
 		{Name: "Rage", Source: "Barbarian", Uses: Uses{Fixed: 3, Used: 0}}, // a long rest since
 		{Name: "Second Wind", Source: "Fighter", Uses: Uses{Fixed: 4, Used: 4}},
+	}
+
+	snap.Modifiers = []CustomMod{
+		{Target: ModSpeed, Value: 10, Note: "Fast Movement", Source: "Fast Movement"},
+		{Target: ModAC, Value: 1, Note: "Cloak"}, // taken off since
+	}
+	cur.Modifiers = []CustomMod{
+		{Target: ModSpeed, Value: 15, Note: "Fast Movement", Source: "Fast Movement"}, // scaled by the level-up
+		{Target: ModAC, Value: 1, Note: "Ring of Protection"},                         // put on since
 	}
 
 	got := RevertSheet(snap, cur)
@@ -77,6 +89,12 @@ func TestRevertSheet(t *testing.T) {
 			}
 			if snap.Features[0].Uses.Used != 2 {
 				t.Error("snapshot features changed")
+			}
+		}},
+		{"feature modifiers restored, hand-added ones kept from current", func(t *testing.T) {
+			want := []CustomMod{snap.Modifiers[0], cur.Modifiers[1]}
+			if !slices.Equal(got.Modifiers, want) {
+				t.Errorf("modifiers %+v, want %+v", got.Modifiers, want)
 			}
 		}},
 		{"hit dice used clamped to snapshot level", func(t *testing.T) {

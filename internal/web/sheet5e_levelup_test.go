@@ -69,6 +69,36 @@ func TestRevertLevelUp(t *testing.T) {
 	}
 }
 
+// TestRevertLevelUpKeepsConItem: a Constitution modifier added after a
+// level-up stays through its revert, and so do the hit points it gives.
+func TestRevertLevelUpKeepsConItem(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, enum.RolePlayer)
+	for range 2 {
+		if w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelup, e.characterID), player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}}), false); w.Code != http.StatusSeeOther {
+			t.Fatalf("level up: %d %s", w.Code, w.Body)
+		}
+	}
+	before, _ := e.q().GetCharacter(ctx, e.characterID) // level 2
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelup, e.characterID), player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}}), false); w.Code != http.StatusSeeOther {
+		t.Fatalf("level up: %d %s", w.Code, w.Body)
+	}
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterCmd, e.characterID), player, url.Values{"cmd": {`mod add con +2 "Amulet"`}}, true); w.Code != http.StatusOK {
+		t.Fatalf("mod: %d %s", w.Code, w.Body)
+	}
+	if w := e.do(t, http.MethodPost, route.Path(route.CharacterLevelupRevert, e.characterID), player, nil, true); w.Code != http.StatusOK {
+		t.Fatalf("revert: %d %s", w.Code, w.Body)
+	}
+	ch, _ := e.q().GetCharacter(ctx, e.characterID)
+	if want := before.MaxHp + 2; ch.MaxHp != want { // Con +1 for each of 2 levels
+		t.Errorf("max HP %d, want %d", ch.MaxHp, want)
+	}
+}
+
 // TestLevelUpTwice: the same form posted twice (a double click, another
 // device) takes one level, and the second post is refused.
 func TestLevelUpTwice(t *testing.T) {
@@ -386,6 +416,40 @@ func TestLevelUpFeats(t *testing.T) {
 				t.Errorf("sheet: %v %s", err, ch.SheetJson)
 			}
 		})
+	}
+}
+
+// TestLevelUpFeatRaisesCon: a feat's +1 to Constitution at level-up gives
+// the hit points of every level, as an ability score increase does.
+func TestLevelUpFeatRaisesCon(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	loadFeatFixtures(t, e)
+	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "feat", Slug: "hardy", Name: "Hardy", SourceKey: "test", ContentHash: "x",
+		DataJson: `{"desc":"","category":"General","prerequisite":"Level 4+","parts":[{"name":"Ability Score Increase","desc":"Increase your Constitution score by 1, to a maximum of 20."}]}`}); err != nil {
+		t.Fatal(err)
+	}
+	player := e.token(t, enum.RolePlayer)
+	base := route.Path(route.CharacterLevelup, e.characterID)
+	for range 3 {
+		if w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, url.Values{"class": {"wizard"}}), false); w.Code != http.StatusSeeOther {
+			t.Fatalf("level up: %d %s", w.Code, w.Body)
+		}
+	}
+	ch, _ := e.q().GetCharacter(ctx, e.characterID)
+	sh, _ := dnd5e.ParseSheet(ch.SheetJson)
+	sh.Scores["con"] = 15 // +2; the feat makes it 16, +3
+	raw, _ := sh.JSON()
+	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"class": {"wizard"}, "hp_roll": {"4"}, "feat": {"hardy"}, "feat_hardy_raise": {"Constitution"}}
+	if w := e.do(t, http.MethodPost, base, player, wizardLevelUp(t, e, form), false); w.Code != http.StatusSeeOther {
+		t.Fatalf("level 4: %d %s", w.Code, w.Body)
+	}
+	after, _ := e.q().GetCharacter(ctx, e.characterID)
+	if want := ch.MaxHp + 4 + 2 + 4; after.MaxHp != want { // roll 4, Con +2, then +1 for each of 4 levels
+		t.Errorf("max HP %d, want %d", after.MaxHp, want)
 	}
 }
 

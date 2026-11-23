@@ -437,7 +437,9 @@ func (a *App) levelUp(c *gin.Context) error {
 			if choice.Feat != "" {
 				pinFeat(&dc.Sheet, choice.Feat, featSource)
 			}
+			conMod := dc.Sheet.Mod(dnd5e.Con)
 			applyPicks(&dc.Sheet, groups, picks)
+			dc.ShiftConHP(conMod) // a feat's +1 may be Constitution
 			if err := addClassSpells(&dc.Sheet, spells); err != nil {
 				return err
 			}
@@ -502,7 +504,8 @@ func (a *App) revertLevelUp(c *gin.Context) error {
 			return err
 		}
 		dc.Sheet = dnd5e.RevertSheet(parsed, dc.Sheet)
-		dc.MaxHP = int(snap.MaxHp)
+		// The saved max follows the old sheet's Constitution; kept hand-added modifiers may change it.
+		dc.MaxHP = int(snap.MaxHp) + (dc.Sheet.Mod(dnd5e.Con)-parsed.Mod(dnd5e.Con))*dc.Sheet.Level()
 		dc.HP = min(dc.HP, dc.MaxHP)
 		return q.DeleteLevelUp(ctx, snap.ID)
 	})

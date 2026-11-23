@@ -254,7 +254,7 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 		if err := applyASI(s, ch); err != nil {
 			return ASIError{err}
 		}
-		next.shiftConHP(oldMod)
+		next.ShiftConHP(oldMod)
 	} else if len(ch.ASI) > 0 || ch.Feat != "" {
 		return errors.New("this level grants no ability score improvement")
 	}
@@ -407,9 +407,9 @@ func raise(s *Sheet, ability string, by int) error {
 	return nil
 }
 
-// shiftConHP applies a Constitution modifier change (from oldMod) to the
+// ShiftConHP applies a Constitution modifier change (from oldMod) to the
 // hit points of every level the character has.
-func (c *Character) shiftConHP(oldMod int) {
+func (c *Character) ShiftConHP(oldMod int) {
 	d := (c.Sheet.Mod(Con) - oldMod) * c.Sheet.Level()
 	if c.MaxHP == 0 || d == 0 { // no stats yet, or nothing changed
 		return
@@ -482,9 +482,10 @@ func (s Sheet) withClassLevel(class ClassInfo, subclass string) Sheet {
 
 // RevertSheet is the sheet to put back when a level-up is undone: snap (the
 // sheet from before it) with the gear and play state of cur kept, so coins,
-// items, worn armor, backstory, inspiration and death saves changed since
-// are not lost. Spent hit dice, spell slots and feature uses are kept too,
-// but cannot exceed what the lower level has: maximums always come from snap.
+// items, worn armor, backstory, inspiration, death saves and modifiers added
+// by hand (no Source) changed since are not lost. Spent hit dice, spell
+// slots and feature uses are kept too, but cannot exceed what the lower level
+// has: maximums always come from snap.
 func RevertSheet(snap, cur Sheet) Sheet {
 	out := snap
 	out.Inventory = slices.Clone(cur.Inventory)
@@ -497,6 +498,12 @@ func RevertSheet(snap, cur Sheet) Sheet {
 		out.Armor = &armor
 	}
 	out.Backstory = cur.Backstory
+	out.Modifiers = slices.DeleteFunc(slices.Clone(snap.Modifiers), func(m CustomMod) bool { return m.Source == "" })
+	for _, m := range cur.Modifiers {
+		if m.Source == "" {
+			out.Modifiers = append(out.Modifiers, m)
+		}
+	}
 	out.Inspiration = cur.Inspiration
 	out.DeathSaves = cur.DeathSaves
 	out.HitDiceUsed = min(cur.HitDiceUsed, snap.Level())

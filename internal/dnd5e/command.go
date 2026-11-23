@@ -116,13 +116,16 @@ type Effects struct {
 var ErrUnknownCommand = errors.New("unknown command")
 
 // Apply runs the command against c and validates the result. c is left
-// unchanged if it returns an error.
+// unchanged if it returns an error. Whatever changed the Constitution
+// modifier (a score, a modifier, a feature), hit points follow it.
 func (cmd Command) Apply(c *Character, env Env) (Effects, error) {
 	next := c.clone()
 	var fx Effects
+	conMod := next.Sheet.Mod(Con)
 	if err := cmd.apply(&next, env, &fx); err != nil {
 		return Effects{}, err
 	}
+	next.ShiftConHP(conMod)
 	if err := next.Validate(); err != nil {
 		return Effects{}, err
 	}

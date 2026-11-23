@@ -184,6 +184,24 @@ func TestConIncreaseAddsHPForEarlierLevels(t *testing.T) {
 		t.Errorf("set ability: max %d hp %d, want 31 and 23", c.MaxHP, c.HP)
 	}
 
+	// A Constitution modifier (a magic item) moves hit points the same way, both ways.
+	c = fighter()
+	for _, step := range []struct {
+		line    string
+		max, hp int
+	}{{`mod add con +2 "Amulet"`, 31, 23}, {`mod remove con "Amulet"`, 28, 23}} {
+		cmd, err := Parse(step.line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cmd.Apply(&c, Env{}); err != nil {
+			t.Fatal(err)
+		}
+		if c.MaxHP != step.max || c.HP != step.hp {
+			t.Errorf("%s: max %d hp %d, want %d and %d", step.line, c.MaxHP, c.HP, step.max, step.hp)
+		}
+	}
+
 	// Level 4 ASI on Con 15 -> 17: mod +2 -> +3, so +1 for each of 4 levels.
 	knight := ClassInfo{
 		Slug: "fighter", Name: "Fighter", HitDie: 10, Caster: CasterNone, Saves: []string{Str, Con},
@@ -635,6 +653,11 @@ func TestResistances(t *testing.T) {
 	s := Sheet{Classes: []ClassLevel{{Name: "Warlock"}}}
 	if s.SpellAbilityOf(Spell{}) != Cha || s.SpellAbilityOf(Spell{Ability: Int}) != Int {
 		t.Error("SpellAbilityOf")
+	}
+	// A multiclass casts each class's spells with that class's ability.
+	multi := Sheet{Classes: []ClassLevel{{Slug: "wizard", Name: "Wizard"}, {Slug: "cleric", Name: "Cleric"}}}
+	if multi.SpellAbilityOf(Spell{Class: "cleric"}) != Wis || multi.SpellAbilityOf(Spell{}) != Int {
+		t.Error("SpellAbilityOf multiclass")
 	}
 }
 
