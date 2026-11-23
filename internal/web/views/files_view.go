@@ -43,6 +43,9 @@ type FileRow struct {
 	IsImage    bool
 	Private    bool
 	Uses       []FileUse
+	// Fresh is an unused file uploaded a moment ago: the note edit using it
+	// may still be on its way, so it cannot be deleted yet.
+	Fresh bool
 }
 
 // Kinds of FileUse.
@@ -63,7 +66,7 @@ type FileUse struct {
 func unusedFiles(files []FileRow) []FileRow {
 	var idle []FileRow
 	for _, f := range files {
-		if len(f.Uses) == 0 {
+		if len(f.Uses) == 0 && !f.Fresh {
 			idle = append(idle, f)
 		}
 	}

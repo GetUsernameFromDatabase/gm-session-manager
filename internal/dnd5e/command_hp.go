@@ -139,6 +139,9 @@ func (c *Character) failDeathSaves(before, through int, crit bool) {
 func (s Sheet) Dead() bool { return s.DeathSaves.Failures >= MaxDeathSaves }
 
 // CritDamage is n damage from a critical hit: two death save failures at 0 HP.
+// Only tests call it today; it stays beside Damage, Heal and Set because
+// Amount's fields are unexported, so code outside this package can build a
+// crit no other way.
 func CritDamage(n int) Amount { return Amount{n: -n, crit: true} }
 
 // Damage and Heal are the HP deltas the combat tracker uses.

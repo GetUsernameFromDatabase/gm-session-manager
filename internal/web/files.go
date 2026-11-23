@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -83,14 +84,19 @@ func (a *App) attachmentUses(ctx context.Context) (map[int64][]views.FileUse, er
 	return uses, nil
 }
 
-// unusedAttachments lists the attachments nothing uses, newest first.
+// fresh reports whether a file was uploaded within freshFile: the edit that
+// uses it may not be in yet, so it is not offered or taken as unused.
+func fresh(f sqlc.ListAttachmentFilesRow) bool { return time.Since(f.CreatedAt) < freshFile }
+
+// unusedAttachments lists the attachments nothing uses, newest first,
+// except fresh ones.
 func (a *App) unusedAttachments(ctx context.Context) ([]sqlc.ListAttachmentFilesRow, error) {
 	uses, err := a.attachmentUses(ctx)
 	if err != nil {
 		return nil, err
 	}
 	files, err := a.Store.ListAttachmentFiles(ctx)
-	return slices.DeleteFunc(files, func(f sqlc.ListAttachmentFilesRow) bool { return len(uses[f.ID]) > 0 }), err
+	return slices.DeleteFunc(files, func(f sqlc.ListAttachmentFilesRow) bool { return len(uses[f.ID]) > 0 || fresh(f) }), err
 }
 
 // filesCampaign is the campaign in the path, nil for every campaign's files.
@@ -146,6 +152,7 @@ func (a *App) filesPage(c *gin.Context) error {
 			// The GM never reads a player's own blocks, so not even the name.
 			Private: f.BlockVisibility == enum.VisOwner,
 			Uses:    uses[f.ID],
+			Fresh:   len(uses[f.ID]) == 0 && fresh(f),
 		})
 	}
 	a.render(c, http.StatusOK, views.FilesPage(l, v))

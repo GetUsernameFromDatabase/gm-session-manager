@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -288,6 +289,30 @@ func TestOnlyHashIsStored(t *testing.T) {
 	raw, _ := tokenEncoding.DecodeString(tok)
 	if bytes.Equal(sess.TokenHash, raw) || bytes.Equal(sess.TokenHash, []byte(tok)) {
 		t.Error("raw token stored in database")
+	}
+}
+
+// TestResolveTouchesStaleSession: a request refreshes a last-seen time older
+// than touchEvery, which the GM's list of offline devices shows.
+func TestResolveTouchesStaleSession(t *testing.T) {
+	f := newFixture(t)
+	ctx := t.Context()
+	tok, sess, err := f.mgr.IssuePlayer(ctx, f.characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.conn.ExecContext(ctx, `UPDATE sessions SET last_seen_at = datetime('now', '-1 hour') WHERE id = ?`, sess.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.mgr.Resolve(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.q.GetSession(ctx, sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if age := time.Since(got.LastSeenAt); age >= touchEvery {
+		t.Errorf("last seen %v ago after a request, want under %v", age, touchEvery)
 	}
 }
 

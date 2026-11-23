@@ -49,7 +49,16 @@ func (e testEnv) attachFile(t *testing.T, blockID int64, name string) sqlc.Attac
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.ageFile(t, att.ID)
 	return att
+}
+
+// ageFile dates an attachment's upload past freshFile, so cleanups may take it.
+func (e testEnv) ageFile(t *testing.T, id int64) {
+	t.Helper()
+	if _, err := e.conn.ExecContext(t.Context(), `UPDATE attachments SET created_at = datetime('now', '-1 hour') WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (e testEnv) playersBlock(t *testing.T) int64 {
@@ -121,6 +130,11 @@ func TestFilesCleanup(t *testing.T) {
 	e := newTestEnv(t)
 	block := e.playersBlock(t)
 	kept, stray := e.attachFile(t, block, "kept.png"), e.attachFile(t, block, "stray.png")
+	// Just uploaded: the edit that uses it has not arrived yet.
+	justIn, err := e.app.storeFile(t.Context(), e.campaignID, nullID(block), "fresh.png", strings.NewReader(pngHead))
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Kept is in an edit not yet in the block's snapshot.
 	step := fmt.Sprintf(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"mention","attrs":{"id":"attachment:%d"}}]}}`, kept.ID)
 	if err := e.q().InsertBlockStep(t.Context(), sqlc.InsertBlockStepParams{BlockID: block, Version: 1, ClientID: "c", StepJson: step}); err != nil {
@@ -142,6 +156,9 @@ func TestFilesCleanup(t *testing.T) {
 	if !strings.Contains(page, "stray.png") || !strings.Contains(page, "kept.png") || !strings.Contains(page, ">Maps<") {
 		t.Errorf("Files page should list every file and the note using it")
 	}
+	if !strings.Contains(page, "Just uploaded") {
+		t.Error("a file uploaded a moment ago should show as just uploaded, not unused")
+	}
 
 	e.do(t, http.MethodPost, route.Path(route.FilesAttachmentDelete, kept.ID), gm, nil, true)
 	if _, err := e.q().GetAttachment(t.Context(), kept.ID); err != nil {
@@ -153,6 +170,9 @@ func TestFilesCleanup(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(e.app.attachmentsDir(), stray.Path)); !os.IsNotExist(err) {
 		t.Error("the unused file is still on disk")
+	}
+	if _, err := e.q().GetAttachment(t.Context(), justIn.ID); err != nil {
+		t.Error("a file uploaded a moment ago was deleted as unused")
 	}
 }
 
@@ -170,6 +190,7 @@ func TestCampaignFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.ageFile(t, theirs.ID)
 	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
 	base := views.FilesBase(e.campaignID)
 

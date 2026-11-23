@@ -128,7 +128,7 @@ templ fileTile(f FileRow, base, tab string) {
 				}
 			</a>
 		}
-		if len(f.Uses) == 0 {
+		if len(f.Uses) == 0 && !f.Fresh {
 			<span class="pointer-events-none absolute top-2 left-2">
 				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
 					Unused
@@ -149,7 +149,9 @@ templ fileTile(f FileRow, base, tab string) {
 			{ fileSize(f.Size) + ", uploaded " }
 			@localTime(f.CreatedAt)
 		</p>
-		if len(f.Uses) == 0 {
+		if f.Fresh {
+			<p class="mt-2 text-sm text-muted-foreground">Just uploaded</p>
+		} else if len(f.Uses) == 0 {
 			<p class="mt-2 text-sm text-muted-foreground">Not used anywhere</p>
 		} else {
 			<ul class="mt-2 grid gap-1 text-sm" aria-label="Used in">

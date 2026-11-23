@@ -903,7 +903,8 @@ func (a *App) serveAttachment(c *gin.Context, att sqlc.Attachment, cacheControl 
 	http.ServeContent(c.Writer, c.Request, "", att.CreatedAt, f)
 }
 
-// freshFile is how long a file is spared: storeFile writes it before its row.
+// freshFile is how long a new file is spared: storeFile writes it before its
+// row, and the note edit that uses it arrives after the row.
 const freshFile = time.Minute
 
 // CleanAttachments removes files no attachments row refers to any more

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"gm-session-manager/internal/db"
 	"gm-session-manager/internal/db/sqlc"
@@ -75,11 +76,18 @@ func (m *Manager) Resolve(ctx context.Context, token string) (sqlc.Session, erro
 	if err != nil {
 		return sqlc.Session{}, fmt.Errorf("resolve session: %w", err)
 	}
-	if err := m.q.TouchSession(ctx, sess.ID); err != nil {
-		return sqlc.Session{}, fmt.Errorf("touch session: %w", err)
+	// An UPDATE takes the write lock even when it changes nothing, so a fresh
+	// row is not touched: requests then never queue behind a long import.
+	if time.Since(sess.LastSeenAt) >= touchEvery {
+		if err := m.q.TouchSession(ctx, sess.ID); err != nil {
+			return sqlc.Session{}, fmt.Errorf("touch session: %w", err)
+		}
 	}
 	return sess, nil
 }
+
+// touchEvery matches the one minute in the TouchSession query.
+const touchEvery = time.Minute
 
 // Revoke deletes a session. Logout and kick both use this.
 func (m *Manager) Revoke(ctx context.Context, sessionID int64) error {
