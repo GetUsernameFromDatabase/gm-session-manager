@@ -635,11 +635,11 @@ func (a *App) heldByOptions(ctx context.Context, v perm.Viewer, campaignID, char
 		}
 		ch, err := a.Store.GetCharacter(ctx, v.CharacterID)
 		if err != nil || ch.CampaignID != campaignID {
-			return nil, ignoreNoRows(err)
+			return nil, notFoundIsNil(err) // no row means no options
 		}
 		cond, err := a.Store.FindCharacterCondition(ctx, sqlc.FindCharacterConditionParams{CharacterID: nullID(ch.ID), Slug: slugConcentration})
 		if err != nil {
-			return nil, ignoreNoRows(err)
+			return nil, notFoundIsNil(err)
 		}
 		return []views.Named{{ID: cond.ID, Name: label(ch.Name, cond.Note)}}, nil
 	}
@@ -670,12 +670,4 @@ func (a *App) heldByOptions(ctx context.Context, v perm.Viewer, campaignID, char
 		}
 	}
 	return out, nil
-}
-
-// ignoreNoRows is nil for a missing row, which means no options.
-func ignoreNoRows(err error) error {
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	return err
 }

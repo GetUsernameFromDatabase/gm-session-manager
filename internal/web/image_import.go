@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -135,8 +136,16 @@ var (
 // guessSample bounds how many rows guessMapping looks at.
 const guessSample = 200
 
-// maxNameLen matches the max=200 tag on an image's name.
-const maxNameLen = 200
+// The imageForm tags' limits, so an imported image can be edited later.
+const (
+	maxNameLen        = 200
+	maxLinkLen        = 2000
+	maxCategoryLen    = 100
+	maxDescriptionLen = 10000
+)
+
+// tooLong reports whether s has more characters than validate's max=n allows.
+func tooLong(s string, n int) bool { return utf8.RuneCountInString(s) > n }
 
 // guessMapping picks the closest column for each field, never one column
 // twice: the link is the column most full of http(s) links, the others go
@@ -235,10 +244,14 @@ func reviewRows(rows [][]string, m views.ImportMapping) []views.ImportRow {
 		switch {
 		case r.Name == "":
 			r.Problem = "no name"
-		case len(r.Name) > maxNameLen:
+		case tooLong(r.Name, maxNameLen):
 			r.Problem = "name too long"
 		case r.Host == "":
 			r.Problem = "not an http(s) link"
+		case tooLong(r.Link, maxLinkLen):
+			r.Problem = "link too long"
+		case tooLong(r.Description, maxDescriptionLen):
+			r.Problem = "description too long"
 		}
 		out = append(out, r)
 	}
@@ -425,6 +438,9 @@ func buildReview(c *gin.Context, imp csvImport, v *views.ImportView) {
 	for i := range v.Rows {
 		r := &v.Rows[i]
 		r.Target = target[r.Category]
+		if r.Problem == "" && tooLong(r.Target, maxCategoryLen) {
+			r.Problem = "category too long"
+		}
 		r.Ticked = r.Problem == "" && (!reviewed || picked[r.Index])
 	}
 	if q, _ := formValues(c, views.ImportFilterQ); len(q) > 0 {
@@ -554,6 +570,10 @@ func (a *App) importCommit(c *gin.Context) error {
 		return nil
 	}
 	ctx := c.Request.Context()
+	// The campaign may have been deleted since the upload: a 404, not a foreign key 500.
+	if _, err := a.Store.GetCampaign(ctx, id); err != nil {
+		return err
+	}
 	cats, err := a.Store.ListImageCategories(ctx, id)
 	if err != nil {
 		return err

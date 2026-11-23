@@ -28,6 +28,12 @@ WHERE id = ?;
 DELETE FROM entities
 WHERE id = ?;
 
+-- RenameEntityCombatants sets the stored name of an NPC's combatants, which
+-- the turn order shows once the NPC is deleted (entity_id is then NULL).
+-- name: RenameEntityCombatants :exec
+UPDATE combatants SET name = sqlc.arg(name)
+WHERE entity_id = sqlc.arg(entity_id);
+
 -- LinkEntityImage adds a look; the NPC's first look becomes its current one.
 -- name: LinkEntityImage :exec
 INSERT INTO entity_images (entity_id, image_id, is_current)

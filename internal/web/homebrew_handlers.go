@@ -113,7 +113,17 @@ func (a *App) saveHomebrew(c *gin.Context, w who, id int64) error {
 		}
 	}
 	if err == nil {
-		id, err = compendium.SaveHomebrew(ctx, a.Store.Queries, id, in, owner)
+		// One transaction: a new entry is never left without its campaign link
+		// or habitats, and a failed save keeps id at 0, so the retry creates again.
+		var saved int64
+		err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+			var err error
+			saved, err = compendium.SaveHomebrew(ctx, q, id, in, owner)
+			return err
+		})
+		if err == nil {
+			id = saved
+		}
 	}
 	add := c.PostForm("add") != ""
 	if err != nil {

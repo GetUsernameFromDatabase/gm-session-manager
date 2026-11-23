@@ -285,7 +285,17 @@ func (a *App) deleteEntity(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
-	if err := a.Store.DeleteEntity(c.Request.Context(), e.ID); err != nil {
+	ctx := c.Request.Context()
+	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		// Its fights then show the name stored on the combatant: keep a hidden one hidden.
+		if !e.IsRevealed {
+			if err := q.RenameEntityCombatants(ctx, sqlc.RenameEntityCombatantsParams{Name: hiddenNPCName, EntityID: nullID(e.ID)}); err != nil {
+				return err
+			}
+		}
+		return q.DeleteEntity(ctx, e.ID)
+	})
+	if err != nil {
 		return err
 	}
 	a.Hub.Publish(e.CampaignID, entityTopics(e)...)

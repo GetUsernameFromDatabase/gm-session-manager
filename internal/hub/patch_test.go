@@ -169,6 +169,20 @@ func TestPatch(t *testing.T) {
 	}
 }
 
+// TestWatchCapped: a hello listing more views than any page shows keeps
+// only maxWatch of them, so it cannot multiply the work of every publish.
+func TestWatchCapped(t *testing.T) {
+	c := NewClient(1, perm.GM, 0, "test")
+	var views []string
+	for i := range maxWatch * 2 {
+		views = append(views, fmt.Sprintf("character:1:%d", i))
+	}
+	c.setWatch(views)
+	if got := len(c.watching()); got != maxWatch {
+		t.Errorf("watching %d views, want %d", got, maxWatch)
+	}
+}
+
 // TestFailedViewRefetches: a view that fails to render is refetched by its
 // page, now and on the next update, without dropping the other views.
 func TestFailedViewRefetches(t *testing.T) {

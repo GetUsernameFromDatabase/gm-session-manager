@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
@@ -462,6 +464,36 @@ func TestParseRowSet(t *testing.T) {
 			}
 			if got.String() != tt.want {
 				t.Errorf("got %s, want %s", got.String(), tt.want)
+			}
+		})
+	}
+}
+
+// TestImportRowLimits: a row the image editor would later refuse to save is
+// never imported. Lengths count characters, as validate's max does.
+func TestImportRowLimits(t *testing.T) {
+	link := "https://x.test/a.png"
+	tests := []struct {
+		name, title, link, category, description, problem string
+	}{
+		{"fits", "Mira", link, "Folk", strings.Repeat("é", maxDescriptionLen), ""},
+		{"long name", strings.Repeat("a", maxNameLen+1), link, "", "", "name too long"},
+		{"long link", "Mira", link + "?" + strings.Repeat("a", maxLinkLen), "", "", "link too long"},
+		{"long description", "Mira", link, "", strings.Repeat("a", maxDescriptionLen+1), "description too long"},
+		{"long category", "Mira", link, strings.Repeat("a", maxCategoryLen+1), "", "category too long"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+			imp := csvImport{header: []string{"name", "link", "category", "description"}, rows: [][]string{{tt.title, tt.link, tt.category, tt.description}}}
+			v := views.ImportView{}
+			buildReview(c, imp, &v)
+			if len(v.Rows) != 1 {
+				t.Fatalf("rows = %d", len(v.Rows))
+			}
+			if r := v.Rows[0]; r.Problem != tt.problem || r.Ticked != (tt.problem == "") {
+				t.Errorf("problem = %q ticked = %v, want %q", r.Problem, r.Ticked, tt.problem)
 			}
 		})
 	}

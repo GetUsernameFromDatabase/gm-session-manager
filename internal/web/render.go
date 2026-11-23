@@ -118,6 +118,9 @@ func (a *App) playerCombat(ctx context.Context, v perm.Viewer, campaignID, want 
 	return list, &ev, err
 }
 
+// hiddenNPCName is what players see for an NPC the GM has not revealed.
+const hiddenNPCName = "Unknown creature"
+
 // encounterView builds the turn order as v may see it. Hidden HP is zeroed
 // here so it never reaches the template, let alone the browser.
 func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encounter) (views.EncounterView, error) {
@@ -158,13 +161,19 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 		// One without max HP has no stats, so is never down.
 		cv.Marker, cv.Down = r.Marker, r.Hp <= 0 && r.MaxHp > 0
 		cv.Dead = sheet != nil && sheet.Dead()
+		// A hidden NPC's name and linked monster are as secret as the NPC.
+		hidden := !v.IsGM && r.EntityID.Valid && !r.EntityRevealed.Bool
 		if v.IsGM {
 			cv.Link, cv.InitMod = combatantLink(r, enc.CampaignID), initiativeMod(r, sheet)
 		} else {
 			cv.AC, cv.Link = 0, playerCombatantLink(v, r, enc.CampaignID, cv.ShowHP)
 		}
-		// The compendium is open to everyone; a visible look below overrides it.
-		cv.Portrait = r.MonsterImage.String
+		if hidden {
+			cv.Name = hiddenNPCName
+		} else {
+			// The compendium is open to everyone; a visible look below overrides it.
+			cv.Portrait = r.MonsterImage.String
+		}
 		for _, p := range portraits {
 			look := toLook(p.ID, p.Name, p.Url, p.AttachmentID, p.IsRevealed, true)
 			if p.CharacterID == r.CharacterID.Int64 && len(perm.VisibleLooks(v, p.CharacterID, []perm.Look{look})) > 0 {
@@ -421,7 +430,7 @@ func (a *App) readableLinks(ctx context.Context, v perm.Viewer, campaignID int64
 			out[l.Key()] = true
 		case string(enum.LinkNote):
 			out[l.Key()] = slices.ContainsFunc(notes, func(n sqlc.Note) bool { return n.ID == l.ID })
-		case "entity":
+		case string(enum.LinkEntity):
 			out[l.Key()] = slices.ContainsFunc(npcs, func(e sqlc.Entity) bool { return e.ID == l.ID })
 		}
 	}

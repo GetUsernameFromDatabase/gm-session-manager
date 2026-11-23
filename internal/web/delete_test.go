@@ -22,6 +22,11 @@ func TestCreateInMissingCampaign(t *testing.T) {
 			t.Errorf("%s: status %d, want 404", r, w.Code)
 		}
 	}
+	// A CSV import uploaded before the campaign was deleted.
+	token := e.app.imports.put(csvImport{campaignID: 9999, header: []string{"name", "link"}, rows: [][]string{{"Mira", "https://x.test/mira.png"}}})
+	if w := e.do(t, http.MethodPost, route.Path(route.CampaignImagesImportReview, 9999, token), gm, url.Values{}, false); w.Code != http.StatusNotFound {
+		t.Errorf("import commit: status %d, want 404", w.Code)
+	}
 }
 
 // TestDeleteRestoreImport: a player deletes their character, which hides it

@@ -462,6 +462,23 @@ func (q *Queries) ListRevealedEntities(ctx context.Context, campaignID int64) ([
 	return items, nil
 }
 
+const renameEntityCombatants = `-- name: RenameEntityCombatants :exec
+UPDATE combatants SET name = ?1
+WHERE entity_id = ?2
+`
+
+type RenameEntityCombatantsParams struct {
+	Name     string
+	EntityID sql.NullInt64
+}
+
+// RenameEntityCombatants sets the stored name of an NPC's combatants, which
+// the turn order shows once the NPC is deleted (entity_id is then NULL).
+func (q *Queries) RenameEntityCombatants(ctx context.Context, arg RenameEntityCombatantsParams) error {
+	_, err := q.db.ExecContext(ctx, renameEntityCombatants, arg.Name, arg.EntityID)
+	return err
+}
+
 const setEntityCurrentImage = `-- name: SetEntityCurrentImage :execrows
 UPDATE entity_images
 SET is_current = 1

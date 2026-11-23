@@ -124,11 +124,17 @@ func (h *Hub) patch(ctx context.Context, c *Client, m message) ([]byte, error) {
 	return json.Marshal(patchMessage{Type: MsgPatch, Epoch: h.epoch, Seq: m.seq, Views: views})
 }
 
+// maxWatch caps the live views one page may watch: each is loaded again on
+// every publish that touches it, so a forged hello must not list thousands.
+// A page shows a handful.
+const maxWatch = 50
+
 // setWatch records the live views the client's page shows.
 func (c *Client) setWatch(views []string) {
 	c.subMu.Lock()
 	defer c.subMu.Unlock()
 	c.watch = slices.Compact(slices.Sorted(slices.Values(views)))
+	c.watch = c.watch[:min(len(c.watch), maxWatch)]
 }
 
 func (c *Client) watching() []string {

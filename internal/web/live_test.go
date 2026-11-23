@@ -181,6 +181,82 @@ func TestLiveVisibility(t *testing.T) {
 	}
 }
 
+// TestCombatHidesUnrevealedNPC checks that a player's turn order never names
+// an NPC the GM has not revealed, nor shows its linked monster's picture,
+// even after the NPC is deleted.
+func TestCombatHidesUnrevealedNPC(t *testing.T) {
+	f := newLiveFixture(t)
+	ctx := t.Context()
+	const pic = "https://example.com/vampire.png"
+	if err := f.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "vampire", Name: "Vampire", SourceKey: "test", DataJson: "{}"}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := f.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "vampire"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.q().SetCompendiumImage(ctx, sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: pic, Valid: true}, ID: m.ID}); err != nil {
+		t.Fatal(err)
+	}
+	secret, err := f.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: f.campaignID, Kind: "npc", Name: "Vampire Mayor", FieldsJson: "{}", CompendiumRef: nullID(m.ID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]int64{}
+	for _, p := range []sqlc.CreateCombatantParams{
+		{EncounterID: f.encounter, EntityID: nullID(secret.ID), MonsterRef: nullID(m.ID), Name: "Vampire Mayor"},
+		{EncounterID: f.encounter, EntityID: nullID(f.entity), Name: "Mira"},
+	} {
+		cb, err := f.q().CreateCombatant(ctx, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[p.Name] = cb.ID
+	}
+	enc, err := f.q().GetEncounter(ctx, f.encounter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	player := perm.Player(f.characterID)
+	row := func(t *testing.T, v perm.Viewer, combatantID int64) views.CombatantView {
+		t.Helper()
+		ev, err := f.app.encounterView(ctx, v, enc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(ev.Combatants, func(c views.CombatantView) bool { return c.ID == combatantID })
+		if i < 0 {
+			t.Fatal("combatant not in the turn order")
+		}
+		return ev.Combatants[i]
+	}
+	tests := []struct {
+		name       string
+		viewer     perm.Viewer
+		combatant  string
+		want, wPic string
+	}{
+		{"player sees no hidden name or picture", player, "Vampire Mayor", hiddenNPCName, ""},
+		{"player sees a revealed name", player, "Mira", "Mira", ""},
+		{"GM sees the hidden name and picture", perm.GM, "Vampire Mayor", "Vampire Mayor", pic},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := row(t, tt.viewer, ids[tt.combatant]); got.Name != tt.want || got.Portrait != tt.wPic {
+				t.Errorf("name, portrait = %q, %q, want %q, %q", got.Name, got.Portrait, tt.want, tt.wPic)
+			}
+		})
+	}
+	// Deleting the NPC leaves its combatant without a link: the stored name stays hidden too.
+	gm := f.token(t, enum.RoleAdmin)
+	if w := f.do(t, http.MethodPost, route.Path(route.EntityDelete, secret.ID), gm, url.Values{}, true); w.Code >= http.StatusBadRequest {
+		t.Fatalf("delete NPC: %d %s", w.Code, w.Body)
+	}
+	if got := row(t, player, ids["Vampire Mayor"]); got.Name != hiddenNPCName {
+		t.Errorf("after delete, player sees %q", got.Name)
+	}
+}
+
 // TestLiveAffects checks which published topics reach which views.
 func TestLiveAffects(t *testing.T) {
 	a := &App{}
