@@ -843,7 +843,8 @@ SELECT n.id AS note_id, n.title, b.id AS block_id, b.text
 FROM note_blocks AS b
 JOIN notes AS n ON n.id = b.note_id
 WHERE n.campaign_id = ?1
-  AND (n.title LIKE ?2 OR b.text LIKE ?2)
+  AND (instr(lower(n.title), lower(CAST(?2 AS TEXT))) > 0
+       OR instr(lower(b.text), lower(CAST(?2 AS TEXT))) > 0)
   AND (
     (CAST(?3 AS BOOLEAN) AND b.visibility <> 'owner')
     OR (NOT CAST(?3 AS BOOLEAN) AND CAST(?4 AS INTEGER) <> 0 AND (
@@ -860,7 +861,7 @@ LIMIT ?5
 
 type SearchReadableBlocksParams struct {
 	CampaignID  int64
-	Pattern     string
+	Query       string
 	IsGm        bool
 	CharacterID int64
 	MaxResults  int64
@@ -873,10 +874,12 @@ type SearchReadableBlocksRow struct {
 	Text    string
 }
 
+// SearchReadableBlocks matches query as plain text (instr, unlike LIKE, has
+// no wildcards), ignoring ASCII case.
 func (q *Queries) SearchReadableBlocks(ctx context.Context, arg SearchReadableBlocksParams) ([]SearchReadableBlocksRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchReadableBlocks,
 		arg.CampaignID,
-		arg.Pattern,
+		arg.Query,
 		arg.IsGm,
 		arg.CharacterID,
 		arg.MaxResults,

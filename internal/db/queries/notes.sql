@@ -70,12 +70,15 @@ WHERE b.note_id = sqlc.arg(note_id)
   )
 ORDER BY b.position, b.id;
 
+-- SearchReadableBlocks matches query as plain text (instr, unlike LIKE, has
+-- no wildcards), ignoring ASCII case.
 -- name: SearchReadableBlocks :many
 SELECT n.id AS note_id, n.title, b.id AS block_id, b.text
 FROM note_blocks AS b
 JOIN notes AS n ON n.id = b.note_id
 WHERE n.campaign_id = sqlc.arg(campaign_id)
-  AND (n.title LIKE sqlc.arg(pattern) OR b.text LIKE sqlc.arg(pattern))
+  AND (instr(lower(n.title), lower(CAST(sqlc.arg(query) AS TEXT))) > 0
+       OR instr(lower(b.text), lower(CAST(sqlc.arg(query) AS TEXT))) > 0)
   AND (
     (CAST(sqlc.arg(is_gm) AS BOOLEAN) AND b.visibility <> 'owner')
     OR (NOT CAST(sqlc.arg(is_gm) AS BOOLEAN) AND CAST(sqlc.arg(character_id) AS INTEGER) <> 0 AND (

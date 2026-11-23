@@ -84,7 +84,7 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 				}
 
 				hits, err := q.SearchReadableBlocks(ctx, sqlc.SearchReadableBlocksParams{
-					CampaignID: camp.ID, Pattern: "%needle " + tt.name + "%", IsGm: isGM, CharacterID: char, MaxResults: 10,
+					CampaignID: camp.ID, Query: "needle " + tt.name, IsGm: isGM, CharacterID: char, MaxResults: 10,
 				})
 				if err != nil {
 					t.Fatal(err)

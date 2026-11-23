@@ -198,7 +198,7 @@ SELECT i.id, i.campaign_id, i.name, i.url, i.attachment_id, i.category_id, i.des
 FROM images AS i
 LEFT JOIN image_categories AS c ON c.id = i.category_id
 WHERE i.campaign_id = ?1
-  AND i.name LIKE '%' || CAST(?2 AS TEXT) || '%'
+  AND instr(lower(i.name), lower(CAST(?2 AS TEXT))) > 0
   AND (CAST(?3 AS INTEGER) = 0 OR i.category_id = CAST(?3 AS INTEGER))
 ORDER BY i.name COLLATE NOCASE
 `
@@ -221,7 +221,8 @@ type ListImagesRow struct {
 	Category     string
 }
 
-// ListImages filters by name (empty q matches all) and category (0 for any).
+// ListImages filters by name (empty q matches all; instr, unlike LIKE, has
+// no wildcards) and category (0 for any).
 func (q *Queries) ListImages(ctx context.Context, arg ListImagesParams) ([]ListImagesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listImages, arg.CampaignID, arg.Q, arg.CategoryID)
 	if err != nil {

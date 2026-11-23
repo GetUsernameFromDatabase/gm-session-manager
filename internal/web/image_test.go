@@ -957,3 +957,21 @@ func (h *hookReader) Read(p []byte) (int, error) {
 	}
 	return h.r.Read(p)
 }
+
+// TestImageSearchLiteral: % and _ in a search are plain characters, not
+// LIKE wildcards.
+func TestImageSearchLiteral(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	for _, name := range []string{"50% off", "500 gold", "a_b", "axb", `back\slash`} {
+		if _, err := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: name, Url: sql.NullString{String: "https://example.com/x.png", Valid: true}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for q, want := range map[string]string{"50%": "50% off", "a_b": "a_b", `k\s`: `back\slash`, "OFF": "50% off"} {
+		imgs, err := e.q().ListImages(ctx, sqlc.ListImagesParams{CampaignID: e.campaignID, Q: q})
+		if err != nil || len(imgs) != 1 || imgs[0].Name != want {
+			t.Errorf("search %q = %v %v, want only %q", q, imgs, err, want)
+		}
+	}
+}

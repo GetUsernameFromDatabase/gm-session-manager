@@ -62,7 +62,7 @@ func (a *App) notesPage(c *gin.Context) error {
 	v := views.NoteListView{CampaignID: id, Notes: notes, Query: strings.TrimSpace(c.Query("q")), CanCreate: true}
 	if v.Query != "" {
 		v.Hits, err = a.Store.SearchReadableBlocks(ctx, sqlc.SearchReadableBlocksParams{
-			CampaignID: id, Pattern: "%" + v.Query + "%", IsGm: w.isGM(), CharacterID: w.viewer.CharacterID, MaxResults: maxSearchHits,
+			CampaignID: id, Query: v.Query, IsGm: w.isGM(), CharacterID: w.viewer.CharacterID, MaxResults: maxSearchHits,
 		})
 		if err != nil {
 			return err

@@ -9,13 +9,14 @@ FROM images AS i
 LEFT JOIN image_categories AS c ON c.id = i.category_id
 WHERE i.id = ?;
 
--- ListImages filters by name (empty q matches all) and category (0 for any).
+-- ListImages filters by name (empty q matches all; instr, unlike LIKE, has
+-- no wildcards) and category (0 for any).
 -- name: ListImages :many
 SELECT i.*, COALESCE(c.name, '') AS category
 FROM images AS i
 LEFT JOIN image_categories AS c ON c.id = i.category_id
 WHERE i.campaign_id = sqlc.arg(campaign_id)
-  AND i.name LIKE '%' || CAST(sqlc.arg(q) AS TEXT) || '%'
+  AND instr(lower(i.name), lower(CAST(sqlc.arg(q) AS TEXT))) > 0
   AND (CAST(sqlc.arg(category_id) AS INTEGER) = 0 OR i.category_id = CAST(sqlc.arg(category_id) AS INTEGER))
 ORDER BY i.name COLLATE NOCASE;
 
