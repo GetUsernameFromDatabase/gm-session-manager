@@ -704,9 +704,11 @@ func (a *App) compendiumFolder(c *gin.Context) error {
 	// explorer exits non-zero even when it opened the folder, so only a
 	// failure to start counts; the file manager outlives the request.
 	ctx := context.WithoutCancel(c.Request.Context())
-	if err := exec.CommandContext(ctx, opener, dir).Start(); err != nil { //nolint:gosec // dir is the configured data directory, not request input
+	cmd := exec.CommandContext(ctx, opener, dir) //nolint:gosec // dir is the configured data directory, not request input
+	if err := cmd.Start(); err != nil {
 		return err
 	}
+	go func() { _ = cmd.Wait() }() // reaps it, or it stays a zombie on Linux
 	c.Status(http.StatusNoContent)
 	return nil
 }

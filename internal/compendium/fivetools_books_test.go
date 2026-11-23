@@ -377,6 +377,30 @@ func TestRemoveFiveToolsRejectsBadIDs(t *testing.T) {
 	}
 }
 
+// TestCleanDownloads: folders of interrupted downloads go, books and other sources stay.
+func TestCleanDownloads(t *testing.T) {
+	dir := t.TempDir()
+	for _, d := range []string{tmpBookPrefix + "1", oldBookPrefix + "2/book", bookFolder("xphb"), "srd-2024", fiveToolsCacheDir} {
+		if err := os.MkdirAll(filepath.Join(dir, d), 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := CleanDownloads(dir); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+	if want := []string{fiveToolsCacheDir, bookFolder("xphb"), "srd-2024"}; !slices.Equal(got, want) {
+		t.Errorf("left %v, want %v", got, want)
+	}
+}
+
 // TestDownloadLinksReprints: a tag to a 2014 record with a reprint points at
 // the reprint, keeping its words; other tags are left alone.
 func TestDownloadLinksReprints(t *testing.T) {

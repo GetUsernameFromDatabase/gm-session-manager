@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -53,7 +54,8 @@ func run() error {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	// SIGTERM is how Linux service managers and kill stop a process.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
@@ -76,6 +78,9 @@ func run() error {
 	slog.Info("tls certificate", "new", created, "sha256", join.Fingerprint(cert), "lan", lanIPs)
 
 	store := db.NewStore(conn)
+	if err := compendium.CleanDownloads(filepath.Join(cfg.DataDir, compendiumDir)); err != nil {
+		slog.Warn("removing unfinished 5etools downloads", "err", err)
+	}
 	// Each source is logged as it finishes, so a long import does not look stalled.
 	reports, err := compendium.ImportProgress(ctx, store, filepath.Join(cfg.DataDir, compendiumDir), func(done, total int, _ string) {
 		if done == 0 {

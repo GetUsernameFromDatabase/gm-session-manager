@@ -327,6 +327,11 @@ templ localTime(t time.Time) {
 	<time datetime={ t.UTC().Format(time.RFC3339) }>{ t.UTC().Format("2 Jan 2006 15:04 UTC") }</time>
 }
 
+// agoTime is localTime that app.js shows as "10 days ago", the full date on hover.
+templ agoTime(t time.Time) {
+	<time datetime={ t.UTC().Format(time.RFC3339) } data-ago>{ t.UTC().Format("2 Jan 2006 15:04 UTC") }</time>
+}
+
 // ErrorPage is a plain message page with one link onward.
 templ ErrorPage(l Layout, msg, backURL, backLabel string) {
 	@Page(l) {

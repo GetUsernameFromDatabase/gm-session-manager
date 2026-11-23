@@ -1,18 +1,37 @@
 package views
 
-import "gm-session-manager/internal/db/sqlc"
+import (
+	"slices"
+	"time"
+
+	"gm-session-manager/internal/db/sqlc"
+)
 
 // Device is one logged-in device of a character.
 type Device struct {
 	SessionID int64
-	UserAgent string // empty when not connected right now
+	// UserAgent is what the device is (OS · browser): live while online, as it
+	// last left when offline; empty for one that never left since it was saved.
+	UserAgent string
 	Online    bool
+	// LastSeen is the device's last request or disconnect; zero while online.
+	LastSeen time.Time
 }
 
 // RosterCharacter is a character with its devices.
 type RosterCharacter struct {
 	Character sqlc.Character
 	Devices   []Device
+}
+
+// Online and Offline split the devices: the card folds the offline ones away.
+func (rc RosterCharacter) Online() []Device { return devicesWhere(rc.Devices, true) }
+
+// Offline is the devices not connected now, which the GM may want to kick.
+func (rc RosterCharacter) Offline() []Device { return devicesWhere(rc.Devices, false) }
+
+func devicesWhere(ds []Device, online bool) []Device {
+	return slices.DeleteFunc(slices.Clone(ds), func(d Device) bool { return d.Online != online })
 }
 
 // Roster is the GM's live view of the table.

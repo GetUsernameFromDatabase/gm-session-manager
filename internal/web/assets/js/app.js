@@ -951,9 +951,23 @@ import { CONSOLE_LEVELS, CONSOLE_MSG, CONSOLE_PAGE, CONSOLE_SIZE, MSG, ROUTES } 
 
   // Times arrive in UTC; show them in this browser's timezone and locale.
   const localTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-  htmx.onLoad((el) =>
-    el.querySelectorAll("time[datetime]").forEach((t) => (t.textContent = localTime.format(new Date(t.dateTime)))),
-  );
+  const relTime = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  // Seconds in each unit "ago" may use, largest first.
+  const units = [["year", 31536000], ["month", 2592000], ["day", 86400], ["hour", 3600], ["minute", 60]];
+  // A <time data-ago> reads "10 days ago", the full date on hover.
+  const localize = (t) => {
+    const at = new Date(t.dateTime);
+    if (!("ago" in t.dataset)) {
+      t.textContent = localTime.format(at);
+      return;
+    }
+    const s = (at - Date.now()) / 1000;
+    const [unit, size] = units.find(([, n]) => Math.abs(s) >= n) || units.at(-1);
+    t.textContent = relTime.format(Math.trunc(s / size), unit); // rounding up would say "24 hours ago"
+    t.title = localTime.format(at);
+  };
+  htmx.onLoad((el) => el.querySelectorAll("time[datetime]").forEach(localize));
+  setInterval(() => document.querySelectorAll("time[data-ago]").forEach(localize), 60000); // "ago" moves on
 
   // On every (re)connect, tell the hub where this page is and which live
   // views it shows, so it can send what was missed, or ask for a reload

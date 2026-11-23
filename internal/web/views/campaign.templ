@@ -166,6 +166,30 @@ templ CampaignRoster(r Roster) {
 	</section>
 }
 
+// deviceRow names a device, and an offline one also when it was last seen,
+// the GM's cue for which to kick.
+templ deviceRow(d Device) {
+	<li class="flex items-center justify-between gap-2">
+		<span class="flex min-w-0 items-start gap-2">
+			<span class="mt-1.5 inline-block size-2 shrink-0 rounded-full bg-muted-foreground/40 data-[online=true]:bg-green-500" data-online={ fmt.Sprint(d.Online) }></span>
+			<span class="flex min-w-0 flex-col">
+				<span class="truncate">{ deviceLabel(d) }</span>
+				if !d.Online {
+					<span class="text-xs text-muted-foreground">
+						{ "seen " }
+						@agoTime(d.LastSeen)
+					</span>
+				}
+			</span>
+		</span>
+		@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantDestructive, Attributes: templ.Attributes{
+			"hx-post": route.Path(route.SessionKick, d.SessionID), "hx-confirm": "Kick this device? It can ask to join again.",
+		}}) {
+			Kick
+		}
+	</li>
+}
+
 templ rosterCard(r Roster, rc RosterCharacter) {
 	<div class="rounded-lg border p-3">
 		<div class="flex flex-wrap items-center justify-between gap-2">
@@ -173,18 +197,19 @@ templ rosterCard(r Roster, rc RosterCharacter) {
 			<span class="text-sm" { bind(fmt.Sprintf("text=ch.%d.hp", rc.Character.ID))... }>{ rosterHP(rc) }</span>
 		</div>
 		<ul class="mt-2 space-y-1 text-sm">
-			for _, d := range rc.Devices {
-				<li class="flex items-center justify-between gap-2">
-					{{ on := fmt.Sprintf("data-online=dev.%d.on", d.SessionID) }}
-					<span class="flex items-center gap-2">
-						<span class="inline-block size-2 rounded-full bg-muted-foreground/40 data-[online=true]:bg-green-500" data-online={ fmt.Sprint(d.Online) } { bind(on)... }></span>
-						<span class="data-[online=false]:text-muted-foreground" data-online={ fmt.Sprint(d.Online) } { bind(on, fmt.Sprintf("text=dev.%d.label", d.SessionID))... }>{ deviceLabel(d) }</span>
-					</span>
-					@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantDestructive, Attributes: templ.Attributes{
-						"hx-post": route.Path(route.SessionKick, d.SessionID), "hx-confirm": "Kick this device? It can ask to join again.",
-					}}) {
-						Kick
-					}
+			for _, d := range rc.Online() {
+				@deviceRow(d)
+			}
+			if off := rc.Offline(); len(off) > 0 {
+				<li>
+					<details id={ fmt.Sprintf("offline-%d", rc.Character.ID) } data-keep-open>
+						<summary class="cursor-pointer text-muted-foreground">{ Plural(len(off), "offline device") }</summary>
+						<ul class="mt-1 space-y-1 pl-4">
+							for _, d := range off {
+								@deviceRow(d)
+							}
+						</ul>
+					</details>
 				</li>
 			}
 			if len(rc.Devices) == 0 {

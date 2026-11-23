@@ -74,6 +74,11 @@ type Handler interface {
 // ringSize is how many events a reconnecting client can catch up on.
 const ringSize = 512
 
+// leaveGrace is how long a player device still counts as connected after
+// its last socket closed: every page load reopens the socket a moment later,
+// and the GM's device list should not jump for that.
+const leaveGrace = 3 * time.Second
+
 // outBuffer is how many messages may queue for one client before it is
 // considered stuck and dropped (it reconnects and catches up).
 const outBuffer = 64
@@ -100,6 +105,14 @@ type Hub struct {
 	ring    []event // oldest first, at most ringSize
 	clients map[*Client]struct{}
 	pending map[string]*Pending // by ID
+	// gone holds player devices within grace of leaving, by session.
+	gone  map[int64]*goneDevice
+	grace time.Duration // leaveGrace; tests shorten it
+}
+
+type goneDevice struct {
+	campaignID int64
+	info       ClientInfo
 }
 
 // New returns a hub with a fresh epoch.
@@ -109,6 +122,8 @@ func New(handler Handler) *Hub {
 		epoch:   randomID(idLen),
 		clients: map[*Client]struct{}{},
 		pending: map[string]*Pending{},
+		gone:    map[int64]*goneDevice{},
+		grace:   leaveGrace,
 	}
 }
 
@@ -176,14 +191,20 @@ func (h *Hub) closeMatching(match func(c *Client) bool) {
 	}
 }
 
-// Connected lists the clients connected to a campaign.
+// Connected lists the clients connected to a campaign, and player devices
+// within leaveGrace of leaving it.
 func (h *Hub) Connected(campaignID int64) []ClientInfo {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	var out []ClientInfo
 	for c := range h.clients {
 		if c.CampaignID == campaignID && c.Pending == nil {
-			out = append(out, ClientInfo{SessionID: c.SessionID, CharacterID: c.Viewer.CharacterID, IsGM: c.Viewer.IsGM, UserAgent: c.UserAgent, Since: c.connected})
+			out = append(out, c.info())
+		}
+	}
+	for _, g := range h.gone {
+		if g.campaignID == campaignID {
+			out = append(out, g.info)
 		}
 	}
 	slices.SortFunc(out, func(a, b ClientInfo) int { return a.Since.Compare(b.Since) })
@@ -197,6 +218,10 @@ type ClientInfo struct {
 	IsGM        bool
 	UserAgent   string
 	Since       time.Time
+}
+
+func (c *Client) info() ClientInfo {
+	return ClientInfo{SessionID: c.SessionID, CharacterID: c.Viewer.CharacterID, IsGM: c.Viewer.IsGM, UserAgent: c.UserAgent, Since: c.connected}
 }
 
 // Close disconnects everyone, for shutdown.
@@ -215,7 +240,10 @@ func (h *Hub) register(c *Client) {
 	if c.Pending != nil {
 		c.Pending.attached = true
 	}
-	h.announceDevice(c)
+	if isDevice(c) {
+		delete(h.gone, c.SessionID) // back within grace: it never left
+		h.publishLocked(c.CampaignID, Topic{Kind: TopicCampaign, ID: c.CampaignID})
+	}
 }
 
 func (h *Hub) unregister(c *Client) {
@@ -223,7 +251,9 @@ func (h *Hub) unregister(c *Client) {
 	defer h.mu.Unlock()
 	delete(h.clients, c)
 	c.stop()
-	h.announceDevice(c)
+	if isDevice(c) {
+		h.leaveLater(c)
+	}
 	if p := c.Pending; p != nil && h.pending[p.ID] == p && p.State != Approved {
 		// A dropped connection drops an unanswered or denied request; an
 		// approved one waits for its visitor (see approvedTimeout).
@@ -369,10 +399,22 @@ type message struct {
 	hello bool
 }
 
-// announceDevice tells the GM's device list that a player device came or
-// went. Callers hold h.mu.
-func (h *Hub) announceDevice(c *Client) {
-	if c.Pending == nil && c.SessionID != 0 && c.Viewer.IsPlayer() {
-		h.publishLocked(c.CampaignID, Topic{Kind: TopicCampaign, ID: c.CampaignID})
-	}
+// isDevice reports whether c is a player device the GM's device list shows.
+func isDevice(c *Client) bool {
+	return c.Pending == nil && c.SessionID != 0 && c.Viewer.IsPlayer()
+}
+
+// leaveLater tells the GM's device list that c left, unless its session
+// connects again within grace (a page load). Callers hold h.mu.
+func (h *Hub) leaveLater(c *Client) {
+	g := &goneDevice{campaignID: c.CampaignID, info: c.info()}
+	h.gone[c.SessionID] = g
+	time.AfterFunc(h.grace, func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if h.gone[c.SessionID] == g { // not back, nor left again since
+			delete(h.gone, c.SessionID)
+			h.publishLocked(g.campaignID, Topic{Kind: TopicCampaign, ID: g.campaignID})
+		}
+	})
 }

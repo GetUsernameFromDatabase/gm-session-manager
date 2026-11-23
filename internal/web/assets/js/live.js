@@ -103,8 +103,8 @@ import { ROUTES } from "/assets/js/shared.js";
   };
 
   // A refetched view replaces its markup; scrolled lists inside it keep
-  // their place (data-keep-scroll, matched by id), expanded lists stay open
-  // (data-keep-open), and tabs their active tab.
+  // their place (data-keep-scroll, matched by id), expanded lists and opened
+  // <details> stay open (data-keep-open), and tabs their active tab.
   // The old target is still in the document here, and the microtask runs
   // after the swap, before paint. Tabs wait for the settle, which puts the
   // server's classes back on their panels (they have ids).
@@ -131,11 +131,15 @@ import { ROUTES } from "/assets/js/shared.js";
         if (now) now.scrollTop = scrollTop;
       });
     }
-    for (const el of e.detail.target.querySelectorAll("[data-open][data-keep-open][id]")) {
+    for (const el of e.detail.target.querySelectorAll("[data-keep-open][id]:is([data-open], details[open])")) {
       const { id } = el;
       queueMicrotask(() => {
         const now = document.getElementById(id);
         if (!now) return;
+        if (now.localName === "details") {
+          now.open = true;
+          return;
+        }
         now.setAttribute("data-open", "");
         now.querySelector("[aria-expanded]")?.setAttribute("aria-expanded", "true");
       });

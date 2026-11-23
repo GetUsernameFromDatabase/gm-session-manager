@@ -171,11 +171,8 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 	phone := dial(t, e, srv, "", player, sheet)
 	readUntil(t, phone, "the phone's hello", hello)
 
-	// The GM's device list sees the phone come online as one value.
-	readUntil(t, gm, "the phone online", func(m wsMessage) bool {
-		set, _ := patchOf(m, roster)
-		return set[fmt.Sprintf("dev.%d.on", sess.ID)] == true
-	})
+	// The phone moves from the folded offline devices to the online rows.
+	readUntil(t, gm, "the phone online", rosterRefetch(roster))
 
 	cmd := func(c string) {
 		t.Helper()
@@ -254,6 +251,57 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 
 	e.app.Hub.CloseSession(sess.ID)
 	readUntil(t, phone, "the reload", func(m wsMessage) bool { return m.Type == "reload" })
+}
+
+// TestDeviceSeenOnLeave: a page left open sends no requests, so closing it
+// records the device's last seen time and what it is, and the GM's device
+// list hears of it.
+func TestDeviceSeenOnLeave(t *testing.T) {
+	e := newTestEnv(t)
+	srv := httptest.NewServer(e.router)
+	t.Cleanup(srv.Close)
+	player := e.token(t, enum.RolePlayer)
+	sess, err := e.mgr.Resolve(t.Context(), player)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roster := views.LiveKey(views.LiveRoster, e.campaignID)
+	hello := func(m wsMessage) bool { return m.Type == "patch" && len(m.Views) == 0 }
+	gm := dial(t, e, srv, fmt.Sprintf("?campaign=%d", e.campaignID), "", roster)
+	readUntil(t, gm, "the GM's hello", hello)
+	phone := dial(t, e, srv, "", player)
+	readUntil(t, phone, "the phone's hello", hello)
+
+	// The phone's last request was long ago; only its socket stayed open.
+	if _, err := e.conn.ExecContext(t.Context(), `UPDATE sessions SET last_seen_at = datetime('now', '-1 hour') WHERE id = ?`, sess.ID); err != nil {
+		t.Fatal(err)
+	}
+	_ = phone.Close(websocket.StatusNormalClosure, "")
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		got, err := e.app.Store.GetSession(t.Context(), sess.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if time.Since(got.LastSeenAt) < time.Minute && got.UserAgent != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("after the phone left: last seen %v, device %q", got.LastSeenAt, got.UserAgent)
+		}
+	}
+	readUntil(t, gm, "the device list reloading", rosterRefetch(roster))
+}
+
+// rosterRefetch matches a message ordering the GM's device list reloaded.
+func rosterRefetch(roster string) func(wsMessage) bool {
+	return func(m wsMessage) bool {
+		for _, v := range m.Views {
+			if v.V == roster && v.Refetch {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 var moduleImport = regexp.MustCompile(`(?:from|import)\s*"(/assets/[^"]+|\./[^"]+)"`)

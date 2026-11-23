@@ -113,27 +113,19 @@ func (e EncounterView) Shape() EncounterView {
 	return e
 }
 
-// Hot adds the roster's hit points and which devices are online.
+// Hot adds the roster's hit points. A device coming or going moves between
+// the online rows and the folded offline ones, so it refetches.
 func (r Roster) Hot(st hub.State) {
 	for _, rc := range r.Characters {
 		st[fmt.Sprintf("ch.%d.hp", rc.Character.ID)] = rosterHP(rc)
-		for _, d := range rc.Devices {
-			st[fmt.Sprintf("dev.%d.on", d.SessionID)] = d.Online
-			st[fmt.Sprintf("dev.%d.label", d.SessionID)] = deviceLabel(d)
-		}
 	}
 }
 
 // Shape is the roster with its hot values fixed.
 func (r Roster) Shape() Roster {
 	r.Characters = slices.Clone(r.Characters)
-	for i, rc := range r.Characters {
-		rc.Character.Hp, rc.Character.MaxHp = 0, 0
-		rc.Devices = slices.Clone(rc.Devices)
-		for j := range rc.Devices {
-			rc.Devices[j].Online, rc.Devices[j].UserAgent = false, ""
-		}
-		r.Characters[i] = rc
+	for i := range r.Characters {
+		r.Characters[i].Character.Hp, r.Characters[i].Character.MaxHp = 0, 0
 	}
 	return r
 }
@@ -151,11 +143,12 @@ func rosterHP(rc RosterCharacter) string {
 	return fmt.Sprintf("HP %d/%d", rc.Character.Hp, rc.Character.MaxHp)
 }
 
+// deviceLabel names a device; one saved before devices were recorded has no name yet.
 func deviceLabel(d Device) string {
 	if d.UserAgent != "" {
 		return d.UserAgent
 	}
-	return "offline device"
+	return "Unknown device"
 }
 
 // showsTracker mirrors Encounter: players never see a fight still being

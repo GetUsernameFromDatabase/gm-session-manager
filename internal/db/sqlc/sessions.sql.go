@@ -16,7 +16,7 @@ import (
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (token_hash, role, character_id)
 VALUES (?, ?, ?)
-RETURNING id, token_hash, role, character_id, last_seen_at, created_at
+RETURNING id, token_hash, role, character_id, last_seen_at, created_at, user_agent
 `
 
 type CreateSessionParams struct {
@@ -35,6 +35,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.CharacterID,
 		&i.LastSeenAt,
 		&i.CreatedAt,
+		&i.UserAgent,
 	)
 	return i, err
 }
@@ -60,7 +61,7 @@ func (q *Queries) DeleteSession(ctx context.Context, id int64) error {
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, token_hash, role, character_id, last_seen_at, created_at FROM sessions
+SELECT id, token_hash, role, character_id, last_seen_at, created_at, user_agent FROM sessions
 WHERE id = ?
 `
 
@@ -74,12 +75,13 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (Session, error) {
 		&i.CharacterID,
 		&i.LastSeenAt,
 		&i.CreatedAt,
+		&i.UserAgent,
 	)
 	return i, err
 }
 
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
-SELECT id, token_hash, role, character_id, last_seen_at, created_at FROM sessions
+SELECT id, token_hash, role, character_id, last_seen_at, created_at, user_agent FROM sessions
 WHERE token_hash = ?
 `
 
@@ -93,12 +95,32 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (
 		&i.CharacterID,
 		&i.LastSeenAt,
 		&i.CreatedAt,
+		&i.UserAgent,
 	)
 	return i, err
 }
 
+const leaveSession = `-- name: LeaveSession :exec
+UPDATE sessions
+SET last_seen_at = CURRENT_TIMESTAMP, user_agent = ?
+WHERE id = ?
+`
+
+type LeaveSessionParams struct {
+	UserAgent string
+	ID        int64
+}
+
+// LeaveSession records a device's page closing: when, and what it was, for
+// the GM's offline devices. A page left open sends no requests, so its last
+// one may be hours old.
+func (q *Queries) LeaveSession(ctx context.Context, arg LeaveSessionParams) error {
+	_, err := q.db.ExecContext(ctx, leaveSession, arg.UserAgent, arg.ID)
+	return err
+}
+
 const listPlayerSessionsByCampaign = `-- name: ListPlayerSessionsByCampaign :many
-SELECT s.id, s.character_id, s.last_seen_at, s.created_at, c.name AS character_name
+SELECT s.id, s.character_id, s.last_seen_at, s.user_agent, s.created_at, c.name AS character_name
 FROM sessions AS s
 JOIN characters AS c ON c.id = s.character_id
 WHERE c.campaign_id = ? AND c.deleted_at IS NULL
@@ -109,6 +131,7 @@ type ListPlayerSessionsByCampaignRow struct {
 	ID            int64
 	CharacterID   sql.NullInt64
 	LastSeenAt    time.Time
+	UserAgent     string
 	CreatedAt     time.Time
 	CharacterName string
 }
@@ -126,6 +149,7 @@ func (q *Queries) ListPlayerSessionsByCampaign(ctx context.Context, campaignID i
 			&i.ID,
 			&i.CharacterID,
 			&i.LastSeenAt,
+			&i.UserAgent,
 			&i.CreatedAt,
 			&i.CharacterName,
 		); err != nil {
@@ -148,8 +172,9 @@ SET last_seen_at = CURRENT_TIMESTAMP
 WHERE id = ? AND last_seen_at < datetime('now', '-1 minute')
 `
 
-// TouchSession updates last_seen_at at most once a minute so ordinary
-// requests do not each cost a write.
+// TouchSession records when a device was last seen, for the GM's device
+// list: at most once a minute, so ordinary requests do not each cost a
+// write.
 func (q *Queries) TouchSession(ctx context.Context, id int64) error {
 	_, err := q.db.ExecContext(ctx, touchSession, id)
 	return err

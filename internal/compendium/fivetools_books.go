@@ -30,6 +30,10 @@ const (
 	fiveToolsCacheDir = ".5etools"
 	bookFile          = "book.json"
 	defaultPublisher  = "Wizards of the Coast"
+	// A book downloads into tmpBookPrefix* and the copy it replaces waits in
+	// oldBookPrefix*; the import skips both (dot folders).
+	tmpBookPrefix = ".tmp-5etools-"
+	oldBookPrefix = ".old-5etools-"
 )
 
 // fiveToolsBase is the data folder of the mirror; tests point it at httptest.
@@ -756,7 +760,7 @@ func DownloadFiveTools(ctx context.Context, dir string, books []Book, progress f
 }
 
 func downloadBook(m *mirror, dir string, b Book) error {
-	tmp, err := os.MkdirTemp(dir, ".tmp-5etools-")
+	tmp, err := os.MkdirTemp(dir, tmpBookPrefix)
 	if err != nil {
 		return err
 	}
@@ -775,7 +779,7 @@ func downloadBook(m *mirror, dir string, b Book) error {
 	// loses nothing.
 	old := ""
 	if _, err := os.Stat(final); err == nil {
-		if old, err = os.MkdirTemp(dir, ".old-5etools-"); err != nil {
+		if old, err = os.MkdirTemp(dir, oldBookPrefix); err != nil {
 			return err
 		}
 		old = filepath.Join(old, "book")
@@ -795,6 +799,21 @@ func downloadBook(m *mirror, dir string, b Book) error {
 		_ = os.RemoveAll(filepath.Dir(old))
 	}
 	return nil
+}
+
+// CleanDownloads deletes the folders of downloads the host was closed
+// during; their own cleanup never ran. Call it before any download starts.
+// A book caught mid-swap loses its old copy and shows as not downloaded.
+func CleanDownloads(dir string) error {
+	var errs error
+	for _, prefix := range []string{tmpBookPrefix, oldBookPrefix} {
+		left, err := filepath.Glob(filepath.Join(dir, prefix+"*"))
+		errs = errors.Join(errs, err)
+		for _, p := range left {
+			errs = errors.Join(errs, os.RemoveAll(p))
+		}
+	}
+	return errs
 }
 
 // RemoveFiveTools deletes a book's folder.

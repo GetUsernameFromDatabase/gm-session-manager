@@ -273,19 +273,39 @@ func TestPendingCapPerAddr(t *testing.T) {
 
 func TestDeviceAnnouncements(t *testing.T) {
 	h := New(fakeHandler{})
+	h.grace = 50 * time.Millisecond
 	gm := NewClient(1, perm.GM, 0, "pc")
 	h.register(gm)
 	h.sync(gm, h.epoch, 0, true)
 	drain(gm)
+	listed := func() bool {
+		return slices.ContainsFunc(h.Connected(1), func(ci ClientInfo) bool { return ci.SessionID == 100 })
+	}
 
 	phone := NewClient(1, perm.Player(7), 100, "phone")
 	h.register(phone)
 	if m := drain(gm); len(m) != 1 || m[0].topics[0].Kind != TopicCampaign {
 		t.Errorf("connect not announced: %+v", m)
 	}
+
+	// A page load: the socket closes and the next page's opens within grace.
 	h.unregister(phone)
-	if m := drain(gm); len(m) != 1 {
-		t.Errorf("disconnect not announced: %+v", m)
+	if m := drain(gm); len(m) != 0 || !listed() {
+		t.Errorf("leaving announced at once (%+v) or unlisted (%v)", m, !listed())
+	}
+	phone = NewClient(1, perm.Player(7), 100, "phone")
+	h.register(phone)
+	drain(gm)
+	time.Sleep(2 * h.grace)
+	if m := drain(gm); len(m) != 0 {
+		t.Errorf("a page load announced a departure: %+v", m)
+	}
+
+	// Really gone: announced once grace ends, and no longer listed.
+	h.unregister(phone)
+	time.Sleep(2 * h.grace)
+	if m := drain(gm); len(m) != 1 || listed() {
+		t.Errorf("departure: messages %+v, still listed %v", m, listed())
 	}
 	visitor := NewClient(1, perm.Viewer{}, 0, "phone")
 	h.register(visitor)

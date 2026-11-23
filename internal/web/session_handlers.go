@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -475,4 +476,16 @@ func (a *App) websocket(c *gin.Context) {
 		client.Pending = p
 	}
 	a.Hub.Serve(c.Writer, c.Request, client)
+	if w.character != nil && sessionID != 0 {
+		a.seenLeaving(c.Request.Context(), sessionID, ua)
+	}
+}
+
+// seenLeaving records a player device's page closing, so the GM's list of
+// offline devices can say what and when. The hub tells that list once the
+// device's leave grace ends, well after this write.
+func (a *App) seenLeaving(ctx context.Context, sessionID int64, userAgent string) {
+	if err := a.Store.LeaveSession(context.WithoutCancel(ctx), sqlc.LeaveSessionParams{ID: sessionID, UserAgent: userAgent}); err != nil { // the request is over
+		slog.Error("record device leaving", "err", err)
+	}
 }

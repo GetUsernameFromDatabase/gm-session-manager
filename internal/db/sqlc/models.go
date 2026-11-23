@@ -262,4 +262,5 @@ type Session struct {
 	CharacterID sql.NullInt64
 	LastSeenAt  time.Time
 	CreatedAt   time.Time
+	UserAgent   string
 }

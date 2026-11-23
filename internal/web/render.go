@@ -91,7 +91,11 @@ func (a *App) roster(ctx context.Context, campaignID int64) (views.Roster, error
 		for _, s := range sessions {
 			if s.CharacterID.Int64 == ch.ID {
 				ua, on := online[s.ID]
-				rc.Devices = append(rc.Devices, views.Device{SessionID: s.ID, UserAgent: ua, Online: on})
+				d := views.Device{SessionID: s.ID, UserAgent: ua, Online: on}
+				if !on {
+					d.UserAgent, d.LastSeen = s.UserAgent, s.LastSeenAt
+				}
+				rc.Devices = append(rc.Devices, d)
 			}
 		}
 		r.Characters = append(r.Characters, rc)
