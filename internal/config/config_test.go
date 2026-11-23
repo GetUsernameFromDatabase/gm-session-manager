@@ -1,6 +1,7 @@
 package config
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,12 +22,8 @@ func TestFromLookup(t *testing.T) {
 	}
 	with := func(overrides map[string]string) map[string]string {
 		m := map[string]string{}
-		for k, v := range valid {
-			m[k] = v
-		}
-		for k, v := range overrides {
-			m[k] = v
-		}
+		maps.Copy(m, valid)
+		maps.Copy(m, overrides)
 		return m
 	}
 

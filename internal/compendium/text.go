@@ -62,10 +62,10 @@ var reFeatureHead = regexp.MustCompile(`(?i)^level\s+(\d+(?:\s*,\s*\d+)*)\s*:\s*
 // (reFeatureHead) and its description runs to the next heading.
 func ParseFeatures(text string) []ClassFeature {
 	var out []ClassFeature
-	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
 		if m := reFeatureHead.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
 			f := ClassFeature{Name: m[2], Subclass: m[3] != ""}
-			for _, l := range strings.Split(m[1], ",") {
+			for l := range strings.SplitSeq(m[1], ",") {
 				n, _ := strconv.Atoi(strings.TrimSpace(l))
 				f.Levels = append(f.Levels, n)
 			}
@@ -92,7 +92,7 @@ func FeaturesText(fs []ClassFeature) string {
 		if f.Subclass {
 			b.WriteString(" (subclass)")
 		}
-		b.WriteString("\n" + f.Desc + "\n\n")
+		fmt.Fprintf(&b, "\n%s\n\n", f.Desc)
 	}
 	return strings.TrimSpace(b.String())
 }
@@ -101,7 +101,7 @@ func FeaturesText(fs []ClassFeature) string {
 // 3, …" gives the value at levels 1, 2, 3…; "-" or nothing skips a level.
 func ParseTable(text string) map[string]map[int]string {
 	out := map[string]map[int]string{}
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		name, values, ok := strings.Cut(line, ":")
 		if name = strings.TrimSpace(name); !ok || name == "" {
 			continue
@@ -170,7 +170,7 @@ func withCoreTraits(desc string, rows map[string]string) string {
 // withoutTable drops table rows from desc, leaving the prose.
 func withoutTable(desc string) string {
 	var keep []string
-	for _, line := range strings.Split(desc, "\n") {
+	for line := range strings.SplitSeq(desc, "\n") {
 		if !strings.HasPrefix(strings.TrimSpace(line), "|") {
 			keep = append(keep, line)
 		}

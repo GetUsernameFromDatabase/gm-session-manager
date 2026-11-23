@@ -429,8 +429,7 @@ func (a *App) levelUp(c *gin.Context) error {
 			}
 			maxHP := dc.MaxHP
 			if err := dc.LevelUp(choice); err != nil {
-				var ae dnd5e.ASIError
-				if errors.As(err, &ae) {
+				if _, ok := errors.AsType[dnd5e.ASIError](err); ok {
 					return fieldError{userError{err}, views.FieldASI}
 				}
 				return userError{err}

@@ -556,7 +556,7 @@ func EntityList(v EntityListView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = npcPortrait(e, "group-data-[hidden]/npc:opacity-60 group-data-[hidden]/npc:grayscale").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = npcPortrait(e, "group-data-hidden/npc:opacity-60 group-data-hidden/npc:grayscale").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2177,7 +2177,7 @@ func fieldRow(base, key string, f perm.Field) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "\" data-field-value><div class=\"font-serif group-data-[raw]/fields:hidden\" data-field-editor></div><div class=\"hidden group-data-[raw]/fields:block\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "\" data-field-value><div class=\"font-serif group-data-raw/fields:hidden\" data-field-editor></div><div class=\"hidden group-data-raw/fields:block\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

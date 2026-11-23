@@ -145,7 +145,7 @@ var rarityColors = map[string]string{
 // textOnly keeps the text colours of a badge's classes, dropping its tint.
 func textOnly(classes string) string {
 	var out []string
-	for _, c := range strings.Fields(classes) {
+	for c := range strings.FieldsSeq(classes) {
 		if strings.HasPrefix(c, "text-") || strings.HasPrefix(c, "dark:text-") {
 			out = append(out, c)
 		}
@@ -160,7 +160,7 @@ func crText(cr string) string { return crFractions.Replace(cr) }
 
 // chipRow wraps filter chips on desktop; on phones they make one line that
 // swipes sideways, keeping the sticky filters short.
-const chipRow = "flex flex-wrap gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:pb-1 max-md:[&>*]:shrink-0"
+const chipRow = "flex flex-wrap gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:pb-1 max-md:*:shrink-0"
 
 func habitatCountMap(rows []sqlc.CountHabitatsRow) map[enum.Habitat]int64 {
 	m := map[enum.Habitat]int64{}

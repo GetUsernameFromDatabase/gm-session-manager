@@ -280,8 +280,8 @@ templ importTabs(n ImportNotice) {
 			<div class="flex flex-wrap items-center gap-2">
 				<code class="min-w-0 rounded bg-muted px-2 py-1 font-mono text-xs break-all">{ n.Dir }</code>
 				@button.Button(button.Props{Size: button.SizeIconSm, Variant: button.VariantGhost, Class: "group", Attributes: templ.Attributes{"data-copy": n.Dir, "aria-label": "Copy folder path", "title": "Copy folder path"}}) {
-					@icon.Copy(icon.Props{Size: 16, Class: "group-data-[copied]:hidden"})
-					@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-[copied]:block"})
+					@icon.Copy(icon.Props{Size: 16, Class: "group-data-copied:hidden"})
+					@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-copied:block"})
 				}
 				if n.OnHost {
 					@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": route.Compendium + route.CompendiumFolder, "hx-swap": "none"}}) {

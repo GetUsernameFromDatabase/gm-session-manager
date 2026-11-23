@@ -133,11 +133,13 @@ var (
 
 // featText is a feat's description and parts, for the reFeat patterns.
 func featText(td *compendium.TextData) string {
-	text := td.Desc
+	var text strings.Builder
+	text.WriteString(td.Desc)
 	for _, p := range td.Parts {
-		text += "\n" + p.Desc
+		text.WriteString("\n")
+		text.WriteString(p.Desc)
 	}
-	return text
+	return text.String()
 }
 
 // featMasteries is how many weapon kinds a feat lets the sheet master

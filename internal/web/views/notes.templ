@@ -390,7 +390,7 @@ templ visibilityFields(v NoteView, current enum.Visibility, editable bool, audie
 templ checkField(name, value string, checked bool) {
 	// Dims while a capped group (data-max-checked, app.js) greys the box out;
 	// no clicks, as the label would pass one on to the box's enabled input.
-	@label.Label(label.Props{Class: "font-normal has-[[data-disabled]]:pointer-events-none has-[[data-disabled]]:opacity-50"}) {
+	@label.Label(label.Props{Class: "font-normal has-data-disabled:pointer-events-none has-data-disabled:opacity-50"}) {
 		@checkbox.Checkbox(checkbox.Props{Name: name, Value: value, DefaultChecked: checked})
 		{ children... }
 	}

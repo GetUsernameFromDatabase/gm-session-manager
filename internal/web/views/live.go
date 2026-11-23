@@ -5,6 +5,7 @@ package views
 import (
 	"database/sql"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -56,9 +57,7 @@ func bind(spec ...string) templ.Attributes {
 func with(sets ...templ.Attributes) templ.Attributes {
 	out := templ.Attributes{}
 	for _, s := range sets {
-		for k, v := range s {
-			out[k] = v
-		}
+		maps.Copy(out, s)
 	}
 	return out
 }

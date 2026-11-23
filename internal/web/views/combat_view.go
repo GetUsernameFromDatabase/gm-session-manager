@@ -267,15 +267,15 @@ func (e EncounterView) playerGroups() []combatantGroup {
 // nameKey splits a trailing number off a name, so "Bandit 2" sorts before
 // "Bandit 10".
 func nameKey(name string) (string, int) {
-	i := strings.LastIndexByte(name, ' ')
-	if i < 0 {
+	before, after, ok := strings.CutLast(name, " ")
+	if !ok {
 		return name, 0
 	}
-	n, err := strconv.Atoi(name[i+1:])
+	n, err := strconv.Atoi(after)
 	if err != nil {
 		return name, 0
 	}
-	return name[:i], n
+	return before, n
 }
 
 // quietDestructive styles the small × removes that repeat on every row or

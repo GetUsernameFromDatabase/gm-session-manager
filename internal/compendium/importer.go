@@ -514,7 +514,7 @@ func (in HomebrewInput) Entry() (Entry, error) {
 		e.Text = joinText(in.Desc, d.searchText())
 	case enum.KindSpell:
 		var classes []string
-		for _, c := range strings.Split(in.Classes, ",") {
+		for c := range strings.SplitSeq(in.Classes, ",") {
 			if c = Slugify(c); c != "" {
 				classes = append(classes, c)
 			}

@@ -9,8 +9,8 @@ import (
 // SplitList splits "A, B, and C" (or "A and B", "A, or B") into its items.
 func SplitList(s string) []string {
 	var out []string
-	for _, part := range strings.Split(s, ",") {
-		for _, item := range strings.Split(part, " and ") {
+	for part := range strings.SplitSeq(s, ",") {
+		for item := range strings.SplitSeq(part, " and ") {
 			item = strings.TrimSpace(item)
 			item = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(item, "or "), "and "))
 			if item != "" {

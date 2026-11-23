@@ -37,8 +37,8 @@ templ joinPanel(j JoinInfo) {
 						<div class="flex items-center gap-1">
 							<p class="min-w-0 font-mono wrap-anywhere">{ u }</p>
 							@button.Button(button.Props{Size: button.SizeIconSm, Variant: button.VariantGhost, Class: "group shrink-0", Attributes: templ.Attributes{"data-copy": u, "aria-label": "Copy join link", "title": "Copy join link"}}) {
-								@icon.Copy(icon.Props{Size: 16, Class: "group-data-[copied]:hidden"})
-								@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-[copied]:block"})
+								@icon.Copy(icon.Props{Size: 16, Class: "group-data-copied:hidden"})
+								@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-copied:block"})
 							}
 						</div>
 					}

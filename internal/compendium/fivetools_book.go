@@ -1139,7 +1139,7 @@ func ftParts(raws []json.RawMessage) (string, []NameDesc) {
 func ftTable(caption string, labels []string, rows [][]json.RawMessage) string {
 	var b strings.Builder
 	if caption != "" {
-		b.WriteString("Table: " + plainTags(caption) + "\n\n")
+		fmt.Fprintf(&b, "Table: %s\n\n", plainTags(caption))
 	}
 	cols := len(labels)
 	for _, r := range rows {
@@ -1151,13 +1151,13 @@ func ftTable(caption string, labels []string, rows [][]json.RawMessage) string {
 			head[i] = plainTags(labels[i])
 		}
 	}
-	b.WriteString("| " + strings.Join(head, " | ") + " |\n|" + strings.Repeat("---|", cols) + "\n")
+	fmt.Fprintf(&b, "| %s |\n|%s\n", strings.Join(head, " | "), strings.Repeat("---|", cols))
 	for _, r := range rows {
 		cells := make([]string, cols)
 		for i, c := range r {
 			cells[i] = ftCell(c)
 		}
-		b.WriteString("| " + strings.Join(cells, " | ") + " |\n")
+		fmt.Fprintf(&b, "| %s |\n", strings.Join(cells, " | "))
 	}
 	return strings.TrimSpace(b.String())
 }

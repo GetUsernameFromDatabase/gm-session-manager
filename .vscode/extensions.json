@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "a-h.templ",
+    "bradlc.vscode-tailwindcss",
+    "davidanson.vscode-markdownlint",
+    "esbenp.prettier-vscode",
+    "golang.go",
+    "redhat.vscode-yaml",
+    "yzhang.markdown-all-in-one"
+  ]
+}

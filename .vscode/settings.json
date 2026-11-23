@@ -1,0 +1,35 @@
+{
+  // https://templ.guide/developer-tools/ide-support#tailwind-css-intellisense
+  "tailwindCSS.includeLanguages": {
+    "templ": "html"
+  },
+  // https://templ.guide/developer-tools/ide-support#emmet-html-completion
+  "emmet.includeLanguages": {
+    "templ": "html"
+  },
+  // https://github.com/golang/vscode-go/wiki/features#lint-errors
+  "gopls": {
+    // https://github.com/golang/vscode-go/wiki/settings#uidiagnosticstaticcheck
+    "ui.diagnostic.staticcheck": true,
+    // the checks golangci-lint v2 leaves out of staticcheck by default
+    "ui.diagnostic.analyses": {
+      "ST1000": false,
+      "ST1003": false,
+      "ST1016": false,
+      "ST1020": false,
+      "ST1021": false,
+      "ST1022": false,
+      // templ's generated code reassigns ctx and its error variable on every render, so
+      // this fires all over .templ files. golangci-lint (on save, lint.sh) still checks it in .go files.
+      "SA4006": false
+    }
+  },
+  // https://golangci-lint.run/docs/welcome/integrations/#visual-studio-code
+  "go.lintTool": "golangci-lint-v2",
+  "go.lintFlags": ["--path-mode=abs"],
+  "go.formatTool": "custom",
+  "go.alternateTools": {
+    "customFormatter": "golangci-lint-v2"
+  },
+  "go.formatFlags": ["fmt", "--stdin"]
+}

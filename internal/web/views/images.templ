@@ -295,9 +295,9 @@ templ imagePreview(img ImageItem) {
 			alt={ utils.IfElse(img.Name == "", "Preview", img.Name) }
 			data-image-preview={ src }
 			hidden?={ src == "" }
-			class="flex items-center justify-center text-center max-h-[70vh] min-h-48 w-full object-contain text-sm text-white/60 [&[hidden]]:hidden"
+			class="flex items-center justify-center text-center max-h-[70vh] min-h-48 w-full object-contain text-sm text-white/60 [[hidden]]:hidden"
 		/>
-		<div data-image-preview-empty hidden?={ src != "" } class="flex aspect-video flex-col items-center justify-center gap-2 text-sm text-white/60 [&[hidden]]:hidden">
+		<div data-image-preview-empty hidden?={ src != "" } class="flex aspect-video flex-col items-center justify-center gap-2 text-sm text-white/60 [[hidden]]:hidden">
 			@icon.Image()
 			Add a link or upload a file. The preview shows here.
 		</div>
@@ -353,7 +353,7 @@ templ imageForm(v ImageView) {
 // input inputID names no item, app.js shows it; it adds the text as an item
 // (from the list's template[data-combobox-create-item]) and selects it.
 templ createButton(inputID string) {
-	@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm, Class: "m-1 justify-start [&[hidden]]:hidden", Attributes: templ.Attributes{"data-combobox-create": inputID, "hidden": true}}) {
+	@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm, Class: "m-1 justify-start [[hidden]]:hidden", Attributes: templ.Attributes{"data-combobox-create": inputID, "hidden": true}}) {
 		@icon.Plus()
 		<span></span>
 	}

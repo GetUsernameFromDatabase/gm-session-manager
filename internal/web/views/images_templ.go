@@ -1616,7 +1616,7 @@ func imagePreview(img ImageItem) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, " class=\"flex items-center justify-center text-center max-h-[70vh] min-h-48 w-full object-contain text-sm text-white/60 [&[hidden]]:hidden\"><div data-image-preview-empty")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, " class=\"flex items-center justify-center text-center max-h-[70vh] min-h-48 w-full object-contain text-sm text-white/60 [[hidden]]:hidden\"><div data-image-preview-empty")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1626,7 +1626,7 @@ func imagePreview(img ImageItem) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, " class=\"flex aspect-video flex-col items-center justify-center gap-2 text-sm text-white/60 [&[hidden]]:hidden\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, " class=\"flex aspect-video flex-col items-center justify-center gap-2 text-sm text-white/60 [[hidden]]:hidden\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1964,7 +1964,7 @@ func createButton(inputID string) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm, Class: "m-1 justify-start [&[hidden]]:hidden", Attributes: templ.Attributes{"data-combobox-create": inputID, "hidden": true}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var83), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantGhost, Size: button.SizeSm, Class: "m-1 justify-start [[hidden]]:hidden", Attributes: templ.Attributes{"data-combobox-create": inputID, "hidden": true}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var83), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -100,10 +100,11 @@ templ encounterLinks(campaignID int64, encounters []sqlc.Encounter, current int6
 			}
 		>
 			{ e.Name }
-			if e.Status == enum.EncounterActive {
-				<span class="text-green-600">●</span>
-			} else if e.Status == enum.EncounterEnded {
-				<span class="text-muted-foreground">(ended)</span>
+			switch e.Status {
+				case enum.EncounterActive:
+					<span class="text-green-600">●</span>
+				case enum.EncounterEnded:
+					<span class="text-muted-foreground">(ended)</span>
 			}
 		</a>
 	}
@@ -215,7 +216,7 @@ templ combatantRow(e EncounterView, c CombatantView) {
 			@beingBadge(c)
 			@turnBadges(c)
 		</span>
-		<div class="flex flex-wrap items-center gap-2 max-md:basis-full max-md:pl-[6.75rem]">
+		<div class="flex flex-wrap items-center gap-2 max-md:basis-full max-md:pl-27">
 			@input.Input(input.Props{Name: "marker", Value: c.Marker, Placeholder: "Marker", Class: "h-7 w-24", Attributes: templ.Attributes{
 				"aria-label": "Table marker", "title": "Which piece on the table, e.g. mini 5", "maxlength": fmt.Sprint(MaxMarker),
 				"hx-post": route.Path(route.CombatantAction, c.ID, "marker"), "hx-trigger": "change",
@@ -244,7 +245,7 @@ templ combatantRow(e EncounterView, c CombatantView) {
 		</div>
 		// Conditions get their own line, so adding one moves no control.
 		if len(c.Conditions) > 0 {
-			<div class="flex basis-full flex-wrap items-center gap-1 pl-[6.75rem]">
+			<div class="flex basis-full flex-wrap items-center gap-1 pl-27">
 				for _, cond := range c.Conditions {
 					@combatCondition(cond, c.HeldLabels, true)
 				}
@@ -742,7 +743,7 @@ templ formSelect(id, name string, items []selectcomp.ItemData, value, class, con
 		}
 		// Opens below the trigger: aligning the selected item with it would push
 		// the list up the screen once a later item is chosen.
-		@selectcomp.Content(selectcomp.ContentProps{Class: utils.CN("max-h-60", wideList, contentClass), AlignItemWithTrigger: utils.Ptr(false), Align: selectcomp.AlignStart}) {
+		@selectcomp.Content(selectcomp.ContentProps{Class: utils.CN("max-h-60", wideList, contentClass), AlignItemWithTrigger: new(false), Align: selectcomp.AlignStart}) {
 			for _, it := range items {
 				// The item's text wrapper is a flex nowrap div: make it a shrinking block so a long label ends in an ellipsis before the check mark.
 				@selectcomp.Item(selectcomp.ItemProps{Value: it.Value, Class: "[&>div]:block [&>div]:min-w-0 [&>div]:shrink [&>div]:truncate"}) {

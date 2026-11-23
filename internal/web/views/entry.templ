@@ -191,13 +191,13 @@ templ monsterPicture(e sqlc.CompendiumEntry, editable bool, class string) {
 		} else {
 			<div data-pic class="group/pic space-y-2">
 				if e.ImageUrl.String != "" {
-					@button.Button(button.Props{Variant: button.VariantGhost, Class: "h-auto w-full p-0 group-data-[broken]/pic:hidden", Attributes: templ.Attributes{
+					@button.Button(button.Props{Variant: button.VariantGhost, Class: "h-auto w-full p-0 group-data-broken/pic:hidden", Attributes: templ.Attributes{
 						"type": "button", "title": "Change picture", "onclick": templ.JSUnsafeFuncCall("this.closest('[data-pic]').toggleAttribute('data-editing')"),
 					}}) {
 						<img src={ e.ImageUrl.String } alt={ e.Name } loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('[data-pic]').toggleAttribute('data-broken', true)" class={ imgClass }/>
 					}
 				}
-				<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, route.Path(route.CompendiumEntryImage, e.ID))) } class={ "flex-wrap items-center gap-2", templ.KV("hidden group-data-[broken]/pic:flex group-data-[editing]/pic:flex", e.ImageUrl.String != ""), templ.KV("flex", e.ImageUrl.String == "") }>
+				<form method="post" action={ templ.SafeURL(CompendiumPath(ctx, route.Path(route.CompendiumEntryImage, e.ID))) } class={ "flex-wrap items-center gap-2", templ.KV("hidden group-data-broken/pic:flex group-data-editing/pic:flex", e.ImageUrl.String != ""), templ.KV("flex", e.ImageUrl.String == "") }>
 					@inlineField("Picture link", "image_url", e.ImageUrl.String, "w-96 max-w-full", templ.Attributes{"type": "url", "pattern": "https://.*", "placeholder": "https://… (empty: no picture)"})
 					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
 						Save

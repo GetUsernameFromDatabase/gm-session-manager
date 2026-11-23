@@ -125,12 +125,16 @@ Homebrew is written in the Compendium page and is shared by all campaigns.
   to build and run: generated code and built assets are committed, except the
   browser libraries and the component script bundle: run
   `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` once after cloning.
+  To lint every commit, also run `git config core.hooksPath .githooks`
+  (`.githooks/pre-commit` runs `lint.sh`, which needs the tools below).
 - Only for changing sources:
   - [sqlc](https://docs.sqlc.dev/en/latest/overview/install.html) on PATH
     (migrations and queries),
   - the [Tailwind standalone CLI](https://tailwindcss.com/blog/standalone-cli)
     on PATH as `tailwindcss` (templates and classes),
-  - [golangci-lint](https://golangci-lint.run/welcome/install/).
+  - [golangci-lint](https://golangci-lint.run/welcome/install/),
+  - [gopls](https://go.dev/gopls/) on PATH (`go install golang.org/x/tools/gopls@latest`;
+    VS Code's Go extension installs it).
   - `templ` and `shadcn-templ` are Go tool dependencies (`go tool …`), no
     install needed.
 - No node or npm. Browser libraries are vendored by `cmd/vendorjs`.
@@ -179,7 +183,8 @@ data/                     DATA_DIR at runtime (database, tls, attachments, compe
 | shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./internal/web` |
 | browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |
 
-Then `go build ./...`, `go test ./...` and `golangci-lint run`.
+Then `go build ./...`, `go test ./...` and `./lint.sh` (golangci-lint, `gopls check` on changed Go files,
+then stale Tailwind classes; `--all` checks every Go file).
 
 `GSM_COMPENDIUM_DIR=data/compendium go test ./internal/compendium -run TestRealSource -v`
 checks the importer against a real data download.
@@ -230,8 +235,9 @@ everything else (queries, hooks, exports).
 ## Releasing on GitHub
 
 `build.sh` is the one build process, for you and CI. It fetches the vendored
-JS, builds the shadcn-templ script bundle (both are gitignored), runs the
-tests and stamps the version (`git describe`, or `$VERSION`) into the binary:
+JS, builds the shadcn-templ script bundle (both are gitignored), runs
+`lint.sh` (host builds only) and the tests and stamps the version
+(`git describe`, or `$VERSION`) into the binary:
 
 ```sh
 ./build.sh           # this machine → dist/gm-session-manager[.exe]
@@ -247,7 +253,7 @@ generated notes. `.env` and `data/` are git-ignored and never shipped.
 ### Each release
 
 1. If sources changed, regenerate (`go generate ./internal/db ./internal/web`) and commit.
-2. Check: `go build ./...`, `go test ./...`, `golangci-lint run`.
+2. Check: `go build ./...`, `go test ./...`, `./lint.sh`.
 3. Tag and push (from a clean, pushed `main`; it refuses a version that
    isn't newer than the latest tag unless you add `--force`):
 

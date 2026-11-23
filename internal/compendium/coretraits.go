@@ -12,7 +12,7 @@ import (
 // "|Primary Ability|Strength|", keyed by the first cell.
 func CoreTraits(desc string) map[string]string {
 	out := map[string]string{}
-	for _, line := range strings.Split(desc, "\n") {
+	for line := range strings.SplitSeq(desc, "\n") {
 		cells := strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
 		if len(cells) == 2 && !strings.HasPrefix(cells[0], "-") {
 			out[strings.TrimSpace(cells[0])] = strings.TrimSpace(cells[1])

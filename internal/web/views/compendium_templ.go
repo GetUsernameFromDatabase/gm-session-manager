@@ -2947,7 +2947,7 @@ func pickRow(entryID int64, attrs templ.Attributes) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = tooltip.Content(tooltip.ContentProps{Class: "flex max-h-80 max-w-sm flex-col overflow-hidden border bg-popover p-0 text-left text-popover-foreground [&>[aria-hidden]]:hidden"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var123), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = tooltip.Content(tooltip.ContentProps{Class: "flex max-h-80 max-w-sm flex-col overflow-hidden border bg-popover p-0 text-left text-popover-foreground *:aria-[hidden]:hidden"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var123), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

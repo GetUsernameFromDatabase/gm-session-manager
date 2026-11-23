@@ -37,7 +37,7 @@ fi
 [ -z "$(git status --porcelain --untracked-files=no)" ] || die "commit or stash your changes first"
 git merge-base --is-ancestor HEAD origin/main || die "HEAD is not on origin/main: push main first"
 go test ./... || die "tests failed"
-golangci-lint run || die "golangci-lint failed"
+bash lint.sh --all || die "lint failed" # --all: the tree is clean, so the default checks no Go file
 
 git tag -a "$v" -m "$v"
 git push origin "$v"

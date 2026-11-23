@@ -377,8 +377,7 @@ func (a *App) wizardSave(c *gin.Context) error {
 	if err == nil && cmd != nil {
 		err = a.runCommand(ctx, ch, *cmd)
 	}
-	var ue userError
-	if errors.As(err, &ue) {
+	if _, ok := errors.AsType[userError](err); ok {
 		v, verr := a.wizardView(ctx, w, ch, step, c.PostForm("pick"), "")
 		if verr != nil {
 			return verr

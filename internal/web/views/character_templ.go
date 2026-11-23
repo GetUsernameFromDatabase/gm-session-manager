@@ -2014,7 +2014,7 @@ func stat(s SheetView, name, value, key string, to edit) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = editable(s, to, "Change "+name, "min-w-0 shrink whitespace-normal text-left break-words").Render(templ.WithChildren(ctx, templ_7745c5c3_Var74), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = editable(s, to, "Change "+name, "min-w-0 shrink whitespace-normal text-left wrap-break-word").Render(templ.WithChildren(ctx, templ_7745c5c3_Var74), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

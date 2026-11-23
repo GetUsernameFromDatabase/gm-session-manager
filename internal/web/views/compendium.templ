@@ -592,7 +592,7 @@ templ pickRow(entryID int64, attrs templ.Attributes) {
 				@icon.Check(icon.Props{Class: "hidden in-disabled:block"})
 				{ children... }
 			}
-			@tooltip.Content(tooltip.ContentProps{Class: "flex max-h-80 max-w-sm flex-col overflow-hidden border bg-popover p-0 text-left text-popover-foreground [&>[aria-hidden]]:hidden"}) {
+			@tooltip.Content(tooltip.ContentProps{Class: "flex max-h-80 max-w-sm flex-col overflow-hidden border bg-popover p-0 text-left text-popover-foreground *:aria-[hidden]:hidden"}) {
 				<div class="p-2" hx-get={ entryHref(ctx, entryID) + "?preview=1" } hx-trigger="intersect once" hx-swap="outerHTML">Loading…</div>
 			}
 		}

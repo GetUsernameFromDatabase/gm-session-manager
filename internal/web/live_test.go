@@ -350,7 +350,7 @@ func TestLiveBindsMatchState(t *testing.T) {
 				page := f.do(t, http.MethodGet, tt.path, tt.cookie, nil, false).Body.String()
 				var bound []string
 				for _, m := range bindAttr.FindAllStringSubmatch(page, -1) {
-					for _, spec := range strings.Fields(m[1]) {
+					for spec := range strings.FieldsSeq(m[1]) {
 						bound = append(bound, spec[strings.Index(spec, "=")+1:])
 					}
 				}
@@ -622,8 +622,7 @@ func TestLiveModelsEncodeWhole(t *testing.T) {
 			walk(ty.Key(), path+"{key}")
 			walk(ty.Elem(), path+"{}")
 		case reflect.Struct:
-			for i := range ty.NumField() {
-				fd := ty.Field(i)
+			for fd := range ty.Fields() {
 				if !fd.IsExported() || fd.Tag.Get("json") == "-" {
 					t.Errorf("%s.%s is not encoded", path, fd.Name)
 				}

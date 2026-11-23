@@ -159,8 +159,7 @@ func (a *App) fiveToolsRemove(c *gin.Context) error {
 		}
 		return q.DeleteCompendiumSource(ctx, key)
 	})
-	var used *sourceUsedError
-	if errors.As(err, &used) {
+	if used, ok := errors.AsType[*sourceUsedError](err); ok {
 		return a.renderFiveTools(c, sourceInUseMsg(key, used.users), true)
 	}
 	if err == nil {

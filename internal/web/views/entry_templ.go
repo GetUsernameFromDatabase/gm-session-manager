@@ -1014,7 +1014,7 @@ func monsterPicture(e sqlc.CompendiumEntry, editable bool, class string) templ.C
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Class: "h-auto w-full p-0 group-data-[broken]/pic:hidden", Attributes: templ.Attributes{
+					templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Class: "h-auto w-full p-0 group-data-broken/pic:hidden", Attributes: templ.Attributes{
 						"type": "button", "title": "Change picture", "onclick": templ.JSUnsafeFuncCall("this.closest('[data-pic]').toggleAttribute('data-editing')"),
 					}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var40), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
@@ -1042,7 +1042,7 @@ func monsterPicture(e sqlc.CompendiumEntry, editable bool, class string) templ.C
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var46 = []any{"flex-wrap items-center gap-2", templ.KV("hidden group-data-[broken]/pic:flex group-data-[editing]/pic:flex", e.ImageUrl.String != ""), templ.KV("flex", e.ImageUrl.String == "")}
+					var templ_7745c5c3_Var46 = []any{"flex-wrap items-center gap-2", templ.KV("hidden group-data-broken/pic:flex group-data-editing/pic:flex", e.ImageUrl.String != ""), templ.KV("flex", e.ImageUrl.String == "")}
 					templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_ElementWriter, templ_7745c5c3_Var46...)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err

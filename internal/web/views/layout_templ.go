@@ -237,7 +237,7 @@ func navbar(l Layout) templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<header class=\"sticky top-0 z-30 border-b bg-background\"><nav class=\"group mx-auto flex max-w-5xl flex-wrap items-center gap-1 px-4 py-2 text-sm\"><a href=\"/\" class=\"mr-3 font-semibold\">GM Session Manager</a><div id=\"nav-links\" class=\"order-last hidden basis-full flex-col gap-1 pt-2 group-data-open:flex sm:order-none sm:flex sm:basis-auto sm:flex-row sm:pt-0\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<header class=\"sticky top-0 z-30 border-b bg-background\"><nav class=\"group mx-auto flex max-w-5xl flex-wrap items-center gap-1 px-4 py-2 text-sm\"><a href=\"/\" class=\"mr-3 font-semibold\">GM Session Manager</a><div id=\"nav-links\" class=\"order-last hidden basis-full flex-col gap-1 pt-2 group-data-open:flex sm:order-0 sm:flex sm:basis-auto sm:flex-row sm:pt-0\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

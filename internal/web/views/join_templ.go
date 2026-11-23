@@ -188,11 +188,11 @@ func joinPanel(j JoinInfo) templ.Component {
 							}()
 						}
 						ctx = templ.InitializeContext(ctx)
-						templ_7745c5c3_Err = icon.Copy(icon.Props{Size: 16, Class: "group-data-[copied]:hidden"}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = icon.Copy(icon.Props{Size: 16, Class: "group-data-copied:hidden"}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = icon.Check(icon.Props{Size: 16, Class: "hidden group-data-[copied]:block"}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = icon.Check(icon.Props{Size: 16, Class: "hidden group-data-copied:block"}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}

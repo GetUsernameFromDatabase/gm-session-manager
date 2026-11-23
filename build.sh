@@ -35,6 +35,13 @@ echo "$bundle"
 step "checking templ formatting"
 go tool templ fmt -fail internal/web/views # fixes the files too; rerun after go generate ./internal/web
 
+# Release CI skips lint.sh: it has no tailwindcss (output.css is committed) and
+# release.yml already runs golangci-lint. Commits are linted by .githooks/pre-commit.
+if [ "${1:-}" != release ]; then
+	step "linting"
+	bash lint.sh
+fi
+
 step "testing"
 go test ./... | { grep -v 'no test files' || true; } # pipefail keeps go test's exit status
 

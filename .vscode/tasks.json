@@ -1,0 +1,46 @@
+{
+  // https://go.microsoft.com/fwlink/?LinkId=733558
+  // The commands table in CLAUDE.md and README.md.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "lint",
+      "type": "shell",
+      "command": "bash",
+      "args": ["lint.sh"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "detail": "golangci-lint, then stale Tailwind classes"
+    },
+    {
+      "label": "generate db",
+      "type": "shell",
+      "command": "go",
+      "args": ["generate", "./internal/db"],
+      "group": "build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "detail": "sqlc code after migrations or queries change"
+    },
+    {
+      "label": "generate web",
+      "type": "shell",
+      "command": "go",
+      "args": ["generate", "./internal/web"],
+      "group": "build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "detail": "script bundle, templ fmt, templ and Tailwind after .templ or class changes"
+    },
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "bash",
+      "args": ["build.sh"],
+      "group": "build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "detail": "vendor JS, lint, test and build for this machine into dist/"
+    }
+  ]
+}

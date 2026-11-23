@@ -191,7 +191,8 @@ func commandText(c *gin.Context) string {
 // coinCommand turns the coin form into one command that changes each coin
 // by the difference between the amount shown and the amount typed.
 func coinCommand(c *gin.Context) string {
-	cmd := "coin"
+	var cmd strings.Builder
+	cmd.WriteString("coin")
 	for _, k := range []string{"pp", "gp", "ep", "sp", "cp"} {
 		typed := strings.TrimSpace(c.PostForm("coin_" + k))
 		n, err := strconv.Atoi(typed)
@@ -200,13 +201,13 @@ func coinCommand(c *gin.Context) string {
 			return "coin " + k + " =" + typed // the parser explains what is wrong
 		}
 		if n != was {
-			cmd += fmt.Sprintf(" %s %+d", k, n-was)
+			fmt.Fprintf(&cmd, " %s %+d", k, n-was)
 		}
 	}
-	if cmd == "coin" {
+	if cmd.String() == "coin" {
 		return "coin gp +0" // nothing changed: succeed without a change
 	}
-	return cmd
+	return cmd.String()
 }
 
 // hpForm is the HP card's quick form: an amount and what to do with it.
@@ -341,8 +342,7 @@ func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Comma
 		}
 		env.Petrified = petrified(conds)
 		fx, err := cmd.Apply(dc, env)
-		var ue userError
-		if errors.As(err, &ue) {
+		if _, ok := errors.AsType[userError](err); ok {
 			return err // keeps a fieldError's field
 		}
 		if err != nil {

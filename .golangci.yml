@@ -12,6 +12,7 @@ linters:
     - goconst
     - gosec
     - misspell
+    - modernize
     - noctx
     - revive
     - rowserrcheck
@@ -71,10 +72,15 @@ linters:
       - internal/web/components
       - internal/web/utils
     rules:
-      # Generated templ code answers to depguard only. A newly enabled
+      # Generated templ code answers to depguard, modernize and staticcheck
+      # only (they report what the .templ source wrote). A newly enabled
       # linter goes in this list too.
       - path: _templ\.go$
-        linters: [bodyclose, errcheck, errorlint, goconst, gosec, govet, ineffassign, misspell, noctx, revive, rowserrcheck, sqlclosecheck, staticcheck, unconvert, unparam, unused]
+        linters: [bodyclose, errcheck, errorlint, goconst, gosec, govet, ineffassign, misspell, noctx, revive, rowserrcheck, sqlclosecheck, unconvert, unparam, unused]
+      # templ writes every render error to one variable it then overwrites.
+      - path: _templ\.go$
+        linters: [staticcheck]
+        text: SA4006
       - path: _test\.go
         linters: [gosec]
       # Test data repeats on purpose, and goconst matches text, not meaning.

@@ -249,7 +249,7 @@ func HabitatGrid(v HabitatView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" data-fit-screen class=\"max-md:[&_[data-slot=table-container]]:max-h-[calc(100dvh-14rem)] md:[&_[data-slot=table-container]]:min-h-0 md:[&_[data-slot=table-container]]:flex-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" data-fit-screen class=\"max-md:**:data-[slot=table-container]:max-h-[calc(100dvh-14rem)] md:**:data-[slot=table-container]:min-h-0 md:**:data-[slot=table-container]:flex-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

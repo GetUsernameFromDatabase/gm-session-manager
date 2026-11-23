@@ -85,7 +85,7 @@ var (
 // "Perception +5, Stealth +6" (skills, keyed by slug).
 func parseBonuses(s string, saves bool) map[string]int {
 	out := map[string]int{}
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		m := reBonus.FindStringSubmatch(strings.TrimSpace(part))
 		if m == nil {
 			continue
@@ -134,7 +134,7 @@ func speedText(m map[string]int) string {
 // speed with no mode is walking.
 func parseSpeed(s string) map[string]int {
 	out := map[string]int{}
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		m := reSpeed.FindStringSubmatch(part)
 		if m == nil {
 			continue

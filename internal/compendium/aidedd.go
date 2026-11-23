@@ -266,9 +266,9 @@ func textLines(n *html.Node) []string {
 	}
 	walk(n, false)
 	var out []string
-	for _, l := range strings.Split(b.String(), "\n") {
+	for l := range strings.SplitSeq(b.String(), "\n") {
 		var parts []string
-		for _, p := range strings.Split(l, keptBreak) {
+		for p := range strings.SplitSeq(l, keptBreak) {
 			if p = strings.Join(strings.Fields(p), " "); p != "" {
 				parts = append(parts, p)
 			}

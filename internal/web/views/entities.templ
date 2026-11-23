@@ -99,7 +99,7 @@ templ EntityList(v EntityListView) {
 					<li class="group/npc min-w-0" data-hidden?={ v.IsGM && !e.IsRevealed }>
 						<a class="block rounded-lg ring-offset-2 ring-offset-background outline-none focus-visible:ring-3 focus-visible:ring-ring/50" href={ templ.SafeURL(route.Path(route.Entity, e.ID)) }>
 							<div class="relative">
-								@npcPortrait(e, "group-data-[hidden]/npc:opacity-60 group-data-[hidden]/npc:grayscale")
+								@npcPortrait(e, "group-data-hidden/npc:opacity-60 group-data-hidden/npc:grayscale")
 								if v.IsGM && !e.IsRevealed {
 									<span class="absolute top-2 left-2">
 										@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
@@ -382,8 +382,8 @@ templ fieldRow(base, key string, f perm.Field) {
 		// not a form control. fields.js shows it in an editor that renders
 		// [[links]] as notes do, or with Raw text on, as stored in the textarea.
 		<input type="hidden" name="value" value={ f.Value } data-field-value/>
-		<div class="font-serif group-data-[raw]/fields:hidden" data-field-editor></div>
-		<div class="hidden group-data-[raw]/fields:block">
+		<div class="font-serif group-data-raw/fields:hidden" data-field-editor></div>
+		<div class="hidden group-data-raw/fields:block">
 			@textarea.Textarea(textarea.Props{Value: f.Value, Rows: 2, Placeholder: "Value", Attributes: templ.Attributes{"aria-label": "Value as stored", "data-field-raw": ""}})
 		</div>
 	</form>

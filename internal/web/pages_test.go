@@ -619,7 +619,7 @@ func TestHabitatsMatchSchema(t *testing.T) {
 			t.Errorf("%T: validate %q, want %s", form, f.Tag.Get("validate"), want)
 		}
 	}
-	if f, _ := reflect.TypeOf(compendium.HomebrewInput{}).FieldByName("Habitats"); !strings.Contains(f.Tag.Get("validate"), want) {
+	if f, _ := reflect.TypeFor[compendium.HomebrewInput]().FieldByName("Habitats"); !strings.Contains(f.Tag.Get("validate"), want) {
 		t.Errorf("HomebrewInput: validate %q, want %s", f.Tag.Get("validate"), want)
 	}
 }

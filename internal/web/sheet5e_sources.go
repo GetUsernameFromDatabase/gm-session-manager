@@ -414,8 +414,7 @@ func (a *App) sourceDelete(c *gin.Context) error {
 		}
 		return q.DeleteCompendiumSource(ctx, key)
 	})
-	var used *sourceUsedError
-	if errors.As(err, &used) {
+	if used, ok := errors.AsType[*sourceUsedError](err); ok {
 		a.fail(c, http.StatusConflict, sourceInUseMsg(key, used.users))
 		return nil
 	}
@@ -510,8 +509,7 @@ func (a *App) campaignSourcesSet(c *gin.Context) error {
 		}
 		return nil
 	})
-	var used *sourceUsedError
-	if errors.As(err, &used) {
+	if used, ok := errors.AsType[*sourceUsedError](err); ok {
 		a.fail(c, http.StatusConflict, sourceInUseMsg(usedKey, used.users))
 		return nil
 	}

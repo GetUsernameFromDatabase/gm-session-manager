@@ -853,8 +853,7 @@ func (a *App) spellsNamed(ctx context.Context, names []string, campaignID int64)
 	var out []dnd5e.Spell
 	for _, n := range names {
 		sp, err := a.compendiumSpell(ctx, compendium.Slugify(n), campaignID)
-		var ue userError
-		if errors.As(err, &ue) {
+		if _, ok := errors.AsType[userError](err); ok {
 			continue
 		}
 		if err != nil {

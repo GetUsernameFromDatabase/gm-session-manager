@@ -154,7 +154,7 @@ func label(s string) string {
 func partsText(parts []NameDesc) string {
 	var b strings.Builder
 	for _, p := range parts {
-		b.WriteString(p.Name + ". " + p.Desc + "\n")
+		fmt.Fprintf(&b, "%s. %s\n", p.Name, p.Desc)
 	}
 	return b.String()
 }

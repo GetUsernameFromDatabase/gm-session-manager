@@ -30,7 +30,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 - Constants for cookie, context, header and event keys. Validate structs with `go-playground/validator` tags.
 - Values a SQL CHECK lists are typed in `internal/enum` and wired through sqlc `overrides`; goconst guards other repeated strings. A family of values (one list, map or switch domain, numbers too) is all constants or none.
 - Table-driven tests for all permission and visibility logic. Positional test-table rows break when a field is added; add a separate loop instead.
-- `golangci-lint run` stays clean. Formatters always win: keep what `templ fmt` and `golangci-lint fmt` change, even in untouched files.
+- `./lint.sh` (golangci-lint, `gopls check` on Go files changed against HEAD, then stale Tailwind classes via `tailwindcss canonicalize`) stays clean; `./lint.sh --all` after upgrading golangci-lint, gopls or tailwindcss. Formatters always win: keep what `templ fmt` and `golangci-lint fmt` change, even in untouched files.
 - Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
 - Durable lessons go in the nearest folder's `CLAUDE.md`; workflows in a skill; `HANDOFF.md` holds only current state and open items.
 
@@ -46,7 +46,7 @@ D&D 5e (2024) is the only system, fenced in rather than abstracted:
 
 ## Commands
 
-After cloning: `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` (both outputs gitignored). After changing sources:
+After cloning: `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` (both outputs gitignored), and `git config core.hooksPath .githooks` (pre-commit runs `lint.sh`; git then ignores `.git/hooks`). After changing sources:
 
 | Change | Command |
 |---|---|
@@ -55,7 +55,7 @@ After cloning: `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` (both o
 | Go formatting | `golangci-lint fmt` |
 | browser JS versions | `go run ./cmd/vendorjs -check`, edit `cmd/vendorjs/main.go`, `go run ./cmd/vendorjs` |
 
-Then `go build ./...`, `go test ./...`, `golangci-lint run`, `graphify update .`. Full build: `./build.sh`; release: `./release.sh <version>`; run: `./run.sh`.
+Then `go build ./...`, `go test ./...`, `./lint.sh`, `graphify update .`. Full build: `./build.sh`; release: `./release.sh <version>`; run: `./run.sh`.
 
 ## graphify
 

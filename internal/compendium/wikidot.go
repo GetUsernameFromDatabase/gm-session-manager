@@ -506,7 +506,7 @@ func classTable(d *ClassData, levels map[string][]int, rows [][]string) bool {
 			switch {
 			case col == "Level" || col == "Proficiency Bonus":
 			case col == "Features":
-				for _, f := range strings.Split(v, ",") {
+				for f := range strings.SplitSeq(v, ",") {
 					if f = strings.ToLower(strings.TrimSpace(f)); f != "" && f != "-" {
 						levels[f] = append(levels[f], level)
 					}

@@ -61,7 +61,7 @@ templ HabitatGrid(v HabitatView) {
 	// and the sticky header row and Monster column need no navbar offset.
 	// On desktop the grid fills the window below the filter (data-fit-screen,
 	// globals.css); on phones the table box keeps a fixed height.
-	<div id={ HabitatGridID } data-fit-screen class="max-md:[&_[data-slot=table-container]]:max-h-[calc(100dvh-14rem)] md:[&_[data-slot=table-container]]:min-h-0 md:[&_[data-slot=table-container]]:flex-1">
+	<div id={ HabitatGridID } data-fit-screen class="max-md:**:data-[slot=table-container]:max-h-[calc(100dvh-14rem)] md:**:data-[slot=table-container]:min-h-0 md:**:data-[slot=table-container]:flex-1">
 		if len(v.Monsters) == 0 {
 			@empty.Empty(empty.Props{Class: "border border-dashed"}) {
 				@empty.Header() {

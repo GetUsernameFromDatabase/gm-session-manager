@@ -327,9 +327,7 @@ func TestDownloadFiveToolsSubclassTwinsAndForeignFeatures(t *testing.T) {
 
 func TestDownloadFiveToolsFailureLeavesNothing(t *testing.T) {
 	files := map[string]string{}
-	for k, v := range fakeMirror {
-		files[k] = v
-	}
+	maps.Copy(files, fakeMirror)
 	files["items.json"] = "not json"
 	serveMirror(t, files, false)
 	dir := t.TempDir()
