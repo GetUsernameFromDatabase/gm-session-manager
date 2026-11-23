@@ -41,23 +41,23 @@ func TestCantripFits(t *testing.T) {
 }
 
 // TestArmorTrainingPrerequisite checks "<type> Armor Training" and "Shield
-// Training" against the sheet's armor proficiencies.
+// Training" against the sheet's armor training.
 func TestArmorTrainingPrerequisite(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		prereq string
-		profs  []string
-		want   bool
+		name    string
+		prereq  string
+		trained []string
+		want    bool
 	}{
-		{name: "heavy missing", prereq: "Level 4+, Heavy Armor Training", profs: []string{"Light armor"}},
-		{name: "heavy held", prereq: "Heavy Armor Training", profs: []string{"Light armor", "Heavy armor"}, want: true},
-		{name: "medium held", prereq: "Medium Armor Training", profs: []string{"Medium armor"}, want: true},
+		{name: "heavy missing", prereq: "Level 4+, Heavy Armor Training", trained: []string{ArmorLight}},
+		{name: "heavy held", prereq: "Heavy Armor Training", trained: []string{ArmorLight, ArmorHeavy}, want: true},
+		{name: "medium held", prereq: "Medium Armor Training", trained: []string{ArmorMedium}, want: true},
 		{name: "light missing", prereq: "Light Armor Training"},
-		{name: "shield missing", prereq: "Shield Training", profs: []string{"Heavy armor"}},
-		{name: "shield held", prereq: "Shield Training", profs: []string{"Shields"}, want: true},
+		{name: "shield missing", prereq: "Shield Training", trained: []string{ArmorHeavy}},
+		{name: "shield held", prereq: "Shield Training", trained: []string{ArmorShield}, want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			sh := Sheet{Scores: map[string]int{}, OtherProfs: tc.profs}
+			sh := Sheet{Scores: map[string]int{}, ArmorTraining: tc.trained}
 			if got := MeetsPrerequisite(tc.prereq, sh, 4, nil, strings.ToLower); got != tc.want {
 				t.Errorf("MeetsPrerequisite(%q) = %v, want %v", tc.prereq, got, tc.want)
 			}

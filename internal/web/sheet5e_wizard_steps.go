@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -88,6 +87,7 @@ func (a *App) classStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command, erro
 			return err
 		}
 		cc.Sheet.AddProfs(info.Name, skills, trainedIn(choice.Traits)...)
+		cc.Sheet.AddArmorTraining(info.Name, dnd5e.ParseArmorTraining(choice.Traits[compendium.TraitArmorTraining])...)
 		return nil
 	}), nil
 }
@@ -149,9 +149,7 @@ func (a *App) backgroundStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command,
 			return userError{errors.New("choose a class first")}
 		}
 		if pickAgain != nil { // the class's picks are made again, with the background's known
-			class := s.Classes[0].Name
-			s.SkillProfs = slices.DeleteFunc(s.SkillProfs, func(k string) bool { return s.ProfSources[k] == class })
-			maps.DeleteFunc(s.ProfSources, func(k, from string) bool { return from == class && !slices.Contains(s.OtherProfs, k) })
+			s.ClearSkillPicks(s.Classes[0].Name)
 		}
 		applyBackground(s, row.Name, td, feat)
 		if pickAgain != nil {
@@ -321,16 +319,34 @@ func (a *App) reviewStep(*gin.Context, sqlc.Character) (*dnd5e.Command, error) {
 	return &cmd, nil
 }
 
-// trainedIn are a class's armor, weapon and tool proficiencies, as other
-// proficiencies (tool choices are left to the player).
+// trainedIn are a class's weapon and tool proficiencies, as other
+// proficiencies (choices, "Choose three…" or "… of your choice", are left
+// to the player; armor training is read by ParseArmorTraining). A row
+// mixing fixed ones with a choice gives its fixed parts.
 func trainedIn(traits map[string]string) []string {
 	var out []string
-	for _, k := range []string{compendium.TraitArmorTraining, compendium.TraitWeaponProficiencies, compendium.TraitToolProficiencies} {
-		if v := traits[k]; v != "" && !strings.HasPrefix(strings.ToLower(v), "choose") {
+	for _, k := range []string{compendium.TraitWeaponProficiencies, compendium.TraitToolProficiencies} {
+		v := traits[k]
+		if v == "" || strings.EqualFold(v, "none") {
+			continue
+		}
+		if !isChoice(v) {
 			out = append(out, v)
+			continue
+		}
+		for part := range strings.SplitSeq(v, ", ") {
+			if !isChoice(part) {
+				out = append(out, part)
+			}
 		}
 	}
 	return out
+}
+
+// isChoice reports whether a proficiency text leaves the pick to the player.
+func isChoice(v string) bool {
+	l := strings.ToLower(v)
+	return strings.HasPrefix(l, "choose") || strings.Contains(l, "of your choice")
 }
 
 var reFeet = regexp.MustCompile(`(\d+)\s*feet`)
@@ -358,7 +374,7 @@ func applySpecies(s *dnd5e.Sheet, name string, d *compendium.TextData) {
 			f := dnd5e.Feature{Name: p.Name, Source: name, Description: p.Desc}
 			e := dnd5e.ParseEffects(p.Name, p.Desc, nil, "")
 			s.PutFeature(f, e.Apply(&f))
-			s.AddProfs(p.Name, e.Skills, e.Tools...)
+			s.Grant(p.Name, e)
 		}
 	}
 }

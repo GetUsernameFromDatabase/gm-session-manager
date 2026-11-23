@@ -15,6 +15,14 @@
 			"edition": "one",
 			"hd": {"number": 1, "faces": 10},
 			"proficiency": ["str", "con"],
+			"startingProficiencies": {
+				"skills": [{"choose": {"from": ["acrobatics", "animal handling", "athletics", "history", "insight", "intimidation", "persuasion", "perception", "survival"], "count": 2}}],
+				"weapons": ["simple", "martial"],
+				"armor": ["light", "medium", "heavy", "shield"]
+			},
+			"startingEquipment": {
+				"entries": ["{@i Choose A, B, or C:} (A) {@item Chain Mail|XPHB}, {@item Greatsword|XPHB}, {@item Flail|XPHB}, 8 {@item Javelin|XPHB|Javelins}, {@item Dungeoneer's Pack|XPHB}, and 4 GP; (B) {@item Studded Leather Armor|XPHB}, {@item Scimitar|XPHB}, {@item Shortsword|XPHB}, {@item Longbow|XPHB}, {@item Arrows (20)|XPHB|20 Arrows}, {@item Quiver|XPHB}, {@item Dungeoneer's Pack|XPHB}, and 11 GP; or (C) 155 GP"]
+			},
 			"classTableGroups": [
 				{
 					"colLabels": ["Second Wind", "{@filter Weapon Mastery|items|mastery=}"],

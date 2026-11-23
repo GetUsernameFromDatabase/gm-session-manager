@@ -316,7 +316,7 @@ const (
 var statWhy = map[string]string{statAC: dnd5e.ModAC, statSpeed: dnd5e.ModSpeed, statInit: dnd5e.ModInit, statPassive: dnd5e.ModPassive}
 
 // plainTotals are the breakdown targets that are values, not bonuses.
-var plainTotals = []string{dnd5e.ModAC, dnd5e.ModSpeed, dnd5e.ModPassive, dnd5e.ExplainSpellDC}
+var plainTotals = []string{dnd5e.ModAC, dnd5e.ModSpeed, dnd5e.ModPassive}
 
 // spareArmor is the armor and shields in the inventory not worn.
 func (s SheetView) spareArmor() []dnd5e.Item {

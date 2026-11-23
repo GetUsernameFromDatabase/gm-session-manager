@@ -94,6 +94,7 @@ func (s SheetView) builderVerbs() []builderVerb {
 			{opOtherAdd, "Add other", "prof add other", ""},
 			{opOtherRemove, "Remove other", "prof remove other", ""},
 			{opLangAdd, "Add language", "prof add language", ""},
+			{opArmorAdd, "Add armor training", "prof add armor", ""},
 			{opResAdd, "Add resistance", "prof add resistance", ""},
 			{opImmAdd, "Add immunity", "prof add immunity", ""},
 			{opVulnAdd, "Add vulnerability", "prof add vulnerability", ""},
@@ -108,7 +109,7 @@ func (s SheetView) builderVerbs() []builderVerb {
 			{opSetSize, "Size", "set size", ""},
 			{opSetVision, "Vision", "set vision", ""},
 		}},
-		{verbArmor, "Armor", []builderOp{{opArmor, "Armor", "", ""}}},
+		{verbArmor, labelArmor, []builderOp{{opArmor, labelArmor, "", ""}}},
 		{verbWeapons, "Weapons", []builderOp{
 			{opWeaponAdd, labelAddOrReplace, "weapon add", ""},
 			{opWeaponRemove, labelRemove, "weapon remove", ""},
@@ -190,6 +191,7 @@ const (
 	opOtherAdd       = "other-add"
 	opOtherRemove    = "other-remove"
 	opLangAdd        = "lang-add"
+	opArmorAdd       = "armor-add"
 	opResAdd         = "res-add"
 	opImmAdd         = "imm-add"
 	opVulnAdd        = "vuln-add"
@@ -293,8 +295,18 @@ func opGroup(key string) string {
 
 // profTabGroups are the proficiency tabs by opGroup; each opens its add form.
 var profTabGroups = []struct{ Key, Label string }{
-	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"res", "Resistances"},
-	{"imm", "Immunities"}, {"vuln", "Vulnerabilities"}, {"other", labelOther},
+	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"armor", labelArmor},
+	{"res", "Resistances"}, {"imm", "Immunities"}, {"vuln", "Vulnerabilities"}, {"other", labelOther},
+}
+
+// armorTrained are the sheet's armor training kinds by label, as its remove
+// buttons post them.
+func (s SheetView) armorTrained() []string {
+	out := make([]string, len(s.C.Sheet.ArmorTraining))
+	for i, k := range s.C.Sheet.ArmorTraining {
+		out[i] = dnd5e.ArmorKindLabels[k]
+	}
+	return out
 }
 
 // damageList is what a damage defense op edits: the command's noun, the
@@ -378,7 +390,7 @@ func (s SheetView) modAt(subject string) (dnd5e.CustomMod, bool) {
 
 // stayOpen are forms (op key to verb) used several times in a row: after a
 // submit they reload with the sheet's new choices instead of closing the dialog.
-var stayOpen = map[string]string{opFeatureRemove: verbFeatures, opLangAdd: verbProfs, opResAdd: verbProfs, opImmAdd: verbProfs, opVulnAdd: verbProfs}
+var stayOpen = map[string]string{opFeatureRemove: verbFeatures, opLangAdd: verbProfs, opArmorAdd: verbProfs, opResAdd: verbProfs, opImmAdd: verbProfs, opVulnAdd: verbProfs}
 
 // The builder form fields (and hx-vals keys) holding the command prefix and
 // what it applies to.
@@ -653,6 +665,12 @@ func (s SheetView) builderSubjects(key string) ([]selectcomp.ItemData, map[strin
 	case opOtherRemove:
 		for _, p := range sh.OtherProfs {
 			add(p, p)
+		}
+	case opArmorAdd:
+		for _, k := range dnd5e.ArmorKinds {
+			if !sh.TrainedIn(k) {
+				add(k, dnd5e.ArmorKindLabels[k])
+			}
 		}
 	case opSlotUse, opSlotRestore, opSlotMax:
 		for i, sl := range sh.Slots {

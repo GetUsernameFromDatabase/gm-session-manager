@@ -2,6 +2,7 @@ package compendium
 
 import (
 	"encoding/json"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -105,6 +106,27 @@ func TestFiveToolsClasses(t *testing.T) {
 		}
 	}
 
+	// Core traits come from startingProficiencies, worded as the SRD words them.
+	for key, want := range map[string]map[string]string{
+		"class/fighter": {
+			TraitSkillProficiencies:  "Choose 2: Acrobatics, Animal Handling, Athletics, History, Insight, Intimidation, Persuasion, Perception, Survival",
+			TraitArmorTraining:       "Light, Medium, and Heavy armor and Shields",
+			TraitWeaponProficiencies: "Simple weapons, Martial weapons",
+			TraitStartingEquipment:   "Choose A, B, or C: (A) Chain Mail, Greatsword, Flail, 8 Javelins, Dungeoneer's Pack, and 4 GP; (B) Studded Leather Armor, Scimitar, Shortsword, Longbow, 20 Arrows, Quiver, Dungeoneer's Pack, and 11 GP; or (C) 155 GP",
+		},
+		"class/wizard": {
+			TraitSkillProficiencies:  "Choose 2: Arcana, History, Insight, Investigation, Medicine, Nature, Religion",
+			TraitWeaponProficiencies: "Simple weapons",
+		},
+	} {
+		if got := CoreTraits(got[key].Data.(ClassData).Desc); !maps.Equal(got, want) {
+			t.Errorf("%s core traits %q, want %q", key, got, want)
+		}
+	}
+	if n, opts := len(EquipmentOptions(CoreTraits(fighter.Desc)[TraitStartingEquipment])), 3; n != opts {
+		t.Errorf("fighter equipment: %d options, want %d", n, opts)
+	}
+
 	// References: a class feature's text, a subclass feature's, an
 	// optional feature's name.
 	for _, tt := range []struct {
@@ -166,6 +188,31 @@ func TestFiveToolsClassLevelUp(t *testing.T) {
 	}
 	if !slices.ContainsFunc(plan.Features, func(f dnd5e.ClassFeature) bool { return f.Name == "Evoker" }) {
 		t.Errorf("wizard 3: no subclass feature %+v", plan.Features)
+	}
+}
+
+// TestFiveToolsCoreTraitsShapes reads the 2014 shapes: an armor object,
+// tagged weapon and tool lists, "any" skills, and a class with no armor.
+func TestFiveToolsCoreTraitsShapes(t *testing.T) {
+	for _, tc := range []struct {
+		name, profs string
+		want        map[string]string
+	}{
+		{"druid", `{"skills":[{"any":2}],"weapons":["{@item Club|XPHB|clubs}","{@item Sling|XPHB|slings}"],"tools":["{@item Herbalism Kit|XPHB|Herbalism kit}"],"armor":["light","medium",{"proficiency":"shield","full":"shields (druids will not wear armor or use shields made of metal)"}]}`, map[string]string{
+			TraitSkillProficiencies: "Choose any 2 skills", TraitArmorTraining: "Light and Medium armor and Shields",
+			TraitWeaponProficiencies: "clubs, slings", TraitToolProficiencies: "Herbalism kit",
+		}},
+		{"wizard", `{"weapons":["{@item Dagger|XPHB|daggers}","{@item Light Crossbow|XPHB|light crossbows}"]}`, map[string]string{
+			TraitWeaponProficiencies: "daggers, light crossbows",
+		}},
+	} {
+		var c ftClass
+		if err := json.Unmarshal([]byte(`{"startingProficiencies":`+tc.profs+`}`), &c); err != nil {
+			t.Fatal(err)
+		}
+		if got := CoreTraits(withCoreTraits("", c.coreTraits())); !maps.Equal(got, tc.want) {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }
 

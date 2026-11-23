@@ -81,8 +81,7 @@ func MeetsPrerequisite(prereq string, sh Sheet, level int, cantrips []Cantrip, s
 				return false
 			}
 		} else if m := rePrereqArmor.FindStringSubmatch(clause); m != nil {
-			// OtherProfs read "Light armor", "Shields" (see ArmorUntrained).
-			if !strings.Contains(strings.ToLower(strings.Join(sh.OtherProfs, " ")), strings.ToLower(m[1])) {
+			if !sh.TrainedIn(strings.ToLower(m[1])) {
 				return false
 			}
 		}

@@ -7,6 +7,10 @@
 			"edition": "one",
 			"hd": {"number": 1, "faces": 6},
 			"proficiency": ["int", "wis"],
+			"startingProficiencies": {
+				"skills": [{"choose": {"from": ["arcana", "history", "insight", "investigation", "medicine", "nature", "religion"], "count": 2}}],
+				"weapons": ["simple"]
+			},
 			"spellcastingAbility": "int",
 			"casterProgression": "full",
 			"classTableGroups": [

@@ -40,6 +40,7 @@ const (
 	targetBlank = "_blank"
 	labelNone   = "None"
 	labelOther  = "Other"
+	labelArmor  = "Armor"
 	labelName   = "Name"
 	valNone     = "none"
 )

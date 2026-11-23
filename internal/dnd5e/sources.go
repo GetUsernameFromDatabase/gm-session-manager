@@ -242,7 +242,7 @@ func (s *Sheet) applySwitch(sw featureSwitch, next ClassInfo) {
 		e := ParseEffects(to.Name, to.Description, next.Table, next.Name)
 		s.putFeature(i, f, e.Apply(&f))
 		s.RemoveProfsFrom(old.Name)
-		s.AddProfs(old.Name, e.Skills, e.Tools...)
+		s.Grant(old.Name, e)
 	}
 	slices.Sort(drop)
 	for _, i := range slices.Backward(drop) {

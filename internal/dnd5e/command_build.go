@@ -92,6 +92,7 @@ const (
 	profKindExpertise     = "expertise"
 	profKindOther         = "other"
 	profKindLanguage      = "language"
+	profKindArmor         = "armor"
 	profKindResistance    = "resistance"
 	profKindImmunity      = "immunity"
 	profKindVulnerability = "vulnerability"
@@ -148,7 +149,7 @@ func parseProfSet(args []string) (Command, error) {
 }
 
 func parseProf(args []string) (Command, error) {
-	const usage = "prof add|remove skill|save|expertise|other|language|resistance|immunity|vulnerability <value> | prof set skill|save <key> <level>"
+	const usage = "prof add|remove skill|save|expertise|other|language|armor|resistance|immunity|vulnerability <value> | prof set skill|save <key> <level>"
 	if len(args) < 3 {
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
@@ -180,6 +181,11 @@ func parseProf(args []string) (Command, error) {
 		pick = func(s *Sheet) *[]string { return &s.OtherProfs }
 	case profKindLanguage:
 		pick = func(s *Sheet) *[]string { return &s.Languages }
+	case profKindArmor:
+		if value = ArmorKindNamed(value); value == "" {
+			return Command{}, fmt.Errorf("armor training is light, medium, heavy or shield, not %q", strings.Join(args[2:], " "))
+		}
+		pick = func(s *Sheet) *[]string { return &s.ArmorTraining }
 	case profKindResistance, profKindImmunity, profKindVulnerability:
 		value = strings.ToLower(value)
 		if !slices.Contains(DamageTypes, value) {
@@ -195,8 +201,14 @@ func parseProf(args []string) (Command, error) {
 	}
 	return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
 		setIn(pick(&c.Sheet), value, op == verbAdd)
-		if op == verbRemove && (kind == ModSkill || kind == profKindOther) {
-			delete(c.Sheet.ProfSources, value) // removed by hand: no longer the feature's
+		c.Sheet.sortArmorTraining()
+		if op == verbRemove { // removed by hand: no longer the feature's
+			switch kind {
+			case ModSkill, profKindOther:
+				delete(c.Sheet.ProfSources, value)
+			case profKindArmor:
+				delete(c.Sheet.ProfSources, armorSourceKey(value))
+			}
 		}
 		return nil
 	}), nil

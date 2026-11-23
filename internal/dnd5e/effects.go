@@ -24,6 +24,8 @@ type FeatureEffects struct {
 	// ("of your choice", "Insight, Perception, or Survival") are not.
 	Skills []string
 	Tools  []string
+	// Armor are the armor kinds it trains ("training with Heavy armor").
+	Armor []string
 }
 
 var (
@@ -101,6 +103,7 @@ func ParseEffects(name, desc string, table map[string]map[int]string, class stri
 		e.NoShield = strings.Contains(strings.ToLower(desc[sentenceStart:m[0]]), "wielding a shield")
 	}
 	e.Skills, e.Tools = parseProfs(desc)
+	e.Armor = armorGrants(desc)
 	return e
 }
 
@@ -166,8 +169,16 @@ func (s *Sheet) AddProfs(origin string, skills []string, other ...string) {
 	}
 }
 
-// RemoveProfsFrom removes the proficiencies ProfSources says origin added
-// (a feature dropped by a subclass or source change); others stay.
+// Grant gives the fixed proficiencies and armor training e read from
+// origin's text, recorded as origin's.
+func (s *Sheet) Grant(origin string, e FeatureEffects) {
+	s.AddProfs(origin, e.Skills, e.Tools...)
+	s.AddArmorTraining(origin, e.Armor...)
+}
+
+// RemoveProfsFrom removes the proficiencies and armor training ProfSources
+// says origin added (a feature dropped by a subclass or source change);
+// others stay.
 func (s *Sheet) RemoveProfsFrom(origin string) {
 	for k, from := range s.ProfSources {
 		if from != origin {
@@ -176,7 +187,19 @@ func (s *Sheet) RemoveProfsFrom(origin string) {
 		s.SkillProfs = slices.DeleteFunc(s.SkillProfs, func(x string) bool { return x == k })
 		s.Expertise = slices.DeleteFunc(s.Expertise, func(x string) bool { return x == k })
 		s.OtherProfs = slices.DeleteFunc(s.OtherProfs, func(x string) bool { return x == k })
+		s.ArmorTraining = slices.DeleteFunc(s.ArmorTraining, func(x string) bool { return armorSourceKey(x) == k })
 		delete(s.ProfSources, k)
+	}
+}
+
+// ClearSkillPicks removes the skills origin granted, and their sources, so
+// they can be picked again (the class's, after a background change).
+func (s *Sheet) ClearSkillPicks(origin string) {
+	for k, from := range s.ProfSources {
+		if from == origin && slices.Contains(s.SkillProfs, k) {
+			s.SkillProfs = slices.DeleteFunc(s.SkillProfs, func(x string) bool { return x == k })
+			delete(s.ProfSources, k)
+		}
 	}
 }
 
@@ -307,7 +330,7 @@ func (s *Sheet) AddFeature(f Feature, e FeatureEffects) {
 		f.Level = cmp.Or(s.Features[i].Level, f.Level)
 	}
 	s.putFeature(i, f, mods)
-	s.AddProfs(f.Name, e.Skills, e.Tools...)
+	s.Grant(f.Name, e)
 }
 
 func (s Sheet) featureIndex(name, source string) int {

@@ -659,6 +659,14 @@ func TestResistances(t *testing.T) {
 	if multi.SpellAbilityOf(Spell{Class: "cleric"}) != Wis || multi.SpellAbilityOf(Spell{}) != Int {
 		t.Error("SpellAbilityOf multiclass")
 	}
+	// A third caster (Eldritch Knight) casts with Intelligence; the header lists each ability once.
+	knight := Sheet{
+		Classes: []ClassLevel{{Slug: "fighter", Name: "Fighter", Caster: CasterThird}, {Slug: "cleric", Name: "Cleric"}},
+		Spells:  []Spell{{Class: "fighter"}, {Class: "cleric"}, {Ability: Cha}},
+	}
+	if knight.SpellAbilityOf(Spell{Class: "fighter"}) != Int || !slices.Equal(knight.SpellAbilities(), []string{Int, Wis, Cha}) {
+		t.Errorf("third caster: %q, abilities %q", knight.SpellAbilityOf(Spell{Class: "fighter"}), knight.SpellAbilities())
+	}
 }
 
 func TestCompletions(t *testing.T) {

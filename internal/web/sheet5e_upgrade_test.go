@@ -108,6 +108,31 @@ func TestUpgradeThirdCaster(t *testing.T) {
 	}
 }
 
+// TestUpgradeClassArmor: a sheet made from a class whose import carried no
+// armor training gets its first class's from the entry, with the class as
+// origin, plus a later class's multiclass training; a second run changes nothing.
+func TestUpgradeClassArmor(t *testing.T) {
+	e := newTestEnv(t)
+	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
+		Kind: "class", Slug: "testwarrior", Name: "Testwarrior", SourceKey: "test", ContentHash: "x",
+		DataJson: `{"hit_die":10,"desc":"|Core Traits||\n|---|---|\n|Armor Training|Light, Medium, and Heavy armor and Shields|"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := dnd5e.NewSheet()
+	s.EffectsVersion = 4
+	s.Classes = []dnd5e.ClassLevel{{Slug: "testwarrior", Name: "Testwarrior", Level: 2, HitDie: 10}, {Slug: "rogue", Name: "Rogue", Level: 1, HitDie: 8}}
+	e.setSheet(t, s)
+	for run, want := range []int{1, 0} {
+		if n, err := UpgradeSheets(t.Context(), e.app.Store); err != nil || n != want {
+			t.Fatalf("run %d: changed %d, err %v", run, n, err)
+		}
+	}
+	if got := e.sheet(t).ArmorTrainingLabels(); !slices.Equal(got, []string{"Light (Testwarrior)", "Medium (Testwarrior)", "Heavy (Testwarrior)", "Shields (Testwarrior)"}) {
+		t.Errorf("armor training %q", got)
+	}
+}
+
 // TestCatchUpResistances: an old sheet gets its species' fixed resistances
 // and those of the lineage it picked; one with resistances keeps them.
 func TestCatchUpResistances(t *testing.T) {

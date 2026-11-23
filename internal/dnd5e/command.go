@@ -141,6 +141,7 @@ func (c Character) clone() Character {
 	s.SkillProfs = slices.Clone(s.SkillProfs)
 	s.Expertise = slices.Clone(s.Expertise)
 	s.OtherProfs = slices.Clone(s.OtherProfs)
+	s.ArmorTraining = slices.Clone(s.ArmorTraining)
 	s.ProfSources = maps.Clone(s.ProfSources)
 	s.Languages = slices.Clone(s.Languages)
 	s.Resistances = slices.Clone(s.Resistances)
@@ -195,7 +196,7 @@ var Help = []HelpEntry{
 	{"set ac|speed <n>", "set ac 1", "Set an AC bonus that always applies, or base speed"},
 	{"set size <size> | set vision <text>|none", "set vision Darkvision 60 ft", "Set size (Tiny…Gargantuan) or vision"},
 	{"set backstory <text>", "set backstory Raised by wolves", "Replace the backstory"},
-	{"prof add|remove skill|save|expertise|other|language <name>", "prof add skill athletics", "Add or remove a proficiency"},
+	{"prof add|remove skill|save|expertise|other|language|armor <name>", "prof add skill athletics", "Add or remove a proficiency, or armor training (light, medium, heavy, shield)"},
 	{"prof set skill <skill> none|proficient|expertise", "prof set skill stealth expertise", "Set a skill's proficiency"},
 	{`feature add "<name>" [description]`, `feature add "Second Wind"`, "Add or replace a feature"},
 	{`feature set "<name>" action=bonus uses=2|cha|prof reset=short|long|short-one`, `feature set "Second Wind" action=bonus uses=2 reset=short-one`, "Set how a feature is used and how often"},
@@ -270,6 +271,8 @@ func Completions(s Sheet, words []string, slot string) []string {
 			return Completions(s, nil, "<skill>")
 		case word(0) == verbProf && word(2) == ModSave:
 			return Abilities
+		case word(0) == verbProf && word(2) == profKindArmor:
+			return ArmorKinds
 		case word(0) == verbProf:
 		default:
 			for _, it := range s.Inventory {

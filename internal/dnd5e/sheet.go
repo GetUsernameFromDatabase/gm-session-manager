@@ -419,7 +419,7 @@ func (s Sheet) Applies(m CustomMod) bool {
 	case WhenUnarmoredNoShield:
 		return s.Armor == nil && !s.Shield
 	case WhenNoHeavyArmor:
-		return s.Armor == nil || s.Armor.Type != "heavy"
+		return s.Armor == nil || s.Armor.Type != ArmorHeavy
 	}
 	return true
 }
@@ -438,12 +438,8 @@ const (
 	ModSkill   = "skill"
 )
 
-// Explain targets that no modifier can change.
-const (
-	ExplainOffhand     = "offhand"
-	ExplainSpellAttack = "spell.attack"
-	ExplainSpellDC     = "spell.dc"
-)
+// ExplainOffhand is an Explain target that no modifier can change.
+const ExplainOffhand = "offhand"
 
 // IsModTarget reports whether target names a value modifiers can change.
 func IsModTarget(target string) bool {
@@ -490,9 +486,11 @@ type Sheet struct {
 	SkillProfs []string `json:"skill_profs"          validate:"dive,required"`
 	Expertise  []string `json:"expertise"            validate:"dive,required"`
 	OtherProfs []string `json:"other_profs"          validate:"dive,required,max=200"`
-	// ProfSources names what granted a skill (by key) or other proficiency:
-	// a feature, class, species trait or background. Profs added by hand or
-	// before it was kept have none.
+	// ArmorTraining are the armor kinds (ArmorKinds) worn without penalty.
+	ArmorTraining []string `json:"armor_training,omitempty" validate:"dive,oneof=light medium heavy shield"`
+	// ProfSources names what granted a skill (by key), other proficiency or
+	// armor training ("armor:heavy"): a feature, class, species trait or
+	// background. Profs added by hand or before it was kept have none.
 	ProfSources map[string]string `json:"prof_sources,omitempty" validate:"dive,keys,max=200,endkeys,max=200"`
 	Languages   []string          `json:"languages"            validate:"dive,required,max=100"`
 	// Resistances are the damage types (DamageTypes) the character resists.
@@ -867,11 +865,23 @@ var spellAbilities = map[string]string{
 	"ranger": Wis, "sorcerer": Cha, "warlock": Cha, "wizard": Int,
 }
 
+// classAbility is cl's spellcasting ability: its class's, else Intelligence
+// for a third caster (Eldritch Knight, Arcane Trickster), else "".
+func classAbility(cl ClassLevel) string {
+	if a, ok := spellAbilities[strings.ToLower(cl.Name)]; ok {
+		return a
+	}
+	if cl.Caster == CasterThird {
+		return Int
+	}
+	return ""
+}
+
 // SpellAbility is the spellcasting ability of the character's first
 // casting class, or empty when it has none we know.
 func (s Sheet) SpellAbility() string {
 	for _, c := range s.Classes {
-		if a, ok := spellAbilities[strings.ToLower(c.Name)]; ok {
+		if a := classAbility(c); a != "" {
 			return a
 		}
 	}
@@ -879,10 +889,31 @@ func (s Sheet) SpellAbility() string {
 }
 
 // SpellAbilityOf is the ability sp is cast with: its own, else that of the
-// class whose list taught it (a slug, as spellAbilities keys), else the
-// first casting class's.
+// class whose list taught it (a slug), else the first casting class's.
 func (s Sheet) SpellAbilityOf(sp Spell) string {
-	return cmp.Or(sp.Ability, spellAbilities[sp.Class], s.SpellAbility())
+	of := spellAbilities[sp.Class]
+	if i := slices.IndexFunc(s.Classes, func(c ClassLevel) bool { return c.Slug == sp.Class }); sp.Class != "" && i >= 0 {
+		of = classAbility(s.Classes[i])
+	}
+	return cmp.Or(sp.Ability, of, s.SpellAbility())
+}
+
+// SpellAbilities are the different abilities the character casts with: its
+// casting classes' first, then any its spells bring (a feat's, a species').
+func (s Sheet) SpellAbilities() []string {
+	var out []string
+	add := func(a string) {
+		if a != "" && !slices.Contains(out, a) {
+			out = append(out, a)
+		}
+	}
+	for _, c := range s.Classes {
+		add(classAbility(c))
+	}
+	for _, sp := range s.Spells {
+		add(s.SpellAbilityOf(sp))
+	}
+	return out
 }
 
 // SpellAttack is the spell attack bonus with ability.

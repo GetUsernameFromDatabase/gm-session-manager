@@ -85,6 +85,19 @@ func UpgradeSheets(ctx context.Context, store *db.Store) (int, error) {
 					changed++
 				}
 			}
+			// Version 5: armor training moves out of other proficiencies;
+			// first classes (5etools ones had none), multiclasses, feats and
+			// features that train armor give it.
+			if sheet.EffectsVersion < 5 {
+				first, err := catchUpClassArmor(ctx, q, &sheet)
+				if err != nil {
+					return err
+				}
+				moved := sheet.CatchUpArmorTraining()
+				if sheet.CatchUpProfs() || moved || first {
+					changed++
+				}
+			}
 			sheet.EffectsVersion = dnd5e.EffectsVersion
 			raw, err := sheet.JSON()
 			if err != nil {
@@ -117,6 +130,30 @@ func upgradeSpecies(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet) ([]
 		return nil, err
 	}
 	return d.Parts, nil
+}
+
+// catchUpClassArmor gives the first class's armor training from its
+// compendium entry: classes imported from 5etools had none at creation. It
+// runs before CatchUpArmorTraining, so the class is named as the origin.
+func catchUpClassArmor(ctx context.Context, q *sqlc.Queries, sheet *dnd5e.Sheet) (bool, error) {
+	if len(sheet.Classes) == 0 {
+		return false, nil
+	}
+	cl := sheet.Classes[0]
+	row, _, err := entryFor(ctx, q, enum.KindClass, cl.Slug, cl.Source)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	d, err := compendium.Decode[compendium.ClassData](enum.KindClass, row.DataJson)
+	if err != nil {
+		return false, err
+	}
+	n := len(sheet.ArmorTraining)
+	sheet.AddArmorTraining(cl.Name, dnd5e.ParseArmorTraining(compendium.CoreTraits(d.Desc)[compendium.TraitArmorTraining])...)
+	return len(sheet.ArmorTraining) > n, nil
 }
 
 // catchUpResistances adds the resistances creation would have: those the

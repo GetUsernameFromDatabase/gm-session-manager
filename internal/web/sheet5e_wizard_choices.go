@@ -127,7 +127,7 @@ func (a *App) equipmentChoices(ctx context.Context, sh dnd5e.Sheet) ([]views.Equ
 	}
 	if len(sh.Classes) > 0 {
 		if err := add(enum.KindClass, sh.Classes[0].Slug, func(d any) string {
-			return compendium.CoreTraits(d.(*compendium.ClassData).Desc)["Starting Equipment"]
+			return compendium.CoreTraits(d.(*compendium.ClassData).Desc)[compendium.TraitStartingEquipment]
 		}); err != nil {
 			return nil, err
 		}

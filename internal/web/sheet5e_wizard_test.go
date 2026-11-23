@@ -1013,6 +1013,25 @@ func TestApplyTraitText(t *testing.T) {
 	}
 }
 
+// TestTrainedIn: a class's fixed weapons and tools become proficiencies;
+// choices stay the player's, even beside fixed tools (the Artificer's).
+func TestTrainedIn(t *testing.T) {
+	for _, tt := range []struct {
+		weapons, tools string
+		want           []string
+	}{
+		{"Simple weapons, Martial weapons", "Thieves' Tools", []string{"Simple weapons, Martial weapons", "Thieves' Tools"}},
+		{"Simple weapons", "Thieves' Tools, Tinker's Tools, one type of Artisan's Tools of your choice", []string{"Simple weapons", "Thieves' Tools", "Tinker's Tools"}},
+		{"Simple weapons", "Choose three Musical Instruments", []string{"Simple weapons"}},
+		{"None", "three musical instruments of your choice", nil},
+	} {
+		got := trainedIn(map[string]string{compendium.TraitWeaponProficiencies: tt.weapons, compendium.TraitToolProficiencies: tt.tools})
+		if !slices.Equal(got, tt.want) {
+			t.Errorf("%q / %q: %q, want %q", tt.weapons, tt.tools, got, tt.want)
+		}
+	}
+}
+
 // TestTextMarkdown: unnamed parts (a feat's body) get no empty bold label.
 func TestTextMarkdown(t *testing.T) {
 	got := textMarkdown(&compendium.TextData{Parts: []compendium.NameDesc{{Desc: "You strike twice."}, {Name: "Repeatable", Desc: "Again."}}})

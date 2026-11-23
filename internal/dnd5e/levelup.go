@@ -163,30 +163,36 @@ func (s Sheet) classNames() []string {
 	return out
 }
 
-// multiclassPrereqs are the 2024 multiclassing prerequisites: a score of
-// 13 in each listed ability, or in any one of them when anyOf is set.
-var multiclassPrereqs = map[string]struct {
+// multiclassing are the 2024 multiclassing rules of each class: a score of
+// 13 in each listed ability, or in any one of them when anyOf is set, and
+// the armor training taking it as a later class gives.
+var multiclassing = map[string]struct {
 	abilities []string
 	anyOf     bool
+	armor     []string
 }{
-	"barbarian": {[]string{Str}, false},
-	"bard":      {[]string{Cha}, false},
-	"cleric":    {[]string{Wis}, false},
-	"druid":     {[]string{Wis}, false},
-	"fighter":   {[]string{Str, Dex}, true},
-	"monk":      {[]string{Dex, Wis}, false},
-	"paladin":   {[]string{Str, Cha}, false},
-	"ranger":    {[]string{Dex, Wis}, false},
-	"rogue":     {[]string{Dex}, false},
-	"sorcerer":  {[]string{Cha}, false},
-	"warlock":   {[]string{Cha}, false},
-	"wizard":    {[]string{Int}, false},
+	"barbarian": {[]string{Str}, false, []string{ArmorShield}},
+	"bard":      {[]string{Cha}, false, []string{ArmorLight}},
+	"cleric":    {[]string{Wis}, false, []string{ArmorLight, ArmorMedium, ArmorShield}},
+	"druid":     {[]string{Wis}, false, []string{ArmorLight, ArmorShield}},
+	"fighter":   {[]string{Str, Dex}, true, []string{ArmorLight, ArmorMedium, ArmorShield}},
+	"monk":      {[]string{Dex, Wis}, false, nil},
+	"paladin":   {[]string{Str, Cha}, false, []string{ArmorLight, ArmorMedium, ArmorShield}},
+	"ranger":    {[]string{Dex, Wis}, false, []string{ArmorLight, ArmorMedium, ArmorShield}},
+	"rogue":     {[]string{Dex}, false, []string{ArmorLight}},
+	"sorcerer":  {[]string{Cha}, false, nil},
+	"warlock":   {[]string{Cha}, false, []string{ArmorLight}},
+	"wizard":    {[]string{Int}, false, nil},
 }
+
+// multiclassArmor is the armor training taking the named class as a later
+// class gives; none for unknown (homebrew) classes.
+func multiclassArmor(class string) []string { return multiclassing[strings.ToLower(class)].armor }
 
 // multiclassWarning explains an unmet multiclassing prerequisite of the
 // named class, or is empty. Unknown (homebrew) classes have none.
 func (s Sheet) multiclassWarning(class string) string {
-	pre, ok := multiclassPrereqs[strings.ToLower(class)]
+	pre, ok := multiclassing[strings.ToLower(class)]
 	if !ok {
 		return ""
 	}
@@ -244,6 +250,8 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 
 	if s.Level() == 0 {
 		s.SaveProfs = slices.Clone(ch.Class.Saves)
+	} else if s.classIndex(ch.Class.Slug) < 0 {
+		s.AddArmorTraining(ch.Class.Name, multiclassArmor(ch.Class.Name)...)
 	}
 	*s = s.withClassLevel(ch.Class, ch.Subclass)
 	s.LastClass = ch.Class.Slug
@@ -278,8 +286,9 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 // EffectsVersion goes up whenever saved sheets need catching up once at
 // startup: 1 when ParseEffects learned more uses, 2 for species resistances,
 // 3 for third casters and weapon masteries, 4 for features added once per
-// level, scaling speed bonuses and proficiencies granted by features.
-const EffectsVersion = 4
+// level, scaling speed bonuses and proficiencies granted by features, 5 for
+// armor training.
+const EffectsVersion = 5
 
 // reNumber is the number in a class table cell ("+15 ft.").
 var reNumber = regexp.MustCompile(`[+-]?\d+`)
@@ -355,18 +364,18 @@ func (s *Sheet) CatchUpUses(class ClassInfo) bool {
 	return changed
 }
 
-// CatchUpProfs gives the proficiencies class, subclass and species features
-// grant, for features added before the parser knew them. It reports whether
-// anything changed.
+// CatchUpProfs gives the proficiencies and armor training class, subclass,
+// species and feat features grant, for features added before the parser
+// knew them. It reports whether anything changed.
 func (s *Sheet) CatchUpProfs() bool {
-	before := len(s.SkillProfs) + len(s.OtherProfs)
+	count := func() int { return len(s.SkillProfs) + len(s.OtherProfs) + len(s.ArmorTraining) }
+	before := count()
 	for _, f := range s.Features {
-		if f.Source == s.Species || slices.Contains(s.classNames(), f.Source) {
-			e := ParseEffects(f.Name, f.Description, nil, "")
-			s.AddProfs(f.Name, e.Skills, e.Tools...)
+		if f.Source == s.Species || f.Source == SourceFeat || slices.Contains(s.classNames(), f.Source) {
+			s.Grant(f.Name, ParseEffects(f.Name, f.Description, nil, ""))
 		}
 	}
-	return len(s.SkillProfs)+len(s.OtherProfs) > before
+	return count() > before
 }
 
 // ASIError is a refusal about the ability score increase or feat pick, so the
@@ -382,6 +391,7 @@ func applyASI(s *Sheet, ch LevelUpChoice) error {
 	case ch.Feat != "":
 		s.Feats = append(s.Feats, ch.Feat)
 		s.Features = append(s.Features, Feature{Name: ch.Feat, Source: SourceFeat, Description: ch.FeatDesc})
+		s.Grant(ch.Feat, ParseEffects(ch.Feat, ch.FeatDesc, nil, ""))
 	case len(ch.ASI) == 1:
 		return raise(s, ch.ASI[0], 2)
 	case len(ch.ASI) == 2 && ch.ASI[0] != ch.ASI[1]:

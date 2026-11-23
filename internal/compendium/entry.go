@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 )
 
@@ -168,12 +169,12 @@ const masteryCategory = "Weapon Mastery"
 // them; each is the rule entry of its slug.
 var WeaponMasteries = []string{"Cleave", "Graze", "Nick", "Push", "Sap", "Slow", "Topple", "Vex"}
 
-// Armor types.
+// Armor types, as the sheet's armor training names them.
 const (
-	ArmorLight  = "light"
-	ArmorMedium = "medium"
-	ArmorHeavy  = "heavy"
-	ArmorShield = "shield"
+	ArmorLight  = dnd5e.ArmorLight
+	ArmorMedium = dnd5e.ArmorMedium
+	ArmorHeavy  = dnd5e.ArmorHeavy
+	ArmorShield = dnd5e.ArmorShield
 )
 
 // ArmorData is a piece of armor's AC rule: Base plus the Dexterity

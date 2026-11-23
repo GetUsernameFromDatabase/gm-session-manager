@@ -41,7 +41,7 @@ func Sum(parts []Part) int {
 // why a number is what it is. The stat methods sum these same parts.
 // Targets: ac, speed, init, passive, save.<ability>, skill.<key>,
 // attack.<weapon name>, damage.<weapon name>, offhand.<weapon name> (its
-// damage as a two-weapon fighting bonus attack), spell.attack and spell.dc.
+// damage as a two-weapon fighting bonus attack).
 func (s Sheet) Explain(target string) []Part {
 	kind, rest, _ := strings.Cut(target, ".")
 	switch {
@@ -79,16 +79,6 @@ func (s Sheet) Explain(target string) []Part {
 			}
 			return s.attackParts(s.Weapons[i])
 		}
-	case target == ExplainSpellAttack, target == ExplainSpellDC:
-		ab := s.SpellAbility()
-		if ab == "" {
-			return nil
-		}
-		parts := []Part{s.abilityPart(ab), {Label: labelProficiency, Value: s.ProficiencyBonus()}}
-		if target == ExplainSpellDC {
-			parts = append([]Part{{Label: labelBase, Value: 8}}, parts...)
-		}
-		return parts
 	}
 	return nil
 }
@@ -187,14 +177,13 @@ func (s Sheet) ArmorTooHeavy() bool {
 func (s Sheet) StealthDisadvantage() bool { return s.Armor != nil && s.Armor.Stealth }
 
 // ArmorUntrained names the worn armor types (or shield) the character has
-// no armor training for, judged from its other proficiencies.
+// no armor training for.
 func (s Sheet) ArmorUntrained() []string {
-	trained := strings.ToLower(strings.Join(s.OtherProfs, " "))
 	var out []string
-	if s.Armor != nil && !strings.Contains(trained, s.Armor.Type) {
+	if s.Armor != nil && !s.TrainedIn(s.Armor.Type) {
 		out = append(out, s.Armor.Type+" armor")
 	}
-	if s.Shield && !strings.Contains(trained, "shield") {
+	if s.Shield && !s.TrainedIn(ArmorShield) {
 		out = append(out, "shields")
 	}
 	return out

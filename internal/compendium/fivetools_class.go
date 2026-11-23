@@ -3,6 +3,7 @@ package compendium
 import (
 	"cmp"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -20,10 +21,99 @@ type ftClass struct {
 	HD struct {
 		Faces int `json:"faces"`
 	} `json:"hd"`
-	Proficiency       []string          `json:"proficiency"`
+	Proficiency           []string        `json:"proficiency"`
+	StartingProficiencies ftStartingProfs `json:"startingProficiencies"`
+	StartingEquipment     struct {
+		Entries []json.RawMessage `json:"entries"`
+	} `json:"startingEquipment"`
 	CasterProgression string            `json:"casterProgression"`
 	ClassFeatures     []json.RawMessage `json:"classFeatures"`
 	TableGroups       []ftTableGroup    `json:"classTableGroups"`
+}
+
+// ftStartingProfs are a class's starting proficiencies. Armor, weapon and
+// tool entries are text or {"proficiency": "shield", "full": "…"}.
+type ftStartingProfs struct {
+	Armor   []json.RawMessage `json:"armor"`
+	Weapons []json.RawMessage `json:"weapons"`
+	Tools   []json.RawMessage `json:"tools"`
+	Skills  []struct {
+		Choose *struct {
+			From  []string `json:"from"`
+			Count int      `json:"count"`
+		} `json:"choose"`
+		Any int `json:"any"`
+	} `json:"skills"`
+}
+
+// ftWeaponWords are the weapon categories 5etools names by key.
+var ftWeaponWords = map[string]string{"simple": "Simple weapons", "martial": "Martial weapons"}
+
+// coreTraits are the class's core traits rows, worded as the other sources
+// word them so the wizard reads them alike (see withCoreTraits).
+func (c ftClass) coreTraits() map[string]string {
+	p := c.StartingProficiencies
+	var armor []string
+	for _, t := range ftProfTexts(p.Armor, false) {
+		if k := dnd5e.ArmorKindNamed(t); k != "" {
+			armor = append(armor, k)
+		} else {
+			armor = append(armor, dnd5e.ParseArmorTraining(t)...)
+		}
+	}
+	weapons := ftProfTexts(p.Weapons, true)
+	for i, w := range weapons {
+		weapons[i] = cmp.Or(ftWeaponWords[strings.ToLower(w)], w)
+	}
+	rows := map[string]string{
+		TraitArmorTraining:       dnd5e.ArmorTrainingText(armor),
+		TraitWeaponProficiencies: strings.Join(weapons, ", "),
+		TraitToolProficiencies:   strings.Join(ftProfTexts(p.Tools, true), ", "),
+		TraitStartingEquipment:   strings.Join(ftProfTexts(c.StartingEquipment.Entries, true), " "),
+	}
+	for _, s := range p.Skills {
+		if s.Choose != nil {
+			rows[TraitSkillProficiencies] = fmt.Sprintf("Choose %d: %s", s.Choose.Count, strings.Join(ftSkillNames(s.Choose.From), ", "))
+			break
+		}
+		if s.Any > 0 {
+			rows[TraitSkillProficiencies] = fmt.Sprintf("Choose any %d skills", s.Any)
+			break
+		}
+	}
+	return rows
+}
+
+// ftProfTexts are proficiency entries as plain text: each string, or an
+// object's full wording (full) or its key. Other shapes are left out.
+func ftProfTexts(raws []json.RawMessage, full bool) []string {
+	var out []string
+	for _, raw := range raws {
+		var s string
+		var o struct{ Proficiency, Full string }
+		if json.Unmarshal(raw, &s) != nil && json.Unmarshal(raw, &o) == nil {
+			s = o.Proficiency
+			if full {
+				s = cmp.Or(o.Full, o.Proficiency)
+			}
+		}
+		if s = strings.TrimSpace(plainTags(s)); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// ftSkillNames are skill keys ("animal handling") as the sheet names them.
+func ftSkillNames(keys []string) []string {
+	out := make([]string, len(keys))
+	for i, k := range keys {
+		out[i] = k
+		if j := slices.IndexFunc(dnd5e.Skills, func(sk dnd5e.Skill) bool { return strings.EqualFold(sk.Name, k) }); j >= 0 {
+			out[i] = dnd5e.Skills[j].Name
+		}
+	}
+	return out
 }
 
 type ftSubclass struct {
@@ -204,7 +294,7 @@ func (p *ftBook) classFile(file string) error {
 		}
 		d := ClassData{
 			HitDie: c.HD.Faces, Caster: cmp.Or(ftCasters[c.CasterProgression], dnd5e.CasterNone), Saves: c.Proficiency,
-			Features: x.features(refs, false, gains), Table: ftClassTable(c.TableGroups),
+			Features: x.features(refs, false, gains), Table: ftClassTable(c.TableGroups), Desc: withCoreTraits("", c.coreTraits()),
 		}
 		p.add(enum.KindClass, c.Name, d, featuresSearchText(d.Features))
 	}); err != nil {

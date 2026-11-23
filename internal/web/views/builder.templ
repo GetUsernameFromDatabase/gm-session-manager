@@ -373,6 +373,9 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 		case "lang-add":
 			@removableList(s, "prof remove language", s.C.Sheet.Languages)
 			@nameField("Add a language", "", false)
+		case "armor-add":
+			@removableList(s, "prof remove armor", s.armorTrained())
+			@subjectField("Add armor training", items, "")
 		case "res-add", "imm-add", "vuln-add":
 			{{ noun, label, list := s.damageList(o.Key) }}
 			@removableList(s, "prof remove "+noun, capitalized(list))

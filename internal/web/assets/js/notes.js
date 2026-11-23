@@ -134,7 +134,8 @@ class BlockEditor {
     if (p.version > have) return this.composing() ? this.hold() : this.catchUp();
     const skip = have - p.version;
     const steps = p.steps.slice(skip);
-    if (!steps.length) return;
+    // A 409 may bring only steps the websocket already applied: send the rebased edits anyway.
+    if (!steps.length) return this.send();
     const clientIDs = p.clientIDs.slice(skip);
     // A peer's steps change the DOM, which under an IME composition (phone keyboards compose whole words)
     // duplicates text: hold them until it has settled. Confirmations of our own steps leave the doc alone.

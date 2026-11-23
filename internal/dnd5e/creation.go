@@ -26,9 +26,10 @@ func AddResistance(s *Sheet, damage string) {
 
 // AddFeat puts a feat on the sheet with what the sheet can automate.
 func AddFeat(s *Sheet, f Feature) {
-	mods := ParseEffects(f.Name, f.Description, nil, "").Apply(&f)
-	s.PutFeature(f, mods)
+	e := ParseEffects(f.Name, f.Description, nil, "")
+	s.PutFeature(f, e.Apply(&f))
 	s.Feats = append(s.Feats, f.Name)
+	s.Grant(f.Name, e)
 }
 
 // FreeCast is a lineage spell's one cast without a slot per Long Rest, as a

@@ -139,8 +139,8 @@ func TableText(table map[string]map[int]string) string {
 }
 
 // classTraits are the core traits rows the character wizard reads (see
-// CoreTraits), in table order.
-var classTraits = []string{TraitSkillProficiencies, TraitArmorTraining, TraitWeaponProficiencies, TraitToolProficiencies}
+// CoreTraits), in table order. The homebrew editor fills the first four.
+var classTraits = []string{TraitSkillProficiencies, TraitArmorTraining, TraitWeaponProficiencies, TraitToolProficiencies, TraitStartingEquipment}
 
 // Class core-trait names (keys of CoreTraits) the wizard shows and reads.
 const (
@@ -151,6 +151,7 @@ const (
 	TraitArmorTraining       = "Armor Training"
 	TraitWeaponProficiencies = "Weapon Proficiencies"
 	TraitToolProficiencies   = "Tool Proficiencies"
+	TraitStartingEquipment   = "Starting Equipment"
 )
 
 // withCoreTraits puts a core traits table with the given rows in front of desc.

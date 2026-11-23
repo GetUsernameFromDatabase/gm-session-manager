@@ -466,7 +466,7 @@ templ armorCard(s SheetView) {
 					}
 				}
 				if untrained := sh.ArmorUntrained(); len(untrained) > 0 {
-					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-amber-500 text-amber-700 dark:text-amber-300", Attributes: templ.Attributes{"title": "Without armor training you have disadvantage on Strength and Dexterity tests and attacks, and cannot cast spells. Add the training under Proficiencies if you have it."}}) {
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "border-amber-500 text-amber-700 dark:text-amber-300", Attributes: templ.Attributes{"title": "Without armor training you have disadvantage on Strength and Dexterity tests and attacks, and cannot cast spells. If you have it, add it under Proficiencies, Armor training."}}) {
 						Not trained: { strings.Join(untrained, ", ") }
 					}
 				}
@@ -959,13 +959,25 @@ templ skillsCard(s SheetView) {
 					}
 				</p>
 			}
+			if len(s.C.Sheet.ArmorTraining) > 0 || s.CanSheet {
+				<p class="mt-3 text-xs text-muted-foreground">
+					<span class="font-medium text-foreground">{ "Armor training " }</span>
+					@editable(s, edit{verbProfs, opArmorAdd, ""}, "Change armor training", "mx-0 whitespace-normal text-left") {
+						if len(s.C.Sheet.ArmorTraining) > 0 {
+							{ strings.Join(s.C.Sheet.ArmorTrainingLabels(), ", ") }
+						} else {
+							Add armor training
+						}
+					}
+				</p>
+			}
 			if len(s.C.Sheet.OtherProfs) > 0 || s.CanSheet {
 				<p class="mt-3 text-xs text-muted-foreground">
 					@editable(s, edit{verbProfs, opOtherAdd, ""}, "Change other proficiencies", "mx-0 whitespace-normal text-left") {
 						if len(s.C.Sheet.OtherProfs) > 0 {
 							{ strings.Join(s.C.Sheet.OtherProfLabels(), ", ") }
 						} else {
-							Add armor, weapon or tool proficiencies
+							Add weapon or tool proficiencies
 						}
 					}
 				</p>
@@ -1026,9 +1038,11 @@ templ spellsCard(s SheetView) {
 				@card.Title() {
 					Spells
 				}
-				if ab := s.C.Sheet.SpellAbility(); ab != "" {
+				if abs := s.C.Sheet.SpellAbilities(); len(abs) > 0 {
 					@card.Description() {
-						Spell attack { dnd5e.Signed(s.C.Sheet.SpellAttack(ab)) } · Save DC { fmt.Sprint(s.C.Sheet.SpellDC(ab)) } ({ dnd5e.AbilityNames[ab] })
+						for _, ab := range abs {
+							<span class="block">Spell attack { dnd5e.Signed(s.C.Sheet.SpellAttack(ab)) } · Save DC { fmt.Sprint(s.C.Sheet.SpellDC(ab)) } ({ dnd5e.AbilityNames[ab] })</span>
+						}
 					}
 				}
 				if s.CanSheet {
