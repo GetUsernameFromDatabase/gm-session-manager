@@ -94,6 +94,36 @@ func TestDeleteRestoreImport(t *testing.T) {
 	}
 }
 
+// TestImportCatchesUpOldSheet: a file exported before the latest
+// EffectsVersion is upgraded at import, not at the next start (armor
+// training kept as text moves into its own list).
+func TestImportCatchesUpOldSheet(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	file := `{"name":"Knight","system":"dnd5e","sheet":{"effects_version":4,"other_profs":["Heavy armor"]}}`
+	if w := e.doFile(t, route.Path(route.CampaignImportCharacter, e.campaignID), gm, nil, "file", "knight.json", file); w.Code != http.StatusSeeOther {
+		t.Fatalf("import: %d %s", w.Code, w.Body)
+	}
+	chars, err := e.q().ListCharactersByCampaign(t.Context(), e.campaignID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range chars {
+		if ch.Name != "Knight" {
+			continue
+		}
+		got, err := e.q().GetCharacter(t.Context(), ch.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(got.SheetJson, `"armor_training":["heavy"]`) || strings.Contains(got.SheetJson, "Heavy armor") {
+			t.Errorf("imported sheet not caught up: %s", got.SheetJson)
+		}
+		return
+	}
+	t.Fatal("imported character missing")
+}
+
 // TestRenameDeleteCampaign: only the GM renames or deletes a campaign, and
 // deleting it removes its characters and so their devices.
 func TestRenameDeleteCampaign(t *testing.T) {

@@ -44,8 +44,9 @@ type imageForm struct {
 
 // mergeEditor keeps each stored value the editor did not change, so a page
 // opened before another device's save does not undo it. A value both
-// changed is a conflict, refused as a userError naming it.
-func (f *imageForm) mergeEditor(c *gin.Context, img sqlc.GetImageRow) error {
+// changed is a conflict, refused as a userError naming it. newFile says the
+// editor uploaded a picture.
+func (f *imageForm) mergeEditor(img sqlc.GetImageRow, newFile bool) error {
 	var conflicts []string
 	// Browsers post every line break as \r\n; a stored value may hold bare \n.
 	norm := func(s string) string { return strings.ReplaceAll(strings.TrimSpace(s), "\r\n", "\n") }
@@ -68,8 +69,7 @@ func (f *imageForm) mergeEditor(c *gin.Context, img sqlc.GetImageRow) error {
 	if !newLink {
 		f.URL = ""
 	}
-	_, fileErr := c.FormFile("file")
-	if (newLink || fileErr == nil) && img.ID != 0 && f.WasSource != imageVersion(img.Url, img.AttachmentID) {
+	if (newLink || newFile) && img.ID != 0 && f.WasSource != imageVersion(img.Url, img.AttachmentID) {
 		conflicts = append(conflicts, "picture")
 	}
 	if len(conflicts) > 0 {
@@ -170,15 +170,27 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 	if !a.bindForm(c, &form) {
 		return nil
 	}
-	if err := form.mergeEditor(c, img); err != nil {
-		return err
-	}
 	ctx := c.Request.Context()
-	url, attachment, ok := a.imageSource(c, form.URL, img)
+	upload, ok := a.imageUpload(c, img.CampaignID)
 	if !ok {
 		return nil
 	}
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+		if img.ID != 0 {
+			// Read again: another device may have saved while the upload came in.
+			fresh, err := q.GetImage(ctx, img.ID)
+			if err != nil {
+				return err
+			}
+			img = fresh
+		}
+		if err := form.mergeEditor(img, upload.Valid); err != nil {
+			return err
+		}
+		url, attachment, err := imageSource(form.URL, upload, img)
+		if err != nil {
+			return err
+		}
 		category, err := ensureCategory(ctx, q, img.CampaignID, form.Category)
 		if err != nil {
 			return err
@@ -204,6 +216,9 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 		return q.DeleteUnusedImageCategories(ctx, img.CampaignID)
 	})
 	if err != nil {
+		if upload.Valid { // a refused save keeps no orphan upload
+			a.dropUpload(ctx, upload.Int64)
+		}
 		return err
 	}
 	a.sweepFiles(c)
@@ -211,30 +226,38 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 	return nil
 }
 
-// imageSource reads an image form's file or link for img (zero ID for a new
-// image). A new file replaces the link and the old file; a link replaces
-// the old file; neither keeps what img has.
-func (a *App) imageSource(c *gin.Context, link string, img sqlc.GetImageRow) (sql.NullString, sql.NullInt64, bool) {
-	url, attachment := nullString(strings.TrimSpace(link)), img.AttachmentID
-	if fh, err := c.FormFile("file"); err == nil {
-		att, ok := a.storeImageFile(c, img.CampaignID, fh)
-		if !ok {
-			return url, attachment, false
-		}
-		url, attachment = sql.NullString{}, nullID(att.ID)
-	} else if !errors.Is(err, http.ErrMissingFile) {
+// imageUpload stores the editor's uploaded picture, if any (an invalid ID
+// for none).
+func (a *App) imageUpload(c *gin.Context, campaignID int64) (sql.NullInt64, bool) {
+	fh, err := c.FormFile("file")
+	if errors.Is(err, http.ErrMissingFile) {
+		return sql.NullInt64{}, true
+	}
+	if err != nil {
 		a.fail(c, http.StatusUnprocessableEntity, "The file could not be read (files are limited to 20 MB).")
-		return url, attachment, false
-	} else if url.Valid {
+		return sql.NullInt64{}, false
+	}
+	att, ok := a.storeImageFile(c, campaignID, fh)
+	return nullID(att.ID), ok
+}
+
+// imageSource is the link and file img gets from the editor (zero ID for a
+// new image). A new file (upload) replaces the link and the old file; a link
+// replaces the old file; neither keeps what img has.
+func imageSource(link string, upload sql.NullInt64, img sqlc.GetImageRow) (sql.NullString, sql.NullInt64, error) {
+	url, attachment := nullString(strings.TrimSpace(link)), img.AttachmentID
+	switch {
+	case upload.Valid:
+		url, attachment = sql.NullString{}, upload
+	case url.Valid:
 		attachment = sql.NullInt64{}
-	} else {
+	default:
 		url = img.Url
 	}
 	if !url.Valid && !attachment.Valid {
-		a.fail(c, http.StatusUnprocessableEntity, "Give a link to the image or upload a file.")
-		return url, attachment, false
+		return url, attachment, userError{errors.New("give a link to the image or upload a file")}
 	}
-	return url, attachment, true
+	return url, attachment, nil
 }
 
 // storeImageFile saves an uploaded image with no block, so only the GM and
@@ -251,18 +274,26 @@ func (a *App) storeImageFile(c *gin.Context, campaignID int64, fh *multipart.Fil
 		return att, false
 	}
 	if !slices.Contains(inlineTypes, att.Mime) {
-		if err := a.Store.DeleteAttachment(ctx, att.ID); err != nil {
-			a.serverError(c, err)
-			return att, false
-		}
-		// Too fresh for the sweep's upload guard, so removed here.
-		if err := os.Remove(filepath.Join(a.attachmentsDir(), att.Path)); err != nil {
-			slog.Error("remove refused upload", "err", err)
-		}
+		a.dropUpload(ctx, att.ID)
 		a.fail(c, http.StatusUnprocessableEntity, "Upload a PNG, JPEG, GIF or WebP image.")
 		return att, false
 	}
 	return att, true
+}
+
+// dropUpload deletes a just-stored upload nothing uses, row and file: it is
+// too fresh for the sweep's upload guard.
+func (a *App) dropUpload(ctx context.Context, id int64) {
+	att, err := a.Store.GetAttachment(ctx, id)
+	if err == nil {
+		err = a.Store.DeleteAttachment(ctx, id)
+	}
+	if err == nil {
+		err = os.Remove(filepath.Join(a.attachmentsDir(), att.Path))
+	}
+	if err != nil {
+		slog.Error("remove refused upload", "err", err)
+	}
 }
 
 // attachmentToImage copies a picture attached to a note block into its

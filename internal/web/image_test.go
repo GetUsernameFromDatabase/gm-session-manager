@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +26,7 @@ import (
 )
 
 // doFile posts a multipart form with one file field.
-func (e testEnv) doFile(t *testing.T, path, cookie string, fields url.Values, fileField, fileName, content string) *httptest.ResponseRecorder {
+func (e testEnv) doFile(t *testing.T, path, cookie string, fields url.Values, fileField, fileName, content string, wrap ...func(io.Reader) io.Reader) *httptest.ResponseRecorder {
 	t.Helper()
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
@@ -39,7 +40,11 @@ func (e testEnv) doFile(t *testing.T, path, cookie string, fields url.Values, fi
 		_, _ = fw.Write([]byte(content))
 	}
 	_ = mw.Close()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, &body)
+	var r io.Reader = &body
+	for _, f := range wrap {
+		r = f(r)
+	}
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, r)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.RemoteAddr = lanAddr
 	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: cookie})
@@ -921,4 +926,34 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	if got := stored(); !strings.HasSuffix(got.Description.String, "Line 2") {
 		t.Errorf("multi-line description stored %q", got.Description.String)
 	}
+
+	// Another device saves while this post is still arriving (a slow
+	// upload): the rename lands and the other device's description stays.
+	cur := stored()
+	form = opened(cur.Name, cur.Description.String, imageVersion(cur.Url, cur.AttachmentID))
+	form.Set("name", "Ruins")
+	slow := func(r io.Reader) io.Reader {
+		return &hookReader{r: r, hook: func() { other(cur.Name, cur.Url.String, "Overgrown") }}
+	}
+	if w := e.doFile(t, path, gm, form, "", "", "", slow); w.Code != http.StatusSeeOther {
+		t.Fatalf("save during another's: %d %s", w.Code, w.Body)
+	}
+	if got := stored(); got.Name != "Ruins" || got.Description.String != "Overgrown" {
+		t.Errorf("save during another's stored %q %q", got.Name, got.Description.String)
+	}
+}
+
+// hookReader runs hook once, at the first read: another device's change
+// while a request body is still arriving.
+type hookReader struct {
+	r    io.Reader
+	hook func()
+}
+
+func (h *hookReader) Read(p []byte) (int, error) {
+	if h.hook != nil {
+		h.hook()
+		h.hook = nil
+	}
+	return h.r.Read(p)
 }

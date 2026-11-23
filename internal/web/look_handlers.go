@@ -14,7 +14,7 @@ import (
 )
 
 // lookForm is a player's new look for their character: a link or a file
-// (read by imageSource), and an optional name.
+// (read by imageUpload and imageSource), and an optional name.
 type lookForm struct {
 	Name string `form:"name" validate:"max=200"`
 	URL  string `form:"url"  validate:"omitempty,http_url,max=2000"`
@@ -99,16 +99,20 @@ func (a *App) addCharacterLook(c *gin.Context) error {
 	if !a.bindForm(c, &form) {
 		return nil
 	}
-	url, attachment, ok := a.imageSource(c, form.URL, sqlc.GetImageRow{CampaignID: ch.CampaignID})
+	upload, ok := a.imageUpload(c, ch.CampaignID)
 	if !ok {
 		return nil
+	}
+	url, attachment, err := imageSource(form.URL, upload, sqlc.GetImageRow{CampaignID: ch.CampaignID})
+	if err != nil {
+		return err
 	}
 	name := strings.TrimSpace(form.Name)
 	if name == "" {
 		name = ch.Name
 	}
 	ctx := c.Request.Context()
-	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		img, err := q.CreateImage(ctx, sqlc.CreateImageParams{CampaignID: ch.CampaignID, Name: name, Url: url, AttachmentID: attachment})
 		if err != nil {
 			return err

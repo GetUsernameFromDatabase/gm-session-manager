@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"path"
 
@@ -145,6 +146,11 @@ func (a *App) importCharacter(c *gin.Context) error {
 		CampaignID: camp.ID, Name: cf.Name, System: cf.System, Hp: cf.HP, MaxHp: cf.MaxHP, TempHp: cf.TempHP, SheetJson: string(cf.Sheet),
 	}); err != nil {
 		return err
+	}
+	// A file exported by an older version catches up now, not at the next
+	// start. The character is saved already: a failure only waits for that start.
+	if _, err := UpgradeSheets(c.Request.Context(), a.Store); err != nil {
+		slog.Warn("sheet upgrade after import", "err", err)
 	}
 	a.changed(c, camp.ID, hub.Topic{Kind: hub.TopicCampaign, ID: camp.ID})
 	return nil

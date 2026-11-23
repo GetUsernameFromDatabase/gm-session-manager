@@ -17,6 +17,7 @@ import (
 // UpgradeSheets catches saved sheets up with what the app has learned since
 // (dnd5e.EffectsVersion), against their classes' and species' compendium
 // entries. It runs at startup, before any client can hold a sheet, and
+// after a character file import (only that sheet can be behind then). It
 // returns how many sheets changed.
 func UpgradeSheets(ctx context.Context, store *db.Store) (int, error) {
 	changed := 0
