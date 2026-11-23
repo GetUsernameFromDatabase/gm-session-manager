@@ -181,7 +181,7 @@ data/                     DATA_DIR at runtime (database, tls, attachments, compe
 | `*.templ`, Tailwind classes | `go generate ./internal/web` (script bundle + `templ fmt` + templ + Tailwind) |
 | Go formatting | `golangci-lint fmt` |
 | shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./internal/web` |
-| browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs` |
+| browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs -update` and commit `cmd/vendorjs/vendor.sum` (every other run refuses files that differ from it) |
 
 Then `go build ./...`, `go test ./...` and `./lint.sh` (golangci-lint, `gopls check` on changed Go files,
 then stale Tailwind classes; `--all` checks every Go file).

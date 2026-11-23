@@ -34,6 +34,12 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 - Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
 - Durable lessons go in the nearest folder's `CLAUDE.md`; workflows in a skill; `HANDOFF.md` holds only current state and open items.
 
+## For the executor and reviewer agents
+
+- Easy to miss: validator `oneof` tags, `internal/enum` values, a `normalizeVersion` bump when a compendium parser changes, `DownloadVersion` when a 5etools download changes, route constants instead of literals (`internal/web/CLAUDE.md`).
+- Never run the built binary and never touch `data/` (the real DB and certificate); `curl` and other network calls are denied.
+- Checks after a change: the Commands table below, then `go build ./...`, `go test ./...`, `./lint.sh`, `graphify update .`.
+
 ## Game systems
 
 D&D 5e (2024) is the only system, fenced in rather than abstracted:
@@ -53,7 +59,7 @@ After cloning: `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` (both o
 | migrations, queries | `go generate ./internal/db` (sqlc on PATH) |
 | `*.templ`, Tailwind classes, shadcn-templ components (`go tool shadcn-templ add <name>`) | `go generate ./internal/web` |
 | Go formatting | `golangci-lint fmt` |
-| browser JS versions | `go run ./cmd/vendorjs -check`, edit `cmd/vendorjs/main.go`, `go run ./cmd/vendorjs` |
+| browser JS versions | `go run ./cmd/vendorjs -check`, edit `cmd/vendorjs/main.go`, `go run ./cmd/vendorjs -update`, commit `cmd/vendorjs/vendor.sum` (a plain run refuses changed files) |
 
 Then `go build ./...`, `go test ./...`, `./lint.sh`, `graphify update .`. Full build: `./build.sh`; release: `./release.sh <version>`; run: `./run.sh`.
 

@@ -172,6 +172,22 @@ func TestNormalizedShapes(t *testing.T) {
 	}
 }
 
+// An Open5e creature's environments seed its habitats, as 5etools' do.
+func TestOpen5eHabitats(t *testing.T) {
+	fx, err := parseFixtures(map[string][]byte{"f.json": []byte(`[
+		{"model":"api_v2.creature","pk":"srd-2024_wolf","fields":{"name":"Wolf","environments":["forest","Grassland","nowhere"]}}]`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	monsters, err := normalizer{fx: fx, prefix: "srd-2024_"}.monsters()
+	if err != nil || len(monsters) != 1 {
+		t.Fatal(monsters, err)
+	}
+	if got := monsters[0].Habitats; !slices.Equal(got, []enum.Habitat{enum.HabitatForest, enum.HabitatGrassland}) {
+		t.Errorf("habitats %v", got)
+	}
+}
+
 // The SRD lists weapon mastery among the properties; it becomes Mastery and
 // a rule slugged like a 5etools book's.
 func TestOpen5eMastery(t *testing.T) {

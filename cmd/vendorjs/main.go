@@ -11,10 +11,17 @@
 // To list the pinned packages that have newer releases (downloads nothing):
 //
 //	go run ./cmd/vendorjs -check
+//
+// Every file must match its SHA-256 in vendor.sum (committed), so a build never
+// ships JS that changed on the CDN unseen. After a version change, or when
+// jsDelivr rebuilt its +esm files, look at the difference and accept it:
+//
+//	go run ./cmd/vendorjs -update
 package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -32,10 +39,12 @@ import (
 )
 
 const (
-	cdnBase   = "https://cdn.jsdelivr.net"
-	dataBase  = "https://data.jsdelivr.com/v1/packages/npm/"
-	outDir    = "internal/web/assets/vendor"
-	publicDir = "/assets/vendor"
+	cdnBase    = "https://cdn.jsdelivr.net"
+	dataBase   = "https://data.jsdelivr.com/v1/packages/npm/"
+	outDir     = "internal/web/assets/vendor"
+	publicDir  = "/assets/vendor"
+	sumFile    = "cmd/vendorjs/vendor.sum"
+	scratchDir = "build"
 )
 
 // scripts are classic (non-module) files saved as-is under the given name.
@@ -63,8 +72,9 @@ var npmImport = regexp.MustCompile(`["'](/npm/[^"'\s]+?/\+esm)["']`)
 
 func main() {
 	checkOnly := flag.Bool("check", false, "list pinned packages with newer releases instead of downloading")
+	update := flag.Bool("update", false, "accept downloads that differ from "+sumFile+" and rewrite it")
 	flag.Parse()
-	do := run
+	do := func(ctx context.Context) error { return run(ctx, *update) }
 	if *checkOnly {
 		do = check
 	}
@@ -74,18 +84,14 @@ func main() {
 	}
 }
 
-func run(ctx context.Context) error {
-	if err := os.RemoveAll(outDir); err != nil {
-		return err
-	}
+func run(ctx context.Context, update bool) error {
+	files := map[string][]byte{} // by slash path under outDir
 	for name, src := range scripts {
 		body, err := fetch(ctx, src)
 		if err != nil {
 			return err
 		}
-		if err := write(filepath.Join(outDir, name), body); err != nil {
-			return err
-		}
+		files[name] = body
 	}
 
 	// jsDelivr resolves each package's dependency ranges separately, so one
@@ -113,18 +119,90 @@ func run(ctx context.Context) error {
 			quote := s[:1]
 			return quote + publicPath(canonical(s[1:len(s)-1], canon)) + quote
 		})
-		if err := write(filepath.Join(outDir, filepath.FromSlash(localPath(src))), []byte(rewritten)); err != nil {
-			return err
-		}
+		files[localPath(src)] = []byte(rewritten)
 	}
 	for alias, src := range modules {
-		body := fmt.Sprintf("export * from %q;\n", "./"+localPath(canonical(src, canon)))
-		if err := write(filepath.Join(outDir, alias), []byte(body)); err != nil {
-			return err
-		}
+		files[alias] = fmt.Appendf(nil, "export * from %q;\n", "./"+localPath(canonical(src, canon)))
+	}
+	if err := checkSums(files, update); err != nil {
+		return err
+	}
+	if err := install(files); err != nil {
+		return err
 	}
 	fmt.Printf("vendored %d scripts and %d modules into %s\n", len(scripts), len(mods), outDir)
 	return nil
+}
+
+// checkSums compares the files with vendor.sum ("<sha256>  <path>" lines, as
+// sha256sum writes them). With update it writes the file instead; a missing
+// vendor.sum is an error, so an uncommitted one never trusts every download.
+func checkSums(files map[string][]byte, update bool) error {
+	got := map[string]string{}
+	var b strings.Builder
+	for _, p := range slices.Sorted(maps.Keys(files)) {
+		got[p] = fmt.Sprintf("%x", sha256.Sum256(files[p]))
+		fmt.Fprintf(&b, "%s  %s\n", got[p], p)
+	}
+	if update {
+		fmt.Printf("wrote %s: review the change and commit it\n", sumFile)
+		return os.WriteFile(sumFile, []byte(b.String()), 0o600)
+	}
+	raw, err := os.ReadFile(sumFile)
+	if err != nil {
+		return fmt.Errorf("%w (create it with go run ./cmd/vendorjs -update)", err)
+	}
+	if changed := changedPaths(got, string(raw)); len(changed) > 0 {
+		return fmt.Errorf("downloads differ from %s (nothing written): %s\nIf that is expected (a version change, or jsDelivr rebuilt its +esm files), check it and run go run ./cmd/vendorjs -update", sumFile, strings.Join(changed, ", "))
+	}
+	return nil
+}
+
+// changedPaths returns the sorted paths whose sum in got differs from sumText,
+// is new, or is gone; nil when all match.
+func changedPaths(got map[string]string, sumText string) []string {
+	want := map[string]string{}
+	for line := range strings.Lines(sumText) { // git may check it out with CRLF
+		if f := strings.Fields(line); len(f) == 2 {
+			want[f[1]] = f[0]
+		}
+	}
+	paths := slices.Collect(maps.Keys(got))
+	for p := range want {
+		if _, ok := got[p]; !ok {
+			paths = append(paths, p) // gone from the download
+		}
+	}
+	slices.Sort(paths)
+	var changed []string
+	for _, p := range paths {
+		if got[p] != want[p] {
+			changed = append(changed, p)
+		}
+	}
+	return changed
+}
+
+// install replaces outDir with files at once: a failed write leaves the old folder in place.
+func install(files map[string][]byte) error {
+	// In the gitignored build/: a leftover from a killed run is never embedded, linted or watched; same volume for the rename.
+	if err := os.MkdirAll(scratchDir, 0o750); err != nil {
+		return err
+	}
+	tmp, err := os.MkdirTemp(scratchDir, ".vendor-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(tmp) }() // after the rename there is nothing left to remove
+	for p, body := range files {
+		if err := write(filepath.Join(tmp, filepath.FromSlash(p)), body); err != nil {
+			return err
+		}
+	}
+	if err := os.RemoveAll(outDir); err != nil {
+		return err
+	}
+	return os.Rename(tmp, outDir)
 }
 
 // check compares each pinned package with its latest release on npm. Only
@@ -154,7 +232,7 @@ func check(ctx context.Context) error {
 	}
 	if outdated > 0 {
 		fmt.Println("\nTo update: edit the versions in cmd/vendorjs/main.go (scripts, modules; the @tiptap packages move together),")
-		fmt.Println("then run go run ./cmd/vendorjs and go test ./internal/web.")
+		fmt.Println("then run go run ./cmd/vendorjs -update and go test ./internal/web.")
 	}
 	return nil
 }

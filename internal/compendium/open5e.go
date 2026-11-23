@@ -275,7 +275,7 @@ func (n normalizer) monsters() ([]Entry, error) {
 		for _, a := range acts {
 			d.Actions = append(d.Actions, MonsterAction{Name: a.Name, Desc: a.Desc, Type: strings.ToLower(a.ActionType)})
 		}
-		out = append(out, Entry{Kind: enum.KindMonster, Slug: n.slug(r.pk()), Name: c.Name, Data: d, Text: d.searchText()})
+		out = append(out, Entry{Kind: enum.KindMonster, Slug: n.slug(r.pk()), Name: c.Name, Data: d, Text: d.searchText(), Habitats: habitatsFrom(c.Environments)})
 	}
 	return out, nil
 }
