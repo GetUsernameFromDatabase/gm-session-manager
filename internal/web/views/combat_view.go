@@ -58,7 +58,7 @@ type CombatantView struct {
 	// Portrait is a character's or NPC's current look, when the viewer may see
 	// it, else the compendium monster's picture.
 	Portrait string
-	// Marker names its piece on the physical table, GM only.
+	// Marker names its piece on the physical table; players see it too.
 	Marker string
 	// Defenses are how it takes damage, for the GM and the player's own row.
 	Defenses Defenses

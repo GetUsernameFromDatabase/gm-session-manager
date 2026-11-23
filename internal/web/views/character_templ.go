@@ -717,7 +717,7 @@ func characterLooks(s SheetView) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = looksGrid(s.Looks, utils.IfElse(s.CanSheet, route.Path(route.CharacterImages, s.ID)+"/", "")).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = looksGrid(s.Looks, utils.IfElse(s.CanSheet, route.CharacterImageAction, ""), s.ID).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

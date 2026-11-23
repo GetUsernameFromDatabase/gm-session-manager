@@ -102,9 +102,12 @@ func totalSize(files []FileRow) int64 {
 	return n
 }
 
-// fileSize is a byte count in KB or MB.
+// fileSize is a byte count in B, KB or MB.
 func fileSize(n int64) string {
-	if n < 1<<20 {
+	switch {
+	case n < 1<<10:
+		return fmt.Sprintf("%d B", n)
+	case n < 1<<20:
 		return fmt.Sprintf("%.0f KB", float64(n)/(1<<10))
 	}
 	return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))

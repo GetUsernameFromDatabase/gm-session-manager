@@ -206,7 +206,7 @@ templ entityLooks(v EntityView) {
 				}
 			}
 			@card.Content(card.ContentProps{Class: "space-y-4"}) {
-				@looksGrid(v.E.Images, utils.IfElse(v.IsGM, route.Path(route.EntityImages, v.E.ID)+"/", ""))
+				@looksGrid(v.E.Images, utils.IfElse(v.IsGM, route.EntityImageAction, ""), v.E.ID)
 				if v.IsGM {
 					if len(v.ImageChoices) > 0 {
 						<form class="flex flex-wrap items-center gap-2" hx-post={ route.Path(route.EntityImages, v.E.ID) }>
@@ -226,8 +226,9 @@ templ entityLooks(v EntityView) {
 
 // looksGrid shows looks (an NPC's or a character's), the current one first,
 // larger and ringed as the portrait. It only ever gets the looks the viewer
-// may see. base is where the look actions live, empty when read-only.
-templ looksGrid(looks []perm.Look, base string) {
+// may see. action is the look action route (:owner/:image/:action) for
+// ownerID, empty when read-only.
+templ looksGrid(looks []perm.Look, action string, ownerID int64) {
 	<div class="flex flex-wrap items-start gap-4">
 		for _, img := range looks {
 			<figure class={ "space-y-1", utils.IfElse(img.IsCurrent, "w-64", "w-32") }>
@@ -240,8 +241,8 @@ templ looksGrid(looks []perm.Look, base string) {
 						<span class="sr-only">(current)</span>
 					}
 				</figcaption>
-				if base != "" {
-					@lookControls(base+fmt.Sprint(img.ImageID)+"/", img)
+				if action != "" {
+					@lookControls(action, ownerID, img)
 				}
 			</figure>
 		}
@@ -249,11 +250,11 @@ templ looksGrid(looks []perm.Look, base string) {
 }
 
 // lookControls are the buttons under a look: reveal or hide, make current,
-// unlink. base is the look's action URL prefix.
-templ lookControls(base string, img perm.Look) {
+// unlink. action is the look action route, filled with ownerID and the image.
+templ lookControls(action string, ownerID int64, img perm.Look) {
 	<div class="flex items-center gap-1">
 		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconXs, Class: "aria-pressed:text-primary text-muted-foreground", Attributes: templ.Attributes{
-			"hx-post": base + "reveal", "aria-pressed": fmt.Sprint(img.IsRevealed), "title": utils.IfElse(img.IsRevealed, "Revealed to players", "Hidden from players"),
+			"hx-post": route.Path(action, ownerID, img.ImageID, "reveal"), "aria-pressed": fmt.Sprint(img.IsRevealed), "title": utils.IfElse(img.IsRevealed, "Revealed to players", "Hidden from players"),
 		}}) {
 			if img.IsRevealed {
 				@icon.Eye(icon.Props{Size: 14})
@@ -262,12 +263,12 @@ templ lookControls(base string, img perm.Look) {
 			}
 		}
 		if !img.IsCurrent {
-			@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeXs, Class: "px-0", Attributes: templ.Attributes{"hx-post": base + "current"}}) {
+			@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeXs, Class: "px-0", Attributes: templ.Attributes{"hx-post": route.Path(action, ownerID, img.ImageID, "current")}}) {
 				Make current
 			}
 		}
 		<span class="ml-auto">
-			@removeButton(base + "unlink")
+			@removeButton(route.Path(action, ownerID, img.ImageID, "unlink"))
 		</span>
 	</div>
 }

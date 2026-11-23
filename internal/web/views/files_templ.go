@@ -726,7 +726,7 @@ func fileTile(f FileRow, base, tab string) templ.Component {
 				return nil
 			})
 			templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: "absolute top-1.5 right-1.5 bg-background/85 " + quietDestructive, Attributes: templ.Attributes{
-				"hx-post": fmt.Sprintf("%s/%d/delete", base, f.ID), "hx-vals": toJSON(map[string]string{"tab": tab}), "hx-confirm": "Delete this file from this computer?", "aria-label": "Delete " + utils.IfElse(f.Private, "this file", f.Name),
+				"hx-post": base + route.Path(route.AttachmentDelete, f.ID), "hx-vals": toJSON(map[string]string{"tab": tab}), "hx-confirm": "Delete this file from this computer?", "aria-label": "Delete " + utils.IfElse(f.Private, "this file", f.Name),
 			}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var33), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

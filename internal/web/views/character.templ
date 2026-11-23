@@ -173,7 +173,7 @@ templ characterLooks(s SheetView) {
 				}
 			}
 			@card.Content(card.ContentProps{Class: "space-y-4"}) {
-				@looksGrid(s.Looks, utils.IfElse(s.CanSheet, route.Path(route.CharacterImages, s.ID)+"/", ""))
+				@looksGrid(s.Looks, utils.IfElse(s.CanSheet, route.CharacterImageAction, ""), s.ID)
 				if s.CanSheet {
 					<form
 						class="group/busy max-w-md space-y-3"
