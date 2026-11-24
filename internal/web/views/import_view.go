@@ -126,13 +126,6 @@ func NewFiveToolsView(books []compendium.Book, downloaded map[string]time.Time) 
 // copyLabel names an entry's copy in a source for the "Also in" line.
 func copyLabel(c sqlc.ListEntryCopiesRow) string { return SourceLabel(c.SourceKey, c.Edition) }
 
-// sourceURL is a source's priority action (route.CompendiumSourceMove or
-// CompendiumSourceDelete) in the campaign ctx renders in, whose overlap
-// counts the answer shows.
-func sourceURL(ctx context.Context, key, action string) string {
-	return CompendiumPath(ctx, route.Path(action, key))
-}
-
 // SharedKey is the browse filter to one source's entries another source
 // also holds (CompendiumView.Shared); SharedWithKey narrows it to one other
 // source (CompendiumView.With).

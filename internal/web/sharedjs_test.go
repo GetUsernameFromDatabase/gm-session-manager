@@ -83,6 +83,17 @@ func TestSharedJS(t *testing.T) {
 		"MSG":            sharedMsg,
 		"KEY":            sharedKeys,
 		"CMD_FIELD":      views.CmdField,
+
+		"IMPORT_ROWS_FIELD":        views.ImportRowsField,
+		"IMPORT_FILTER_CATEGORY":   views.ImportFilterCategory,
+		"IMPORT_FILTER_STATUS":     views.ImportFilterStatus,
+		"IMPORT_FILTER_ALL":        views.ImportFilterAll,
+		"IMPORT_FILTER_NONE":       views.ImportFilterNone,
+		"IMPORT_FILTER_CAT_PREFIX": views.ImportFilterCatPrefix,
+		"IMPORT_STATUS_ANY":        views.ImportStatusAny,
+		"IMPORT_STATUS_TICKED":     views.ImportStatusTicked,
+		"IMPORT_STATUS_UNTICKED":   views.ImportStatusUnticked,
+		"IMPORT_STATUS_BROKEN":     views.ImportStatusBroken,
 	}
 	for name, v := range want {
 		b, err := json.Marshal(v)

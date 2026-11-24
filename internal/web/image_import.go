@@ -23,10 +23,12 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
-// Limits for CSV imports held between upload and commit.
+// Limits for CSV imports held between upload and commit. Every change in the
+// review re-renders all kept rows, about 2.4 KB each (BenchmarkImportReview):
+// maxImportRows keeps one refresh near 12 MB.
 const (
 	maxImportBytes  = 5 << 20
-	maxImportRows   = 20000
+	maxImportRows   = 5000
 	maxImports      = 10
 	importLifetime  = time.Hour
 	noImportColumn  = -1
@@ -350,8 +352,9 @@ func formValues(c *gin.Context, name string) ([]string, bool) {
 }
 
 // parseRowSet reads the ticked rows of n as app.js sends them: runs and
-// single rows ("0-78,80,82"), or after "!" the rows that are not ticked,
-// whichever was shorter. Runs may span rows that cannot be imported.
+// single rows ("0-78,80,82"), or after "!" the rows that are not ticked
+// (what app.js sends, so rows it never saw count as ticked). Runs may span
+// rows that cannot be imported.
 func parseRowSet(s string, n int) []bool {
 	set := make([]bool, n)
 	invert := strings.HasPrefix(s, "!")

@@ -549,15 +549,15 @@ func SourcePreview(v SourcePreviewView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = switchList("Replace", v.Plan.Replace, v.SourceLabel).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = switchList(switchReplace, v.Plan.Replace, v.SourceLabel).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = switchList("Add", v.Plan.Add, v.SourceLabel).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = switchList(switchAdd, v.Plan.Add, v.SourceLabel).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = switchList("Keep", v.Plan.Keep, v.SourceLabel).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = switchList(switchKeep, v.Plan.Keep, v.SourceLabel).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -722,7 +722,7 @@ func switchList(title string, fs []dnd5e.SwitchFeature, label string) templ.Comp
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if title == "Add" && f.Level > 0 {
+				if title == switchAdd && f.Level > 0 {
 					var templ_7745c5c3_Var35 string
 					templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf(" (level %d)", f.Level))
 					if templ_7745c5c3_Err != nil {
@@ -752,7 +752,7 @@ func switchList(title string, fs []dnd5e.SwitchFeature, label string) templ.Comp
 						return templ_7745c5c3_Err
 					}
 				}
-				if title == "Keep" {
+				if title == switchKeep {
 					var templ_7745c5c3_Var37 string
 					templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(" (edited, kept)")
 					if templ_7745c5c3_Err != nil {

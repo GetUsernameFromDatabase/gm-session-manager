@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
+	"gm-session-manager/internal/route"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -106,14 +109,37 @@ func (a *App) fiveToolsImport(c *gin.Context) error {
 			picked = append(picked, b)
 		}
 	}
+	if len(picked) == 0 { // e.g. the stale-books banner's books have left the mirror
+		notice.Msg, notice.Failed = "None of those books is on the 5etools mirror any more; remove them instead.", true
+		return a.renderCompendium(c, notice)
+	}
 	if !a.fiveTools.start(len(picked)) {
 		notice.Msg, notice.Failed = errImportRunning, true
 		return a.renderCompendium(c, notice)
 	}
 	// The import outlives the request.
 	go a.runFiveTools(context.WithoutCancel(ctx), dir, picked)
-	c.Redirect(http.StatusSeeOther, compendiumPath(c, "?import="+views.ImportTabFiveTools))
+	c.Redirect(http.StatusSeeOther, fiveToolsBack(c)+"?import="+views.ImportTabFiveTools)
 	return nil
+}
+
+// fiveToolsBack is the compendium page the picker was opened from (the global
+// one or a campaign's), since its form always posts to the global path. Only
+// the Referer's path is read, so the redirect stays on this site.
+func fiveToolsBack(c *gin.Context) string {
+	ref, err := url.Parse(c.Request.Referer())
+	if err != nil {
+		return compendiumPath(c, "")
+	}
+	if ref.Path == route.Compendium {
+		return views.CompendiumBase(0)
+	}
+	p, ok := strings.CutPrefix(ref.Path, strings.TrimSuffix(route.Campaign, ":campaign"))
+	idStr, rest, _ := strings.Cut(p, "/")
+	if id, err := strconv.ParseInt(idStr, 10, 64); ok && err == nil && id > 0 && rest == strings.TrimPrefix(route.Compendium, "/") {
+		return views.CompendiumBase(id)
+	}
+	return compendiumPath(c, "")
 }
 
 // autoRedownloadForm is the GM's "download again automatically" switch.
@@ -177,6 +203,7 @@ func (a *App) fiveToolsRemove(c *gin.Context) error {
 
 // sourceMoveForm moves a source one place in the priority order.
 type sourceMoveForm struct {
+	Key string `form:"key" validate:"required,max=200"`
 	Dir string `form:"dir" validate:"required,oneof=up down"`
 }
 
@@ -188,7 +215,7 @@ func (a *App) sourceMove(c *gin.Context) error {
 		return nil
 	}
 	ctx := c.Request.Context()
-	err := compendium.MoveSource(ctx, a.Store, c.Param("key"), f.Dir == views.SourceUp)
+	err := compendium.MoveSource(ctx, a.Store, f.Key, f.Dir == views.SourceUp)
 	if errors.Is(err, compendium.ErrNoSource) {
 		a.fail(c, http.StatusNotFound, "That source is not imported.")
 		return nil

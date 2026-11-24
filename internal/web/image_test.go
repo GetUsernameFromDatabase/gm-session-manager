@@ -304,7 +304,7 @@ func TestImageImport(t *testing.T) {
 	// The rows refresh shows each row under its new category.
 	w = e.do(t, http.MethodGet, review+"?"+form.Encode(), gm, nil, true)
 	body := w.Body.String()
-	if !strings.Contains(body, `data-category="NPC"`) || strings.Contains(body, `data-category="Area"`) {
+	if !strings.Contains(body, `data-category="=NPC"`) || strings.Contains(body, `data-category="=Area"`) {
 		t.Errorf("rows do not follow the category targets")
 	}
 	// Merged values are boxed together, and categories sort by name.

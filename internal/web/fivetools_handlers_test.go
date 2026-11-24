@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
@@ -57,7 +60,8 @@ func TestFiveToolsGMOnly(t *testing.T) {
 		{http.MethodPost, views.FiveToolsPath},
 		{http.MethodPost, route.Compendium + route.Path(route.CompendiumFiveToolsBookDelete, "phb")},
 		{http.MethodPost, route.Compendium + route.CompendiumFiveToolsAuto},
-		{http.MethodPost, route.Compendium + route.Path(route.CompendiumSourceMove, "5etools-phb")},
+		{http.MethodPost, route.Compendium + route.CompendiumSourceMove},
+		{http.MethodPost, route.Compendium + route.CompendiumSourceDelete},
 		{http.MethodPost, views.SourceOrderPath},
 	}
 	for _, tt := range tests {
@@ -112,7 +116,7 @@ func TestSourceMove(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.code != 0 {
-				if w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumSourceMove, tt.key), gm, url.Values{"dir": {tt.dir}}, true); w.Code != tt.code {
+				if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceMove, gm, url.Values{"key": {tt.key}, "dir": {tt.dir}}, true); w.Code != tt.code {
 					t.Fatalf("code %d, want %d: %s", w.Code, tt.code, w.Body)
 				}
 			}
@@ -342,7 +346,8 @@ func TestSourceDeleteUsed(t *testing.T) {
 		}
 	}
 	pin(`{"species_source":"my-folder"}`)
-	w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumSourceDelete, "my-folder"), gm, nil, true)
+	del := url.Values{"key": {"my-folder"}}
+	w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceDelete, gm, del, true)
 	if !strings.Contains(w.Body.String(), "my-folder is used by") || !strings.Contains(w.Body.String(), "Switch their sources first.") {
 		t.Errorf("no refusal naming users: %d %s", w.Code, w.Body)
 	}
@@ -358,13 +363,13 @@ func TestSourceDeleteUsed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumSourceDelete, "my-folder"), gm, nil, true); !strings.Contains(w.Body.String(), "my-folder is used by Goblin boss.") {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceDelete, gm, del, true); !strings.Contains(w.Body.String(), "my-folder is used by Goblin boss.") {
 		t.Errorf("entity link not counted: %d %s", w.Code, w.Body)
 	}
 	if err := e.q().DeleteEntity(t.Context(), ent.ID); err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumSourceDelete, "my-folder"), gm, nil, true); w.Code != http.StatusOK {
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceDelete, gm, del, true); w.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", w.Code, w.Body)
 	}
 	if _, err := e.q().GetCompendiumSource(t.Context(), "my-folder"); err == nil {
@@ -372,5 +377,77 @@ func TestSourceDeleteUsed(t *testing.T) {
 	}
 	if _, err := os.Stat(folder); !os.IsNotExist(err) {
 		t.Errorf("folder kept: %v", err)
+	}
+}
+
+// TestSourceKeyWithSlash: page imports key sources like 5etools:mtf/howler
+// or aidedd:dnd/sorts.php?vf=a+b, whose characters a URL path would mangle;
+// move and delete take the key from the body.
+func TestSourceKeyWithSlash(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	e.source(t, "book-a", "2024")
+	order := func() string {
+		rows, err := e.q().ListCompendiumSources(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var keys []string
+		for _, r := range rows {
+			keys = append(keys, r.SourceKey)
+		}
+		return strings.Join(keys, ",")
+	}
+	for _, key := range []string{"5etools:mtf/howler", "aidedd:dnd/sorts.php?vf=a+b"} {
+		t.Run(key, func(t *testing.T) {
+			e.source(t, key, "2024")
+			move := func(dir string) {
+				t.Helper()
+				if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceMove, gm, url.Values{"key": {key}, "dir": {dir}}, true); w.Code != http.StatusOK {
+					t.Fatalf("%s: %d %s", dir, w.Code, w.Body)
+				}
+			}
+			before := order()
+			move(views.SourceUp)
+			up := order()
+			if up == before {
+				t.Fatalf("up changed nothing: %s", up)
+			}
+			move(views.SourceDown)
+			if got := order(); got == up {
+				t.Errorf("down changed nothing: %s", got)
+			}
+			if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceDelete, gm, url.Values{"key": {key}}, true); w.Code != http.StatusOK {
+				t.Fatalf("delete: %d %s", w.Code, w.Body)
+			}
+			if _, err := e.q().GetCompendiumSource(t.Context(), key); err == nil {
+				t.Error("source kept")
+			}
+		})
+	}
+}
+
+func TestFiveToolsBack(t *testing.T) {
+	global := route.Compendium
+	camp3 := route.Path(route.CampaignCompendium, 3)
+	tests := []struct{ name, referer, want string }{
+		{"global", "https://host" + global + "?q=x", global},
+		{"campaign", "https://host" + camp3, camp3},
+		{"unrelated page", "https://host" + route.Path(route.Campaign, 3) + route.Images, global},
+		{"other host", "https://elsewhere.example" + camp3, camp3},
+		{"entry page", "https://host" + camp3 + route.Path(route.CompendiumEntry, 7), global},
+		{"no referer", "", global},
+		{"malformed", "http://[::1", global},
+		{"bad id", "https://host" + route.Path(route.CampaignCompendium, "x"), global},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
+			c.Request.Header.Set("Referer", tt.referer)
+			if got := fiveToolsBack(c); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

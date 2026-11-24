@@ -1118,7 +1118,7 @@ func SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Coun
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					if s.SourceKey != "homebrew" {
+					if s.SourceKey != compendium.HomebrewSource {
 						templ_7745c5c3_Err = sourceDeleteButton(s.SourceKey).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
@@ -1153,6 +1153,9 @@ func SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Coun
 	})
 }
 
+// sourceDeleteButton and sourceMoveButton post the key in the body, not the
+// path (page sources hold "/"), to the campaign's compendium, whose overlap
+// counts the answer shows.
 func sourceDeleteButton(key string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1189,7 +1192,7 @@ func sourceDeleteButton(key string) templ.Component {
 			return nil
 		})
 		templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Class: quietDestructive, Attributes: templ.Attributes{
-			"aria-label": "Delete " + key, "title": "Delete " + key, "hx-post": sourceURL(ctx, key, route.CompendiumSourceDelete),
+			"aria-label": "Delete " + key, "title": "Delete " + key, "hx-post": CompendiumPath(ctx, route.CompendiumSourceDelete), "hx-vals": toJSON(map[string]string{SourceKeyField: key}),
 			"hx-confirm": "Delete " + key + " and all its entries?",
 		}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var53), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
@@ -1242,7 +1245,7 @@ func sourceMoveButton(key, dir, label string, disabled bool) templ.Component {
 			return nil
 		})
 		templ_7745c5c3_Err = button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Disabled: disabled, Attributes: templ.Attributes{
-			"aria-label": label, "title": label, "hx-post": sourceURL(ctx, key, route.CompendiumSourceMove), "hx-vals": toJSON(map[string]string{SourceDirField: dir}),
+			"aria-label": label, "title": label, "hx-post": CompendiumPath(ctx, route.CompendiumSourceMove), "hx-vals": toJSON(map[string]string{SourceKeyField: key, SourceDirField: dir}),
 		}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var55), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -1401,7 +1404,7 @@ func importTabs(n ImportNotice) templ.Component {
 				var templ_7745c5c3_Var63 string
 				templ_7745c5c3_Var63, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(CompendiumPath(ctx, route.CompendiumPagePreview))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 237, Col: 95}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 240, Col: 95}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var63)
 				if templ_7745c5c3_Err != nil {
@@ -1414,7 +1417,7 @@ func importTabs(n ImportNotice) templ.Component {
 				var templ_7745c5c3_Var64 string
 				templ_7745c5c3_Var64, templ_7745c5c3_Err = templruntime.NewAttributeExpression(n.Back).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 238, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 241, Col: 51}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var64)
 				if templ_7745c5c3_Err != nil {
@@ -1476,7 +1479,7 @@ func importTabs(n ImportNotice) templ.Component {
 					var templ_7745c5c3_Var66 string
 					templ_7745c5c3_Var66, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(s.Home)).ResolveURL(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 252, Col: 83}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 255, Col: 83}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var66)
 					if templ_7745c5c3_Err != nil {
@@ -1489,7 +1492,7 @@ func importTabs(n ImportNotice) templ.Component {
 					var templ_7745c5c3_Var67 string
 					templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(s.Host())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 252, Col: 138}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 255, Col: 138}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 					if templ_7745c5c3_Err != nil {
@@ -1502,7 +1505,7 @@ func importTabs(n ImportNotice) templ.Component {
 					var templ_7745c5c3_Var68 string
 					templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.JoinStringErrs(s.Imports)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 252, Col: 157}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 255, Col: 157}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var68))
 					if templ_7745c5c3_Err != nil {
@@ -1520,7 +1523,7 @@ func importTabs(n ImportNotice) templ.Component {
 						var templ_7745c5c3_Var69 string
 						templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.JoinStringErrs(s.Note)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 254, Col: 64}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 257, Col: 64}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var69))
 						if templ_7745c5c3_Err != nil {
@@ -1533,7 +1536,7 @@ func importTabs(n ImportNotice) templ.Component {
 						var templ_7745c5c3_Var70 string
 						templ_7745c5c3_Var70, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(s.NoteURL)).ResolveURL(ctx)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 255, Col: 59}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 258, Col: 59}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var70)
 						if templ_7745c5c3_Err != nil {
@@ -1600,7 +1603,7 @@ func importTabs(n ImportNotice) templ.Component {
 				var templ_7745c5c3_Var73 string
 				templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(n.Dir)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 269, Col: 121}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 272, Col: 121}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 				if templ_7745c5c3_Err != nil {
@@ -1631,7 +1634,7 @@ func importTabs(n ImportNotice) templ.Component {
 				var templ_7745c5c3_Var74 string
 				templ_7745c5c3_Var74, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FiveToolsID).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 276, Col: 24}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 279, Col: 24}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var74)
 				if templ_7745c5c3_Err != nil {
@@ -1644,7 +1647,7 @@ func importTabs(n ImportNotice) templ.Component {
 				var templ_7745c5c3_Var75 string
 				templ_7745c5c3_Var75, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FiveToolsPath).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 276, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 279, Col: 79}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var75)
 				if templ_7745c5c3_Err != nil {
@@ -1679,7 +1682,7 @@ func importTabs(n ImportNotice) templ.Component {
 				var templ_7745c5c3_Var77 string
 				templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(n.Dir)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 281, Col: 88}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 284, Col: 88}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 				if templ_7745c5c3_Err != nil {
@@ -1750,7 +1753,7 @@ func importTabs(n ImportNotice) templ.Component {
 				var templ_7745c5c3_Var80 string
 				templ_7745c5c3_Var80, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(CompendiumPath(ctx, route.CompendiumImport))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 292, Col: 91}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 295, Col: 91}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var80)
 				if templ_7745c5c3_Err != nil {
@@ -1868,7 +1871,7 @@ func importDetails(summary string) templ.Component {
 		var templ_7745c5c3_Var84 string
 		templ_7745c5c3_Var84, templ_7745c5c3_Err = templ.JoinStringErrs(summary)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 321, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/import.templ`, Line: 324, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var84))
 		if templ_7745c5c3_Err != nil {

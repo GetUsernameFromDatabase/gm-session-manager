@@ -13,4 +13,14 @@ declare module "*/shared.js" {
   export const MSG: {"gone":"gone","hello":"hello","patch":"patch","reload":"reload","steps":"steps","sub":"sub","unsub":"unsub"};
   export const KEY: {"clientIDs":"clientIDs","doc":"doc","docVersion":"docVersion","editable":"editable","error":"error","id":"id","image":"image","name":"name","steps":"steps","url":"url"};
   export const CMD_FIELD: "cmd";
+  export const IMPORT_ROWS_FIELD: "rows";
+  export const IMPORT_FILTER_CATEGORY: "filter_category";
+  export const IMPORT_FILTER_STATUS: "filter_status";
+  export const IMPORT_FILTER_ALL: "*";
+  export const IMPORT_FILTER_NONE: "-";
+  export const IMPORT_FILTER_CAT_PREFIX: "=";
+  export const IMPORT_STATUS_ANY: "any";
+  export const IMPORT_STATUS_TICKED: "ticked";
+  export const IMPORT_STATUS_UNTICKED: "unticked";
+  export const IMPORT_STATUS_BROKEN: "broken";
 }

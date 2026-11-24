@@ -180,7 +180,7 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 							<span class="flex gap-1" hx-target={ "#" + SourcesID } hx-swap="outerHTML">
 								@sourceMoveButton(s.SourceKey, SourceUp, "Move "+s.SourceKey+" up", i == 0)
 								@sourceMoveButton(s.SourceKey, SourceDown, "Move "+s.SourceKey+" down", i == len(sources)-1)
-								if s.SourceKey != "homebrew" {
+								if s.SourceKey != compendium.HomebrewSource {
 									@sourceDeleteButton(s.SourceKey)
 								}
 							</span>
@@ -192,9 +192,12 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 	</div>
 }
 
+// sourceDeleteButton and sourceMoveButton post the key in the body, not the
+// path (page sources hold "/"), to the campaign's compendium, whose overlap
+// counts the answer shows.
 templ sourceDeleteButton(key string) {
 	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Class: quietDestructive, Attributes: templ.Attributes{
-		"aria-label": "Delete " + key, "title": "Delete " + key, "hx-post": sourceURL(ctx, key, route.CompendiumSourceDelete),
+		"aria-label": "Delete " + key, "title": "Delete " + key, "hx-post": CompendiumPath(ctx, route.CompendiumSourceDelete), "hx-vals": toJSON(map[string]string{SourceKeyField: key}),
 		"hx-confirm": "Delete " + key + " and all its entries?",
 	}}) {
 		@icon.Trash2()
@@ -203,7 +206,7 @@ templ sourceDeleteButton(key string) {
 
 templ sourceMoveButton(key, dir, label string, disabled bool) {
 	@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeIconSm, Disabled: disabled, Attributes: templ.Attributes{
-		"aria-label": label, "title": label, "hx-post": sourceURL(ctx, key, route.CompendiumSourceMove), "hx-vals": toJSON(map[string]string{SourceDirField: dir}),
+		"aria-label": label, "title": label, "hx-post": CompendiumPath(ctx, route.CompendiumSourceMove), "hx-vals": toJSON(map[string]string{SourceKeyField: key, SourceDirField: dir}),
 	}}) {
 		if dir == SourceUp {
 			@icon.ArrowUp()

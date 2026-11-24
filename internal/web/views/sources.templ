@@ -102,9 +102,9 @@ templ SourcePreview(v SourcePreviewView) {
 				}
 			</p>
 		}
-		@switchList("Replace", v.Plan.Replace, v.SourceLabel)
-		@switchList("Add", v.Plan.Add, v.SourceLabel)
-		@switchList("Keep", v.Plan.Keep, v.SourceLabel)
+		@switchList(switchReplace, v.Plan.Replace, v.SourceLabel)
+		@switchList(switchAdd, v.Plan.Add, v.SourceLabel)
+		@switchList(switchKeep, v.Plan.Keep, v.SourceLabel)
 		<form
 			hx-post={ route.Path(route.CharacterCmd, v.CharacterID) }
 			{ templ.Attributes{"hx-on::after-request": closeDialogJS}... }
@@ -130,13 +130,13 @@ templ switchList(title string, fs []dnd5e.SwitchFeature, label string) {
 				for _, f := range fs {
 					<li>
 						{ f.Name }
-						if title == "Add" && f.Level > 0 {
+						if title == switchAdd && f.Level > 0 {
 							{ fmt.Sprintf(" (level %d)", f.Level) }
 						}
 						if f.Dropped {
 							{ " (not in " + label + ", removed)" }
 						}
-						if title == "Keep" {
+						if title == switchKeep {
 							{ " (edited, kept)" }
 						}
 					</li>

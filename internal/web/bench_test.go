@@ -122,3 +122,54 @@ func BenchmarkCompendiumList(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkImportReview is the CSV import review form, which every change
+// re-renders for all kept rows.
+func BenchmarkImportReview(b *testing.B) {
+	for _, n := range []int{1000, maxImportRows} {
+		b.Run(fmt.Sprint(n), func(b *testing.B) {
+			v := views.ImportView{
+				CampaignID: 1,
+				Token:      "token",
+				Header:     []string{"Name", "Link", "Category", "Notes", "Extra"},
+				Map:        views.ImportMapping{Name: 0, Link: 1, Category: 2, Description: 3},
+				Total:      n,
+				KeepCol:    -1,
+			}
+			for c := range 10 {
+				cat := fmt.Sprintf("Category %d", c)
+				v.Cats = append(v.Cats, views.ImportCategory{Source: cat, Count: n / 10, Target: cat})
+			}
+			for i := range n {
+				cat := fmt.Sprintf("Category %d", i%10)
+				v.Rows = append(v.Rows, views.ImportRow{
+					Index: i, Name: fmt.Sprintf("Image number %09d", i),
+					Link:     fmt.Sprintf("https://images.example.com/gallery/%09d/picture-file-name.png?size=large", i),
+					Host:     "images.example.com",
+					Category: cat, Target: cat, Ticked: true,
+				})
+			}
+			for _, h := range v.Header {
+				v.Columns = append(v.Columns, views.ImportColumn{Header: h, Distinct: 10, Samples: []string{"one", "two", "three"}})
+			}
+			var size int
+			b.ReportAllocs()
+			for b.Loop() {
+				var w countWriter
+				if err := views.ImportReview(v).Render(b.Context(), &w); err != nil {
+					b.Fatal(err)
+				}
+				size = int(w)
+			}
+			b.ReportMetric(float64(size), "bytes/render")
+		})
+	}
+}
+
+// countWriter counts the bytes written to it.
+type countWriter int
+
+func (w *countWriter) Write(p []byte) (int, error) {
+	*w += countWriter(len(p))
+	return len(p), nil
+}

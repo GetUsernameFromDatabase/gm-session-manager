@@ -153,11 +153,12 @@ const (
 	CompendiumFiveTools           = "/5etools"
 	CompendiumFiveToolsBookDelete = CompendiumFiveTools + "/:book/delete"
 	CompendiumFiveToolsAuto       = CompendiumFiveTools + "/auto"
-	CompendiumSourceMove          = "/sources/:key/move"
-	CompendiumSourceDelete        = "/sources/:key/delete"
-	CompendiumSourceOrder         = "/sources/order"
-	CompendiumPagePreview         = "/page/preview"
-	CompendiumPage                = "/page"
+	// The source key travels in the form: page sources hold "/" (5etools:mtf/howler).
+	CompendiumSourceMove   = "/sources/move"
+	CompendiumSourceDelete = "/sources/delete"
+	CompendiumSourceOrder  = "/sources/order"
+	CompendiumPagePreview  = "/page/preview"
+	CompendiumPage         = "/page"
 )
 
 // CampaignCompendium is the compendium as one campaign sees it.

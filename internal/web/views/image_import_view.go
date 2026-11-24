@@ -31,11 +31,20 @@ const (
 	ImportKeepPrefix = "="
 )
 
-// Values of the rows' category filter besides a category name.
+// Values of the rows' category filter besides a category name, and of the
+// status filter; app.js reads them through shared.js.
 const (
-	importFilterAll  = "*"
-	importFilterNone = "-"
+	ImportFilterAll      = "*"
+	ImportFilterNone     = "-"
+	ImportStatusAny      = "any"
+	ImportStatusTicked   = "ticked"
+	ImportStatusUnticked = "unticked"
+	ImportStatusBroken   = "broken"
 )
+
+// ImportFilterCatPrefix keeps a CSV category named "-" or "*" from
+// matching the filter's own markers; app.js strips it to show the name.
+const ImportFilterCatPrefix = "="
 
 // ImportMapping is the CSV column of each image field (-1 for none).
 type ImportMapping struct {
@@ -144,7 +153,7 @@ func (v ImportView) columnItems(optional bool) []selectcomp.ItemData {
 
 // filterItems filter the rows by the categories they will go into.
 func (v ImportView) filterItems() []selectcomp.ItemData {
-	items := []selectcomp.ItemData{{Value: importFilterAll, Label: "All categories"}, {Value: importFilterNone, Label: "No category"}}
+	items := []selectcomp.ItemData{{Value: ImportFilterAll, Label: "All categories"}, {Value: ImportFilterNone, Label: "No category"}}
 	var seen []string
 	for _, c := range v.Cats {
 		if c.Target != "" && !slices.Contains(seen, c.Target) {
@@ -152,7 +161,7 @@ func (v ImportView) filterItems() []selectcomp.ItemData {
 		}
 	}
 	slices.Sort(seen)
-	return append(items, selectItems(seen, func(s string) string { return s }, func(s string) string { return s })...)
+	return append(items, selectItems(seen, func(s string) string { return ImportFilterCatPrefix + s }, func(s string) string { return s })...)
 }
 
 // catGroups groups the category values by target, so values merged into
@@ -193,10 +202,10 @@ func (v ImportView) catGroups() [][]ImportCategory {
 // applies them.
 func importStatusItems() []selectcomp.ItemData {
 	return []selectcomp.ItemData{
-		{Value: "any", Label: "Any status"},
-		{Value: "ticked", Label: "Ticked"},
-		{Value: "unticked", Label: "Unticked"},
-		{Value: "broken", Label: "Didn't load"},
+		{Value: ImportStatusAny, Label: "Any status"},
+		{Value: ImportStatusTicked, Label: "Ticked"},
+		{Value: ImportStatusUnticked, Label: "Unticked"},
+		{Value: ImportStatusBroken, Label: "Didn't load"},
 	}
 }
 
@@ -207,12 +216,12 @@ func (v ImportView) filterValue() string {
 			return it.Value
 		}
 	}
-	return importFilterAll
+	return ImportFilterAll
 }
 
 func rowFilterCategory(r ImportRow) string {
 	if r.Target == "" {
-		return importFilterNone
+		return ImportFilterNone
 	}
-	return r.Target
+	return ImportFilterCatPrefix + r.Target
 }

@@ -389,10 +389,20 @@ func sourceInUseMsg(key string, users []string) string {
 	return key + " is used by " + strings.Join(users, ", ") + ". Switch their sources first."
 }
 
+// sourceDeleteForm names the source to delete.
+type sourceDeleteForm struct {
+	Key string `form:"key" validate:"required,max=200"`
+}
+
 // sourceDelete removes a source and its entries unless something uses it.
 func (a *App) sourceDelete(c *gin.Context) error {
+	var f sourceDeleteForm
+	if c.ShouldBind(&f) != nil {
+		a.fail(c, http.StatusBadRequest, "Pick a source to delete.")
+		return nil
+	}
 	ctx := c.Request.Context()
-	key := c.Param("key")
+	key := f.Key
 	if key == compendium.HomebrewSource {
 		a.fail(c, http.StatusBadRequest, "Homebrew cannot be deleted.")
 		return nil

@@ -36,6 +36,14 @@ type SourcePreviewView struct {
 	Plan                 dnd5e.SwitchPlan
 }
 
+// The switch plan's groups, as titled in the preview; switchList also picks
+// each group's notes by them.
+const (
+	switchReplace = "Replace"
+	switchAdd     = "Add"
+	switchKeep    = "Keep"
+)
+
 func (i SourceIssue) previewID(s SheetView) string {
 	return fmt.Sprintf("source-%d-%s-%s", s.ID, i.Kind, i.Slug)
 }

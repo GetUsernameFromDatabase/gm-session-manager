@@ -1,6 +1,24 @@
 // Page glue for htmx and the websocket. Loaded as a module after the classic
 // htmx scripts (modules run deferred, in order, once the page is parsed).
-import { CMD_FIELD, CONSOLE_LEVELS, CONSOLE_MSG, CONSOLE_PAGE, CONSOLE_SIZE, MSG, ROUTES } from "./shared.js";
+import {
+  CMD_FIELD,
+  CONSOLE_LEVELS,
+  CONSOLE_MSG,
+  CONSOLE_PAGE,
+  CONSOLE_SIZE,
+  IMPORT_FILTER_ALL,
+  IMPORT_FILTER_CAT_PREFIX,
+  IMPORT_FILTER_CATEGORY,
+  IMPORT_FILTER_NONE,
+  IMPORT_FILTER_STATUS,
+  IMPORT_ROWS_FIELD,
+  IMPORT_STATUS_ANY,
+  IMPORT_STATUS_BROKEN,
+  IMPORT_STATUS_TICKED,
+  IMPORT_STATUS_UNTICKED,
+  MSG,
+  ROUTES,
+} from "./shared.js";
 
 (function () {
   "use strict";
@@ -164,68 +182,67 @@ import { CMD_FIELD, CONSOLE_LEVELS, CONSOLE_MSG, CONSOLE_PAGE, CONSOLE_SIZE, MSG
   });
 
   // filterImport hides import rows outside the name filter, the chosen
-  // category ("*" for all; rows with no category carry "-") and the chosen
-  // status (ticked, unticked, or a link that didn't load).
+  // category (IMPORT_FILTER_ALL for all; rows with no category carry
+  // IMPORT_FILTER_NONE) and the chosen status (ticked, unticked, or a link
+  // that didn't load).
   function filterImport(bar) {
     if (!bar) return;
     const text = bar.querySelector("[data-import-q]").value.trim().toLowerCase();
-    const sel = bar.querySelector("input[name=filter_category]");
-    const category = sel ? sel.value : "*";
-    const status = bar.querySelector("input[name=filter_status]")?.value || "any";
+    const sel = bar.querySelector(`input[name=${IMPORT_FILTER_CATEGORY}]`);
+    const category = sel ? sel.value : IMPORT_FILTER_ALL;
+    const status = bar.querySelector(`input[name=${IMPORT_FILTER_STATUS}]`)?.value || IMPORT_STATUS_ANY;
     const hasStatus = (tr) => {
       const box = tr.querySelector("input[type=checkbox]");
-      if (status === "ticked") return box.checked;
-      if (status === "unticked") return !box.checked;
-      if (status === "broken") return linkResults.get(tr.dataset.previewSrc) === "broken";
+      if (status === IMPORT_STATUS_TICKED) return box.checked;
+      if (status === IMPORT_STATUS_UNTICKED) return !box.checked;
+      if (status === IMPORT_STATUS_BROKEN) return linkResults.get(tr.dataset.previewSrc) === "broken";
       return true;
     };
     document.querySelectorAll("[data-import-row]").forEach((tr) => {
-      const inCategory = category === "*" || tr.dataset.category === category;
+      const inCategory = category === IMPORT_FILTER_ALL || tr.dataset.category === category;
       tr.hidden = !inCategory || !tr.dataset.name.toLowerCase().includes(text) || !hasStatus(tr);
     });
     const hint = document.getElementById("status-hint");
-    if (hint) hint.hidden = !(status === "broken" && !linkResults.size);
+    if (hint) hint.hidden = !(status === IMPORT_STATUS_BROKEN && !linkResults.size);
   }
 
-  // encodeImportRows writes the ticked import rows for parseRowSet: runs as
-  // "a-b" and single rows as "a", or after "!" the unticked rows when that
-  // is shorter. Rows that cannot be imported never break a run.
+  // encodeImportRows writes the unticked import rows for parseRowSet as "!"
+  // plus runs ("a-b", "a"), so rows the keep filter hid come back ticked. A
+  // run ends where the index skips a row that is not on the page; rows that
+  // cannot be imported never break a run.
   function encodeImportRows(form) {
     const rows = [...form.querySelectorAll("[data-import-row]")].map((tr) => {
       const box = tr.querySelector("input[type=checkbox]");
       return { i: Number(tr.dataset.index), ticked: box.disabled ? null : box.checked };
     });
-    const runs = (want) => {
-      const out = [];
-      let start = -1;
-      let end = -1;
-      const flush = () => {
-        if (start >= 0) out.push(start === end ? `${start}` : `${start}-${end}`);
-        start = -1;
-      };
-      for (const r of rows) {
-        if (r.ticked === null) continue;
-        if (r.ticked !== want) flush();
-        else {
-          if (start < 0) start = r.i;
-          end = r.i;
-        }
-      }
-      flush();
-      return out.join(",");
+    const out = [];
+    let start = -1;
+    let end = -1;
+    let prev = -2;
+    const flush = () => {
+      if (start >= 0) out.push(start === end ? `${start}` : `${start}-${end}`);
+      start = -1;
     };
-    const ticked = runs(true);
-    const unticked = "!" + runs(false);
-    return unticked.length < ticked.length ? unticked : ticked;
+    for (const r of rows) {
+      if (r.i !== prev + 1) flush();
+      prev = r.i;
+      if (r.ticked === null) continue;
+      if (r.ticked) flush();
+      else {
+        if (start < 0) start = r.i;
+        end = r.i;
+      }
+    }
+    flush();
+    return "!" + out.join(",");
   }
 
-  const IMPORT_ROWS = "rows";
   document.addEventListener("htmx:configRequest", (e) => {
     const form = document.getElementById("import-review");
-    if (form && form.contains(e.detail.elt)) e.detail.parameters[IMPORT_ROWS] = encodeImportRows(form);
+    if (form && form.contains(e.detail.elt)) e.detail.parameters[IMPORT_ROWS_FIELD] = encodeImportRows(form);
   });
   document.addEventListener("submit", (e) => {
-    if (e.target.id === "import-review") e.target.elements[IMPORT_ROWS].value = encodeImportRows(e.target);
+    if (e.target.id === "import-review") e.target.elements[IMPORT_ROWS_FIELD].value = encodeImportRows(e.target);
   });
 
   // Link check: each distinct link loads as an image, exactly as the picker
@@ -325,8 +342,8 @@ import { CMD_FIELD, CONSOLE_LEVELS, CONSOLE_MSG, CONSOLE_PAGE, CONSOLE_SIZE, MSG
       if (linkResults.get(tr.dataset.previewSrc) === "broken") failed++;
     });
     const parts = [...counts]
-      .sort(([a], [b]) => (a === "-") - (b === "-") || a.localeCompare(b))
-      .map(([c, n]) => `${c === "-" ? "No category" : c} ${n}`);
+      .sort(([a], [b]) => (a === IMPORT_FILTER_NONE) - (b === IMPORT_FILTER_NONE) || a.localeCompare(b))
+      .map(([c, n]) => `${c === IMPORT_FILTER_NONE ? "No category" : c.slice(IMPORT_FILTER_CAT_PREFIX.length)} ${n}`);
     out.textContent =
       `${total} ${total === 1 ? "row" : "rows"} to import` +
       (parts.length ? ": " + parts.join(" · ") : "") +

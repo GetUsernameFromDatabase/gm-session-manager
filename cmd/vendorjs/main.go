@@ -23,9 +23,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"net/http"
 	"os"
@@ -183,7 +185,7 @@ func changedPaths(got map[string]string, sumText string) []string {
 	return changed
 }
 
-// install replaces outDir with files at once: a failed write leaves the old folder in place.
+// install replaces outDir with files at once: a failed write or swap leaves the old folder in place.
 func install(files map[string][]byte) error {
 	// In the gitignored build/: a leftover from a killed run is never embedded, linted or watched; same volume for the rename.
 	if err := os.MkdirAll(scratchDir, 0o750); err != nil {
@@ -199,10 +201,30 @@ func install(files map[string][]byte) error {
 			return err
 		}
 	}
-	if err := os.RemoveAll(outDir); err != nil {
+	// The old folder moves aside rather than being deleted, so a swap that
+	// fails (a locked file on Windows) can put it back.
+	aside, err := os.MkdirTemp(scratchDir, ".old-vendor-")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, outDir)
+	keep := false // set when the old folder could not go back: it is then the only copy
+	defer func() {
+		if !keep {
+			_ = os.RemoveAll(aside)
+		}
+	}()
+	old := filepath.Join(aside, "vendor")
+	if err := os.Rename(outDir, old); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if err := os.Rename(tmp, outDir); err != nil {
+		if rerr := os.Rename(old, outDir); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+			keep = true
+			return errors.Join(err, rerr, fmt.Errorf("the old %s is kept in %s", outDir, old))
+		}
+		return err
+	}
+	return nil
 }
 
 // check compares each pinned package with its latest release on npm. Only
