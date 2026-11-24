@@ -60,7 +60,7 @@ func TestCreationWizard(t *testing.T) {
 			{"name":"Equipment","desc":"*Choose A or B:* (A) Quarterstaff, Book, and 8 GP; or (B) 50 GP","type":"equipment"}]}`},
 	} {
 		entry.SourceKey, entry.ContentHash = "test", "x"
-		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+		if err := e.upsertEntry(ctx, entry); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -333,7 +333,7 @@ func loadFeatFixtures(t *testing.T, e testEnv) {
 	}
 	for _, entry := range featFixtures {
 		entry.SourceKey, entry.ContentHash = "test", "x"
-		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+		if err := e.upsertEntry(ctx, entry); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -438,7 +438,7 @@ func TestCreationSpeciesSpells(t *testing.T) {
 				{Kind: "species", Slug: "testglow", Name: "Testglow", DataJson: `{"desc":"","parts":[{"name":"Glow","desc":"You know the Light cantrip."}]}`},
 			} {
 				entry.SourceKey, entry.ContentHash = "test", "x"
-				if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+				if err := e.upsertEntry(ctx, entry); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -545,7 +545,7 @@ func TestBackgroundRepicksClassSkill(t *testing.T) {
 		{Kind: "background", Slug: "testacolyte", Name: "Testacolyte", SourceKey: "test", ContentHash: "x",
 			DataJson: `{"desc":"","parts":[{"name":"Skill Proficiencies","type":"skill_proficiency","desc":"Insight, Religion"}]}`},
 	} {
-		if err := e.q().UpsertCompendiumEntry(t.Context(), p); err != nil {
+		if err := e.upsertEntry(t.Context(), p); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -598,7 +598,7 @@ func TestBackgroundStepWithoutClass(t *testing.T) {
 		{Kind: "background", Slug: "testacolyte", Name: "Testacolyte", SourceKey: "test", ContentHash: "x",
 			DataJson: `{"desc":"","parts":[{"name":"Skill Proficiencies","type":"skill_proficiency","desc":"Insight, Religion"}]}`},
 	} {
-		if err := e.q().UpsertCompendiumEntry(t.Context(), p); err != nil {
+		if err := e.upsertEntry(t.Context(), p); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -631,7 +631,7 @@ func TestClassSkillCount(t *testing.T) {
 		DataJson: `{"hit_die":10,"desc":"|Skill Proficiencies|Choose 2: Athletics, Insight, or Stealth|"}`}
 	// A class with no skills table draws no skills field.
 	e0 := newTestEnv(t)
-	if err := e0.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testcommoner", Name: "Testcommoner", SourceKey: "test", ContentHash: "x", DataJson: `{"hit_die":8}`}); err != nil {
+	if err := e0.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testcommoner", Name: "Testcommoner", SourceKey: "test", ContentHash: "x", DataJson: `{"hit_die":8}`}); err != nil {
 		t.Fatal(err)
 	}
 	w0 := e0.do(t, http.MethodPost, route.Path(route.CharacterCreateStep, e0.characterID, "class"), e0.token(t, enum.RolePlayer), url.Values{"pick": {"testcommoner"}, "skill": {"athletics"}}, false)
@@ -649,7 +649,7 @@ func TestClassSkillCount(t *testing.T) {
 		{[]string{"athletics", "insight", "stealth"}, http.StatusUnprocessableEntity},
 	} {
 		e := newTestEnv(t)
-		if err := e.q().UpsertCompendiumEntry(t.Context(), class); err != nil {
+		if err := e.upsertEntry(t.Context(), class); err != nil {
 			t.Fatal(err)
 		}
 		form := url.Values{"pick": {"testfighter"}, "skill": tc.skills}
@@ -884,7 +884,7 @@ func TestCreationOptionCheck(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newTestEnv(t)
 			loadFeatFixtures(t, e)
-			if err := e.q().UpsertCompendiumEntry(t.Context(), cloak); err != nil {
+			if err := e.upsertEntry(t.Context(), cloak); err != nil {
 				t.Fatal(err)
 			}
 			player := e.token(t, enum.RolePlayer)
@@ -910,7 +910,7 @@ func TestCreationOptionCheck(t *testing.T) {
 func TestClassOptionChoices(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	if err := e.q().UpsertCompendiumEntry(ctx, testlock); err != nil {
+	if err := e.upsertEntry(ctx, testlock); err != nil {
 		t.Fatal(err)
 	}
 	row, err := e.q().GetCharacter(ctx, e.characterID)
@@ -1049,7 +1049,7 @@ func TestSpeciesResistance(t *testing.T) {
 		{"name":"Draconic Ancestry","desc":"Choose the kind of dragon.\n\n| Dragon | Damage Type |\n|---|---|\n| Red | Fire |\n| White | Cold |"},
 		{"name":"Damage Resistance","desc":"You have Resistance to the damage type determined by your Draconic Ancestry trait."},
 		{"name":"Tough Hide","desc":"You have Resistance to Poison damage."}]}`}
-	if err := e.q().UpsertCompendiumEntry(ctx, species); err != nil {
+	if err := e.upsertEntry(ctx, species); err != nil {
 		t.Fatal(err)
 	}
 	d, err := compendium.Decode[compendium.TextData](enum.KindSpecies, species.DataJson)
@@ -1084,7 +1084,7 @@ func TestLineageSpells(t *testing.T) {
 		{Kind: "spell", Slug: "darkness", Name: "Darkness", DataJson: `{"level":2}`},
 	} {
 		entry.SourceKey, entry.ContentHash = "test", "x"
-		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+		if err := e.upsertEntry(ctx, entry); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1162,7 +1162,7 @@ func TestFindItemPlurals(t *testing.T) {
 	ctx := t.Context()
 	for _, slug := range []string{"dagger", "pouch", "glass"} {
 		entry := sqlc.UpsertCompendiumEntryParams{Kind: enum.KindItem, Slug: slug, Name: slug, DataJson: "{}", SourceKey: "test", ContentHash: "x"}
-		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+		if err := e.upsertEntry(ctx, entry); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1249,7 +1249,7 @@ func TestWizardSpeciesVariant(t *testing.T) {
 		{Kind: "species", Slug: "half-elf-aquatic-elf-descent", Name: "Half-Elf (Aquatic Elf Descent)", SourceKey: "book-b", DataJson: `{"desc":"","subrace_of":"half-elf","parts":[{"name":"Speed","desc":"35 feet","type":"speed"},{"name":"Swim","desc":"You swim."}]}`},
 	} {
 		entry.ContentHash = "x"
-		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+		if err := e.upsertEntry(ctx, entry); err != nil {
 			t.Fatal(err)
 		}
 	}

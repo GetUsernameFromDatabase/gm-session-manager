@@ -206,7 +206,7 @@ func TestImageSeenBy(t *testing.T) {
 	}
 	diary, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Diary", OwnerCharacterID: nullID(other.ID)})
 	own, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: diary.ID, Visibility: "owner"})
-	if err := e.q().AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: diary.ID, SourceBlockID: own.ID, TargetType: enum.LinkImage, TargetID: imgs[0].ID}); err != nil {
+	if err := e.q().AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: diary.ID, SourceBlockID: own.ID, TargetImageID: nullID(imgs[0].ID)}); err != nil {
 		t.Fatal(err)
 	}
 	if w := e.do(t, http.MethodGet, route.Path(route.ImageFile, imgs[0].ID), second, nil, false); w.Code != http.StatusFound {
@@ -223,7 +223,7 @@ func TestImageSeenBy(t *testing.T) {
 	}
 	far, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "Far away"})
 	farBlock, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: far.ID, Visibility: "players"})
-	if err := e.q().AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: far.ID, SourceBlockID: farBlock.ID, TargetType: enum.LinkImage, TargetID: img.ID}); err != nil {
+	if err := e.q().AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: far.ID, SourceBlockID: farBlock.ID, TargetImageID: nullID(img.ID)}); err != nil {
 		t.Fatal(err)
 	}
 	if w := e.do(t, http.MethodGet, file, second, nil, false); w.Code != http.StatusNotFound {
@@ -638,7 +638,7 @@ func TestImageNPCLooks(t *testing.T) {
 		t.Helper()
 		img, err := e.q().CreateImage(ctx, sqlc.CreateImageParams{
 			CampaignID: campaignID, Name: name, Url: sql.NullString{String: "https://example.com/" + name + ".png", Valid: true},
-			Description: sql.NullString{String: desc, Valid: desc != ""},
+			Description: desc,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -938,7 +938,7 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	const link = "https://example.com/camp.png"
-	img, err := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "Camp", Url: nullString(link), Description: nullString("Smoky")})
+	img, err := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "Camp", Url: nullString(link), Description: "Smoky"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -959,7 +959,7 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	}
 	other := func(name, link, description string) {
 		t.Helper()
-		if err := e.q().UpdateImage(ctx, sqlc.UpdateImageParams{ID: img.ID, Name: name, Url: nullString(link), Description: nullString(description)}); err != nil {
+		if err := e.q().UpdateImage(ctx, sqlc.UpdateImageParams{ID: img.ID, Name: name, Url: nullString(link), Description: description}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -979,7 +979,7 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	if w := e.doFile(t, path, gm, form, "", "", ""); w.Code != http.StatusSeeOther {
 		t.Fatalf("rename: %d %s", w.Code, w.Body)
 	}
-	if got := stored(); got.Name != "Old camp" || got.Description.String != "Burned down" || got.Url.String != link {
+	if got := stored(); got.Name != "Old camp" || got.Description != "Burned down" || got.Url.String != link {
 		t.Errorf("after rename %+v", got)
 	}
 
@@ -989,8 +989,8 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	if w := e.doFile(t, path, gm, form, "", "", ""); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "description") {
 		t.Errorf("description conflict: %d %s", w.Code, w.Body)
 	}
-	if got := stored(); got.Description.String != "Burned down" {
-		t.Errorf("conflict stored %q", got.Description.String)
+	if got := stored(); got.Description != "Burned down" {
+		t.Errorf("conflict stored %q", got.Description)
 	}
 
 	// Another device replaced the picture: a new link from the stale page is refused.
@@ -1016,14 +1016,14 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	if w := e.doFile(t, path, gm, form, "", "", ""); w.Code != http.StatusSeeOther {
 		t.Fatalf("multi-line description: %d %s", w.Code, w.Body)
 	}
-	if got := stored(); !strings.HasSuffix(got.Description.String, "Line 2") {
-		t.Errorf("multi-line description stored %q", got.Description.String)
+	if got := stored(); !strings.HasSuffix(got.Description, "Line 2") {
+		t.Errorf("multi-line description stored %q", got.Description)
 	}
 
 	// Another device saves while this post is still arriving (a slow
 	// upload): the rename lands and the other device's description stays.
 	cur := stored()
-	form = opened(cur.Name, cur.Description.String, imageVersion(cur.Url, cur.AttachmentID))
+	form = opened(cur.Name, cur.Description, imageVersion(cur.Url, cur.AttachmentID))
 	form.Set("name", "Ruins")
 	slow := func(r io.Reader) io.Reader {
 		return &hookReader{r: r, hook: func() { other(cur.Name, cur.Url.String, "Overgrown") }}
@@ -1031,8 +1031,8 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	if w := e.doFile(t, path, gm, form, "", "", "", slow); w.Code != http.StatusSeeOther {
 		t.Fatalf("save during another's: %d %s", w.Code, w.Body)
 	}
-	if got := stored(); got.Name != "Ruins" || got.Description.String != "Overgrown" {
-		t.Errorf("save during another's stored %q %q", got.Name, got.Description.String)
+	if got := stored(); got.Name != "Ruins" || got.Description != "Overgrown" {
+		t.Errorf("save during another's stored %q %q", got.Name, got.Description)
 	}
 }
 

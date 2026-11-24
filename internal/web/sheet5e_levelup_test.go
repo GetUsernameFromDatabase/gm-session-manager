@@ -137,7 +137,7 @@ func TestLevelUpInvocations(t *testing.T) {
 	// A cantrip that deals no damage, so ticking it does not meet Eldritch Spear's prerequisite.
 	spark := sqlc.UpsertCompendiumEntryParams{Kind: "spell", Slug: "test-spark", Name: "Test Spark", SourceKey: "test", ContentHash: "x", DataJson: `{"level":0,"classes":["testlock"],"desc":"A harmless light."}`}
 	for _, entry := range []sqlc.UpsertCompendiumEntryParams{testlock, testBlast, spark} {
-		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+		if err := e.upsertEntry(ctx, entry); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -218,7 +218,7 @@ func TestLevelUpLineage(t *testing.T) {
 		{Kind: "spell", Slug: "test-ward", Name: "Test Ward", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1,"classes":["testmage"]}`},
 		{Kind: "spell", Slug: "test-hex", Name: "Test Hex", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1,"classes":["testmage"]}`},
 	} {
-		if err := e.q().UpsertCompendiumEntry(ctx, entry); err != nil {
+		if err := e.upsertEntry(ctx, entry); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -336,7 +336,7 @@ func TestLevelUpFeats(t *testing.T) {
 			ctx := t.Context()
 			loadFeatFixtures(t, e)
 			// On both lists, so a Cleric Magic Initiate can pick a Wizard class spell.
-			if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "spell", Slug: "detect-magic", Name: "Detect Magic", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1,"classes":["cleric","wizard"]}`}); err != nil {
+			if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "spell", Slug: "detect-magic", Name: "Detect Magic", SourceKey: "test", ContentHash: "x", DataJson: `{"level":1,"classes":["cleric","wizard"]}`}); err != nil {
 				t.Fatal(err)
 			}
 			ch, _ := e.q().GetCharacter(ctx, e.characterID)
@@ -425,7 +425,7 @@ func TestLevelUpFeatRaisesCon(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	loadFeatFixtures(t, e)
-	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "feat", Slug: "hardy", Name: "Hardy", SourceKey: "test", ContentHash: "x",
+	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "feat", Slug: "hardy", Name: "Hardy", SourceKey: "test", ContentHash: "x",
 		DataJson: `{"desc":"","category":"General","prerequisite":"Level 4+","parts":[{"name":"Ability Score Increase","desc":"Increase your Constitution score by 1, to a maximum of 20."}]}`}); err != nil {
 		t.Fatal(err)
 	}
@@ -499,7 +499,7 @@ func TestLevelUpEpicBoon(t *testing.T) {
 	loadFeatFixtures(t, e)
 	boonClass := sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "boonling", Name: "Boonling", SourceKey: "test", ContentHash: "x",
 		DataJson: `{"caster":"none","hit_die":8,"features":[{"name":"Epic Boon","desc":"","levels":[19]}]}`}
-	if err := e.q().UpsertCompendiumEntry(ctx, boonClass); err != nil {
+	if err := e.upsertEntry(ctx, boonClass); err != nil {
 		t.Fatal(err)
 	}
 	ch, _ := e.q().GetCharacter(ctx, e.characterID)

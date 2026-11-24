@@ -25,7 +25,7 @@ type CreateImageParams struct {
 	Url          sql.NullString
 	AttachmentID sql.NullInt64
 	CategoryID   sql.NullInt64
-	Description  sql.NullString
+	Description  string
 }
 
 func (q *Queries) CreateImage(ctx context.Context, arg CreateImageParams) (Image, error) {
@@ -116,7 +116,7 @@ type GetImageRow struct {
 	Url          sql.NullString
 	AttachmentID sql.NullInt64
 	CategoryID   sql.NullInt64
-	Description  sql.NullString
+	Description  string
 	CreatedAt    time.Time
 	Category     string
 }
@@ -173,8 +173,8 @@ FROM note_links AS l
 JOIN note_blocks AS b ON b.id = l.source_block_id
 JOIN notes AS n ON n.id = b.note_id
 JOIN note_block_audience AS a ON a.block_id = b.id
-WHERE l.target_type = 'image' AND n.campaign_id = ?1
-  AND (CAST(?2 AS INTEGER) = 0 OR l.target_id = CAST(?2 AS INTEGER))
+WHERE l.target_image_id IS NOT NULL AND n.campaign_id = ?1
+  AND (CAST(?2 AS INTEGER) = 0 OR l.target_image_id = CAST(?2 AS INTEGER))
 `
 
 type ListImageLinkAudienceParams struct {
@@ -207,12 +207,12 @@ func (q *Queries) ListImageLinkAudience(ctx context.Context, arg ListImageLinkAu
 }
 
 const listImageLinkBlocks = `-- name: ListImageLinkBlocks :many
-SELECT DISTINCT l.target_id AS image_id, b.id AS block_id, b.visibility, n.owner_character_id
+SELECT DISTINCT CAST(l.target_image_id AS INTEGER) AS image_id, b.id AS block_id, b.visibility, n.owner_character_id
 FROM note_links AS l
 JOIN note_blocks AS b ON b.id = l.source_block_id
 JOIN notes AS n ON n.id = b.note_id
-WHERE l.target_type = 'image' AND n.campaign_id = ?1
-  AND (CAST(?2 AS INTEGER) = 0 OR l.target_id = CAST(?2 AS INTEGER))
+WHERE l.target_image_id IS NOT NULL AND n.campaign_id = ?1
+  AND (CAST(?2 AS INTEGER) = 0 OR l.target_image_id = CAST(?2 AS INTEGER))
 `
 
 type ListImageLinkBlocksParams struct {
@@ -280,7 +280,7 @@ type ListImagesRow struct {
 	Url          sql.NullString
 	AttachmentID sql.NullInt64
 	CategoryID   sql.NullInt64
-	Description  sql.NullString
+	Description  string
 	CreatedAt    time.Time
 	Category     string
 }
@@ -331,7 +331,7 @@ type UpdateImageParams struct {
 	Url          sql.NullString
 	AttachmentID sql.NullInt64
 	CategoryID   sql.NullInt64
-	Description  sql.NullString
+	Description  string
 	ID           int64
 }
 

@@ -42,7 +42,7 @@ func (a *App) homebrewEntry(c *gin.Context) (who, sqlc.CompendiumEntry, bool) {
 		return w, e, false
 	}
 	switch {
-	case !e.IsHomebrew:
+	case e.SourceKey != compendium.HomebrewSource:
 		a.fail(c, http.StatusForbidden, "Imported entries are edited by re-importing their source.")
 	case !perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64):
 		a.fail(c, http.StatusForbidden, "Only the GM and the player who wrote it may change this entry.")

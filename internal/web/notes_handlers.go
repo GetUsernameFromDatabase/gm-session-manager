@@ -168,12 +168,16 @@ func (a *App) notePage(c *gin.Context) error {
 // entityMentions lists the NPCs whose fields link a target, as the viewer
 // may see them (revealed links of revealed NPCs for players).
 func (a *App) entityMentions(ctx context.Context, w who, campaignID int64, targetType enum.LinkTarget, targetID int64) ([]sqlc.ListEntityFieldBacklinksRow, error) {
-	return a.Store.ListEntityFieldBacklinks(ctx, sqlc.ListEntityFieldBacklinksParams{CampaignID: campaignID, TargetType: targetType, TargetID: targetID, IsGm: w.isGM()})
+	note, entity, image := linkTarget(targetType, targetID)
+	return a.Store.ListEntityFieldBacklinks(ctx, sqlc.ListEntityFieldBacklinksParams{
+		CampaignID: campaignID, TargetNoteID: note, TargetEntityID: entity, TargetImageID: image, IsGm: w.isGM(),
+	})
 }
 
 func (a *App) backlinks(ctx context.Context, w who, campaignID int64, targetType enum.LinkTarget, targetID int64) ([]sqlc.ListBacklinksRow, error) {
+	note, entity, image := linkTarget(targetType, targetID)
 	rows, err := a.Store.ListBacklinks(ctx, sqlc.ListBacklinksParams{
-		TargetType: targetType, TargetID: targetID, CampaignID: campaignID, IsGm: w.isGM(), CharacterID: w.viewer.CharacterID,
+		TargetNoteID: note, TargetEntityID: entity, TargetImageID: image, CampaignID: campaignID, IsGm: w.isGM(), CharacterID: w.viewer.CharacterID,
 	})
 	if err != nil {
 		return nil, err
@@ -729,7 +733,8 @@ func (a *App) blockSnapshot(c *gin.Context) error {
 			if l.Type == enum.LinkImage && !w.isGM() && !slices.Contains(images, l.ID) {
 				continue
 			}
-			if err := q.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetType: l.Type, TargetID: l.ID}); err != nil {
+			note, entity, image := linkTarget(l.Type, l.ID)
+			if err := q.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetNoteID: note, TargetEntityID: entity, TargetImageID: image}); err != nil {
 				return err
 			}
 		}

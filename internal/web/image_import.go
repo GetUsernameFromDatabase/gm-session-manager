@@ -594,7 +594,7 @@ func (a *App) importCommit(c *gin.Context) error {
 				return err
 			}
 			if _, err := q.CreateImage(ctx, sqlc.CreateImageParams{
-				CampaignID: id, Name: r.Name, Url: nullString(r.Link), CategoryID: category, Description: nullString(r.Description),
+				CampaignID: id, Name: r.Name, Url: nullString(r.Link), CategoryID: category, Description: r.Description,
 			}); err != nil {
 				return err
 			}

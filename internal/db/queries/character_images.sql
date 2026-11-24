@@ -67,7 +67,7 @@ SELECT
     ) OR EXISTS (
         SELECT 1 FROM entity_field_links AS l
         JOIN entities AS e ON e.id = l.entity_id
-        WHERE l.target_type = 'image' AND l.target_id = i.id AND l.is_revealed AND e.is_revealed
+        WHERE l.target_image_id = i.id AND l.is_revealed AND e.is_revealed
     ) AS BOOLEAN) AS revealed,
     CAST(COALESCE((SELECT l.character_id FROM character_images AS l WHERE l.image_id = i.id), 0) AS INTEGER) AS owner_character_id
 FROM images AS i

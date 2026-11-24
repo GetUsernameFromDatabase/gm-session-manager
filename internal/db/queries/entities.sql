@@ -78,10 +78,13 @@ ORDER BY e.name COLLATE NOCASE;
 DELETE FROM entity_field_links
 WHERE entity_id = ?;
 
+-- A link to a deleted target is skipped, as in AddBlockLink.
 -- name: AddEntityFieldLink :exec
-INSERT INTO entity_field_links (entity_id, field_key, target_type, target_id, is_revealed)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT DO NOTHING;
+INSERT OR IGNORE INTO entity_field_links (entity_id, field_key, target_note_id, target_entity_id, target_image_id, is_revealed)
+SELECT sqlc.arg(entity_id), sqlc.arg(field_key), sqlc.narg(target_note_id), sqlc.narg(target_entity_id), sqlc.narg(target_image_id), sqlc.arg(is_revealed)
+WHERE EXISTS (SELECT 1 FROM notes WHERE id = sqlc.narg(target_note_id))
+   OR EXISTS (SELECT 1 FROM entities WHERE id = sqlc.narg(target_entity_id))
+   OR EXISTS (SELECT 1 FROM images WHERE id = sqlc.narg(target_image_id));
 
 -- ListEntityFieldBacklinks lists the NPCs whose fields link a target: all
 -- for the GM, for players only revealed links of revealed NPCs.
@@ -89,7 +92,7 @@ ON CONFLICT DO NOTHING;
 SELECT DISTINCT e.id, e.name
 FROM entity_field_links AS l
 JOIN entities AS e ON e.id = l.entity_id
-WHERE l.target_type = sqlc.arg(target_type) AND l.target_id = sqlc.arg(target_id)
+WHERE (l.target_note_id = sqlc.narg(target_note_id) OR l.target_entity_id = sqlc.narg(target_entity_id) OR l.target_image_id = sqlc.narg(target_image_id))
   AND e.campaign_id = sqlc.arg(campaign_id)
   AND (CAST(sqlc.arg(is_gm) AS BOOLEAN) OR (l.is_revealed AND e.is_revealed))
 ORDER BY e.name COLLATE NOCASE;

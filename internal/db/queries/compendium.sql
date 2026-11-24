@@ -2,8 +2,8 @@
 SELECT * FROM compendium_sources
 WHERE source_key = ?;
 
--- A new source gets a default priority (lower wins; migration 0004 backfills
--- the same way); a re-import keeps the GM's order but refreshes the date.
+-- A new source gets a default priority by group (lower wins); a re-import
+-- keeps the GM's order but refreshes the date.
 -- name: UpsertCompendiumSource :exec
 INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution, published, priority)
 VALUES (sqlc.arg(source_key), sqlc.arg(path), sqlc.arg(hash), sqlc.arg(edition), sqlc.arg(license), sqlc.arg(attribution), sqlc.arg(published),
@@ -20,8 +20,8 @@ SET path = excluded.path, hash = excluded.hash, edition = excluded.edition,
 -- entities that reference it stay linked. Unchanged content is not rewritten.
 -- name: UpsertCompendiumEntry :exec
 INSERT INTO compendium_entries (
-    kind, slug, name, source_key, data_json, body_text, is_homebrew, content_hash
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    kind, slug, name, source_key, data_json, body_text, content_hash
+) VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (kind, slug, source_key) DO UPDATE
 SET name = excluded.name, data_json = excluded.data_json,
     body_text = excluded.body_text, content_hash = excluded.content_hash,
@@ -45,9 +45,9 @@ WHERE id = ?;
 -- Lookups ignore the campaign's sources: a sheet may use an unticked one.
 -- name: GetCompendiumEntryBySlug :one
 SELECT e.* FROM compendium_entries AS e
-LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND e.slug = ?
-ORDER BY e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id
+ORDER BY e.scoped, s.priority, s.published DESC, e.id
 LIMIT 1;
 
 -- GetCompendiumEntryBySlugSource finds the copy of a slug from one source, as a sheet pins it.
@@ -61,22 +61,22 @@ LIMIT 1;
 -- first per slug (the first row is the copy priority picks); player homebrew
 -- not linked to the campaign is skipped.
 -- name: ListEntrySourcesBySlugs :many
-SELECT e.id, e.slug, e.source_key, COALESCE(s.edition, '') AS edition
+SELECT e.id, e.slug, e.source_key, s.edition
 FROM compendium_entries AS e
-LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = sqlc.arg(kind) AND e.slug IN (sqlc.slice(slugs))
   AND (e.scoped = 0 OR EXISTS (
     SELECT 1 FROM compendium_campaigns AS cc
     WHERE cc.entry_id = e.id AND cc.campaign_id = sqlc.arg(campaign_id)))
-ORDER BY e.slug, e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id;
+ORDER BY e.slug, e.scoped, s.priority, s.published DESC, e.id;
 
 -- GetCompendiumEntryByName finds an entry by name in any case, as an
 -- inventory names its items.
 -- name: GetCompendiumEntryByName :one
 SELECT e.* FROM compendium_entries AS e
-LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND lower(e.name) = lower(sqlc.arg(name))
-ORDER BY e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id
+ORDER BY e.scoped, s.priority, s.published DESC, e.id
 LIMIT 1;
 
 -- ListEntryCopies is every source holding a (kind, slug), best first, for the
@@ -121,7 +121,7 @@ ORDER BY n DESC, o.source_key;
 -- ListCompendiumByKind, whose columns it repeats so its rows convert; with
 -- narrows them to those one other source holds ('' for any).
 -- name: ListSharedEntries :many
-SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, CAST(e.source_key = 'homebrew' AS BOOLEAN) AS is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
     CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
     CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
@@ -180,13 +180,9 @@ ORDER BY priority, published DESC, source_key;
 UPDATE compendium_sources SET priority = ?
 WHERE source_key = ?;
 
--- Removing a book deletes its entries first (the FTS and habitat rows go
+-- Removing a book deletes its entries by cascade (the FTS and habitat rows go
 -- with them; combatants and entities that referenced one keep their row with
 -- the link cleared). Homebrew is not a book.
--- name: DeleteCompendiumEntriesBySource :exec
-DELETE FROM compendium_entries
-WHERE source_key = ? AND source_key <> 'homebrew';
-
 -- name: DeleteCompendiumSource :exec
 DELETE FROM compendium_sources
 WHERE source_key = ? AND source_key <> 'homebrew';
@@ -201,7 +197,7 @@ WHERE source_key = ? AND source_key <> 'homebrew';
 -- ListCompendiumByKind reads one kind, or every kind when kind is '', after
 -- the (name, id) cursor; names repeat, so id breaks ties.
 -- name: ListCompendiumByKind :many
-SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, CAST(e.source_key = 'homebrew' AS BOOLEAN) AS is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
     CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
     CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
@@ -232,12 +228,12 @@ SELECT e.id, e.kind, e.slug, e.name, e.scoped, e.owner_character_id,
     CAST(COALESCE(c.name, '') AS TEXT) AS owner_name
 FROM compendium_entries AS e
 LEFT JOIN characters AS c ON c.id = e.owner_character_id
-WHERE e.is_homebrew = 1
+WHERE e.source_key = 'homebrew'
 ORDER BY e.scoped, e.kind, e.name;
 
 -- name: ListHomebrewByOwner :many
 SELECT id, kind, slug, name FROM compendium_entries
-WHERE is_homebrew = 1 AND owner_character_id = ?
+WHERE source_key = 'homebrew' AND owner_character_id = ?
 ORDER BY kind, name;
 
 -- name: ListHomebrewLinks :many
@@ -262,7 +258,7 @@ WHERE entry_id = ? AND campaign_id = ?;
 -- SearchCompendium ranks like campaign_top, over the FTS hits only (59 to
 -- 34 ms per keystroke on 7,615 entries): change both together.
 -- name: SearchCompendium :many
-SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, CAST(e.source_key = 'homebrew' AS BOOLEAN) AS is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
     CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
     CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
@@ -272,7 +268,7 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
         WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
 FROM compendium_fts
 JOIN compendium_entries AS e ON e.id = compendium_fts.rowid
-LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE compendium_fts MATCH CAST(sqlc.arg(query) AS TEXT)
   AND (CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR e.source_key = 'homebrew'
        OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = e.source_key))
@@ -280,15 +276,15 @@ WHERE compendium_fts MATCH CAST(sqlc.arg(query) AS TEXT)
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
   AND NOT EXISTS (
     SELECT 1 FROM compendium_entries AS b
-    LEFT JOIN compendium_sources AS bs ON bs.source_key = b.source_key
+    JOIN compendium_sources AS bs ON bs.source_key = b.source_key
     WHERE b.kind = e.kind AND b.slug = e.slug
       AND (CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR b.source_key = 'homebrew'
            OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = b.source_key))
       AND (b.scoped = 0 OR CAST(sqlc.arg(campaign_id) AS INTEGER) = 0
            OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = b.id AND l.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER)))
       -- The dates swap sides: a newer b ranks before e (published DESC).
-      AND (b.scoped, COALESCE(bs.priority, 300), COALESCE(s.published, ''), b.id)
-        < (e.scoped, COALESCE(s.priority, 300), COALESCE(bs.published, ''), e.id))
+      AND (b.scoped, bs.priority, s.published, b.id)
+        < (e.scoped, s.priority, bs.published, e.id))
   AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR instr(',' || CAST(sqlc.arg(kind) AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (CAST(sqlc.arg(habitat) AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(sqlc.arg(habitat) AS TEXT) || ',', ',' || h.habitat || ',') > 0))
 ORDER BY compendium_fts.rank
@@ -298,18 +294,18 @@ LIMIT sqlc.arg(max_results);
 -- set, scoped to the campaigns it is linked to).
 -- name: CreateHomebrew :one
 INSERT INTO compendium_entries (
-    kind, slug, name, source_key, data_json, body_text, is_homebrew, content_hash, owner_character_id, scoped
-) VALUES (?, ?, ?, 'homebrew', ?, ?, 1, ?, ?, ?)
+    kind, slug, name, source_key, data_json, body_text, content_hash, owner_character_id, scoped
+) VALUES (?, ?, ?, 'homebrew', ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateHomebrew :exec
 UPDATE compendium_entries
 SET name = ?, data_json = ?, body_text = ?, content_hash = ?, imported_at = CURRENT_TIMESTAMP
-WHERE id = ? AND is_homebrew = 1;
+WHERE id = ? AND source_key = 'homebrew';
 
 -- name: DeleteHomebrew :exec
 DELETE FROM compendium_entries
-WHERE id = ? AND is_homebrew = 1;
+WHERE id = ? AND source_key = 'homebrew';
 
 -- CountCompendium counts what browsing lists: the top copy of each entry,
 -- with player homebrew only in its campaigns.
@@ -365,15 +361,15 @@ ORDER BY e.name;
 -- instead of ranking the whole compendium on every sheet render.
 -- name: ListCompendiumBySlugs :many
 SELECT e.id, e.slug, e.name, e.data_json, e.source_key, e.scoped FROM compendium_entries AS e
-LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = sqlc.arg(kind) AND e.slug IN (sqlc.slice(slugs))
   AND NOT EXISTS (
     SELECT 1 FROM compendium_entries AS b
-    LEFT JOIN compendium_sources AS bs ON bs.source_key = b.source_key
+    JOIN compendium_sources AS bs ON bs.source_key = b.source_key
     WHERE b.kind = e.kind AND b.slug = e.slug
       -- The dates swap sides: a newer b ranks before e (published DESC).
-      AND (b.scoped, COALESCE(bs.priority, 300), COALESCE(s.published, ''), b.id)
-        < (e.scoped, COALESCE(s.priority, 300), COALESCE(bs.published, ''), e.id))
+      AND (b.scoped, bs.priority, s.published, b.id)
+        < (e.scoped, s.priority, bs.published, e.id))
 ORDER BY e.slug;
 
 -- ListCompendiumNames is what pickers offer: species versions are left out,

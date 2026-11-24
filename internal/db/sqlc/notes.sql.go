@@ -31,23 +31,30 @@ func (q *Queries) AddBlockAudience(ctx context.Context, arg AddBlockAudiencePara
 }
 
 const addBlockLink = `-- name: AddBlockLink :exec
-INSERT OR IGNORE INTO note_links (source_note_id, source_block_id, target_type, target_id)
-VALUES (?, ?, ?, ?)
+INSERT OR IGNORE INTO note_links (source_note_id, source_block_id, target_note_id, target_entity_id, target_image_id)
+SELECT ?1, ?2, ?3, ?4, ?5
+WHERE EXISTS (SELECT 1 FROM notes WHERE id = ?3)
+   OR EXISTS (SELECT 1 FROM entities WHERE id = ?4)
+   OR EXISTS (SELECT 1 FROM images WHERE id = ?5)
 `
 
 type AddBlockLinkParams struct {
-	SourceNoteID  int64
-	SourceBlockID int64
-	TargetType    enum.LinkTarget
-	TargetID      int64
+	SourceNoteID   int64
+	SourceBlockID  int64
+	TargetNoteID   sql.NullInt64
+	TargetEntityID sql.NullInt64
+	TargetImageID  sql.NullInt64
 }
 
+// Links come from client snapshots and may name a deleted target: it is
+// skipped, since a foreign key error would fail the whole save.
 func (q *Queries) AddBlockLink(ctx context.Context, arg AddBlockLinkParams) error {
 	_, err := q.db.ExecContext(ctx, addBlockLink,
 		arg.SourceNoteID,
 		arg.SourceBlockID,
-		arg.TargetType,
-		arg.TargetID,
+		arg.TargetNoteID,
+		arg.TargetEntityID,
+		arg.TargetImageID,
 	)
 	return err
 }
@@ -393,27 +400,28 @@ SELECT DISTINCT n.id, n.title
 FROM note_links AS l
 JOIN note_blocks AS b ON b.id = l.source_block_id
 JOIN notes AS n ON n.id = l.source_note_id
-WHERE l.target_type = ?1 AND l.target_id = ?2
-  AND n.campaign_id = ?3
+WHERE (l.target_note_id = ?1 OR l.target_entity_id = ?2 OR l.target_image_id = ?3)
+  AND n.campaign_id = ?4
   AND (
-    (CAST(?4 AS BOOLEAN) AND b.visibility <> 'owner')
-    OR (NOT CAST(?4 AS BOOLEAN) AND CAST(?5 AS INTEGER) <> 0 AND (
+    (CAST(?5 AS BOOLEAN) AND b.visibility <> 'owner')
+    OR (NOT CAST(?5 AS BOOLEAN) AND CAST(?6 AS INTEGER) <> 0 AND (
           b.visibility = 'players'
           OR (b.visibility = 'listed' AND EXISTS (
                 SELECT 1 FROM note_block_audience AS a
-                WHERE a.block_id = b.id AND a.character_id = CAST(?5 AS INTEGER)))
-          OR (b.visibility = 'owner' AND n.owner_character_id = CAST(?5 AS INTEGER))
+                WHERE a.block_id = b.id AND a.character_id = CAST(?6 AS INTEGER)))
+          OR (b.visibility = 'owner' AND n.owner_character_id = CAST(?6 AS INTEGER))
     ))
   )
 ORDER BY n.title
 `
 
 type ListBacklinksParams struct {
-	TargetType  enum.LinkTarget
-	TargetID    int64
-	CampaignID  int64
-	IsGm        bool
-	CharacterID int64
+	TargetNoteID   sql.NullInt64
+	TargetEntityID sql.NullInt64
+	TargetImageID  sql.NullInt64
+	CampaignID     int64
+	IsGm           bool
+	CharacterID    int64
 }
 
 type ListBacklinksRow struct {
@@ -425,8 +433,9 @@ type ListBacklinksRow struct {
 // viewer may read, so a secret block never reveals that it mentions you.
 func (q *Queries) ListBacklinks(ctx context.Context, arg ListBacklinksParams) ([]ListBacklinksRow, error) {
 	rows, err := q.db.QueryContext(ctx, listBacklinks,
-		arg.TargetType,
-		arg.TargetID,
+		arg.TargetNoteID,
+		arg.TargetEntityID,
+		arg.TargetImageID,
 		arg.CampaignID,
 		arg.IsGm,
 		arg.CharacterID,
@@ -482,8 +491,8 @@ func (q *Queries) ListBlockAudience(ctx context.Context, blockID int64) ([]int64
 }
 
 const listBlockImageLinks = `-- name: ListBlockImageLinks :many
-SELECT target_id FROM note_links
-WHERE source_block_id = ? AND target_type = 'image'
+SELECT CAST(target_image_id AS INTEGER) AS target_image_id FROM note_links
+WHERE source_block_id = ? AND target_image_id IS NOT NULL
 `
 
 func (q *Queries) ListBlockImageLinks(ctx context.Context, sourceBlockID int64) ([]int64, error) {
@@ -494,11 +503,11 @@ func (q *Queries) ListBlockImageLinks(ctx context.Context, sourceBlockID int64) 
 	defer rows.Close()
 	items := []int64{}
 	for rows.Next() {
-		var target_id int64
-		if err := rows.Scan(&target_id); err != nil {
+		var target_image_id int64
+		if err := rows.Scan(&target_image_id); err != nil {
 			return nil, err
 		}
-		items = append(items, target_id)
+		items = append(items, target_image_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

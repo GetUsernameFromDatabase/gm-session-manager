@@ -34,7 +34,7 @@ func seedMastery(t *testing.T, e testEnv) {
 		entry("item", "torch", "Torch", `{"category":"gear","desc":""}`),
 		entry("rule", "sap", "Sap", `{"category":"Weapon Mastery","desc":"The target has Disadvantage."}`),
 	} {
-		if err := e.q().UpsertCompendiumEntry(t.Context(), p); err != nil {
+		if err := e.upsertEntry(t.Context(), p); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -122,7 +122,7 @@ func TestLevelUpSubclassCaster(t *testing.T) {
 	withFeature := sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testfighter", Name: "Testfighter", SourceKey: "test", ContentHash: "y",
 		DataJson: `{"hit_die":10,"caster":"none","table":{"Weapon Mastery":{"1":"2","2":"2","3":"3"}},"features":[{"name":"Testfighter Subclass","levels":[3],"subclass":true}]}`}
 	for _, p := range []sqlc.UpsertCompendiumEntryParams{withFeature, testKnight} {
-		if err := e.q().UpsertCompendiumEntry(t.Context(), p); err != nil {
+		if err := e.upsertEntry(t.Context(), p); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -166,7 +166,7 @@ func TestLevelUpSubclassCaster(t *testing.T) {
 func TestMasteryMulticlass(t *testing.T) {
 	e := newTestEnv(t)
 	seedMastery(t, e)
-	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
+	if err := e.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
 		Kind: "class", Slug: "testrogue", Name: "Testrogue", SourceKey: "test", ContentHash: "x",
 		DataJson: `{"hit_die":8,"caster":"none","table":{"Weapon Mastery":{"1":"1"}}}`,
 	}); err != nil {
@@ -241,7 +241,7 @@ func TestLiveMastery(t *testing.T) {
 func TestFeatMastery(t *testing.T) {
 	e := newTestEnv(t)
 	seedMastery(t, e)
-	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
+	if err := e.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
 		Kind: "feat", Slug: "weapon-master", Name: "Weapon Master", SourceKey: "test", ContentHash: "x",
 		DataJson: `{"desc":"You gain the following benefits.","parts":[{"name":"Mastery Property","desc":"You can use the mastery property of one kind of Simple or Martial weapon of your choice."}]}`,
 	}); err != nil {

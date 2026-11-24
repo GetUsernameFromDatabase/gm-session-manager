@@ -24,6 +24,7 @@ import (
 
 	"gm-session-manager/internal/auth"
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/route"
@@ -333,6 +334,20 @@ func (a *App) layout(w who, title, active string, camp *sqlc.Campaign, live bool
 
 func nullID(id int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: id, Valid: id != 0}
+}
+
+// linkTarget fills the one target column of note_links and
+// entity_field_links that a link of kind uses.
+func linkTarget(kind enum.LinkTarget, id int64) (note, entity, image sql.NullInt64) {
+	switch kind {
+	case enum.LinkNote:
+		note = nullID(id)
+	case enum.LinkEntity:
+		entity = nullID(id)
+	case enum.LinkImage:
+		image = nullID(id)
+	}
+	return note, entity, image
 }
 
 // formInt reads an optional integer form field.

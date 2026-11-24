@@ -25,7 +25,7 @@ const (
 func (e testEnv) spell(tb testing.TB, source, slug string, level int) {
 	tb.Helper()
 	data := fmt.Sprintf(`{"level":%d,"school":"evocation","classes":["wizard"],"desc":"%s from %s"}`, level, slug, source)
-	if err := e.q().UpsertCompendiumEntry(tb.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: slug, Name: slug, SourceKey: source, DataJson: data, ContentHash: source + slug}); err != nil {
+	if err := e.upsertEntry(tb.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: slug, Name: slug, SourceKey: source, DataJson: data, ContentHash: source + slug}); err != nil {
 		tb.Fatal(err)
 	}
 }

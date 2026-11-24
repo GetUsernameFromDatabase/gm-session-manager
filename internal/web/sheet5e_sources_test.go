@@ -221,7 +221,7 @@ func TestRunCommandUsesCurrentSheet(t *testing.T) {
 		classCopy(oldSrc, `{"name":"Strike","desc":"old strike","levels":[1]}`),
 		classCopy(newSrc, `{"name":"Strike","desc":"new strike","levels":[1]}`),
 	} {
-		if err := e.q().UpsertCompendiumEntry(t.Context(), c); err != nil {
+		if err := e.upsertEntry(t.Context(), c); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -258,7 +258,7 @@ func TestSourceSwitchKeepsEdits(t *testing.T) {
 		classCopy(oldSrc, `{"name":"Strike","desc":"old strike","levels":[1]},{"name":"Guard","desc":"old guard","levels":[1]}`),
 		classCopy(newSrc, `{"name":"Strike","desc":"new strike","levels":[1]},{"name":"Guard","desc":"new guard","levels":[1]},{"name":"Rally","desc":"new rally","levels":[2]}`),
 	} {
-		if err := e.q().UpsertCompendiumEntry(t.Context(), c); err != nil {
+		if err := e.upsertEntry(t.Context(), c); err != nil {
 			t.Fatal(err)
 		}
 	}

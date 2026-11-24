@@ -40,7 +40,7 @@ type testEnv struct {
 
 // allowEntrySources ticks, for the test campaign, every source an entry
 // uses: a real campaign gets every source when created, but tests fill the
-// compendium after creating theirs, often with entries of no source row.
+// compendium after creating theirs.
 // Call it once after the test's compendium data is in.
 func (e testEnv) allowEntrySources(t testing.TB) {
 	t.Helper()

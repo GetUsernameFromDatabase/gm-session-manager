@@ -188,7 +188,7 @@ func TestCombatHidesUnrevealedNPC(t *testing.T) {
 	f := newLiveFixture(t)
 	ctx := t.Context()
 	const pic = "https://example.com/vampire.png"
-	if err := f.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "vampire", Name: "Vampire", SourceKey: "test", DataJson: "{}"}); err != nil {
+	if err := f.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "vampire", Name: "Vampire", SourceKey: "test", DataJson: "{}"}); err != nil {
 		t.Fatal(err)
 	}
 	m, err := f.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "vampire"})

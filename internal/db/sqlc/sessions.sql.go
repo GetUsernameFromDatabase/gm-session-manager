@@ -16,7 +16,7 @@ import (
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (token_hash, role, character_id)
 VALUES (?, ?, ?)
-RETURNING id, token_hash, role, character_id, last_seen_at, created_at, user_agent
+RETURNING id, token_hash, role, character_id, last_seen_at, user_agent, created_at
 `
 
 type CreateSessionParams struct {
@@ -34,8 +34,8 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.Role,
 		&i.CharacterID,
 		&i.LastSeenAt,
-		&i.CreatedAt,
 		&i.UserAgent,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -61,7 +61,7 @@ func (q *Queries) DeleteSession(ctx context.Context, id int64) error {
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, token_hash, role, character_id, last_seen_at, created_at, user_agent FROM sessions
+SELECT id, token_hash, role, character_id, last_seen_at, user_agent, created_at FROM sessions
 WHERE id = ?
 `
 
@@ -74,14 +74,14 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (Session, error) {
 		&i.Role,
 		&i.CharacterID,
 		&i.LastSeenAt,
-		&i.CreatedAt,
 		&i.UserAgent,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
-SELECT id, token_hash, role, character_id, last_seen_at, created_at, user_agent FROM sessions
+SELECT id, token_hash, role, character_id, last_seen_at, user_agent, created_at FROM sessions
 WHERE token_hash = ?
   AND (character_id IS NULL OR character_id IN (SELECT id FROM characters WHERE deleted_at IS NULL))
 `
@@ -98,8 +98,8 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (
 		&i.Role,
 		&i.CharacterID,
 		&i.LastSeenAt,
-		&i.CreatedAt,
 		&i.UserAgent,
+		&i.CreatedAt,
 	)
 	return i, err
 }

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -30,10 +31,23 @@ func (e testEnv) source(t testing.TB, key, edition string) {
 	}
 }
 
+// upsertEntry stores p, first adding a bare row for its source when the test
+// has not made one: entries reference their source.
+func (e testEnv) upsertEntry(ctx context.Context, p sqlc.UpsertCompendiumEntryParams) error {
+	if _, err := e.q().GetCompendiumSource(ctx, p.SourceKey); errors.Is(err, sql.ErrNoRows) {
+		if err := e.q().UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: p.SourceKey}); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+	return e.q().UpsertCompendiumEntry(ctx, p)
+}
+
 func (e testEnv) feat(t *testing.T, source, slug, desc string) int64 {
 	t.Helper()
 	data := fmt.Sprintf(`{"desc":%q}`, desc)
-	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: "feat", Slug: slug, Name: slug, SourceKey: source, DataJson: data, BodyText: desc, ContentHash: source + slug}); err != nil {
+	if err := e.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: "feat", Slug: slug, Name: slug, SourceKey: source, DataJson: data, BodyText: desc, ContentHash: source + slug}); err != nil {
 		t.Fatal(err)
 	}
 	row, err := e.q().GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: slug})

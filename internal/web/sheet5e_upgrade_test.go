@@ -89,7 +89,7 @@ func TestUpgradeRepeatedFeature(t *testing.T) {
 func TestUpgradeThirdCaster(t *testing.T) {
 	e := newTestEnv(t)
 	seedMastery(t, e)
-	if err := e.q().UpsertCompendiumEntry(t.Context(), testKnight); err != nil {
+	if err := e.upsertEntry(t.Context(), testKnight); err != nil {
 		t.Fatal(err)
 	}
 	s := dnd5e.NewSheet()
@@ -113,7 +113,7 @@ func TestUpgradeThirdCaster(t *testing.T) {
 // origin, plus a later class's multiclass training; a second run changes nothing.
 func TestUpgradeClassArmor(t *testing.T) {
 	e := newTestEnv(t)
-	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
+	if err := e.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
 		Kind: "class", Slug: "testwarrior", Name: "Testwarrior", SourceKey: "test", ContentHash: "x",
 		DataJson: `{"hit_die":10,"desc":"|Core Traits||\n|---|---|\n|Armor Training|Light, Medium, and Heavy armor and Shields|"}`,
 	}); err != nil {

@@ -129,7 +129,7 @@ func TestRollAllInitiative(t *testing.T) {
 	refs := map[string]int64{}
 	for name, b := range bonus {
 		slug := "test-init-" + strings.ToLower(name)
-		if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: slug, Name: name, SourceKey: "test", ContentHash: "x",
+		if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: slug, Name: name, SourceKey: "test", ContentHash: "x",
 			DataJson: fmt.Sprintf(`{"initiative":%d}`, b)}); err != nil {
 			t.Fatal(err)
 		}
@@ -185,7 +185,7 @@ func TestCombatDefenses(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
-	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "testgoyle", Name: "Testgoyle", SourceKey: "test", ContentHash: "x",
+	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "testgoyle", Name: "Testgoyle", SourceKey: "test", ContentHash: "x",
 		DataJson: `{"ac":15,"hp":60,"resistances":"cold; bludgeoning from nonmagical attacks","immunities":"poison; poisoned","vulnerabilities":"radiant"}`}); err != nil {
 		t.Fatal(err)
 	}

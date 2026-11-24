@@ -261,8 +261,9 @@ func saveFieldLinks(ctx context.Context, q *sqlc.Queries, entityID int64, fields
 	}
 	for key, f := range fields {
 		for _, l := range views.WikiLinks(f.Value) {
+			note, entity, image := linkTarget(enum.LinkTarget(l.Kind), l.ID)
 			if err := q.AddEntityFieldLink(ctx, sqlc.AddEntityFieldLinkParams{
-				EntityID: entityID, FieldKey: key, TargetType: enum.LinkTarget(l.Kind), TargetID: l.ID, IsRevealed: f.IsRevealed,
+				EntityID: entityID, FieldKey: key, TargetNoteID: note, TargetEntityID: entity, TargetImageID: image, IsRevealed: f.IsRevealed,
 			}); err != nil {
 				return err
 			}
@@ -340,7 +341,7 @@ func (a *App) imageToEntity(c *gin.Context) error {
 		return nil
 	}
 	fields := perm.Fields{}
-	if d := strings.TrimSpace(img.Description.String); d != "" {
+	if d := strings.TrimSpace(img.Description); d != "" {
 		fields["description"] = perm.Field{Value: d}
 	}
 	raw, err := json.Marshal(fields)

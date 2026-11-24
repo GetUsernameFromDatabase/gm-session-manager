@@ -1,6 +1,7 @@
 # internal/db
 
-- The migrations in `migrations/` are the schema. WAL mode and `PRAGMA foreign_keys = ON` on every connection.
+- `migrations/0001_schema.sql` is the whole schema; a change is a new numbered file, never an edit to a released one. WAL mode and `PRAGMA foreign_keys = ON` on every connection.
+- A migration that edits `sqlite_schema` (`PRAGMA writable_schema`) relies on `apply()`'s `schema_version` bump, so a later `ALTER TABLE` on the same connection sees the edited text.
 - All queries through `sqlc` (`queries/` → `sqlc/`, generated). FTS5 tables live in a migration, with a stub for sqlc in `sqlc_stubs.sql`.
 - Prefer separate simple queries, split in Go or the view model, over one query whose flags change its shape. An optional filter as `CAST(sqlc.arg(x) AS INTEGER) = 0 OR …` is fine (sqlc needs the CAST to type the arg).
 - Which compendium copy a campaign sees, player homebrew scoping included, lives in the `campaign_top` view: join it rather than repeating the check in a query.

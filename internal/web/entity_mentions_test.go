@@ -25,7 +25,7 @@ func TestEntityMentionsStayInCampaign(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	link := sqlc.AddEntityFieldLinkParams{EntityID: foreign.ID, FieldKey: "notes", TargetType: enum.LinkEntity, TargetID: target.ID, IsRevealed: true}
+	link := sqlc.AddEntityFieldLinkParams{EntityID: foreign.ID, FieldKey: "notes", TargetEntityID: nullID(target.ID), IsRevealed: true}
 	if err := e.q().AddEntityFieldLink(ctx, link); err != nil {
 		t.Fatal(err)
 	}

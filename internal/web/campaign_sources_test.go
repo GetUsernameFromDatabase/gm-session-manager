@@ -41,7 +41,7 @@ func sourcesEnv(t *testing.T) testEnv {
 	e.source(t, offBook, "2024")
 	sub := func(source, slug, name string) {
 		data := fmt.Sprintf(`{"subclass_of":"wizard","features":[{"name":"%s Trick","desc":"from %s","levels":[3]}]}`, name, source)
-		if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "subclass", Slug: slug, Name: name, SourceKey: source, DataJson: data, ContentHash: source + slug, IsHomebrew: source == compendium.HomebrewSource}); err != nil {
+		if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "subclass", Slug: slug, Name: name, SourceKey: source, DataJson: data, ContentHash: source + slug}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -351,9 +351,9 @@ func TestCampaignSourcePicks(t *testing.T) {
 // choices, labelled with their source, and the picked slug decides the copy.
 func TestSubclassPickBySlug(t *testing.T) {
 	e := sourcesEnv(t)
-	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
+	if err := e.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
 		Kind: "subclass", Slug: "shared-school-hb", Name: "Shared School", SourceKey: compendium.HomebrewSource,
-		DataJson: `{"subclass_of":"wizard"}`, ContentHash: "hb", IsHomebrew: true,
+		DataJson: `{"subclass_of":"wizard"}`, ContentHash: "hb",
 	}); err != nil {
 		t.Fatal(err)
 	}

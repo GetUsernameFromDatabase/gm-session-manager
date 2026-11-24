@@ -34,7 +34,11 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 		}
 	}
 
-	const targetEntity = 99
+	npc, err := q.CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: camp.ID, Kind: enum.EntityNPC, Name: "Target", FieldsJson: "{}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := sql.NullInt64{Int64: npc.ID, Valid: true}
 	for _, tt := range blockCases {
 		t.Run(tt.name, func(t *testing.T) {
 			note, err := q.CreateNote(ctx, sqlc.CreateNoteParams{
@@ -63,7 +67,7 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := q.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: note.ID, SourceBlockID: block.ID, TargetType: "entity", TargetID: targetEntity}); err != nil {
+			if err := q.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: note.ID, SourceBlockID: block.ID, TargetEntityID: target}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -94,7 +98,7 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 				}
 
 				back, err := q.ListBacklinks(ctx, sqlc.ListBacklinksParams{
-					TargetType: "entity", TargetID: targetEntity, CampaignID: camp.ID, IsGm: isGM, CharacterID: char,
+					TargetEntityID: target, CampaignID: camp.ID, IsGm: isGM, CharacterID: char,
 				})
 				if err != nil {
 					t.Fatal(err)

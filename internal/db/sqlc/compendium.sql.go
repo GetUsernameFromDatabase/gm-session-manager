@@ -296,9 +296,9 @@ func (q *Queries) CountSharedBySource(ctx context.Context, campaignID int64) ([]
 
 const createHomebrew = `-- name: CreateHomebrew :one
 INSERT INTO compendium_entries (
-    kind, slug, name, source_key, data_json, body_text, is_homebrew, content_hash, owner_character_id, scoped
-) VALUES (?, ?, ?, 'homebrew', ?, ?, 1, ?, ?, ?)
-RETURNING id, kind, slug, name, source_key, data_json, body_text, image_url, is_homebrew, content_hash, imported_at, owner_character_id, scoped
+    kind, slug, name, source_key, data_json, body_text, content_hash, owner_character_id, scoped
+) VALUES (?, ?, ?, 'homebrew', ?, ?, ?, ?, ?)
+RETURNING id, kind, slug, name, source_key, data_json, body_text, image_url, content_hash, imported_at, owner_character_id, scoped
 `
 
 type CreateHomebrewParams struct {
@@ -335,26 +335,12 @@ func (q *Queries) CreateHomebrew(ctx context.Context, arg CreateHomebrewParams) 
 		&i.DataJson,
 		&i.BodyText,
 		&i.ImageUrl,
-		&i.IsHomebrew,
 		&i.ContentHash,
 		&i.ImportedAt,
 		&i.OwnerCharacterID,
 		&i.Scoped,
 	)
 	return i, err
-}
-
-const deleteCompendiumEntriesBySource = `-- name: DeleteCompendiumEntriesBySource :exec
-DELETE FROM compendium_entries
-WHERE source_key = ? AND source_key <> 'homebrew'
-`
-
-// Removing a book deletes its entries first (the FTS and habitat rows go
-// with them; combatants and entities that referenced one keep their row with
-// the link cleared). Homebrew is not a book.
-func (q *Queries) DeleteCompendiumEntriesBySource(ctx context.Context, sourceKey string) error {
-	_, err := q.db.ExecContext(ctx, deleteCompendiumEntriesBySource, sourceKey)
-	return err
 }
 
 const deleteCompendiumEntry = `-- name: DeleteCompendiumEntry :exec
@@ -372,6 +358,9 @@ DELETE FROM compendium_sources
 WHERE source_key = ? AND source_key <> 'homebrew'
 `
 
+// Removing a book deletes its entries by cascade (the FTS and habitat rows go
+// with them; combatants and entities that referenced one keep their row with
+// the link cleared). Homebrew is not a book.
 func (q *Queries) DeleteCompendiumSource(ctx context.Context, sourceKey string) error {
 	_, err := q.db.ExecContext(ctx, deleteCompendiumSource, sourceKey)
 	return err
@@ -379,7 +368,7 @@ func (q *Queries) DeleteCompendiumSource(ctx context.Context, sourceKey string) 
 
 const deleteHomebrew = `-- name: DeleteHomebrew :exec
 DELETE FROM compendium_entries
-WHERE id = ? AND is_homebrew = 1
+WHERE id = ? AND source_key = 'homebrew'
 `
 
 func (q *Queries) DeleteHomebrew(ctx context.Context, id int64) error {
@@ -428,7 +417,7 @@ func (q *Queries) FillHabitatsFromCopies(ctx context.Context, filter string) (in
 }
 
 const getCompendiumEntry = `-- name: GetCompendiumEntry :one
-SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, is_homebrew, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries
+SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries
 WHERE id = ?
 `
 
@@ -444,7 +433,6 @@ func (q *Queries) GetCompendiumEntry(ctx context.Context, id int64) (CompendiumE
 		&i.DataJson,
 		&i.BodyText,
 		&i.ImageUrl,
-		&i.IsHomebrew,
 		&i.ContentHash,
 		&i.ImportedAt,
 		&i.OwnerCharacterID,
@@ -454,10 +442,10 @@ func (q *Queries) GetCompendiumEntry(ctx context.Context, id int64) (CompendiumE
 }
 
 const getCompendiumEntryByName = `-- name: GetCompendiumEntryByName :one
-SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.data_json, e.body_text, e.image_url, e.is_homebrew, e.content_hash, e.imported_at, e.owner_character_id, e.scoped FROM compendium_entries AS e
-LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.data_json, e.body_text, e.image_url, e.content_hash, e.imported_at, e.owner_character_id, e.scoped FROM compendium_entries AS e
+JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND lower(e.name) = lower(?2)
-ORDER BY e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id
+ORDER BY e.scoped, s.priority, s.published DESC, e.id
 LIMIT 1
 `
 
@@ -480,7 +468,6 @@ func (q *Queries) GetCompendiumEntryByName(ctx context.Context, arg GetCompendiu
 		&i.DataJson,
 		&i.BodyText,
 		&i.ImageUrl,
-		&i.IsHomebrew,
 		&i.ContentHash,
 		&i.ImportedAt,
 		&i.OwnerCharacterID,
@@ -490,10 +477,10 @@ func (q *Queries) GetCompendiumEntryByName(ctx context.Context, arg GetCompendiu
 }
 
 const getCompendiumEntryBySlug = `-- name: GetCompendiumEntryBySlug :one
-SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.data_json, e.body_text, e.image_url, e.is_homebrew, e.content_hash, e.imported_at, e.owner_character_id, e.scoped FROM compendium_entries AS e
-LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.data_json, e.body_text, e.image_url, e.content_hash, e.imported_at, e.owner_character_id, e.scoped FROM compendium_entries AS e
+JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND e.slug = ?
-ORDER BY e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id
+ORDER BY e.scoped, s.priority, s.published DESC, e.id
 LIMIT 1
 `
 
@@ -517,7 +504,6 @@ func (q *Queries) GetCompendiumEntryBySlug(ctx context.Context, arg GetCompendiu
 		&i.DataJson,
 		&i.BodyText,
 		&i.ImageUrl,
-		&i.IsHomebrew,
 		&i.ContentHash,
 		&i.ImportedAt,
 		&i.OwnerCharacterID,
@@ -527,7 +513,7 @@ func (q *Queries) GetCompendiumEntryBySlug(ctx context.Context, arg GetCompendiu
 }
 
 const getCompendiumEntryBySlugSource = `-- name: GetCompendiumEntryBySlugSource :one
-SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, is_homebrew, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries
+SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries
 WHERE kind = ? AND slug = ? AND source_key = ?
 ORDER BY scoped, id
 LIMIT 1
@@ -552,7 +538,6 @@ func (q *Queries) GetCompendiumEntryBySlugSource(ctx context.Context, arg GetCom
 		&i.DataJson,
 		&i.BodyText,
 		&i.ImageUrl,
-		&i.IsHomebrew,
 		&i.ContentHash,
 		&i.ImportedAt,
 		&i.OwnerCharacterID,
@@ -562,7 +547,7 @@ func (q *Queries) GetCompendiumEntryBySlugSource(ctx context.Context, arg GetCom
 }
 
 const getCompendiumSource = `-- name: GetCompendiumSource :one
-SELECT source_key, path, hash, edition, license, attribution, last_imported, priority, published FROM compendium_sources
+SELECT source_key, path, hash, edition, priority, published, license, attribution, last_imported FROM compendium_sources
 WHERE source_key = ?
 `
 
@@ -574,11 +559,11 @@ func (q *Queries) GetCompendiumSource(ctx context.Context, sourceKey string) (Co
 		&i.Path,
 		&i.Hash,
 		&i.Edition,
+		&i.Priority,
+		&i.Published,
 		&i.License,
 		&i.Attribution,
 		&i.LastImported,
-		&i.Priority,
-		&i.Published,
 	)
 	return i, err
 }
@@ -630,7 +615,7 @@ func (q *Queries) ListCampaignSources(ctx context.Context, campaignID int64) ([]
 
 const listCompendiumByKind = `-- name: ListCompendiumByKind :many
 
-SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, CAST(e.source_key = 'homebrew' AS BOOLEAN) AS is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
     CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
     CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
@@ -722,15 +707,15 @@ func (q *Queries) ListCompendiumByKind(ctx context.Context, arg ListCompendiumBy
 
 const listCompendiumBySlugs = `-- name: ListCompendiumBySlugs :many
 SELECT e.id, e.slug, e.name, e.data_json, e.source_key, e.scoped FROM compendium_entries AS e
-LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ?1 AND e.slug IN (/*SLICE:slugs*/?)
   AND NOT EXISTS (
     SELECT 1 FROM compendium_entries AS b
-    LEFT JOIN compendium_sources AS bs ON bs.source_key = b.source_key
+    JOIN compendium_sources AS bs ON bs.source_key = b.source_key
     WHERE b.kind = e.kind AND b.slug = e.slug
       -- The dates swap sides: a newer b ranks before e (published DESC).
-      AND (b.scoped, COALESCE(bs.priority, 300), COALESCE(s.published, ''), b.id)
-        < (e.scoped, COALESCE(s.priority, 300), COALESCE(bs.published, ''), e.id))
+      AND (b.scoped, bs.priority, s.published, b.id)
+        < (e.scoped, s.priority, bs.published, e.id))
 ORDER BY e.slug
 `
 
@@ -881,7 +866,7 @@ func (q *Queries) ListCompendiumNames(ctx context.Context, arg ListCompendiumNam
 }
 
 const listCompendiumSources = `-- name: ListCompendiumSources :many
-SELECT source_key, path, hash, edition, license, attribution, last_imported, priority, published FROM compendium_sources
+SELECT source_key, path, hash, edition, priority, published, license, attribution, last_imported FROM compendium_sources
 ORDER BY priority, published DESC, source_key
 `
 
@@ -899,11 +884,11 @@ func (q *Queries) ListCompendiumSources(ctx context.Context) ([]CompendiumSource
 			&i.Path,
 			&i.Hash,
 			&i.Edition,
+			&i.Priority,
+			&i.Published,
 			&i.License,
 			&i.Attribution,
 			&i.LastImported,
-			&i.Priority,
-			&i.Published,
 		); err != nil {
 			return nil, err
 		}
@@ -1027,14 +1012,14 @@ func (q *Queries) ListEntryHabitats(ctx context.Context, entryID int64) ([]enum.
 }
 
 const listEntrySourcesBySlugs = `-- name: ListEntrySourcesBySlugs :many
-SELECT e.id, e.slug, e.source_key, COALESCE(s.edition, '') AS edition
+SELECT e.id, e.slug, e.source_key, s.edition
 FROM compendium_entries AS e
-LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ?1 AND e.slug IN (/*SLICE:slugs*/?)
   AND (e.scoped = 0 OR EXISTS (
     SELECT 1 FROM compendium_campaigns AS cc
     WHERE cc.entry_id = e.id AND cc.campaign_id = ?3))
-ORDER BY e.slug, e.scoped, COALESCE(s.priority, 300), COALESCE(s.published, '') DESC, e.id
+ORDER BY e.slug, e.scoped, s.priority, s.published DESC, e.id
 `
 
 type ListEntrySourcesBySlugsParams struct {
@@ -1098,7 +1083,7 @@ SELECT e.id, e.kind, e.slug, e.name, e.scoped, e.owner_character_id,
     CAST(COALESCE(c.name, '') AS TEXT) AS owner_name
 FROM compendium_entries AS e
 LEFT JOIN characters AS c ON c.id = e.owner_character_id
-WHERE e.is_homebrew = 1
+WHERE e.source_key = 'homebrew'
 ORDER BY e.scoped, e.kind, e.name
 `
 
@@ -1147,7 +1132,7 @@ func (q *Queries) ListHomebrew(ctx context.Context) ([]ListHomebrewRow, error) {
 
 const listHomebrewByOwner = `-- name: ListHomebrewByOwner :many
 SELECT id, kind, slug, name FROM compendium_entries
-WHERE is_homebrew = 1 AND owner_character_id = ?
+WHERE source_key = 'homebrew' AND owner_character_id = ?
 ORDER BY kind, name
 `
 
@@ -1368,7 +1353,7 @@ func (q *Queries) ListMonstersByName(ctx context.Context, filter string) ([]List
 }
 
 const listSharedEntries = `-- name: ListSharedEntries :many
-SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, CAST(e.source_key = 'homebrew' AS BOOLEAN) AS is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
     CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
     CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
@@ -1809,7 +1794,7 @@ func (q *Queries) RemoveMonsterHabitat(ctx context.Context, arg RemoveMonsterHab
 }
 
 const searchCompendium = `-- name: SearchCompendium :many
-SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, CAST(e.source_key = 'homebrew' AS BOOLEAN) AS is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
     CAST(COALESCE(json_extract(e.data_json, '$.category'), '') AS TEXT) AS category,
     CAST(COALESCE(json_extract(e.data_json, '$.size'), '') AS TEXT) AS size,
@@ -1819,7 +1804,7 @@ SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.is_homebrew,
         WHEN 'item' THEN json_extract(e.data_json, '$.rarity') END, '') AS TEXT) AS figure
 FROM compendium_fts
 JOIN compendium_entries AS e ON e.id = compendium_fts.rowid
-LEFT JOIN compendium_sources AS s ON s.source_key = e.source_key
+JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE compendium_fts MATCH CAST(?1 AS TEXT)
   AND (CAST(?2 AS INTEGER) = 0 OR e.source_key = 'homebrew'
        OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?2 AS INTEGER) AND cs.source_key = e.source_key))
@@ -1827,15 +1812,15 @@ WHERE compendium_fts MATCH CAST(?1 AS TEXT)
        OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = CAST(?2 AS INTEGER)))
   AND NOT EXISTS (
     SELECT 1 FROM compendium_entries AS b
-    LEFT JOIN compendium_sources AS bs ON bs.source_key = b.source_key
+    JOIN compendium_sources AS bs ON bs.source_key = b.source_key
     WHERE b.kind = e.kind AND b.slug = e.slug
       AND (CAST(?2 AS INTEGER) = 0 OR b.source_key = 'homebrew'
            OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?2 AS INTEGER) AND cs.source_key = b.source_key))
       AND (b.scoped = 0 OR CAST(?2 AS INTEGER) = 0
            OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = b.id AND l.campaign_id = CAST(?2 AS INTEGER)))
       -- The dates swap sides: a newer b ranks before e (published DESC).
-      AND (b.scoped, COALESCE(bs.priority, 300), COALESCE(s.published, ''), b.id)
-        < (e.scoped, COALESCE(s.priority, 300), COALESCE(bs.published, ''), e.id))
+      AND (b.scoped, bs.priority, s.published, b.id)
+        < (e.scoped, s.priority, bs.published, e.id))
   AND (CAST(?3 AS TEXT) = '' OR instr(',' || CAST(?3 AS TEXT) || ',', ',' || e.kind || ',') > 0)
   AND (CAST(?4 AS TEXT) = '' OR EXISTS (SELECT 1 FROM monster_habitats AS h WHERE h.entry_id = e.id AND instr(',' || CAST(?4 AS TEXT) || ',', ',' || h.habitat || ',') > 0))
 ORDER BY compendium_fts.rank
@@ -1978,7 +1963,7 @@ func (q *Queries) UnlinkEntryCampaign(ctx context.Context, arg UnlinkEntryCampai
 const updateHomebrew = `-- name: UpdateHomebrew :exec
 UPDATE compendium_entries
 SET name = ?, data_json = ?, body_text = ?, content_hash = ?, imported_at = CURRENT_TIMESTAMP
-WHERE id = ? AND is_homebrew = 1
+WHERE id = ? AND source_key = 'homebrew'
 `
 
 type UpdateHomebrewParams struct {
@@ -2002,8 +1987,8 @@ func (q *Queries) UpdateHomebrew(ctx context.Context, arg UpdateHomebrewParams) 
 
 const upsertCompendiumEntry = `-- name: UpsertCompendiumEntry :exec
 INSERT INTO compendium_entries (
-    kind, slug, name, source_key, data_json, body_text, is_homebrew, content_hash
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    kind, slug, name, source_key, data_json, body_text, content_hash
+) VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (kind, slug, source_key) DO UPDATE
 SET name = excluded.name, data_json = excluded.data_json,
     body_text = excluded.body_text, content_hash = excluded.content_hash,
@@ -2018,7 +2003,6 @@ type UpsertCompendiumEntryParams struct {
 	SourceKey   string
 	DataJson    string
 	BodyText    string
-	IsHomebrew  bool
 	ContentHash string
 }
 
@@ -2032,7 +2016,6 @@ func (q *Queries) UpsertCompendiumEntry(ctx context.Context, arg UpsertCompendiu
 		arg.SourceKey,
 		arg.DataJson,
 		arg.BodyText,
-		arg.IsHomebrew,
 		arg.ContentHash,
 	)
 	return err
@@ -2061,8 +2044,8 @@ type UpsertCompendiumSourceParams struct {
 	Published   string
 }
 
-// A new source gets a default priority (lower wins; migration 0004 backfills
-// the same way); a re-import keeps the GM's order but refreshes the date.
+// A new source gets a default priority by group (lower wins); a re-import
+// keeps the GM's order but refreshes the date.
 func (q *Queries) UpsertCompendiumSource(ctx context.Context, arg UpsertCompendiumSourceParams) error {
 	_, err := q.db.ExecContext(ctx, upsertCompendiumSource,
 		arg.SourceKey,

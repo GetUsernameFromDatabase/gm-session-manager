@@ -30,10 +30,6 @@ sql:
             go_type: gm-session-manager/internal/enum.NoteKind
           - column: entities.kind
             go_type: gm-session-manager/internal/enum.EntityKind
-          - column: note_links.target_type
-            go_type: gm-session-manager/internal/enum.LinkTarget
-          - column: entity_field_links.target_type
-            go_type: gm-session-manager/internal/enum.LinkTarget
           - column: note_blocks.visibility
             go_type: gm-session-manager/internal/enum.Visibility
           - column: conditions.ends_on

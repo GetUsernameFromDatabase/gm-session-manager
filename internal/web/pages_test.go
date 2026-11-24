@@ -413,7 +413,7 @@ func TestHabitatCopies(t *testing.T) {
 	if err := e.q().UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: "old-book", Edition: "2014"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "goblin-warrior", Name: "Goblin Warrior", SourceKey: "old-book", DataJson: "{}", ContentHash: "x"}); err != nil {
+	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "goblin-warrior", Name: "Goblin Warrior", SourceKey: "old-book", DataJson: "{}", ContentHash: "x"}); err != nil {
 		t.Fatal(err)
 	}
 	old, err := e.q().ListEntryCopies(ctx, sqlc.ListEntryCopiesParams{Kind: "monster", Slug: "goblin-warrior"})

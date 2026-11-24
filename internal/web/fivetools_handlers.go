@@ -180,9 +180,6 @@ func (a *App) fiveToolsRemove(c *gin.Context) error {
 		if len(users[key]) > 0 {
 			return &sourceUsedError{users[key]}
 		}
-		if err := q.DeleteCompendiumEntriesBySource(ctx, key); err != nil {
-			return err
-		}
 		return q.DeleteCompendiumSource(ctx, key)
 	})
 	if used, ok := errors.AsType[*sourceUsedError](err); ok {

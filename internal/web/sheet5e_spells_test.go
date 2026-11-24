@@ -82,7 +82,7 @@ func TestSpellCounts(t *testing.T) {
 	e := newTestEnv(t)
 	loadFeatFixtures(t, e)
 	for _, entry := range []sqlc.UpsertCompendiumEntryParams{lock, testBlast, ward, hex} {
-		if err := e.q().UpsertCompendiumEntry(t.Context(), entry); err != nil {
+		if err := e.upsertEntry(t.Context(), entry); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -134,7 +134,7 @@ func TestSpellCounts(t *testing.T) {
 		{nil, levelUp, url.Values{"class": {"testlock"}}, []string{"test-hex"}, http.StatusSeeOther, ""},
 	} {
 		if step.class != nil {
-			if err := e.q().UpsertCompendiumEntry(t.Context(), *step.class); err != nil {
+			if err := e.upsertEntry(t.Context(), *step.class); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -166,7 +166,7 @@ func TestPrepareCapCommand(t *testing.T) {
 	lock.DataJson = strings.Replace(testlock.DataJson, `"table":{`, `"table":{"Prepared Spells":{"1":"1"},`, 1)
 	e := newTestEnv(t)
 	loadFeatFixtures(t, e)
-	if err := e.q().UpsertCompendiumEntry(t.Context(), lock); err != nil {
+	if err := e.upsertEntry(t.Context(), lock); err != nil {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)

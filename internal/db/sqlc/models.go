@@ -100,7 +100,6 @@ type CompendiumEntry struct {
 	DataJson         string
 	BodyText         string
 	ImageUrl         sql.NullString
-	IsHomebrew       bool
 	ContentHash      string
 	ImportedAt       time.Time
 	OwnerCharacterID sql.NullInt64
@@ -120,11 +119,11 @@ type CompendiumSource struct {
 	Path         string
 	Hash         string
 	Edition      string
+	Priority     int64
+	Published    string
 	License      string
 	Attribution  string
 	LastImported time.Time
-	Priority     int64
-	Published    string
 }
 
 type Condition struct {
@@ -134,11 +133,11 @@ type Condition struct {
 	Slug         string
 	Note         string
 	ExpiresRound sql.NullInt64
-	CreatedAt    time.Time
 	EndsOn       enum.EffectEnd
 	HeldBy       sql.NullInt64
 	ModsJson     string
 	AppliedBy    sql.NullInt64
+	CreatedAt    time.Time
 }
 
 type EffectPreset struct {
@@ -151,6 +150,7 @@ type EffectPreset struct {
 	EndsOn           enum.EffectEnd
 	Rounds           int64
 	ModsJson         string
+	CreatedAt        time.Time
 }
 
 type Encounter struct {
@@ -176,11 +176,12 @@ type Entity struct {
 }
 
 type EntityFieldLink struct {
-	EntityID   int64
-	FieldKey   string
-	TargetType enum.LinkTarget
-	TargetID   int64
-	IsRevealed bool
+	EntityID       int64
+	FieldKey       string
+	TargetNoteID   sql.NullInt64
+	TargetEntityID sql.NullInt64
+	TargetImageID  sql.NullInt64
+	IsRevealed     bool
 }
 
 type EntityImage struct {
@@ -197,7 +198,7 @@ type Image struct {
 	Url          sql.NullString
 	AttachmentID sql.NullInt64
 	CategoryID   sql.NullInt64
-	Description  sql.NullString
+	Description  string
 	CreatedAt    time.Time
 }
 
@@ -249,10 +250,11 @@ type NoteBlockAudience struct {
 }
 
 type NoteLink struct {
-	SourceNoteID  int64
-	SourceBlockID int64
-	TargetType    enum.LinkTarget
-	TargetID      int64
+	SourceNoteID   int64
+	SourceBlockID  int64
+	TargetNoteID   sql.NullInt64
+	TargetEntityID sql.NullInt64
+	TargetImageID  sql.NullInt64
 }
 
 type Session struct {
@@ -261,6 +263,6 @@ type Session struct {
 	Role        enum.Role
 	CharacterID sql.NullInt64
 	LastSeenAt  time.Time
-	CreatedAt   time.Time
 	UserAgent   string
+	CreatedAt   time.Time
 }

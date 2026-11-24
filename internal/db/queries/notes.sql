@@ -179,12 +179,17 @@ DELETE FROM note_links
 WHERE source_block_id = ?;
 
 -- name: ListBlockImageLinks :many
-SELECT target_id FROM note_links
-WHERE source_block_id = ? AND target_type = 'image';
+SELECT CAST(target_image_id AS INTEGER) AS target_image_id FROM note_links
+WHERE source_block_id = ? AND target_image_id IS NOT NULL;
 
+-- Links come from client snapshots and may name a deleted target: it is
+-- skipped, since a foreign key error would fail the whole save.
 -- name: AddBlockLink :exec
-INSERT OR IGNORE INTO note_links (source_note_id, source_block_id, target_type, target_id)
-VALUES (?, ?, ?, ?);
+INSERT OR IGNORE INTO note_links (source_note_id, source_block_id, target_note_id, target_entity_id, target_image_id)
+SELECT sqlc.arg(source_note_id), sqlc.arg(source_block_id), sqlc.narg(target_note_id), sqlc.narg(target_entity_id), sqlc.narg(target_image_id)
+WHERE EXISTS (SELECT 1 FROM notes WHERE id = sqlc.narg(target_note_id))
+   OR EXISTS (SELECT 1 FROM entities WHERE id = sqlc.narg(target_entity_id))
+   OR EXISTS (SELECT 1 FROM images WHERE id = sqlc.narg(target_image_id));
 
 -- ListBacklinks returns the notes linking to a target through a block the
 -- viewer may read, so a secret block never reveals that it mentions you.
@@ -193,7 +198,7 @@ SELECT DISTINCT n.id, n.title
 FROM note_links AS l
 JOIN note_blocks AS b ON b.id = l.source_block_id
 JOIN notes AS n ON n.id = l.source_note_id
-WHERE l.target_type = sqlc.arg(target_type) AND l.target_id = sqlc.arg(target_id)
+WHERE (l.target_note_id = sqlc.narg(target_note_id) OR l.target_entity_id = sqlc.narg(target_entity_id) OR l.target_image_id = sqlc.narg(target_image_id))
   AND n.campaign_id = sqlc.arg(campaign_id)
   AND (
     (CAST(sqlc.arg(is_gm) AS BOOLEAN) AND b.visibility <> 'owner')

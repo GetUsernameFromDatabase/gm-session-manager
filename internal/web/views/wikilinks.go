@@ -29,7 +29,7 @@ const LinkCompendium = "compendium"
 
 // WikiLink is one [[link]] in a text.
 type WikiLink struct {
-	Kind  string // note, entity or image (note_links.target_type), or compendium
+	Kind  string // note, entity or image (enum.LinkTarget), or compendium
 	ID    int64
 	Label string
 	Float string // left, right, inline, break or "" (left)

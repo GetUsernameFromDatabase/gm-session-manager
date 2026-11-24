@@ -61,7 +61,7 @@ func (f *imageForm) mergeEditor(img sqlc.GetImageRow, newFile bool) error {
 	}
 	pick("name", &f.Name, f.WasName, img.Name)
 	pick("category", &f.Category, f.WasCategory, img.Category)
-	pick("description", &f.Description, f.WasDescription, img.Description.String)
+	pick("description", &f.Description, f.WasDescription, img.Description)
 	// Without a new link imageSource keeps the stored picture (or takes the
 	// file). The upload tab posts no link at all.
 	f.URL = strings.TrimSpace(f.URL)
@@ -79,7 +79,7 @@ func (f *imageForm) mergeEditor(img sqlc.GetImageRow, newFile bool) error {
 }
 
 func imageItem(r sqlc.GetImageRow) views.ImageItem {
-	return views.ImageItem{ID: r.ID, Name: r.Name, Category: r.Category, Description: r.Description.String, URL: r.Url.String, Version: imageVersion(r.Url, r.AttachmentID)}
+	return views.ImageItem{ID: r.ID, Name: r.Name, Category: r.Category, Description: r.Description, URL: r.Url.String, Version: imageVersion(r.Url, r.AttachmentID)}
 }
 
 // cacheForever is the Cache-Control of a versioned image file: a new link
@@ -205,7 +205,7 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 		if err != nil {
 			return err
 		}
-		name, desc := form.Name, nullString(form.Description)
+		name, desc := form.Name, form.Description
 		if img.ID == 0 {
 			created, err := q.CreateImage(ctx, sqlc.CreateImageParams{
 				CampaignID: img.CampaignID, Name: name, Url: url, AttachmentID: attachment, CategoryID: category, Description: desc,
@@ -337,7 +337,7 @@ func (a *App) attachmentToImage(c *gin.Context) error {
 	if att.BlockID.Valid {
 		b, _, err := a.loadBlock(ctx, att.BlockID.Int64)
 		if err == nil {
-			err = a.Store.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetType: enum.LinkImage, TargetID: img.ID})
+			err = a.Store.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetImageID: nullID(img.ID)})
 		}
 		if err != nil {
 			return err

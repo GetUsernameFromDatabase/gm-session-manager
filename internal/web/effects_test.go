@@ -745,7 +745,7 @@ func TestSpellPrefill(t *testing.T) {
 		{"mage-armor", "Mage Armor", `{"level":1,"duration":"8 hours","desc":"x"}`, "8 hours", 0, false},
 	}
 	for _, s := range spells {
-		if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: s.slug, Name: s.name, SourceKey: "test", DataJson: s.data, ContentHash: s.slug}); err != nil {
+		if err := e.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: s.slug, Name: s.name, SourceKey: "test", DataJson: s.data, ContentHash: s.slug}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -786,10 +786,10 @@ func TestEffectNoteMaxMatchesTag(t *testing.T) {
 func TestEffectFields(t *testing.T) {
 	f := newEffectFix(t)
 	f.source(t, "test", "2024")
-	if err := f.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: "shield-of-faith", Name: shieldOfFaith, SourceKey: "test", DataJson: `{"level":1,"duration":"Concentration, up to 1 minute","concentration":true,"desc":"x"}`, ContentHash: "sof"}); err != nil {
+	if err := f.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: "shield-of-faith", Name: shieldOfFaith, SourceKey: "test", DataJson: `{"level":1,"duration":"Concentration, up to 1 minute","concentration":true,"desc":"x"}`, ContentHash: "sof"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: "magic-weapon", Name: "Magic Weapon", SourceKey: "test", DataJson: `{"level":2,"duration":"1 hour","desc":"a +1 bonus to attack rolls and damage rolls.","higher_level":"The bonus increases to +2 with a level 3–5 spell slot. The bonus increases to +3 with a level 6+ spell slot."}`, ContentHash: "mw"}); err != nil {
+	if err := f.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: "magic-weapon", Name: "Magic Weapon", SourceKey: "test", DataJson: `{"level":2,"duration":"1 hour","desc":"a +1 bonus to attack rolls and damage rolls.","higher_level":"The bonus increases to +2 with a level 3–5 spell slot. The bonus increases to +3 with a level 6+ spell slot."}`, ContentHash: "mw"}); err != nil {
 		t.Fatal(err)
 	}
 	f.allowEntrySources(t)

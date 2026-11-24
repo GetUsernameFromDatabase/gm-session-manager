@@ -98,7 +98,8 @@ const (
 	VisOwner   Visibility = "owner"
 )
 
-// LinkTarget is the target_type of note_links and entity_field_links.
+// LinkTarget is the kind a [[link]] points at; note_links and
+// entity_field_links hold one target column per kind.
 type LinkTarget string
 
 // Link targets.

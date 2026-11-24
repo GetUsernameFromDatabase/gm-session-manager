@@ -488,7 +488,7 @@ func (a *App) compendiumEntry(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	v := views.EntryView{Entry: e, Source: src, Data: data, IsGM: w.isGM(), Habitats: habitats, Copies: copies, CanEdit: e.IsHomebrew && perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64)}
+	v := views.EntryView{Entry: e, Source: src, Data: data, IsGM: w.isGM(), Habitats: habitats, Copies: copies, CanEdit: e.SourceKey == compendium.HomebrewSource && perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64)}
 	if v.IsGM && e.Kind == enum.KindMonster && len(habitats) == 0 {
 		for _, cp := range copies {
 			h, err := a.Store.ListEntryHabitats(c.Request.Context(), cp.ID)

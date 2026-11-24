@@ -265,7 +265,7 @@ func TestHomebrew(t *testing.T) {
 		t.Fatal(err)
 	}
 	row, err := store.GetCompendiumEntry(ctx, id)
-	if err != nil || !row.IsHomebrew || row.SourceKey != HomebrewSource || row.Slug != "bog-wight" {
+	if err != nil || row.SourceKey != HomebrewSource || row.Slug != "bog-wight" {
 		t.Fatalf("row %+v %v", row, err)
 	}
 	if _, err := SaveHomebrew(ctx, store.Queries, 0, in, HomebrewOwner{}); err == nil {

@@ -125,7 +125,7 @@ func TestMonsterPortrait(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	const pic = "https://example.com/goblin.png"
-	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "goblin", Name: "Goblin", SourceKey: "test", DataJson: "{}"}); err != nil {
+	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "goblin", Name: "Goblin", SourceKey: "test", DataJson: "{}"}); err != nil {
 		t.Fatal(err)
 	}
 	m, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin"})

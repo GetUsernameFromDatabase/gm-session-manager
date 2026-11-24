@@ -131,7 +131,7 @@ templ entryHead(e sqlc.CompendiumEntry, preview bool) {
 			<h1 class="text-3xl leading-tight font-semibold text-statblock-ink">{ e.Name }</h1>
 		}
 		<span class="mt-1 font-sans">
-			@kindBadge(e.Kind, e.IsHomebrew)
+			@kindBadge(e.Kind, e.SourceKey == compendium.HomebrewSource)
 		</span>
 	</header>
 }

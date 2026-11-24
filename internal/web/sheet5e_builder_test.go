@@ -70,7 +70,7 @@ func TestBuilderInventory(t *testing.T) {
 func TestBuilderFeat(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "feat", Slug: "test-alert", Name: "Test Alert", SourceKey: "test", ContentHash: "x", DataJson: `{"desc":"Add your Proficiency Bonus to Initiative."}`}); err != nil {
+	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "feat", Slug: "test-alert", Name: "Test Alert", SourceKey: "test", ContentHash: "x", DataJson: `{"desc":"Add your Proficiency Bonus to Initiative."}`}); err != nil {
 		t.Fatal(err)
 	}
 	feat, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: "test-alert"})
@@ -119,7 +119,7 @@ func TestBuilderCompendium(t *testing.T) {
 	if _, err := compendium.Import(ctx, e.app.Store, "../compendium/testdata"); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.q().UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{
+	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{
 		Kind: "item", Slug: "rapier", Name: "Rapier", SourceKey: "test", BodyText: "rapier",
 		DataJson: `{"category":"weapon","damage":"1d8 piercing","properties":"Finesse, Vex","desc":""}`,
 	}); err != nil {
@@ -186,7 +186,7 @@ func TestCompendiumWeapon(t *testing.T) {
 // name in any case, and a name the compendium lacks gets an empty answer.
 func TestItemLookupByName(t *testing.T) {
 	e := newTestEnv(t)
-	if err := e.q().UpsertCompendiumEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
+	if err := e.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
 		Kind: "item", Slug: "rapier", Name: "Rapier", SourceKey: "test", BodyText: "rapier",
 		DataJson: `{"category":"weapon","damage":"1d8 piercing","properties":"Finesse, Vex","desc":""}`,
 	}); err != nil {

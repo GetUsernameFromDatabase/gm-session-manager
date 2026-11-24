@@ -49,12 +49,12 @@ WHERE image_categories.campaign_id = ? AND image_categories.id NOT IN (SELECT i.
 -- ListImageLinkBlocks lists the note blocks linking the campaign's images
 -- (one image, or every one for 0) with what the read rule needs.
 -- name: ListImageLinkBlocks :many
-SELECT DISTINCT l.target_id AS image_id, b.id AS block_id, b.visibility, n.owner_character_id
+SELECT DISTINCT CAST(l.target_image_id AS INTEGER) AS image_id, b.id AS block_id, b.visibility, n.owner_character_id
 FROM note_links AS l
 JOIN note_blocks AS b ON b.id = l.source_block_id
 JOIN notes AS n ON n.id = b.note_id
-WHERE l.target_type = 'image' AND n.campaign_id = sqlc.arg(campaign_id)
-  AND (CAST(sqlc.arg(image_id) AS INTEGER) = 0 OR l.target_id = CAST(sqlc.arg(image_id) AS INTEGER));
+WHERE l.target_image_id IS NOT NULL AND n.campaign_id = sqlc.arg(campaign_id)
+  AND (CAST(sqlc.arg(image_id) AS INTEGER) = 0 OR l.target_image_id = CAST(sqlc.arg(image_id) AS INTEGER));
 
 -- ListImageLinkAudience lists the audiences of the blocks ListImageLinkBlocks returns.
 -- name: ListImageLinkAudience :many
@@ -63,8 +63,8 @@ FROM note_links AS l
 JOIN note_blocks AS b ON b.id = l.source_block_id
 JOIN notes AS n ON n.id = b.note_id
 JOIN note_block_audience AS a ON a.block_id = b.id
-WHERE l.target_type = 'image' AND n.campaign_id = sqlc.arg(campaign_id)
-  AND (CAST(sqlc.arg(image_id) AS INTEGER) = 0 OR l.target_id = CAST(sqlc.arg(image_id) AS INTEGER));
+WHERE l.target_image_id IS NOT NULL AND n.campaign_id = sqlc.arg(campaign_id)
+  AND (CAST(sqlc.arg(image_id) AS INTEGER) = 0 OR l.target_image_id = CAST(sqlc.arg(image_id) AS INTEGER));
 
 -- name: DeleteAttachment :exec
 DELETE FROM attachments

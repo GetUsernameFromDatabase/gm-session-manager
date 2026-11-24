@@ -13,25 +13,30 @@ import (
 )
 
 const addEntityFieldLink = `-- name: AddEntityFieldLink :exec
-INSERT INTO entity_field_links (entity_id, field_key, target_type, target_id, is_revealed)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT DO NOTHING
+INSERT OR IGNORE INTO entity_field_links (entity_id, field_key, target_note_id, target_entity_id, target_image_id, is_revealed)
+SELECT ?1, ?2, ?3, ?4, ?5, ?6
+WHERE EXISTS (SELECT 1 FROM notes WHERE id = ?3)
+   OR EXISTS (SELECT 1 FROM entities WHERE id = ?4)
+   OR EXISTS (SELECT 1 FROM images WHERE id = ?5)
 `
 
 type AddEntityFieldLinkParams struct {
-	EntityID   int64
-	FieldKey   string
-	TargetType enum.LinkTarget
-	TargetID   int64
-	IsRevealed bool
+	EntityID       int64
+	FieldKey       string
+	TargetNoteID   sql.NullInt64
+	TargetEntityID sql.NullInt64
+	TargetImageID  sql.NullInt64
+	IsRevealed     bool
 }
 
+// A link to a deleted target is skipped, as in AddBlockLink.
 func (q *Queries) AddEntityFieldLink(ctx context.Context, arg AddEntityFieldLinkParams) error {
 	_, err := q.db.ExecContext(ctx, addEntityFieldLink,
 		arg.EntityID,
 		arg.FieldKey,
-		arg.TargetType,
-		arg.TargetID,
+		arg.TargetNoteID,
+		arg.TargetEntityID,
+		arg.TargetImageID,
 		arg.IsRevealed,
 	)
 	return err
@@ -290,17 +295,18 @@ const listEntityFieldBacklinks = `-- name: ListEntityFieldBacklinks :many
 SELECT DISTINCT e.id, e.name
 FROM entity_field_links AS l
 JOIN entities AS e ON e.id = l.entity_id
-WHERE l.target_type = ?1 AND l.target_id = ?2
-  AND e.campaign_id = ?3
-  AND (CAST(?4 AS BOOLEAN) OR (l.is_revealed AND e.is_revealed))
+WHERE (l.target_note_id = ?1 OR l.target_entity_id = ?2 OR l.target_image_id = ?3)
+  AND e.campaign_id = ?4
+  AND (CAST(?5 AS BOOLEAN) OR (l.is_revealed AND e.is_revealed))
 ORDER BY e.name COLLATE NOCASE
 `
 
 type ListEntityFieldBacklinksParams struct {
-	TargetType enum.LinkTarget
-	TargetID   int64
-	CampaignID int64
-	IsGm       bool
+	TargetNoteID   sql.NullInt64
+	TargetEntityID sql.NullInt64
+	TargetImageID  sql.NullInt64
+	CampaignID     int64
+	IsGm           bool
 }
 
 type ListEntityFieldBacklinksRow struct {
@@ -312,8 +318,9 @@ type ListEntityFieldBacklinksRow struct {
 // for the GM, for players only revealed links of revealed NPCs.
 func (q *Queries) ListEntityFieldBacklinks(ctx context.Context, arg ListEntityFieldBacklinksParams) ([]ListEntityFieldBacklinksRow, error) {
 	rows, err := q.db.QueryContext(ctx, listEntityFieldBacklinks,
-		arg.TargetType,
-		arg.TargetID,
+		arg.TargetNoteID,
+		arg.TargetEntityID,
+		arg.TargetImageID,
 		arg.CampaignID,
 		arg.IsGm,
 	)

@@ -146,13 +146,21 @@ func bindFiveToolsImages(ctx context.Context, q *sqlc.Queries, key string, files
 	return nil
 }
 
-// storeSource writes a source's entries, removes those it no longer has
-// and records the source; it returns how many were removed. afterSave (may
-// be nil) runs in the same transaction before the hash is stored, so a
-// failure leaves the source to be imported again.
+// storeSource records the source, writes its entries and removes those it
+// no longer has; it returns how many were removed. afterSave (may be nil)
+// runs in the same transaction, so a failure rolls back the stored hash too
+// and leaves the source to be imported again.
 func storeSource(ctx context.Context, store *db.Store, src Source, path, hash string, entries []Entry, afterSave func(q *sqlc.Queries) error) (int, error) {
 	removed := 0
 	err := store.InTx(ctx, func(q *sqlc.Queries) error {
+		// First: entries reference their source row.
+		if err := q.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{
+			SourceKey: src.Key, Path: path, Hash: hash,
+			Edition: src.Edition, License: src.License, Attribution: src.Attribution,
+			Published: src.Published,
+		}); err != nil {
+			return err
+		}
 		seen := map[string]*Entry{}
 		for i, e := range entries {
 			if err := upsert(ctx, q, src, e); err != nil {
@@ -177,15 +185,9 @@ func storeSource(ctx context.Context, store *db.Store, src Source, path, hash st
 			}
 		}
 		if afterSave != nil {
-			if err := afterSave(q); err != nil {
-				return err
-			}
+			return afterSave(q)
 		}
-		return q.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{
-			SourceKey: src.Key, Path: path, Hash: hash,
-			Edition: src.Edition, License: src.License, Attribution: src.Attribution,
-			Published: src.Published,
-		})
+		return nil
 	})
 	return removed, err
 }
@@ -484,8 +486,8 @@ func (in HomebrewInput) typedParts() []NameDesc {
 }
 
 // homebrewSource attributes homebrew to the table that wrote it; its
-// compendium_sources row is created in 0001_init.sql.
-var homebrewSource = Source{Key: HomebrewSource, Edition: "2024", License: "Homebrew", Attribution: "Homebrew content written for this table."}
+// compendium_sources row is created in 0001_schema.sql.
+var homebrewSource = Source{Key: HomebrewSource, License: "Homebrew", Attribution: "Homebrew content written for this table."}
 
 // Entry converts the form into a normalized entry of its kind.
 func (in HomebrewInput) Entry() (Entry, error) {
