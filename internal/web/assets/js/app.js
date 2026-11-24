@@ -1,6 +1,6 @@
 // Page glue for htmx and the websocket. Loaded as a module after the classic
 // htmx scripts (modules run deferred, in order, once the page is parsed).
-import { CONSOLE_LEVELS, CONSOLE_MSG, CONSOLE_PAGE, CONSOLE_SIZE, MSG, ROUTES } from "/assets/js/shared.js";
+import { CMD_FIELD, CONSOLE_LEVELS, CONSOLE_MSG, CONSOLE_PAGE, CONSOLE_SIZE, MSG, ROUTES } from "./shared.js";
 
 (function () {
   "use strict";
@@ -552,7 +552,7 @@ import { CONSOLE_LEVELS, CONSOLE_MSG, CONSOLE_PAGE, CONSOLE_SIZE, MSG, ROUTES } 
       if (!form) return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      const box = form.elements.cmd;
+      const box = form.elements[CMD_FIELD];
       const cmd = box.value.trim();
       if (!cmd) return;
       box.value = "";
@@ -560,7 +560,7 @@ import { CONSOLE_LEVELS, CONSOLE_MSG, CONSOLE_PAGE, CONSOLE_SIZE, MSG, ROUTES } 
       // A live refetch may have replaced the form by the time it is sent.
       const send = () => {
         const now = document.getElementById(form.id);
-        return now && htmx.ajax("POST", now.dataset.command, { source: now, values: { cmd }, swap: "none" });
+        return now && htmx.ajax("POST", now.dataset.command, { source: now, values: { [CMD_FIELD]: cmd }, swap: "none" });
       };
       commands = commands.then(send, send);
     },
@@ -568,8 +568,8 @@ import { CONSOLE_LEVELS, CONSOLE_MSG, CONSOLE_PAGE, CONSOLE_SIZE, MSG, ROUTES } 
   );
   document.addEventListener("htmx:afterRequest", (e) => {
     const form = e.detail.elt.closest?.("form[data-command]");
-    const box = form && document.getElementById(form.id)?.elements.cmd;
-    if (box && !e.detail.successful && !box.value) box.value = e.detail.requestConfig.parameters.cmd;
+    const box = form && document.getElementById(form.id)?.elements[CMD_FIELD];
+    if (box && !e.detail.successful && !box.value) box.value = e.detail.requestConfig.parameters[CMD_FIELD];
   });
   // A form's 422 flash shows inside that form, where the user is looking
   // (the page flash sits behind an open dialog).

@@ -1,8 +1,8 @@
 // [[links]] for TipTap editors: note blocks and NPC fields.
-import { Extension } from "/assets/vendor/tiptap-core.js";
-import { Mention } from "/assets/vendor/tiptap-mention.js";
-import { Plugin } from "/assets/vendor/pm-state.js";
-import { ROUTES, SAFE_SCHEMES } from "/assets/js/shared.js";
+import { Extension } from "../vendor/tiptap-core.js";
+import { Mention } from "../vendor/tiptap-mention.js";
+import { Plugin } from "../vendor/pm-state.js";
+import { ROUTES, SAFE_SCHEMES } from "./shared.js";
 
 const campaign = document.body.dataset.campaign;
 

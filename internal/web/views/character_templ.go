@@ -3049,7 +3049,7 @@ func conditionsCard(s SheetView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = input.Input(input.Props{Name: "cmd", Placeholder: "+ concentrate Bless", Class: "h-6 w-44 rounded-full border-dashed px-2 text-xs md:text-xs", Attributes: templ.Attributes{"aria-label": "Add a custom condition"}}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = input.Input(input.Props{Name: CmdField, Placeholder: "+ concentrate Bless", Class: "h-6 w-44 rounded-full border-dashed px-2 text-xs md:text-xs", Attributes: templ.Attributes{"aria-label": "Add a custom condition"}}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -4547,7 +4547,7 @@ func commandBar(s SheetView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = input.Input(input.Props{ID: "command-input", Name: "cmd", Class: "flex-1", Placeholder: "Command, e.g. hp -5, slot use 2, item add Rope", Attributes: templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "aria-keyshortcuts": "/ Tab Control+Space", "aria-describedby": "command-hint", "data-verbs": strings.Join(dnd5e.Verbs(), " "), "data-complete": route.Path(route.CharacterComplete, s.ID)}}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = input.Input(input.Props{ID: "command-input", Name: CmdField, Class: "flex-1", Placeholder: "Command, e.g. hp -5, slot use 2, item add Rope", Attributes: templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "aria-keyshortcuts": "/ Tab Control+Space", "aria-describedby": "command-hint", "data-verbs": strings.Join(dnd5e.Verbs(), " "), "data-complete": route.Path(route.CharacterComplete, s.ID)}}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -185,7 +185,7 @@ func commandText(c *gin.Context) string {
 		}
 		return fmt.Sprintf("item add %s %s", strconv.Quote(name), qty)
 	}
-	return c.PostForm("cmd")
+	return c.PostForm(views.CmdField)
 }
 
 // coinCommand turns the coin form into one command that changes each coin

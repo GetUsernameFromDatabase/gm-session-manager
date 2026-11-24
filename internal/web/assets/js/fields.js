@@ -5,10 +5,10 @@
 // on, as stored in its textarea[data-field-raw]. Both write to the input,
 // and each field saves on its own: a second after typing stops, and when
 // it loses focus.
-import { Editor } from "/assets/vendor/tiptap-core.js";
-import { StarterKit } from "/assets/vendor/tiptap-starter.js";
-import { WikiLink, keepCaretBeside, linkClick, touchDrag } from "/assets/js/wikilink.js";
-import { WIKILINK } from "/assets/js/shared.js";
+import { Editor } from "../vendor/tiptap-core.js";
+import { StarterKit } from "../vendor/tiptap-starter.js";
+import { WikiLink, keepCaretBeside, linkClick, touchDrag } from "./wikilink.js";
+import { WIKILINK } from "./shared.js";
 
 // The Go pattern (views.WikiLinkPattern) itself. A compendium token has no
 // chip here: toDoc leaves it as plain text, which toText writes back unchanged.

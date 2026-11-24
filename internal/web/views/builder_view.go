@@ -578,9 +578,11 @@ func masteryCount(s SheetView) string {
 }
 
 // reloadAfter makes a builder button load the form at url again after a
-// successful request, instead of closing the dialog.
+// successful request, instead of closing the dialog. The URL rides in an
+// attribute, so no data is spliced into the script.
 func reloadAfter(a templ.Attributes, url string) templ.Attributes {
-	a["hx-on::after-request"] = templ.JSUnsafeFuncCall("if (event.detail.successful) htmx.ajax('GET', '" + url + "', {target: '#builder', swap: 'innerHTML'})")
+	a["data-reload"] = url
+	a["hx-on::after-request"] = templ.JSUnsafeFuncCall("if (event.detail.successful) htmx.ajax('GET', this.dataset.reload, {target: '#builder', swap: 'innerHTML'})")
 	return a
 }
 

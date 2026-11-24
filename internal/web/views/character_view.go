@@ -254,8 +254,11 @@ func (s SheetView) defenses() dnd5e.Defenses {
 // tapSize lifts small sheet controls to 32px on phones.
 const tapSize = "max-sm:h-8 max-sm:px-3"
 
+// CmdField is the form field a sheet command is posted in.
+const CmdField = "cmd"
+
 func cmdVals(cmd string) string {
-	return fmt.Sprintf(`{"cmd":%q}`, cmd)
+	return toJSON(map[string]string{CmdField: cmd})
 }
 
 // subtitlePart is one piece of the line under the name.

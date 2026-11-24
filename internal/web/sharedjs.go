@@ -28,6 +28,7 @@ var sharedExports = []struct {
 	{"WIKILINK", views.WikiLinkPattern},
 	{"MSG", sharedMsg},
 	{"KEY", sharedKeys},
+	{"CMD_FIELD", views.CmdField},
 }
 
 // sharedMsg are the websocket message types, as {value: value}.

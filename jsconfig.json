@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "es2022"
+  },
+  "include": ["internal/web/assets/js/*.js", ".vscode/shared.d.ts"],
+  "exclude": ["internal/web/assets/js/shadcn-templ-*.js"]
+}

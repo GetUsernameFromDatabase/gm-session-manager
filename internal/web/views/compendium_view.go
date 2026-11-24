@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 	"slices"
 	"strings"
@@ -236,33 +237,31 @@ func habitatHref(query string, habitat enum.Habitat, current string, campaign in
 	if query != "" {
 		q.Set(QueryKey, query)
 	}
-	set := kindSet(current)
-	var next []string
-	for _, h := range compendium.Habitats {
-		if (h == habitat) != slices.Contains(set, string(h)) {
-			next = append(next, string(h))
-		}
-	}
-	if len(next) > 0 {
-		q.Set(HabitatKey, strings.Join(next, ","))
+	if next := toggled(compendium.Habitats, habitat, current); next != "" {
+		q.Set(HabitatKey, next)
 	}
 	return CompendiumURL(q, campaign)
 }
 
 // kindHref toggles kind in the filter, on top of q (a fresh copy, see kindBase).
 func kindHref(q url.Values, kind enum.CompendiumKind, current string, campaign int64) string {
-	set := kindSet(current)
-	var next []string
-	for _, k := range compendium.Kinds {
-		// Kinds order keeps URLs stable however the badges were clicked.
-		if (k == kind) != slices.Contains(set, string(k)) {
-			next = append(next, string(k))
-		}
-	}
-	if len(next) > 0 {
-		q.Set(KindKey, strings.Join(next, ","))
+	if next := toggled(compendium.Kinds, kind, current); next != "" {
+		q.Set(KindKey, next)
 	}
 	return CompendiumURL(q, campaign)
+}
+
+// toggled flips x in the comma-separated filter current, listed in order so
+// URLs stay stable however the chips were clicked.
+func toggled[T ~string](order []T, x T, current string) string {
+	set := kindSet(current)
+	var next []string
+	for _, v := range order {
+		if (v == x) != slices.Contains(set, string(v)) {
+			next = append(next, string(v))
+		}
+	}
+	return strings.Join(next, ",")
 }
 
 // kindSet splits the comma-separated kind filter; "" is every kind.
@@ -409,18 +408,9 @@ func signedMap(m map[string]int, order []string) string {
 	return strings.Join(parts, ", ")
 }
 
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	return keys
-}
-
 func speeds(m map[string]int) string {
 	var parts []string
-	for _, k := range sortedKeys(m) {
+	for _, k := range slices.Sorted(maps.Keys(m)) {
 		parts = append(parts, fmt.Sprintf("%s %d ft.", k, m[k]))
 	}
 	return strings.Join(parts, ", ")

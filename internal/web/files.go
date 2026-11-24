@@ -146,14 +146,18 @@ func (a *App) filesPage(c *gin.Context) error {
 		if !inCampaign(camp, f) {
 			continue
 		}
-		v.Files = append(v.Files, views.FileRow{
+		row := views.FileRow{
 			ID: f.ID, Name: f.Name, CampaignID: f.CampaignID, Campaign: f.CampaignName, Size: f.Size, CreatedAt: f.CreatedAt,
 			IsImage: slices.Contains(inlineTypes, f.Mime),
 			// The GM never reads a player's own blocks, so not even the name.
 			Private: f.BlockVisibility == enum.VisOwner,
 			Uses:    uses[f.ID],
 			Fresh:   len(uses[f.ID]) == 0 && fresh(f),
-		})
+		}
+		if row.Private {
+			row.Name = ""
+		}
+		v.Files = append(v.Files, row)
 	}
 	a.render(c, http.StatusOK, views.FilesPage(l, v))
 	return nil

@@ -571,7 +571,7 @@ templ conditionsCard(s SheetView) {
 		}
 		if s.CanConditions {
 			<form id={ fmt.Sprintf("condition-form-%d", s.ID) } class="inline-flex" data-command={ s.cmdURL() }>
-				@input.Input(input.Props{Name: "cmd", Placeholder: "+ concentrate Bless", Class: "h-6 w-44 rounded-full border-dashed px-2 text-xs md:text-xs", Attributes: templ.Attributes{"aria-label": "Add a custom condition"}})
+				@input.Input(input.Props{Name: CmdField, Placeholder: "+ concentrate Bless", Class: "h-6 w-44 rounded-full border-dashed px-2 text-xs md:text-xs", Attributes: templ.Attributes{"aria-label": "Add a custom condition"}})
 			</form>
 			@effectDialog(EffectTarget{CampaignID: s.CampaignID, CharacterID: s.ID, Name: s.C.Name, Post: route.Path(route.CharacterEffect, s.ID), Label: "+ Effect"})
 		}
@@ -834,7 +834,7 @@ templ exhaustionChip(s SheetView) {
 templ commandBar(s SheetView) {
 	<div class="space-y-1">
 		<form id="command-form" data-command={ s.cmdURL() } class="flex flex-wrap gap-2">
-			@input.Input(input.Props{ID: "command-input", Name: "cmd", Class: "flex-1", Placeholder: "Command, e.g. hp -5, slot use 2, item add Rope", Attributes: templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "aria-keyshortcuts": "/ Tab Control+Space", "aria-describedby": "command-hint", "data-verbs": strings.Join(dnd5e.Verbs(), " "), "data-complete": route.Path(route.CharacterComplete, s.ID)}})
+			@input.Input(input.Props{ID: "command-input", Name: CmdField, Class: "flex-1", Placeholder: "Command, e.g. hp -5, slot use 2, item add Rope", Attributes: templ.Attributes{"autocomplete": "off", "autocapitalize": "off", "aria-keyshortcuts": "/ Tab Control+Space", "aria-describedby": "command-hint", "data-verbs": strings.Join(dnd5e.Verbs(), " "), "data-complete": route.Path(route.CharacterComplete, s.ID)}})
 			@button.Button(button.Props{Variant: button.VariantOutline, Attributes: with(dialog.TriggerFor(commandsID), templ.Attributes{"title": "Browse commands"})}) {
 				@icon.BookOpen()
 				<span class="hidden sm:inline">Commands</span>

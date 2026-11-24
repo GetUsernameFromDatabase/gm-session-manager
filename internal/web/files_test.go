@@ -391,7 +391,8 @@ func TestFileUsePrivacy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			att := e.attachFile(t, b.ID, "plan.png")
+			name := string(tt.vis) + "-plan.png"
+			att := e.attachFile(t, b.ID, name)
 			step := fmt.Sprintf(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"mention","attrs":{"id":"attachment:%d"}}]}}`, att.ID)
 			if err := e.q().InsertBlockStep(ctx, sqlc.InsertBlockStepParams{BlockID: b.ID, Version: 1, ClientID: "c", StepJson: step}); err != nil {
 				t.Fatal(err)
@@ -405,6 +406,11 @@ func TestFileUsePrivacy(t *testing.T) {
 			}
 			if got := uses[att.ID]; len(got) != 1 || got[0] != tt.want {
 				t.Errorf("uses %v, want %v", got, tt.want)
+			}
+			// The file's own name stays off the page too.
+			page := e.do(t, http.MethodGet, route.Files, e.token(t, enum.RoleAdmin), nil, false).Body.String()
+			if shown := strings.Contains(page, name); shown == tt.want.Private {
+				t.Errorf("file name shown %v, want %v", shown, !tt.want.Private)
 			}
 		})
 	}

@@ -304,7 +304,8 @@ func rosterRefetch(roster string) func(wsMessage) bool {
 	}
 }
 
-var moduleImport = regexp.MustCompile(`(?:from|import)\s*"(/assets/[^"]+|\./[^"]+)"`)
+// Our modules import by ./ and ../; vendored bundles by /assets/vendor/….
+var moduleImport = regexp.MustCompile(`(?:from|import)\s*"(/assets/[^"]+|\.\.?/[^"]+)"`)
 
 // TestModuleImportsResolve walks every page module's import graph through the
 // embedded files, so a missing vendored file fails here, not on a phone.
@@ -324,7 +325,7 @@ func TestModuleImportsResolve(t *testing.T) {
 		}
 		for _, m := range moduleImport.FindAllStringSubmatch(string(body), -1) {
 			spec := m[1]
-			if strings.HasPrefix(spec, "./") {
+			if strings.HasPrefix(spec, ".") {
 				visit(path.Join(path.Dir(p), spec))
 			} else {
 				visit(strings.TrimPrefix(spec, "/assets/"))

@@ -111,7 +111,7 @@ templ SourcePreview(v SourcePreviewView) {
 			data-busy
 			class="group/busy"
 		>
-			<input type="hidden" name="cmd" value={ v.Command }/>
+			<input type="hidden" name={ CmdField } value={ v.Command }/>
 			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs, Class: tapSize}) {
 				@icon.Check()
 				Confirm

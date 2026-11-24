@@ -2,13 +2,13 @@
 // ProseMirror's collab protocol. The server is the authority: steps are
 // POSTed against a version, broadcast over the websocket, and a 409 hands
 // back the steps to rebase on.
-import { Editor, Extension } from "/assets/vendor/tiptap-core.js";
-import { StarterKit } from "/assets/vendor/tiptap-starter.js";
-import { Image } from "/assets/vendor/tiptap-image.js";
-import { collab, getVersion, receiveTransaction, sendableSteps } from "/assets/vendor/pm-collab.js";
-import { Step } from "/assets/vendor/pm-transform.js";
-import { KEY, MAX_STEPS, MSG, ROUTES } from "/assets/js/shared.js";
-import { KEEP_IMAGES, KeepImages, LINK_PATHS, WikiLink, keepCaretBeside, linkClick, mentionActions, mentionMenu, pickFile, routePath, showMenu, touchDrag } from "/assets/js/wikilink.js";
+import { Editor, Extension } from "../vendor/tiptap-core.js";
+import { StarterKit } from "../vendor/tiptap-starter.js";
+import { Image } from "../vendor/tiptap-image.js";
+import { collab, getVersion, receiveTransaction, sendableSteps } from "../vendor/pm-collab.js";
+import { Step } from "../vendor/pm-transform.js";
+import { KEY, MAX_STEPS, MSG, ROUTES } from "./shared.js";
+import { KEEP_IMAGES, KeepImages, LINK_PATHS, WikiLink, keepCaretBeside, linkClick, mentionActions, mentionMenu, pickFile, routePath, showMenu, touchDrag } from "./wikilink.js";
 
 const ATTACHMENT_PREFIX = routePath(ROUTES.attachment, ""); // "/attachments/"
 const ATTACHMENT_SRC = new RegExp(`^${ATTACHMENT_PREFIX}(\\d+)$`);

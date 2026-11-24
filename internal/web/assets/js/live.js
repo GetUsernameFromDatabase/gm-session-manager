@@ -3,7 +3,7 @@
 // keys with data-bind="target=key ..." (target: text, value, show, reveal, or an
 // attribute name). A change no bound element can show (new markup, a list
 // row added or removed) refetches the view's HTML from /live instead.
-import { ROUTES } from "/assets/js/shared.js";
+import { ROUTES } from "./shared.js";
 
 (function () {
   "use strict";

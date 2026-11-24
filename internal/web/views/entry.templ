@@ -12,6 +12,8 @@ import (
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/utils"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -290,7 +292,7 @@ templ monsterBody(d *compendium.MonsterData) {
 		<p><strong>Saves</strong> { signedMap(d.Saves, dnd5e.Abilities) }</p>
 	}
 	if len(d.Skills) > 0 {
-		<p><strong>Skills</strong> { signedMap(d.Skills, sortedKeys(d.Skills)) }</p>
+		<p><strong>Skills</strong> { signedMap(d.Skills, slices.Sorted(maps.Keys(d.Skills))) }</p>
 	}
 	if d.Resistance != "" {
 		<p><strong>Resistances</strong> { d.Resistance }</p>
