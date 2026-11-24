@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"testing/fstest"
 
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/enum"
 )
 
 func openTemp(t *testing.T) *sql.DB {
@@ -52,6 +54,156 @@ func TestPragmasOnEveryConnection(t *testing.T) {
 			t.Errorf("conn %d: journal_mode = %q, want wal", i, mode)
 		}
 		_ = c.Close()
+	}
+}
+
+// linkTarget creates and deletes one kind of row that links point at by bare id.
+type linkTarget struct {
+	create func() (int64, error)
+	remove func(int64) error
+}
+
+// linkTargets are those kinds, keyed by their link target_type.
+func linkTargets(ctx context.Context, q *sqlc.Queries, campaignID int64) map[string]linkTarget {
+	return map[string]linkTarget{
+		"image": {
+			create: func() (int64, error) {
+				img, err := q.CreateImage(ctx, sqlc.CreateImageParams{CampaignID: campaignID, Name: "I", Url: sql.NullString{String: "u", Valid: true}})
+				return img.ID, err
+			},
+			remove: func(id int64) error { return q.DeleteImage(ctx, id) },
+		},
+		"note": {
+			create: func() (int64, error) {
+				n, err := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: campaignID, Kind: enum.NoteGeneric, Title: "N"})
+				return n.ID, err
+			},
+			remove: func(id int64) error { return q.DeleteNote(ctx, id) },
+		},
+		"entity": {
+			create: func() (int64, error) {
+				e, err := q.CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: campaignID, Kind: enum.EntityNPC, Name: "E", FieldsJson: "{}"})
+				return e.ID, err
+			},
+			remove: func(id int64) error { return q.DeleteEntity(ctx, id) },
+		},
+	}
+}
+
+// TestIDsNeverReused: a deleted image, note or NPC never hands its id to a
+// new row, since links store bare ids.
+func TestIDsNeverReused(t *testing.T) {
+	ctx := t.Context()
+	q := sqlc.New(openTemp(t))
+	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, k := range linkTargets(ctx, q, camp.ID) {
+		t.Run(name, func(t *testing.T) {
+			gone, err := k.create()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := k.remove(gone); err != nil {
+				t.Fatal(err)
+			}
+			got, err := k.create()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got <= gone {
+				t.Errorf("new id %d reuses deleted id %d", got, gone)
+			}
+		})
+	}
+}
+
+// TestStaleLinksNeverMatch: a link left by a delete before migration 10
+// never points at an image, note or NPC created after it.
+func TestStaleLinksNeverMatch(t *testing.T) {
+	ctx := t.Context()
+	path := filepath.Join(t.TempDir(), "test.db")
+	all, err := loadMigrations(migrationsFS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := openPool(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range all[:9] {
+		if err := apply(ctx, old, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := old.ExecContext(ctx, `
+		INSERT INTO campaigns (id, name, system, edition) VALUES (1, 'C', 'dnd5e', '2024');
+		INSERT INTO entities (id, campaign_id, name) VALUES (1, 1, 'E');
+		INSERT INTO notes (id, campaign_id, kind, title) VALUES (1, 1, 'generic', 'N');
+		INSERT INTO note_blocks (id, note_id, visibility) VALUES (1, 1, 'players')`); err != nil {
+		t.Fatal(err)
+	}
+	// Stale target ids per link table. The highest comes from note_links for
+	// images and NPCs and from entity_field_links for notes, so both branches are checked.
+	stale := map[string]map[string]int64{
+		"image":  {"entity_field_links": 99, "note_links": 150},
+		"note":   {"entity_field_links": 160, "note_links": 120},
+		"entity": {"entity_field_links": 110, "note_links": 170},
+	}
+	insert := map[string]string{
+		"entity_field_links": `INSERT INTO entity_field_links (entity_id, field_key, target_type, target_id) VALUES (1, 'f', ?, ?)`,
+		"note_links":         `INSERT INTO note_links (source_note_id, source_block_id, target_type, target_id) VALUES (1, 1, ?, ?)`,
+	}
+	for kind, byTable := range stale {
+		for table, id := range byTable {
+			// One statement per Exec: a multi-statement Exec rebinds from the first argument.
+			if _, err := old.ExecContext(ctx, insert[table], kind, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	_ = old.Close()
+
+	conn, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	for kind, k := range linkTargets(ctx, sqlc.New(conn), 1) {
+		highest := max(stale[kind]["entity_field_links"], stale[kind]["note_links"])
+		id, err := k.create()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id <= highest {
+			t.Errorf("%s id %d can match a stale link to %d", kind, id, highest)
+		}
+	}
+}
+
+// TestAlterAfterSchemaEdit: a migration that edits the stored schema (0003,
+// 0010) leaves a later ALTER TABLE on the same connection working, as the
+// next migration's would.
+func TestAlterAfterSchemaEdit(t *testing.T) {
+	ctx := t.Context()
+	conn, err := openPool(ctx, filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	conn.SetMaxOpenConns(1) // the ALTER must run on the connection that migrated
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"images", "notes", "entities"} {
+		if _, err := conn.ExecContext(ctx, "ALTER TABLE "+table+" ADD COLUMN probe INTEGER NOT NULL DEFAULT 0"); err != nil {
+			t.Fatalf("alter %s: %v", table, err)
+		}
+		var n int
+		if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(&n); err != nil {
+			t.Fatalf("%s unreadable after ALTER: %v", table, err)
+		}
 	}
 }
 

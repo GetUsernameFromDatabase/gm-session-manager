@@ -99,6 +99,18 @@ func apply(ctx context.Context, conn *sql.DB, m migration) error {
 	if _, err := tx.ExecContext(ctx, m.sql); err != nil {
 		return fmt.Errorf("migration %s: %w", m.name, err)
 	}
+	// An edit of the stored schema leaves this connection's parsed copy stale,
+	// and a later ALTER TABLE on it would splice text at the old offsets:
+	// bumping schema_version makes SQLite reparse (sqlite.org/lang_altertable.html).
+	if strings.Contains(m.sql, "writable_schema") {
+		var sv int
+		if err := tx.QueryRowContext(ctx, "PRAGMA schema_version").Scan(&sv); err != nil {
+			return fmt.Errorf("migration %s: read schema version: %w", m.name, err)
+		}
+		if _, err := tx.ExecContext(ctx, "PRAGMA schema_version = "+strconv.Itoa(sv+1)); err != nil {
+			return fmt.Errorf("migration %s: bump schema version: %w", m.name, err)
+		}
+	}
 	// PRAGMA does not accept bound parameters; version is a parsed int.
 	if _, err := tx.ExecContext(ctx, "PRAGMA user_version = "+strconv.Itoa(m.version)); err != nil {
 		return fmt.Errorf("migration %s: set version: %w", m.name, err)
