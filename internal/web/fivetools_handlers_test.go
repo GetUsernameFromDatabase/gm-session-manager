@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -382,11 +383,22 @@ func TestSourceDeleteUsed(t *testing.T) {
 
 // TestSourceKeyWithSlash: page imports key sources like 5etools:mtf/howler
 // or aidedd:dnd/sorts.php?vf=a+b, whose characters a URL path would mangle;
-// move and delete take the key from the body.
+// move and delete take the key from the body, which the import tab's
+// buttons must carry. The longest key a page link allows must pass too.
 func TestSourceKeyWithSlash(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
 	e.source(t, "book-a", "2024")
+	longLink := "https://www.aidedd.org/dnd/x.php?q="
+	longLink += strings.Repeat("a", 500-len(longLink)) // pageForm.Page's max
+	site, page, err := compendium.ParsePageURL(longLink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	longKey := compendium.PageSourceKey(site.Key, page)
+	if len(longKey) <= 200 {
+		t.Fatalf("long key is only %d characters", len(longKey))
+	}
 	order := func() string {
 		rows, err := e.q().ListCompendiumSources(t.Context())
 		if err != nil {
@@ -398,9 +410,20 @@ func TestSourceKeyWithSlash(t *testing.T) {
 		}
 		return strings.Join(keys, ",")
 	}
-	for _, key := range []string{"5etools:mtf/howler", "aidedd:dnd/sorts.php?vf=a+b"} {
-		t.Run(key, func(t *testing.T) {
+	for _, key := range []string{"5etools:mtf/howler", "aidedd:dnd/sorts.php?vf=a+b", longKey} {
+		t.Run(key[:min(len(key), 40)], func(t *testing.T) {
 			e.source(t, key, "2024")
+			body := e.do(t, http.MethodGet, route.Compendium+"?tab=import", gm, nil, false).Body.String()
+			for _, want := range []string{
+				// toJSON's sorted keys; none of these keys holds & < > (json escapes them)
+				html.EscapeString(`{"dir":"up","key":"` + key + `"}`),
+				html.EscapeString(`{"dir":"down","key":"` + key + `"}`),
+				html.EscapeString(`{"key":"` + key + `"}`),
+			} {
+				if !strings.Contains(body, want) {
+					t.Errorf("import tab lacks %s", want)
+				}
+			}
 			move := func(dir string) {
 				t.Helper()
 				if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceMove, gm, url.Values{"key": {key}, "dir": {dir}}, true); w.Code != http.StatusOK {

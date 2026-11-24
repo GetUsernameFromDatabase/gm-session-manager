@@ -203,7 +203,7 @@ func (a *App) fiveToolsRemove(c *gin.Context) error {
 
 // sourceMoveForm moves a source one place in the priority order.
 type sourceMoveForm struct {
-	Key string `form:"key" validate:"required,max=200"`
+	Key string `form:"key" validate:"required,max=512"`
 	Dir string `form:"dir" validate:"required,oneof=up down"`
 }
 
@@ -229,7 +229,7 @@ func (a *App) sourceMove(c *gin.Context) error {
 
 // sourceOrderForm is every source key in the new order (a drag).
 type sourceOrderForm struct {
-	Keys []string `form:"key" validate:"required,max=2000,dive,max=200"`
+	Keys []string `form:"key" validate:"required,max=2000,dive,max=512"`
 }
 
 // sourceOrder sets the order a drag left and answers with the card.

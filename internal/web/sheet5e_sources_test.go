@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"testing"
 
 	"gm-session-manager/internal/db/sqlc"
@@ -21,6 +22,29 @@ const (
 	oldSrc = "old-src"
 	newSrc = "new-src"
 )
+
+// maxSourceKey covers the longest page-import key: a 500-character link
+// (pageForm.Page) gives at most 484.
+const maxSourceKey = 512
+
+// TestSourceKeyLimits: every field holding a source key takes the same cap,
+// so a long key never passes one form and fails the next.
+func TestSourceKeyLimits(t *testing.T) {
+	want := "max=" + strconv.Itoa(maxSourceKey)
+	tagHas(t, pageForm{}, "Page", "max=500") // raising it means raising maxSourceKey
+	tagHas(t, sourceMoveForm{}, "Key", want)
+	tagHas(t, sourceOrderForm{}, "Keys", want)
+	tagHas(t, sourcePreviewForm{}, "Source", want)
+	tagHas(t, sourceDeleteForm{}, "Key", want)
+	tagHas(t, campaignSourcesForm{}, "Keys", want)
+	tagHas(t, dnd5e.ClassLevel{}, "Source", want)
+	tagHas(t, dnd5e.ClassLevel{}, "SubclassSource", want)
+	tagHas(t, dnd5e.Spell{}, "Source", want)
+	tagHas(t, dnd5e.WornArmor{}, "Source", want)
+	tagHas(t, dnd5e.Sheet{}, "SpeciesSource", want)
+	tagHas(t, dnd5e.Sheet{}, "BackgroundSource", want)
+	tagHas(t, dnd5e.Sheet{}, "FeatSources", want)
+}
 
 func (e testEnv) setSheet(t testing.TB, sh dnd5e.Sheet) {
 	t.Helper()

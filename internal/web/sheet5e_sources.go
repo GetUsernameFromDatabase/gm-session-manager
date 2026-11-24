@@ -303,7 +303,7 @@ func subclassPair(ctx context.Context, q *sqlc.Queries, cl dnd5e.ClassLevel, old
 type sourcePreviewForm struct {
 	Kind   string `form:"kind"   validate:"oneof=class subclass spell species background feat armor"`
 	Slug   string `form:"slug"   validate:"required,max=200"`
-	Source string `form:"source" validate:"required,max=200"`
+	Source string `form:"source" validate:"required,max=512"`
 }
 
 // sourcePreview lists what the source command would replace, add and keep,
@@ -391,7 +391,7 @@ func sourceInUseMsg(key string, users []string) string {
 
 // sourceDeleteForm names the source to delete.
 type sourceDeleteForm struct {
-	Key string `form:"key" validate:"required,max=200"`
+	Key string `form:"key" validate:"required,max=512"`
 }
 
 // sourceDelete removes a source and its entries unless something uses it.
@@ -473,7 +473,7 @@ func (a *App) campaignSourcesView(ctx context.Context, campaignID int64) (views.
 
 // campaignSourcesForm ticks (on) or unticks sources for a campaign.
 type campaignSourcesForm struct {
-	Keys []string `form:"key" validate:"required,min=1,max=1000,dive,required,max=200"`
+	Keys []string `form:"key" validate:"required,min=1,max=1000,dive,required,max=512"`
 	On   bool     `form:"on"`
 }
 

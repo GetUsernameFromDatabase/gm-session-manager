@@ -138,9 +138,9 @@ type ClassLevel struct {
 	Subclass string `json:"subclass,omitempty"`
 	// Source pins the compendium copy the class came from; empty follows
 	// source priority. SubclassSlug and SubclassSource pin the subclass.
-	Source         string `json:"source,omitempty"          validate:"max=200"`
+	Source         string `json:"source,omitempty"          validate:"max=512"`
 	SubclassSlug   string `json:"subclass_slug,omitempty"   validate:"max=200"`
-	SubclassSource string `json:"subclass_source,omitempty" validate:"max=200"`
+	SubclassSource string `json:"subclass_source,omitempty" validate:"max=512"`
 	Level          int    `json:"level"              validate:"min=1,max=20"`
 	HitDie         int    `json:"hit_die"            validate:"oneof=6 8 10 12"`
 	// Caster is the class's caster type: full, half, pact or none.
@@ -169,7 +169,7 @@ type Spell struct {
 	// cantrip counts for that class only ("a Warlock cantrip").
 	Class string `json:"class,omitempty" validate:"max=100"`
 	// Source pins the compendium copy; empty follows source priority.
-	Source string `json:"source,omitempty" validate:"max=200"`
+	Source string `json:"source,omitempty" validate:"max=512"`
 }
 
 // Item is an inventory line. Armor, Shield and Weapon carry the stats of
@@ -308,7 +308,7 @@ func (s Sheet) ClassLevel(name string) int {
 type WornArmor struct {
 	Slug string `json:"slug,omitempty"`
 	// Source pins the compendium copy; empty follows source priority.
-	Source  string `json:"source,omitempty"  validate:"max=200"`
+	Source  string `json:"source,omitempty"  validate:"max=512"`
 	Name    string `json:"name"              validate:"required,max=200"`
 	Type    string `json:"type"              validate:"oneof=light medium heavy"`
 	Base    int    `json:"base"              validate:"min=0,max=30"`
@@ -467,9 +467,9 @@ type Sheet struct {
 	Background     string `json:"background,omitempty" validate:"max=200"`
 	// SpeciesSource, BackgroundSource and FeatSources (by feat slug) pin the
 	// compendium copies those came from; empty follows source priority.
-	SpeciesSource    string            `json:"species_source,omitempty"    validate:"max=200"`
-	BackgroundSource string            `json:"background_source,omitempty" validate:"max=200"`
-	FeatSources      map[string]string `json:"feat_sources,omitempty"      validate:"dive,keys,max=200,endkeys,max=200"`
+	SpeciesSource    string            `json:"species_source,omitempty"    validate:"max=512"`
+	BackgroundSource string            `json:"background_source,omitempty" validate:"max=512"`
+	FeatSources      map[string]string `json:"feat_sources,omitempty"      validate:"dive,keys,max=200,endkeys,max=512"`
 	Backstory        string            `json:"backstory,omitempty"  validate:"max=20000"`
 	Classes          []ClassLevel      `json:"classes"              validate:"dive"`
 	Scores           map[string]int    `json:"abilities"            validate:"dive,keys,oneof=str dex con int wis cha,endkeys,min=1,max=30"`
