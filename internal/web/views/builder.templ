@@ -78,9 +78,9 @@ templ CommandBuilder(s SheetView, verb, op, subject string, x BuilderExtra) {
 			</div>
 		}
 		switch o.Key {
-			case "spell-add":
+			case opSpellAdd:
 				@spellSearch(s)
-			case "coin-edit":
+			case opCoinEdit:
 				@coinForm(s, subject)
 			case opArmor:
 				@armorForm(s)
@@ -91,8 +91,8 @@ templ CommandBuilder(s SheetView, verb, op, subject string, x BuilderExtra) {
 			case focusSkill, focusSave:
 				@profForm(s, o, subject)
 			default:
-				if o.Key == "weapon-add" && s.weapon(subject) == nil {
-					@compendiumLookup(s, "weapon", "Look up a weapon in the compendium…")
+				if o.Key == opWeaponAdd && s.weapon(subject) == nil {
+					@compendiumLookup(s, PickWeapon, "Look up a weapon in the compendium…")
 				}
 				@builderForm(s, o, subject, x)
 				if o.Key == opModAdd {
@@ -274,23 +274,23 @@ templ removableList(s SheetView, prefix string, names []string) {
 templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp.ItemData, maxes, values map[string]int, x BuilderExtra) {
 	{{ first := firstValue(items) }}
 	switch o.Key {
-		case "hp-temp":
+		case opHPTemp:
 			@numberField("Temporary hit points", 0, 0, s.C.TempHP, true)
 		case opHPSet:
 			@numberField("Hit points", 0, s.C.MaxHP, s.C.HP, false)
-		case "hp-max":
+		case opHPMax:
 			@numberField("Max hit points", 0, 0, s.C.MaxHP, false)
-		case "cond-add":
+		case opCondAdd:
 			@subjectField("Condition", items, "capitalize")
 			@textField("Note", "", "Spell name for concentration, effect for custom", false)
-		case "exh-up", "exh-down":
+		case opExhUp, opExhDown:
 			@numberField("Levels", 1, maxes[""], 1, false)
 		case opAbility:
 			@subjectField("Ability", items, "")
 			@numberField("Base score", 1, 30, values[first], false)
 		case opSetName:
 			@textField(o.Label, s.detail(o.Key), "", true)
-		case opSetSpecies, opSetBackground:
+		case OpSetSpecies, OpSetBackground:
 			@field.Field() {
 				@field.Label(field.LabelProps{For: "builder-text"}) {
 					{ o.Label }
@@ -327,10 +327,10 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 			}
 		case opSetVision:
 			@textField("Vision", s.C.Sheet.Vision, "Darkvision 60 ft (none: normal sight)", true)
-		case "slot-max":
+		case opSlotMax:
 			@subjectField("Slot level", items, "")
 			@numberField("Slots", 0, 9, values[first], false)
-		case "item-add":
+		case opItemAdd:
 			@field.Field() {
 				@field.Label(field.LabelProps{For: "builder-subject"}) {
 					Item
@@ -346,11 +346,11 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 			@subjectField("Item", items, "")
 			@itemDetails()
 			@numberField("Count (0 removes it)", 0, 0, values[first], true)
-		case "item-note":
+		case opItemNote:
 			@subjectField("Item", items, "")
 			@itemDetails()
 			@textField("Note", "", "", false)
-		case "feature-add":
+		case opFeatureAdd:
 			{{ f, mods, suggested := s.featureToEdit(subject, x) }}
 			if s.feature(subject) != nil {
 				@nameField("Feature", f.Name, true)
@@ -368,20 +368,19 @@ templ builderFields(s SheetView, o builderOp, subject string, items []selectcomp
 				@textarea.Textarea(textarea.Props{ID: "builder-text", Name: "text", Rows: 5, Value: f.Description})
 			}
 			@featureEffectFields(s, f, mods, suggested)
-		case "other-add":
+		case opOtherAdd:
 			@nameField("Proficiency", "", false)
-		case "lang-add":
+		case opLangAdd:
 			@removableList(s, "prof remove language", s.C.Sheet.Languages)
 			@nameField("Add a language", "", false)
-		case "armor-add":
+		case opArmorAdd:
 			@removableList(s, "prof remove armor", s.armorTrained())
 			@subjectField("Add armor training", items, "")
-		case "res-add", "imm-add", "vuln-add":
+		case opResAdd, opImmAdd, opVulnAdd:
 			{{ noun, label, list := s.damageList(o.Key) }}
 			@removableList(s, "prof remove "+noun, capitalized(list))
-			{{ missing := slices.DeleteFunc(slices.Clone(dnd5e.DamageTypes), func(d string) bool { return slices.Contains(list, d) }) }}
-			@subjectField(label, selectItems(missing, func(d string) string { return d }, func(d string) string { return capitalized([]string{d})[0] }), "")
-		case "weapon-add":
+			@subjectField(label, missingDamageItems(list), "")
+		case opWeaponAdd:
 			if w := s.weapon(subject); w != nil {
 				@weaponFields(s, *w, true)
 			} else if x.Weapon != nil {
@@ -632,7 +631,7 @@ templ compendiumLookup(s SheetView, pick, placeholder string) {
 // click on armor puts it on at once.
 templ BuilderPicks(characterID int64, pick string, picks []BuilderPick) {
 	for _, p := range picks {
-		if pick == "armor" {
+		if pick == PickArmor {
 			@pickRow(p.EntryID, closeAfter(templ.Attributes{
 				"hx-post": route.Path(route.CharacterCmd, characterID), "hx-vals": cmdVals("armor wear " + p.Slug),
 			})) {
@@ -646,7 +645,7 @@ templ BuilderPicks(characterID int64, pick string, picks []BuilderPick) {
 					<span class="text-xs text-muted-foreground">{ p.Detail }</span>
 				</span>
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{
-					"hx-get":    pickURL(characterID, "weapons", "weapon-add", p),
+					"hx-get":    pickURL(characterID, verbWeapons, opWeaponAdd, p),
 					"hx-target": builderTarget,
 					"hx-swap":   "innerHTML",
 				}}) {
@@ -658,7 +657,7 @@ templ BuilderPicks(characterID int64, pick string, picks []BuilderPick) {
 	if len(picks) == 0 {
 		<li class="py-0.5 text-muted-foreground">
 			No matches. You can still fill in your own below
-			if pick == "weapon" {
+			if pick == PickWeapon {
 				, or <a class="underline" href={ templ.SafeURL(CompendiumPath(ctx, route.CompendiumHomebrewNew+"?kind=item&add=1")) }>create a custom weapon</a>
 			}
 			.
@@ -679,7 +678,7 @@ templ featurePicker(characterID int64, value string) {
 			@combobox.Combobox(combobox.Props{Name: "subject", Required: true, DefaultValue: value, Items: comboItems(value, nil)}) {
 				@combobox.Input(combobox.InputProps{ID: id, Class: "w-full", Placeholder: "Search feats and class features, or type a name", Attributes: templ.Attributes{
 					"maxlength": "200", "autocomplete": "off", "data-combobox-create-input": "",
-					"hx-get": route.Path(route.CharacterPicks, characterID) + "?pick=feature&format=combobox", "hx-vals": "js:{q: this.value}",
+					"hx-get": route.Path(route.CharacterPicks, characterID) + "?pick=" + PickFeature + "&format=combobox", "hx-vals": "js:{q: this.value}",
 					"hx-trigger": "input changed delay:200ms", "hx-target": "#" + id + "-list", "hx-swap": "innerHTML",
 				}})
 				@combobox.Content(combobox.ContentProps{Class: comboEmptyHidden}) {
@@ -730,7 +729,7 @@ templ masteryForm(s SheetView, weapons []compendium.NameDesc) {
 						Attributes: reloadAfter(templ.Attributes{
 							"hx-post": s.cmdURL(), "hx-vals": cmdVals(fmt.Sprintf("mastery %s %q", utils.IfElse(on, "remove", "add"), w.Name)),
 							"aria-pressed": fmt.Sprint(on), "title": "Mastery: " + w.Desc,
-						}, builderURL(s, "weapons", OpMastery, "")),
+						}, builderURL(s, verbWeapons, OpMastery, "")),
 					}) {
 						{ w.Name }
 						<span class="text-xs opacity-70">{ w.Desc }</span>
@@ -771,7 +770,7 @@ templ armorForm(s SheetView) {
 		</div>
 		<p class="text-xs text-muted-foreground">Without armor, AC is 10 + Dexterity, or Unarmored Defense if a feature gives it. An AC bonus set under Details is always added.</p>
 	</div>
-	@compendiumLookup(s, "armor", "Look up armor or a shield to wear…")
+	@compendiumLookup(s, PickArmor, "Look up armor or a shield to wear…")
 }
 
 // coinForm sets all five coins at once. The server sends each change as a

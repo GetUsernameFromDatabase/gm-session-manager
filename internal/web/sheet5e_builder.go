@@ -30,7 +30,7 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 	ctx := c.Request.Context()
 	var x views.BuilderExtra
 	switch c.Query("op") {
-	case "set-species", "set-background":
+	case views.OpSetSpecies, views.OpSetBackground:
 		kind := enum.CompendiumKind(strings.TrimPrefix(c.Query("op"), "set-"))
 		rows, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: campaignID})
 		for _, r := range rows {
@@ -134,8 +134,8 @@ func (a *App) builderPicks(c *gin.Context) error {
 	var picks []views.BuilderPick
 	var err error
 	switch c.Query("pick") {
-	case "weapon", "armor":
-		picks, err = a.itemPicks(c.Request.Context(), q, ch.CampaignID, c.Query("pick") == "armor")
+	case views.PickWeapon, views.PickArmor:
+		picks, err = a.itemPicks(c.Request.Context(), q, ch.CampaignID, c.Query("pick") == views.PickArmor)
 	default:
 		picks, err = a.featurePicks(c.Request.Context(), q, ch.CampaignID)
 	}

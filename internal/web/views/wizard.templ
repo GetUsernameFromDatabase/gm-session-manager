@@ -313,7 +313,7 @@ templ wizardAbilities(v WizardView) {
 templ abilityForm(v WizardView) {
 	<form method="post" class="space-y-4" data-point-buy>
 		<p class="text-sm text-muted-foreground">
-			Use the standard array (15, 14, 13, 12, 10, 8), buy points (27 points, scores 8–15), or type what you rolled. Put the highest in your class's primary ability.
+			{ "Use the standard array (" + joinInts(standardArray) + "), buy points (27 points, scores 8–15), or type what you rolled. Put the highest in your class's primary ability." }
 		</p>
 		<div class="grid grid-cols-3 gap-3 sm:grid-cols-6">
 			for _, a := range dnd5e.Abilities {
@@ -327,9 +327,7 @@ templ abilityForm(v WizardView) {
 			}
 		</div>
 		<div class="flex flex-wrap items-center gap-3 text-sm">
-			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{
-				"onclick": templ.JSUnsafeFuncCall("const f = this.form; [15, 14, 13, 12, 10, 8].forEach((n, i) => f.elements[['str','dex','con','int','wis','cha'][i]].value = n); f.dispatchEvent(new Event('input', { bubbles: true }))"),
-			}}) {
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"onclick": fillStandardArrayJS}}) {
 				Fill in the standard array
 			}
 			<span class="text-muted-foreground" data-point-cost></span>

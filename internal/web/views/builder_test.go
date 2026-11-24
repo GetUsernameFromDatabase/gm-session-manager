@@ -35,6 +35,37 @@ func TestModTargetKeepsStored(t *testing.T) {
 	}
 }
 
+// TestBuilderEveryOp renders every builder form of a sheet that offers them
+// all, and checks each posts its own command prefix: a form that crashes, or
+// an op the builder no longer finds (it falls back to the verb's first), fails.
+func TestBuilderEveryOp(t *testing.T) {
+	sh := dnd5e.Sheet{
+		Slots:     [9]dnd5e.Slot{{Max: 2}},
+		Pact:      dnd5e.Slot{Max: 1},
+		Spells:    []dnd5e.Spell{{Slug: "bless", Name: "Bless", Level: 1}},
+		Inventory: []dnd5e.Item{{Name: "Rope", Qty: 1}},
+		Weapons:   []dnd5e.Weapon{{Name: "Dagger", Dice: "1d4"}},
+		Modifiers: []dnd5e.CustomMod{{Target: dnd5e.ModAC, Value: 1, Note: "Ring"}},
+		Features:  []dnd5e.Feature{{Name: "Darkvision"}},
+		// Dead, so Revive is offered too.
+		DeathSaves: dnd5e.DeathSaves{Failures: dnd5e.MaxDeathSaves},
+	}
+	s := SheetView{CanSheet: true, C: dnd5e.Character{Sheet: sh, MaxHP: 10}}
+	// Forms that edit one thing need it named.
+	subjects := map[string]string{focusSkill: "stealth", focusSave: "con", modEdit: "0"}
+	for _, v := range s.builderVerbs() {
+		for _, o := range v.Ops {
+			var b strings.Builder
+			if err := CommandBuilder(s, v.Key, o.Key, subjects[o.Key], BuilderExtra{}).Render(t.Context(), &b); err != nil {
+				t.Fatalf("%s/%s: %v", v.Key, o.Key, err)
+			}
+			if o.Prefix != "" && !strings.Contains(b.String(), `name="prefix" value="`+o.Prefix+`"`) {
+				t.Errorf("%s/%s: no prefix %q in %s", v.Key, o.Key, o.Prefix, b.String())
+			}
+		}
+	}
+}
+
 // TestModTargetStowedWeapon: a stowed weapon's "to hit" link opens on that
 // weapon, not on the first target (Armor class).
 func TestModTargetStowedWeapon(t *testing.T) {

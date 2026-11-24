@@ -338,7 +338,7 @@ templ statsCard(s SheetView) {
 // editable lets the owner tap its children to open the form that changes
 // them; everyone else just sees the children. It keeps the text's look.
 templ editable(s SheetView, to edit, label, class string) {
-	if s.CanSheet && to.verb != "" {
+	if s.canEdit(to) {
 		@button.Button(button.Props{Variant: button.VariantGhost, Class: utils.CN("-mx-1 h-auto px-1 py-0 text-inherit [font:inherit]", class), Attributes: with(dialog.TriggerFor(builderID), builderLoad(s, to.verb, to.op, to.subject), templ.Attributes{"title": label})}) {
 			{ children... }
 		}
@@ -355,8 +355,7 @@ templ editable(s SheetView, to edit, label, class string) {
 // editName names an editable that shows only a number, ahead of the number,
 // since an aria-label would hide the value.
 templ editName(s SheetView, to edit, label string) {
-	// The same test as editable's button.
-	if s.CanSheet && to.verb != "" {
+	if s.canEdit(to) {
 		<span class="sr-only">{ label + " " }</span>
 	}
 }
@@ -441,7 +440,7 @@ templ armorCard(s SheetView) {
 			}
 			<ul class="divide-y text-sm">
 				if sh.Armor != nil {
-					@gearRow(s, sh.Armor.Name, sh.Armor.Type+" · "+dnd5e.ArmorEffect(*sh.Armor, sh.Mod(dnd5e.Dex)), "armor off", "Take off", true)
+					@gearRow(s, sh.Armor.Name, armorDetail(sh, *sh.Armor), "armor off", "Take off", true)
 				}
 				if sh.Shield {
 					@gearRow(s, "Shield", "+2 AC", "shield off", "Put down", true)
@@ -450,7 +449,7 @@ templ armorCard(s SheetView) {
 					if it.Shield {
 						@gearRow(s, it.Name, "+2 AC", fmt.Sprintf("armor wear %q", it.Name), "Wear", false)
 					} else {
-						@gearRow(s, it.Name, it.Armor.Type+" · "+dnd5e.ArmorEffect(*it.Armor, sh.Mod(dnd5e.Dex)), fmt.Sprintf("armor wear %q", it.Name), "Wear", false)
+						@gearRow(s, it.Name, armorDetail(sh, *it.Armor), fmt.Sprintf("armor wear %q", it.Name), "Wear", false)
 					}
 				}
 			</ul>
@@ -1047,7 +1046,7 @@ templ spellsCard(s SheetView) {
 				}
 				if s.CanSheet {
 					@card.Action() {
-						@builderButton(s, "spells", "", "Edit spells")
+						@builderButton(s, verbSpells, "", "Edit spells")
 					}
 				}
 			}
@@ -1190,7 +1189,7 @@ templ inventoryCard(s SheetView) {
 				}
 			</ul>
 			if s.CanSheet {
-				<form class="mt-3 flex gap-2" hx-post={ s.cmdURL() } hx-on::after-request="if(event.detail.successful) this.reset()">
+				<form class="mt-3 flex gap-2" hx-post={ s.cmdURL() } hx-on::after-request="if (event.detail.successful && event.detail.elt === this) this.reset()">
 					<div class="min-w-0 flex-1">
 						@itemPicker(fmt.Sprintf("item-name-%d", s.ID), "item_name", "Add item", false)
 					</div>

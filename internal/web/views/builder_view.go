@@ -101,8 +101,8 @@ func (s SheetView) builderVerbs() []builderVerb {
 		}},
 		{verbDetails, "Details", []builderOp{
 			{opSetName, labelName, "set name", ""},
-			{opSetSpecies, "Species", "set species", ""},
-			{opSetBackground, "Background", "set background", ""},
+			{OpSetSpecies, "Species", "set species", ""},
+			{OpSetBackground, "Background", "set background", ""},
 			{opSetBackstory, "Backstory", "set backstory", ""},
 			{opSetAC, "AC bonus", "set ac", ""},
 			{opSetSpeed, "Base speed", "set speed", ""},
@@ -196,8 +196,8 @@ const (
 	opImmAdd         = "imm-add"
 	opVulnAdd        = "vuln-add"
 	opSetName        = "set-name"
-	opSetSpecies     = "set-species"
-	opSetBackground  = "set-background"
+	OpSetSpecies     = "set-species"
+	OpSetBackground  = "set-background"
 	opSetBackstory   = "set-backstory"
 	opSetAC          = "set-ac"
 	opSetSpeed       = "set-speed"
@@ -320,6 +320,19 @@ func (s SheetView) damageList(key string) (noun, label string, list []string) {
 	}
 	return "resistance", "Add a resistance", s.C.Sheet.Resistances
 }
+
+// missingDamageItems are the damage types not yet in list, to add one.
+func missingDamageItems(list []string) []selectcomp.ItemData {
+	missing := slices.DeleteFunc(slices.Clone(dnd5e.DamageTypes), func(d string) bool { return slices.Contains(list, d) })
+	return selectItems(missing, func(d string) string { return d }, func(d string) string { return capitalized([]string{d})[0] })
+}
+
+// The kinds of compendium look-up the builder runs (the picks route's "pick").
+const (
+	PickWeapon  = "weapon"
+	PickArmor   = "armor"
+	PickFeature = "feature"
+)
 
 // pressedClass styles a toggle button by its aria-pressed state.
 const pressedClass = "aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80"
@@ -591,7 +604,7 @@ func (s SheetView) detail(key string) string {
 	switch key {
 	case opSetName:
 		return s.C.Name
-	case opSetSpecies:
+	case OpSetSpecies:
 		return s.C.Sheet.Species
 	}
 	return s.C.Sheet.Background

@@ -33,6 +33,13 @@ const (
 	StepReview     = "review"
 )
 
+// standardArray is the scores the abilities step offers to fill in.
+var standardArray = []int{15, 14, 13, 12, 10, 8}
+
+// fillStandardArrayJS puts standardArray in the score inputs in
+// dnd5e.Abilities order, then fires input so app.js updates the point cost.
+var fillStandardArrayJS = templ.JSUnsafeFuncCall("const f = this.form; " + toJSON(standardArray) + ".forEach((n, i) => f.elements[" + toJSON(dnd5e.Abilities) + "[i]].value = n); f.dispatchEvent(new Event('input', { bubbles: true }))")
+
 // WizardView is one page of the creation wizard.
 type WizardView struct {
 	CharacterID int64

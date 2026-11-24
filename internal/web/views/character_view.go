@@ -271,8 +271,8 @@ type subtitlePart struct {
 // classes change through levelling up.
 func (s SheetView) subtitle() []subtitlePart {
 	parts := []subtitlePart{
-		{s.C.Sheet.Species, "species", edit{verbDetails, opSetSpecies, ""}},
-		{s.C.Sheet.Background, "background", edit{verbDetails, opSetBackground, ""}},
+		{s.C.Sheet.Species, "species", edit{verbDetails, OpSetSpecies, ""}},
+		{s.C.Sheet.Background, "background", edit{verbDetails, OpSetBackground, ""}},
 		{s.C.Sheet.ClassSummary(), "classes", edit{}},
 	}
 	return slices.DeleteFunc(parts, func(p subtitlePart) bool { return p.text == "" })
@@ -299,6 +299,15 @@ func hitDice(s dnd5e.Sheet) string {
 
 // edit names the builder form a value opens; the zero edit opens none.
 type edit struct{ verb, op, subject string }
+
+// canEdit is whether to is a form the viewer can open: editable's button
+// and editName's screen-reader label both follow it.
+func (s SheetView) canEdit(to edit) bool { return s.CanSheet && to.verb != "" }
+
+// armorDetail is a piece of armor's type and what it makes of AC.
+func armorDetail(sh dnd5e.Sheet, a dnd5e.WornArmor) string {
+	return a.Type + " · " + dnd5e.ArmorEffect(a, sh.Mod(dnd5e.Dex))
+}
 
 // The stats of the sheet's stat row, by the name the row shows.
 const (
