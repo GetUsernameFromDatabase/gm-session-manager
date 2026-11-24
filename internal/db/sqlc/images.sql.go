@@ -9,6 +9,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"gm-session-manager/internal/enum"
 )
 
 const createImage = `-- name: CreateImage :one
@@ -165,24 +167,86 @@ func (q *Queries) ListImageCategories(ctx context.Context, campaignID int64) ([]
 	return items, nil
 }
 
-const listImageLinkBlocks = `-- name: ListImageLinkBlocks :many
-SELECT DISTINCT source_block_id FROM note_links
-WHERE target_type = 'image' AND target_id = ?
+const listImageLinkAudience = `-- name: ListImageLinkAudience :many
+SELECT DISTINCT a.block_id, a.character_id
+FROM note_links AS l
+JOIN note_blocks AS b ON b.id = l.source_block_id
+JOIN notes AS n ON n.id = b.note_id
+JOIN note_block_audience AS a ON a.block_id = b.id
+WHERE l.target_type = 'image' AND n.campaign_id = ?1
+  AND (CAST(?2 AS INTEGER) = 0 OR l.target_id = CAST(?2 AS INTEGER))
 `
 
-func (q *Queries) ListImageLinkBlocks(ctx context.Context, targetID int64) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, listImageLinkBlocks, targetID)
+type ListImageLinkAudienceParams struct {
+	CampaignID int64
+	ImageID    int64
+}
+
+// ListImageLinkAudience lists the audiences of the blocks ListImageLinkBlocks returns.
+func (q *Queries) ListImageLinkAudience(ctx context.Context, arg ListImageLinkAudienceParams) ([]NoteBlockAudience, error) {
+	rows, err := q.db.QueryContext(ctx, listImageLinkAudience, arg.CampaignID, arg.ImageID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int64{}
+	items := []NoteBlockAudience{}
 	for rows.Next() {
-		var source_block_id int64
-		if err := rows.Scan(&source_block_id); err != nil {
+		var i NoteBlockAudience
+		if err := rows.Scan(&i.BlockID, &i.CharacterID); err != nil {
 			return nil, err
 		}
-		items = append(items, source_block_id)
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listImageLinkBlocks = `-- name: ListImageLinkBlocks :many
+SELECT DISTINCT l.target_id AS image_id, b.id AS block_id, b.visibility, n.owner_character_id
+FROM note_links AS l
+JOIN note_blocks AS b ON b.id = l.source_block_id
+JOIN notes AS n ON n.id = b.note_id
+WHERE l.target_type = 'image' AND n.campaign_id = ?1
+  AND (CAST(?2 AS INTEGER) = 0 OR l.target_id = CAST(?2 AS INTEGER))
+`
+
+type ListImageLinkBlocksParams struct {
+	CampaignID int64
+	ImageID    int64
+}
+
+type ListImageLinkBlocksRow struct {
+	ImageID          int64
+	BlockID          int64
+	Visibility       enum.Visibility
+	OwnerCharacterID sql.NullInt64
+}
+
+// ListImageLinkBlocks lists the note blocks linking the campaign's images
+// (one image, or every one for 0) with what the read rule needs.
+func (q *Queries) ListImageLinkBlocks(ctx context.Context, arg ListImageLinkBlocksParams) ([]ListImageLinkBlocksRow, error) {
+	rows, err := q.db.QueryContext(ctx, listImageLinkBlocks, arg.CampaignID, arg.ImageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListImageLinkBlocksRow{}
+	for rows.Next() {
+		var i ListImageLinkBlocksRow
+		if err := rows.Scan(
+			&i.ImageID,
+			&i.BlockID,
+			&i.Visibility,
+			&i.OwnerCharacterID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

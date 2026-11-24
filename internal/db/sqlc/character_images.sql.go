@@ -89,39 +89,6 @@ func (q *Queries) ImageBinding(ctx context.Context, imageID int64) (ImageBinding
 	return i, err
 }
 
-const imageLookAccess = `-- name: ImageLookAccess :one
-SELECT
-    CAST(EXISTS (
-        SELECT 1 FROM entity_images AS l
-        JOIN entities AS e ON e.id = l.entity_id
-        WHERE l.image_id = ?1 AND l.is_revealed AND e.is_revealed
-    ) OR EXISTS (
-        SELECT 1 FROM character_images AS l
-        WHERE l.image_id = ?1 AND l.is_revealed
-    ) OR EXISTS (
-        SELECT 1 FROM entity_field_links AS l
-        JOIN entities AS e ON e.id = l.entity_id
-        WHERE l.target_type = 'image' AND l.target_id = ?1 AND l.is_revealed AND e.is_revealed
-    ) AS BOOLEAN) AS revealed,
-    CAST(COALESCE((SELECT l.character_id FROM character_images AS l WHERE l.image_id = ?1), 0) AS INTEGER) AS owner_character_id
-`
-
-type ImageLookAccessRow struct {
-	Revealed         bool
-	OwnerCharacterID int64
-}
-
-// ImageLookAccess says who besides the GM may see an image through NPCs and
-// characters: every player when it is a revealed look (of a revealed NPC,
-// or of a character) or linked from a revealed field of a revealed NPC, and
-// the character who wears it.
-func (q *Queries) ImageLookAccess(ctx context.Context, imageID int64) (ImageLookAccessRow, error) {
-	row := q.db.QueryRowContext(ctx, imageLookAccess, imageID)
-	var i ImageLookAccessRow
-	err := row.Scan(&i.Revealed, &i.OwnerCharacterID)
-	return i, err
-}
-
 const linkCharacterImage = `-- name: LinkCharacterImage :exec
 INSERT INTO character_images (character_id, image_id, is_current, is_revealed)
 VALUES (?1, ?2,
@@ -212,6 +179,66 @@ func (q *Queries) ListImageCharacters(ctx context.Context, imageID int64) ([]Lis
 	for rows.Next() {
 		var i ListImageCharactersRow
 		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listImageLookAccess = `-- name: ListImageLookAccess :many
+SELECT
+    i.id,
+    CAST(EXISTS (
+        SELECT 1 FROM entity_images AS l
+        JOIN entities AS e ON e.id = l.entity_id
+        WHERE l.image_id = i.id AND l.is_revealed AND e.is_revealed
+    ) OR EXISTS (
+        SELECT 1 FROM character_images AS l
+        WHERE l.image_id = i.id AND l.is_revealed
+    ) OR EXISTS (
+        SELECT 1 FROM entity_field_links AS l
+        JOIN entities AS e ON e.id = l.entity_id
+        WHERE l.target_type = 'image' AND l.target_id = i.id AND l.is_revealed AND e.is_revealed
+    ) AS BOOLEAN) AS revealed,
+    CAST(COALESCE((SELECT l.character_id FROM character_images AS l WHERE l.image_id = i.id), 0) AS INTEGER) AS owner_character_id
+FROM images AS i
+WHERE i.campaign_id = ?1
+  AND (CAST(?2 AS INTEGER) = 0 OR i.id = CAST(?2 AS INTEGER))
+`
+
+type ListImageLookAccessParams struct {
+	CampaignID int64
+	ImageID    int64
+}
+
+type ListImageLookAccessRow struct {
+	ID               int64
+	Revealed         bool
+	OwnerCharacterID int64
+}
+
+// ListImageLookAccess says, for the campaign's images (one image, or every
+// one for 0), who besides the GM may see each through NPCs and characters:
+// every player when it is a revealed look (of a revealed NPC, or of a
+// character) or linked from a revealed field of a revealed NPC, and the
+// character who wears it.
+func (q *Queries) ListImageLookAccess(ctx context.Context, arg ListImageLookAccessParams) ([]ListImageLookAccessRow, error) {
+	rows, err := q.db.QueryContext(ctx, listImageLookAccess, arg.CampaignID, arg.ImageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListImageLookAccessRow{}
+	for rows.Next() {
+		var i ListImageLookAccessRow
+		if err := rows.Scan(&i.ID, &i.Revealed, &i.OwnerCharacterID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

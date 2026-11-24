@@ -110,8 +110,18 @@ func (a *App) imagesPage(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
+	gates, err := a.imageGates(ctx, id, 0)
+	if err != nil {
+		return err
+	}
+	chars, err := a.Store.ListCharactersByCampaign(ctx, id)
+	if err != nil {
+		return err
+	}
 	for _, r := range rows {
-		v.Images = append(v.Images, imageItem(sqlc.GetImageRow(r)))
+		item := imageItem(sqlc.GetImageRow(r))
+		item.Seen = len(seenBy(gates[r.ID], chars)) > 0
+		v.Images = append(v.Images, item)
 	}
 	if isHTMX(c) {
 		a.render(c, http.StatusOK, views.ImageResults(v))
@@ -409,6 +419,53 @@ func (a *App) deleteImage(c *gin.Context) error {
 	return nil
 }
 
+// imageGate is what perm.CanReadImage needs to know about one image.
+type imageGate struct {
+	look   perm.ImageLook
+	blocks []perm.Block
+}
+
+// imageGates loads the gates of a campaign's images (one image, or every
+// one for imageID 0) in three queries, however many blocks link them.
+func (a *App) imageGates(ctx context.Context, campaignID, imageID int64) (map[int64]imageGate, error) {
+	looks, err := a.Store.ListImageLookAccess(ctx, sqlc.ListImageLookAccessParams{CampaignID: campaignID, ImageID: imageID})
+	if err != nil {
+		return nil, err
+	}
+	links, err := a.Store.ListImageLinkBlocks(ctx, sqlc.ListImageLinkBlocksParams{CampaignID: campaignID, ImageID: imageID})
+	if err != nil {
+		return nil, err
+	}
+	audience, err := a.Store.ListImageLinkAudience(ctx, sqlc.ListImageLinkAudienceParams{CampaignID: campaignID, ImageID: imageID})
+	if err != nil {
+		return nil, err
+	}
+	gates := make(map[int64]imageGate, len(looks))
+	for _, l := range looks {
+		gates[l.ID] = imageGate{look: perm.ImageLook{Revealed: l.Revealed, Owner: l.OwnerCharacterID}}
+	}
+	members := map[int64][]int64{}
+	for _, m := range audience {
+		members[m.BlockID] = append(members[m.BlockID], m.CharacterID)
+	}
+	for _, l := range links {
+		g := gates[l.ImageID]
+		// The read rule needs only these three; edit fields stay empty.
+		g.blocks = append(g.blocks, perm.Block{Visibility: l.Visibility, NoteOwnerID: l.OwnerCharacterID.Int64, Audience: members[l.BlockID]})
+		gates[l.ImageID] = g
+	}
+	return gates, nil
+}
+
+// seenBy lists the characters who can see an image through its gate, for
+// the GM: a player's own blocks are left out, as the GM never learns of them.
+func seenBy(g imageGate, chars []sqlc.Character) []sqlc.Character {
+	blocks := slices.DeleteFunc(slices.Clone(g.blocks), func(b perm.Block) bool { return b.Visibility == enum.VisOwner })
+	return slices.DeleteFunc(slices.Clone(chars), func(ch sqlc.Character) bool {
+		return !perm.CanReadImage(perm.Player(ch.ID), blocks, g.look)
+	})
+}
+
 // readableImage loads :image for anyone who may see it: the GM, or a
 // player through a note block they can read that links it, or as a look
 // (see perm.CanReadImage).
@@ -425,31 +482,16 @@ func (a *App) readableImage(c *gin.Context) (who, sqlc.GetImageRow, bool) {
 	if w.isGM() {
 		return w, img, true
 	}
-	ctx := c.Request.Context()
-	var blocks []perm.Block
-	var look perm.ImageLook
+	var g imageGate
 	if w.campaignID() == img.CampaignID {
-		access, err := a.Store.ImageLookAccess(ctx, img.ID)
+		gates, err := a.imageGates(c.Request.Context(), img.CampaignID, img.ID)
 		if err != nil {
 			a.serverError(c, err)
 			return w, img, false
 		}
-		look = perm.ImageLook{Revealed: access.Revealed, Owner: access.OwnerCharacterID}
-		ids, err := a.Store.ListImageLinkBlocks(ctx, img.ID)
-		if err != nil {
-			a.serverError(c, err)
-			return w, img, false
-		}
-		for _, id := range ids {
-			_, pb, err := a.loadBlock(ctx, id)
-			if err != nil {
-				a.serverError(c, err)
-				return w, img, false
-			}
-			blocks = append(blocks, pb)
-		}
+		g = gates[img.ID]
 	}
-	if !perm.CanReadImage(w.viewer, blocks, look) {
+	if !perm.CanReadImage(w.viewer, g.blocks, g.look) {
 		a.fail(c, http.StatusNotFound, "Not found.")
 		return w, img, false
 	}
@@ -499,6 +541,15 @@ func (a *App) imagePage(c *gin.Context) error {
 	if v.CharacterChoices, err = a.Store.ListCharactersByCampaign(ctx, img.CampaignID); err != nil {
 		return err
 	}
+	gates, err := a.imageGates(ctx, img.CampaignID, img.ID)
+	if err != nil {
+		return err
+	}
+	seen := seenBy(gates[img.ID], v.CharacterChoices)
+	for _, ch := range seen {
+		v.SeenBy = append(v.SeenBy, ch.Name)
+	}
+	v.SeenByAll = len(seen) > 0 && len(seen) == len(v.CharacterChoices)
 	a.render(c, http.StatusOK, views.ImagePage(a.layout(w, img.Name, views.NavImages, &camp, false), v))
 	return nil
 }

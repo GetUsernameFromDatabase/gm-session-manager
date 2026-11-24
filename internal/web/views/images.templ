@@ -13,7 +13,9 @@ import (
 	"gm-session-manager/internal/web/components/input"
 	"gm-session-manager/internal/web/components/tabs"
 	"gm-session-manager/internal/web/components/textarea"
+	"gm-session-manager/internal/web/components/tooltip"
 	"gm-session-manager/internal/web/utils"
+	"strings"
 )
 
 templ ImagesPage(l Layout, v ImagesView) {
@@ -74,8 +76,8 @@ templ ImageResults(v ImagesView) {
 	<div id={ ImageResultsID } class="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
 		for _, img := range v.Images {
 			<div class="min-w-0">
-				<button type="button" class="group/show relative block w-full rounded-lg ring-offset-2 ring-offset-background outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:ring-3 aria-pressed:ring-primary" aria-label={ "Show " + img.Name + " on display" } { showAttrs(img.Src(), img.Name)... }>
-					@stage("aspect-video") {
+				<button type="button" class="group/show relative block w-full rounded-lg ring-offset-2 ring-offset-background outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:ring-3 aria-pressed:ring-primary" aria-label={ "Show " + img.Name + " on display" + utils.IfElse(img.Seen, ", players can see it", "") } { showAttrs(img.Src(), img.Name)... }>
+					@stage(utils.IfElse(img.Seen, "aspect-video border-2 border-green-600", "aspect-video")) {
 						// Pinned inside the box, so a tall picture cannot stretch it (Chromium).
 						// flex on an img centers its alt text when the link is broken (Firefox);
 						// a loaded image is unaffected.
@@ -87,18 +89,29 @@ templ ImageResults(v ImagesView) {
 							On display
 						}
 					</span>
-				</button>
-				<div class="mt-1.5 flex items-start gap-1">
-					<div class="min-w-0 flex-1">
-						<p class="truncate text-sm font-medium" title={ img.Name }>{ img.Name }</p>
-						if img.Category != "" {
-							<p class="truncate text-xs text-muted-foreground">{ img.Category }</p>
-						}
-					</div>
-					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: "-mt-0.5 -mr-1 shrink-0 text-muted-foreground", Href: route.Path(route.Image, img.ID), Attributes: templ.Attributes{"aria-label": "Edit " + img.Name, "title": "Edit"}}) {
-						@icon.Pencil()
+					// The label says it to screen readers; a button's label hides its content.
+					if img.Seen {
+						<span class="absolute bottom-2 left-2 flex">
+							@badge.Badge() {
+								@icon.Eye()
+							}
+						</span>
 					}
-				</div>
+				</button>
+				// The whole caption opens the details; the picture stays the display's.
+				<a href={ templ.SafeURL(route.Path(route.Image, img.ID)) } class="group/open mt-1.5 flex min-w-0 items-start gap-1 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+					<span class="min-w-0 flex-1">
+						// offset-2: truncate clips, and offset-4 sits on the line's bottom edge.
+						<span class="block truncate text-sm font-medium underline-offset-2 group-hover/open:underline" title={ img.Name }>{ img.Name }</span>
+						if img.Category != "" {
+							<span class="block truncate text-xs text-muted-foreground">{ img.Category }</span>
+						}
+					</span>
+					// Says the caption edits; the link's name is the caption itself.
+					<span class="mt-0.5 shrink-0 text-muted-foreground group-hover/open:text-foreground" aria-hidden="true">
+						@icon.Pencil(icon.Props{Size: 16})
+					</span>
+				</a>
 			</div>
 		}
 		if len(v.Images) == 0 {
@@ -200,6 +213,7 @@ templ ImagePage(l Layout, v ImageView) {
 							@showButton(v.Image, "")
 							@openDisplayButton(v.CampaignID)
 						</div>
+						@seenBy(v)
 					}
 				</div>
 				// min-w-0: a long picker name truncates instead of widening the column.
@@ -232,6 +246,27 @@ templ ImagePage(l Layout, v ImageView) {
 			</div>
 		}
 	}
+}
+
+// seenBy tells the GM which players can see the image (on reload, not live).
+templ seenBy(v ImageView) {
+	<p class="flex items-center gap-2 text-sm text-muted-foreground">
+		if v.SeenByAll {
+			@icon.Eye(icon.Props{Size: 16, Class: "shrink-0"})
+			@tooltip.Tooltip() {
+				<span aria-label={ "Seen by " + strings.Join(v.SeenBy, ", ") } { tooltip.Trigger(ctx)... }>Seen by all players</span>
+				@tooltip.Content() {
+					{ strings.Join(v.SeenBy, ", ") }
+				}
+			}
+		} else if len(v.SeenBy) > 0 {
+			@icon.Eye(icon.Props{Size: 16, Class: "shrink-0"})
+			<span class="min-w-0">{ "Seen by " + strings.Join(v.SeenBy, ", ") }</span>
+		} else {
+			@icon.EyeOff(icon.Props{Size: 16, Class: "shrink-0"})
+			<span>Hidden from players</span>
+		}
+	</p>
 }
 
 // mention is one linked-mentions row; the icon says what kind of thing links here.

@@ -24,6 +24,8 @@ type ImageItem struct {
 	// Version names the link or file, so Src changes with it and browsers
 	// may cache it for good.
 	Version string
+	// Seen marks an image some player can see (the GM's list only).
+	Seen bool
 }
 
 // Src is where browsers load the image: the authorized handler, which
@@ -92,6 +94,10 @@ type ImageView struct {
 	NPCChoices       []sqlc.Entity
 	Characters       []sqlc.ListImageCharactersRow
 	CharacterChoices []sqlc.Character
+	// SeenBy names the characters who can see the image; SeenByAll is set
+	// when that is every character of the campaign.
+	SeenBy    []string
+	SeenByAll bool
 }
 
 func imageAction(v ImageView) string {

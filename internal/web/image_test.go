@@ -88,19 +88,12 @@ func TestImageAccess(t *testing.T) {
 	shared, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players"})
 	snapshot := func(blockID int64, cookie string) {
 		t.Helper()
-		snap := map[string]any{
-			"version": 1, "doc": json.RawMessage(`{"type":"doc","content":[]}`), "text": "",
-			"links": []map[string]any{{"type": "image", "id": img.ID}},
-		}
-		// The snapshot only lands at a version the block has reached.
-		if err := e.q().SetBlockVersion(ctx, sqlc.SetBlockVersionParams{ID: blockID, Version: 1}); err != nil {
-			t.Fatal(err)
-		}
-		if w := e.doJSON(t, route.Path(route.BlockSnapshot, blockID), cookie, snap); w.Code != http.StatusNoContent {
-			t.Fatalf("snapshot with an image link: %d %s", w.Code, w.Body)
-		}
+		linkImage(t, e, blockID, img.ID, cookie)
 	}
 
+	if w := e.do(t, http.MethodGet, page, gm, nil, false); !strings.Contains(w.Body.String(), "Hidden from players") {
+		t.Errorf("gm page before any link does not say hidden: %d", w.Code)
+	}
 	snapshot(hidden.ID, gm)
 	if w := e.do(t, http.MethodGet, page, player, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("linked from a gm block: %d", w.Code)
@@ -135,6 +128,106 @@ func TestImageAccess(t *testing.T) {
 	}
 	if w := e.do(t, http.MethodGet, file, player, nil, false); w.Code != http.StatusFound || w.Header().Get("Location") != "https://example.com/dragon.png" {
 		t.Errorf("player file: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := e.do(t, http.MethodGet, page, gm, nil, false); !strings.Contains(w.Body.String(), "Seen by all players") {
+		t.Errorf("gm page after a players link does not say seen by all: %d", w.Code)
+	}
+}
+
+// linkImage has cookie snapshot block blockID with one link to image imageID.
+func linkImage(t *testing.T, e testEnv, blockID, imageID int64, cookie string) {
+	t.Helper()
+	snap := map[string]any{
+		"version": 1, "doc": json.RawMessage(`{"type":"doc","content":[]}`), "text": "",
+		"links": []map[string]any{{"type": "image", "id": imageID}},
+	}
+	// The snapshot only lands at a version the block has reached.
+	if err := e.q().SetBlockVersion(t.Context(), sqlc.SetBlockVersionParams{ID: blockID, Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.doJSON(t, route.Path(route.BlockSnapshot, blockID), cookie, snap); w.Code != http.StatusNoContent {
+		t.Fatalf("snapshot with an image link: %d %s", w.Code, w.Body)
+	}
+}
+
+// TestImageSeenBy: the GM sees which characters can see an image, and the
+// players' access follows the same rule.
+func TestImageSeenBy(t *testing.T) {
+	e := newTestEnv(t)
+	ctx := t.Context()
+	gm := e.token(t, enum.RoleAdmin)
+	first := e.token(t, enum.RolePlayer)
+	other, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Borin", System: "dnd5e", SheetJson: "{}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := e.mgr.IssuePlayer(ctx, other.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := e.doFile(t, route.Path(route.CampaignImages, e.campaignID), gm, url.Values{"name": {"Hidden shrine"}, "url": {"https://example.com/shrine.png"}}, "", "", ""); w.Code != http.StatusSeeOther {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	imgs, _ := e.q().ListImages(ctx, sqlc.ListImagesParams{CampaignID: e.campaignID})
+	if len(imgs) != 1 {
+		t.Fatalf("images %+v", imgs)
+	}
+	img := imgs[0]
+	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Whispers"})
+	block, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "listed"})
+	if err := e.q().AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: block.ID, CharacterID: e.characterID}); err != nil {
+		t.Fatal(err)
+	}
+	linkImage(t, e, block.ID, img.ID, gm)
+
+	body := e.do(t, http.MethodGet, route.Path(route.Image, img.ID), gm, nil, false).Body.String()
+	// Borin is on the page anyway (the look picker), so the line must end at Alice.
+	if !strings.Contains(body, "Seen by Alice</span>") || strings.Contains(body, "Seen by all players") {
+		t.Errorf("gm page does not name only the audience")
+	}
+	if body := e.do(t, http.MethodGet, route.Path(route.CampaignImages, e.campaignID), gm, nil, false).Body.String(); !strings.Contains(body, "Show Hidden shrine on display, players can see it") {
+		t.Errorf("gm list does not mark the image as seen")
+	}
+	file := route.Path(route.ImageFile, img.ID)
+	if w := e.do(t, http.MethodGet, file, first, nil, false); w.Code != http.StatusFound {
+		t.Errorf("audience player: %d", w.Code)
+	}
+	if w := e.do(t, http.MethodGet, file, second, nil, false); w.Code != http.StatusNotFound {
+		t.Errorf("player outside the audience: %d", w.Code)
+	}
+
+	// Linked only from Borin's own block: Borin sees it, the GM is not told.
+	if w := e.doFile(t, route.Path(route.CampaignImages, e.campaignID), gm, url.Values{"name": {"Diary sketch"}, "url": {"https://example.com/sketch.png"}}, "", "", ""); w.Code != http.StatusSeeOther {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	imgs, _ = e.q().ListImages(ctx, sqlc.ListImagesParams{CampaignID: e.campaignID, Q: "Diary"})
+	if len(imgs) != 1 {
+		t.Fatalf("images %+v", imgs)
+	}
+	diary, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Diary", OwnerCharacterID: nullID(other.ID)})
+	own, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: diary.ID, Visibility: "owner"})
+	if err := e.q().AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: diary.ID, SourceBlockID: own.ID, TargetType: enum.LinkImage, TargetID: imgs[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do(t, http.MethodGet, route.Path(route.ImageFile, imgs[0].ID), second, nil, false); w.Code != http.StatusFound {
+		t.Errorf("owner of the linking block: %d", w.Code)
+	}
+	if body := e.do(t, http.MethodGet, route.Path(route.Image, imgs[0].ID), gm, nil, false).Body.String(); !strings.Contains(body, "Hidden from players") {
+		t.Errorf("gm page reveals a link from a player's own block")
+	}
+
+	// A link from another campaign's note grants this campaign's players nothing.
+	camp, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Elsewhere", System: "dnd5e", Edition: "2024"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	far, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "Far away"})
+	farBlock, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: far.ID, Visibility: "players"})
+	if err := e.q().AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: far.ID, SourceBlockID: farBlock.ID, TargetType: enum.LinkImage, TargetID: img.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do(t, http.MethodGet, file, second, nil, false); w.Code != http.StatusNotFound {
+		t.Errorf("linked from another campaign's players block: %d", w.Code)
 	}
 }
 
