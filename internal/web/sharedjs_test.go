@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -210,4 +211,9 @@ func TestSharedLimitsMatchTags(t *testing.T) {
 	tagHas(t, consoleEntry{}, "Page", fmt.Sprintf("max=%d", consolePage))
 	tagHas(t, feedbackForm{}, "Page", fmt.Sprintf("max=%d", consolePage))
 	tagHas(t, consoleEntry{}, "Level", "oneof="+strings.Join(consoleLevels, " ")+" uncaught")
+	tagHas(t, fiveToolsForm{}, "Set", "oneof="+views.FiveToolsSet2024)
+	tagHas(t, fiveToolsListForm{}, "Set", "oneof="+views.FiveToolsSet2024)
+	tagHas(t, campaignSourcesForm{}, "Back", "oneof="+views.SourcesBackCompendium)
+	tagHas(t, open5eForm{}, "Import", "oneof="+views.ImportTabFolder)
+	tagHas(t, open5eForm{}, "Doc", "oneof="+compendium.SRD2024Key+" "+compendium.SRD2014Key)
 }

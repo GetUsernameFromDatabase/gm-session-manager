@@ -161,6 +161,46 @@ func (q *Queries) CountCompendium(ctx context.Context, campaignID int64) ([]Coun
 	return items, nil
 }
 
+const countEntriesBySource = `-- name: CountEntriesBySource :many
+SELECT e.source_key, count(*) AS total,
+    CAST(COALESCE(sum(e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))), 0) AS INTEGER) AS visible
+FROM compendium_entries AS e
+WHERE e.scoped = 0
+GROUP BY e.source_key
+`
+
+type CountEntriesBySourceRow struct {
+	SourceKey string
+	Total     int64
+	Visible   int64
+}
+
+// CountEntriesBySource is each source's entries (player homebrew left out)
+// and how many of them lists show in the campaign (campaign_top; 0 is the
+// whole compendium). A source the campaign leaves out shows none.
+func (q *Queries) CountEntriesBySource(ctx context.Context, campaignID int64) ([]CountEntriesBySourceRow, error) {
+	rows, err := q.db.QueryContext(ctx, countEntriesBySource, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountEntriesBySourceRow{}
+	for rows.Next() {
+		var i CountEntriesBySourceRow
+		if err := rows.Scan(&i.SourceKey, &i.Total, &i.Visible); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countHabitats = `-- name: CountHabitats :many
 SELECT h.habitat, count(*) AS n FROM monster_habitats AS h
 JOIN compendium_entries AS e ON e.id = h.entry_id

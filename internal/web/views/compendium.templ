@@ -57,7 +57,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 			// Browse fits the window on desktop (data-fit-screen, globals.css).
 			@tabs.Content(tabs.ContentProps{Value: CompendiumTabBrowse, Attributes: templ.Attributes{"data-fit-screen": true}}) {
 				if len(v.Counts) == 0 && v.Shared == "" {
-					@compendiumEmpty(v.IsGM)
+					@compendiumEmpty(v.IsGM, v.Import.Job)
 				} else {
 					// On phones the list scrolls with the page, so the search and
 					// filters stick under the navbar (3rem + its border).
@@ -78,7 +78,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 						<div class="min-w-0">
 							@importTabs(v.Import)
 						</div>
-						@SourcePriority(v.Sources, v.SharedCounts)
+						@SourcePriority(v.Sources, v.SharedCounts, v.EntryCounts)
 					</div>
 				}
 			}
@@ -118,30 +118,32 @@ templ compendiumSearchForm(v CompendiumView) {
 	</form>
 }
 
-// compendiumEmpty stands in for the search while nothing is imported.
-templ compendiumEmpty(isGM bool) {
+// compendiumEmpty stands in for the search while nothing is imported; the
+// GM gets the starting sets.
+templ compendiumEmpty(isGM bool, job FiveToolsJob) {
 	@empty.Empty(empty.Props{Class: "border border-dashed"}) {
 		@empty.Header() {
 			@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
 				@icon.BookOpen()
 			}
 			@empty.Title() {
-				The compendium is empty
+				if isGM {
+					Start your compendium
+				} else {
+					The compendium is empty
+				}
 			}
 			@empty.Description() {
 				if isGM {
-					Import the SRD or another source to look up monsters, spells and items here.
+					Download a starting set. It imports in the background; you can leave this page.
 				} else {
 					The GM has not imported anything yet.
 				}
 			}
 		}
 		if isGM {
-			@empty.Content() {
-				@button.Button(button.Props{Href: CompendiumPath(ctx, "?tab="+CompendiumTabImport)}) {
-					@icon.Download()
-					Import
-				}
+			@empty.Content(empty.ContentProps{Class: "max-w-xl"}) {
+				@StarterSets(job, 0)
 			}
 		}
 	}

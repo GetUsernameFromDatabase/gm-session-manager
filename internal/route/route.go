@@ -153,8 +153,8 @@ const (
 	CompendiumFiveTools           = "/5etools"
 	CompendiumFiveToolsBookDelete = CompendiumFiveTools + "/:book/delete"
 	CompendiumFiveToolsAuto       = CompendiumFiveTools + "/auto"
+	CompendiumOpen5e              = "/open5e"
 	// The source key travels in the form: page sources hold "/" (5etools:mtf/howler).
-	CompendiumSourceMove   = "/sources/move"
 	CompendiumSourceDelete = "/sources/delete"
 	CompendiumSourceOrder  = "/sources/order"
 	CompendiumPagePreview  = "/page/preview"

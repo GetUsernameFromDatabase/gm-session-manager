@@ -112,6 +112,10 @@ func TestLiveVisibility(t *testing.T) {
 		{"player may not see join requests", player, f.campaignID, views.LiveKey(views.LiveRequests, 0), false, nil, nil},
 		{"GM sees the 5etools import", perm.GM, 0, views.LiveKey(views.LiveImport, 0), true, nil, nil},
 		{"player may not see the 5etools import", player, f.campaignID, views.LiveKey(views.LiveImport, 0), false, nil, nil},
+		{"GM sees the starting sets", perm.GM, 0, views.LiveKey(views.LiveImport, views.StarterLiveCompendium), true, nil, nil},
+		{"player may not see the starting sets", player, f.campaignID, views.LiveKey(views.LiveImport, views.StarterLiveCompendium), false, nil, nil},
+		{"GM sees the Sources card's starting sets", perm.GM, f.campaignID, views.LiveKey(views.LiveImport, views.StarterLiveCard), true, nil, nil},
+		{"player may not see the Sources card's starting sets", player, f.campaignID, views.LiveKey(views.LiveImport, views.StarterLiveCard), false, nil, nil},
 		{"player sees a revealed NPC", player, f.campaignID, views.LiveKey(views.LiveEntity, f.entity), true, nil, nil},
 		{"player may not see a GM-only note", player, f.campaignID, views.LiveKey(views.LiveNote, f.gmNote), false, nil, nil},
 		{"player sees own sheet with HP", player, f.campaignID, views.LiveKey(views.LiveCharacter, f.characterID), true, []string{"hp"}, nil},
@@ -409,11 +413,12 @@ func TestLiveBindsMatchState(t *testing.T) {
 		viewer             perm.Viewer
 	}{
 		{"GM compendium import", route.Compendium + "?import=" + views.ImportTabFiveTools, gm, perm.GM},
+		{"GM empty compendium", route.Compendium, gm, perm.GM}, // the starting sets
 		{"player sheet", route.Path(route.Character, f.characterID), player, perm.Player(f.characterID)},
 		{"GM sheet", route.Path(route.Character, f.characterID), gm, perm.GM},
 		{"player combat", route.Path(route.CampaignCombat, f.campaignID), player, perm.Player(f.characterID)},
 		{"GM combat", fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, f.campaignID), f.encounter), gm, perm.GM},
-		{"GM overview", route.Path(route.Campaign, f.campaignID), gm, perm.GM},
+		{"GM overview", route.Path(route.Campaign, f.campaignID), gm, perm.GM}, // the Sources card's starting sets too
 	}
 	for _, dead := range []bool{false, true} { // the dead sheet swaps its buttons and the tracker its badge
 		if dead {

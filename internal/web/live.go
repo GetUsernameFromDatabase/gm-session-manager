@@ -188,7 +188,13 @@ func (a *App) liveHTML(c *gin.Context) error {
 		return err
 	}
 	key := c.Query("v")
+	// The GM's page names its campaign (as its socket does); a player's is
+	// always their own. member and inCampaign let the GM through first, so
+	// only campaign-keyed views (the Sources card's sets) read it.
 	vc := viewerCtx{viewer: w.viewer, campaignID: w.campaignID()}
+	if w.isGM() {
+		vc.campaignID, _ = strconv.ParseInt(c.Query("campaign"), 10, 64)
+	}
 	if k := parseLiveKey(key); k.kind == views.LiveWaiting && w.id.Session == nil {
 		vc.pending, _ = a.Hub.PendingBySecret(k.id)
 	}
@@ -200,13 +206,8 @@ func (a *App) liveHTML(c *gin.Context) error {
 		c.Status(http.StatusNoContent)
 		return nil
 	}
-	// Compendium links follow the page's campaign: the GM's names it, a
-	// player's is always their own.
-	campaign := vc.campaignID
-	if w.isGM() {
-		campaign, _ = strconv.ParseInt(c.Query("campaign"), 10, 64)
-	}
-	c.Request = c.Request.WithContext(views.WithCampaign(c.Request.Context(), campaign))
+	// Compendium links follow the page's campaign.
+	c.Request = c.Request.WithContext(views.WithCampaign(c.Request.Context(), vc.campaignID))
 	a.render(c, http.StatusOK, lv.html)
 	return nil
 }
@@ -243,11 +244,22 @@ func (a *App) loadRosterLive(ctx context.Context, vc viewerCtx, k liveKey) (live
 	return liveView{html: views.CampaignRoster(r), shape: views.CampaignRoster(r.Shape()), hot: r.Hot, ok: true}, nil
 }
 
-func (a *App) loadImportLive(_ context.Context, vc viewerCtx, _ liveKey) (liveView, error) {
+// loadImportLive is the import tab's progress (id 0), or the starting sets
+// of the empty compendium (id 1) or of the page campaign's Sources card (id 2).
+func (a *App) loadImportLive(_ context.Context, vc viewerCtx, k liveKey) (liveView, error) {
 	if !vc.viewer.IsGM {
 		return liveView{}, nil
 	}
 	j := a.fiveTools.get()
+	switch k.num() {
+	case views.StarterLiveCompendium:
+		return liveView{html: views.StarterSets(j, 0), shape: views.StarterSets(j.Shape(), 0), hot: j.Hot, ok: true}, nil
+	case views.StarterLiveCard:
+		if vc.campaignID == 0 { // the card lives on a campaign page
+			return liveView{}, nil
+		}
+		return liveView{html: views.StarterSets(j, vc.campaignID), shape: views.StarterSets(j.Shape(), vc.campaignID), hot: j.Hot, ok: true}, nil
+	}
 	return liveView{html: views.FiveToolsProgress(j, true), shape: views.FiveToolsProgress(j.Shape(), true), hot: j.Hot, ok: true}, nil
 }
 

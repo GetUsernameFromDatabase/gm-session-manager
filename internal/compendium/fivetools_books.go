@@ -36,6 +36,21 @@ const (
 	oldBookPrefix = ".old-5etools-"
 )
 
+// Edition2024From is the first publication date of a 2024-edition book.
+const Edition2024From = "2024-09-01"
+
+// FiveTools2024Set is the "2024 set": WotC's core books and supplements
+// published since Edition2024From.
+func FiveTools2024Set(books []Book) []Book {
+	var out []Book
+	for _, b := range books {
+		if (b.Group == GroupCore || b.Group == GroupSupplement) && b.Publisher == defaultPublisher && b.Published >= Edition2024From {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
 // fiveToolsBase is the data folder of the mirror; tests point it at httptest.
 var fiveToolsBase = "https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/"
 
@@ -773,10 +788,13 @@ func downloadBook(m *mirror, dir string, b Book) error {
 	if err := m.writeBook(w, b); err != nil {
 		return err
 	}
-	final := filepath.Join(dir, bookFolder(b.ID))
-	// final is DATA_DIR plus a book id DownloadFiveTools checked. The old
-	// folder is kept aside until the new one is in place, so a failure
-	// loses nothing.
+	return replaceDir(dir, tmp, filepath.Join(dir, bookFolder(b.ID)))
+}
+
+// replaceDir moves tmp to final. final is DATA_DIR plus a checked name; the
+// old folder is kept aside until the new one is in place, so a failure
+// loses nothing.
+func replaceDir(dir, tmp, final string) error {
 	old := ""
 	if _, err := os.Stat(final); err == nil {
 		if old, err = os.MkdirTemp(dir, oldBookPrefix); err != nil {

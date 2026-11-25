@@ -21,7 +21,13 @@ templ CampaignSources(v CampaignSourcesView) {
 					Sources
 				}
 				@card.Action() {
-					<span class="text-sm text-muted-foreground tabular-nums">{ fmt.Sprintf("%d of %d on", v.onCount(), len(v.Sources)) }</span>
+					<div class="flex flex-wrap items-center justify-end gap-x-2">
+						<span class="text-sm text-muted-foreground tabular-nums">{ fmt.Sprintf("%d of %d on", v.onCount(), len(v.Sources)) }</span>
+						// Their priority order lives on the campaign compendium's Import tab.
+						@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeSm, Class: "h-auto px-0", Href: CompendiumBase(v.CampaignID) + "?" + TabKey + "=" + CompendiumTabImport}) {
+							Sort sources
+						}
+					</div>
 				}
 				@card.Description() {
 					Pickers and lists in this campaign offer only ticked sources. Homebrew is always on.
@@ -29,7 +35,8 @@ templ CampaignSources(v CampaignSourcesView) {
 			}
 			@card.Content(card.ContentProps{Class: "space-y-3"}) {
 				if len(v.Sources) == 0 {
-					<p class="text-sm text-muted-foreground">No sources imported yet.</p>
+					<p class="text-sm text-muted-foreground">No sources imported yet. Download a starting set:</p>
+					@StarterSets(v.Job, v.CampaignID)
 				} else {
 					// Kept across the card's swaps; app.js filters the rows.
 					@input.Input(input.Props{ID: "campaign-sources-filter", Type: "search", Placeholder: "Filter sources…", Attributes: templ.Attributes{"aria-label": "Filter sources", "autocomplete": "off", "data-source-filter": "", "hx-preserve": "true"}})

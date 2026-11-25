@@ -438,7 +438,7 @@ func (a *App) sourceDelete(c *gin.Context) error {
 // campaignSourcesView is the campaign's Sources card: every imported source
 // but homebrew, ticked or not, with who in the campaign uses it.
 func (a *App) campaignSourcesView(ctx context.Context, campaignID int64) (views.CampaignSourcesView, error) {
-	v := views.CampaignSourcesView{CampaignID: campaignID}
+	v := views.CampaignSourcesView{CampaignID: campaignID, Job: a.fiveTools.get()}
 	all, err := a.Store.ListCompendiumSources(ctx)
 	if err != nil {
 		return v, err
@@ -472,6 +472,9 @@ func (a *App) campaignSourcesView(ctx context.Context, campaignID int64) (views.
 type campaignSourcesForm struct {
 	Keys []string `form:"key" validate:"required,min=1,max=1000,dive,required,max=512"`
 	On   bool     `form:"on"`
+	// Back (views.SourcesBackCompendium) sends the GM to the campaign's
+	// compendium instead of answering with the card (a folder import's notice).
+	Back string `form:"back" validate:"omitempty,oneof=compendium"`
 }
 
 // campaignSourcesSet changes the campaign's allow list. A source some
@@ -525,6 +528,10 @@ func (a *App) campaignSourcesSet(c *gin.Context) error {
 	}
 	// Every picker and list in the campaign changes; pages refetch.
 	a.Hub.Publish(id, hub.Topic{Kind: hub.TopicCompendium})
+	if f.Back == views.SourcesBackCompendium {
+		redirect(c, views.CompendiumBase(id))
+		return nil
+	}
 	v, err := a.campaignSourcesView(ctx, id)
 	if err != nil {
 		return err

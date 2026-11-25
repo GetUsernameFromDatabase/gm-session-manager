@@ -39,9 +39,10 @@ type CompendiumView struct {
 	MyHomebrew []sqlc.ListHomebrewByOwnerRow
 	Import     ImportNotice
 	// Sources are the imported sources in priority order (GM), with their
-	// overlap counts by key.
+	// overlap and entry counts by key.
 	Sources      []sqlc.CompendiumSource
 	SharedCounts map[string]sqlc.CountSharedBySourceRow
+	EntryCounts  map[string]sqlc.CountEntriesBySourceRow
 	// Shared browses one source's entries another source also holds (GM),
 	// SharedWith those other sources, With narrows to one of them; rows show
 	// their CopyOrder (by CopyKey) and open the comparison.
@@ -97,7 +98,15 @@ type ImportNotice struct {
 	OnHost bool
 	// Job is the background 5etools import.
 	Job FiveToolsJob
+	// Off is the sources a folder import in Campaign's compendium brought in
+	// that the campaign leaves off (offered with "Use selected").
+	Off      []string
+	Campaign int64
 }
+
+// SourcesBackCompendium is the Sources form's back value that sends the GM
+// to the campaign's compendium instead of answering with the card.
+const SourcesBackCompendium = "compendium"
 
 // bookIDs is the books' ids, upper case as 5etools writes them.
 func bookIDs(books []compendium.Book) string {

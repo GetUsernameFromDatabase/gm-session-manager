@@ -111,7 +111,7 @@ func (a *App) StartUp(ctx context.Context) error {
 	}
 	_, stale := a.state.get()
 	if st.FiveToolsAutoRedownload && len(stale) > 0 && a.fiveTools.start(len(stale)) {
-		go a.runFiveTools(context.WithoutCancel(ctx), a.compendiumDir(), stale)
+		go a.runFiveTools(context.WithoutCancel(ctx), a.compendiumDir(), stale, 0)
 	}
 	return nil
 }

@@ -106,6 +106,16 @@ WHERE e.scoped = 0
              OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = o.source_key)))
 GROUP BY e.source_key;
 
+-- CountEntriesBySource is each source's entries (player homebrew left out)
+-- and how many of them lists show in the campaign (campaign_top; 0 is the
+-- whole compendium). A source the campaign leaves out shows none.
+-- name: CountEntriesBySource :many
+SELECT e.source_key, count(*) AS total,
+    CAST(COALESCE(sum(e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))), 0) AS INTEGER) AS visible
+FROM compendium_entries AS e
+WHERE e.scoped = 0
+GROUP BY e.source_key;
+
 -- ListSharedWith is the other sources a source shares entries with, most first.
 -- name: ListSharedWith :many
 SELECT o.source_key, count(*) AS n

@@ -100,7 +100,9 @@ the 2024 SRD, download the JSON files of
 [open5e-api `data/v2/wizards-of-the-coast/srd-2024`](https://github.com/open5e/open5e-api/tree/staging/data/v2/wizards-of-the-coast/srd-2024)
 into `data/compendium/srd-2024/`. They are imported at start-up and from the
 Compendium page ("Import now"); unchanged folders are skipped. The SRD 5.2
-is licensed CC-BY-4.0 and every entry shows its attribution.
+is licensed CC-BY-4.0 and every entry shows its attribution. While the
+compendium is empty, the GM's Browse tab offers a few starting sets to import
+in one click.
 
 The GM can also fill the compendium from the 5etools data: the Import >
 5etools tab lists the books (core, supplements, adventures, Unearthed Arcana,
@@ -109,9 +111,9 @@ third party), downloads the checked ones from the 5etools GitHub mirror into
 them; "Remove" deletes a book and its entries. Where several sources hold the
 same entry, the Source priority list beside the import tabs decides which copy
 is shown and linked; the others are listed as "Also in" on the entry page.
-Each source in that list counts its entries another source also holds
-("shared") and how many of those it wins ("shown"), among the sources the
-campaign allows; the count lists them, and each opens every copy side by side.
+Each source in that list shows how many of its entries are shown among the
+sources the campaign allows; one that shares entries with another source links
+to them, and each opens every copy side by side.
 This content is for private use at your own table and is not redistributed
 with the app.
 

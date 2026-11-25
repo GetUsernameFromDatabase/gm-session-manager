@@ -876,13 +876,50 @@ import {
         delay: 150,
         animation: 150,
         onEnd(e) {
-          if (e.oldIndex === e.newIndex) return;
-          rememberSourceRow(e.item);
-          const key = [...list.querySelectorAll("[data-source-key]")].map((li) => li.dataset.sourceKey);
-          htmx.ajax("POST", list.dataset.sortable, { target: list.dataset.sortTarget, swap: "outerHTML", values: { key } });
+          if (e.oldIndex !== e.newIndex) postSourceOrder(list, e.item);
         },
       });
     });
+  });
+  function postSourceOrder(list, moved) {
+    rememberSourceRow(moved);
+    const key = [...list.querySelectorAll("[data-source-key]")].map((li) => li.dataset.sourceKey);
+    htmx.ajax("POST", list.dataset.sortable, { target: list.dataset.sortTarget, swap: "outerHTML", values: { key } });
+  }
+
+  // Enter in a row's position box moves it to that place among the numbered
+  // rows (homebrew is 0 and not counted), clamped, and posts like a drag.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || !e.target.matches?.("[data-source-position]")) return;
+    e.preventDefault();
+    const li = e.target.closest("li");
+    const list = li.parentElement;
+    const others = [...list.children].filter((r) => r !== li && !r.hasAttribute("data-source-homebrew"));
+    const typed = parseInt(e.target.value, 10);
+    const at = Math.min(Math.max(typed, 1), others.length + 1);
+    // Its numbered place now: the numbered rows above it, plus one.
+    const now = others.filter((r) => r.compareDocumentPosition(li) & Node.DOCUMENT_POSITION_FOLLOWING).length + 1;
+    // Nothing to do (no number, or the same place): show its place again, so
+    // a homebrew row between them never gets jumped over.
+    if (Number.isNaN(typed) || at === now) {
+      e.target.value = e.target.defaultValue;
+      return;
+    }
+    if (at <= others.length) others[at - 1].before(li);
+    else others.at(-1)?.after(li);
+    postSourceOrder(list, li);
+    sourceRow.focus = true; // the swap replaces this box: focus its new copy
+  });
+
+  // "Go to source" scrolls the chosen row into view and flashes it; the list stays whole.
+  document.addEventListener("change", (e) => {
+    if (!e.target.closest?.("[data-source-goto]") || !e.target.value) return;
+    const list = document.querySelector("[data-sortable]");
+    const row = list && [...list.children].find((li) => li.dataset.sourceKey === e.target.value);
+    if (!row) return;
+    centerRow(list, row, true);
+    row.dataset.flash = "";
+    setTimeout(() => delete row.dataset.flash, 1500);
   });
 
   // The answer replaces the card, which would start the list at its top: it
@@ -905,8 +942,11 @@ import {
     if (!list) return;
     const rows = [...list.children];
     const row = rows.find((li) => li.dataset.sourceKey === sourceRow.key) ?? rows[Math.min(sourceRow.index, rows.length - 1)];
+    const focus = sourceRow.focus;
     sourceRow = null;
-    if (row) centerRow(list, row, false);
+    if (!row) return;
+    centerRow(list, row, false);
+    if (focus) row.querySelector("[data-source-position]")?.focus();
   });
 
   // The creation wizard's ability scores show their point-buy cost (27

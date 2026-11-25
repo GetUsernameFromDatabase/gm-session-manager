@@ -25,6 +25,9 @@ type CampaignSource struct {
 type CampaignSourcesView struct {
 	CampaignID int64
 	Sources    []CampaignSource
+	// Job is the background import, shown by the starting sets while
+	// nothing is imported.
+	Job FiveToolsJob
 }
 
 // sourceGroup is the sources of one edition.

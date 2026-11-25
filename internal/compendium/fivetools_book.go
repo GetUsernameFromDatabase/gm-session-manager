@@ -53,7 +53,7 @@ func parseFiveToolsBookReport(key string, files map[string][]byte) (Source, []En
 		Attribution: book.Name + ", © " + cmp.Or(book.Publisher, "Wizards of the Coast"),
 		Published:   book.Published,
 	}
-	if book.Published >= "2024-09-01" {
+	if book.Published >= Edition2024From {
 		src.Edition = "2024"
 	}
 	p := &ftBook{id: book.ID, files: files, seen: map[string]bool{}}

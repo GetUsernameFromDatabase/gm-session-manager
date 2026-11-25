@@ -12,12 +12,16 @@ import (
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/route"
+	"gm-session-manager/internal/web/utils"
 
 	"github.com/a-h/templ"
 )
 
 // ImportTabFiveTools is the import tab that picks 5etools books.
 const ImportTabFiveTools = "fivetools"
+
+// ImportKey is the query (and form) key naming the import tab to open.
+const ImportKey = "import"
 
 // FiveToolsPath is the picker's endpoint.
 const FiveToolsPath = route.Compendium + route.CompendiumFiveTools
@@ -27,16 +31,125 @@ const (
 	FiveToolsID    = "fivetools-books"
 	FiveToolsField = "book"
 	SourcesID      = "source-priority"
-	SourceDirField = "dir"
-	SourceUp       = "up"
-	SourceDown     = "down"
 	// SourceOrderPath takes every source key (SourceKeyField) in the new order.
 	SourceOrderPath = route.Compendium + route.CompendiumSourceOrder
 	SourceKeyField  = "key"
+	// FiveToolsSetField names a starting set (FiveToolsSet2024) instead of books.
+	FiveToolsSetField = "set"
+	FiveToolsSet2024  = "2024"
+	// Open5eDocField names the SRD an Open5e download fetches (compendium.SRD*Key).
+	Open5eDocField = "doc"
+	// StarterSetsID starts the element id of each StarterSets.
+	StarterSetsID = "starter-sets"
 )
+
+// StarterSets' live ids (LiveImport): the empty compendium's and a
+// campaign's Sources card's.
+const (
+	StarterLiveCompendium = 1
+	StarterLiveCard       = 2
+)
+
+// starterLive is StarterSets' live id; card is the Sources card's campaign
+// (0 in the empty compendium).
+func starterLive(card int64) int {
+	if card > 0 {
+		return StarterLiveCard
+	}
+	return StarterLiveCompendium
+}
+
+// starterBase is the compendium the set forms post to: the card's campaign,
+// so the import ticks the sets there, or the one ctx renders in.
+func starterBase(ctx context.Context, card int64) string {
+	if card > 0 {
+		return CompendiumBase(card)
+	}
+	return CompendiumPath(ctx, "")
+}
 
 // scrollBox caps a long list or notice so the controls around it stay close.
 const scrollBox = "max-h-80 overflow-y-auto"
+
+// SourceGotoField names the priority card's "Go to source" box (app.js).
+const SourceGotoField = "goto-source"
+
+// sourcePositions numbers the priority list as the GM types it: homebrew
+// is 0 wherever it sits, the others 1..n in order.
+func sourcePositions(sources []sqlc.CompendiumSource) []int {
+	out := make([]int, len(sources))
+	n := 0
+	for i, s := range sources {
+		if s.SourceKey != compendium.HomebrewSource {
+			n++
+			out[i] = n
+		}
+	}
+	return out
+}
+
+// entryCountText is a source's count chip: shown/total, or the total when
+// lists show every entry.
+func entryCountText(c sqlc.CountEntriesBySourceRow) string {
+	if c.Visible < c.Total {
+		return fmt.Sprintf("%d/%d", c.Visible, c.Total)
+	}
+	return fmt.Sprint(c.Total)
+}
+
+// entryCountTitle explains the chip; hasShared adds the overlap with other
+// sources (s).
+func entryCountTitle(c sqlc.CountEntriesBySourceRow, s sqlc.CountSharedBySourceRow, hasShared bool) string {
+	t := fmt.Sprintf("%d %s", c.Total, utils.IfElse(c.Total == 1, "entry", "entries"))
+	switch {
+	case c.Total == 0:
+		t += "."
+	case c.Visible < c.Total:
+		t += fmt.Sprintf(", %d shown.", c.Visible)
+	default:
+		t += ", all shown."
+	}
+	if hasShared {
+		t += fmt.Sprintf(" %d shared with other sources, %d of those win.", s.Shared, s.Shown)
+	}
+	return t
+}
+
+// Shown/total ratios below which the count turns a warmer colour
+// (entryCountClass).
+const (
+	countAmberBelow  = 0.5
+	countOrangeBelow = 0.35
+	countRedBelow    = 0.2
+)
+
+// Colours of the count (entryCountClass); half shown or more stays muted.
+const (
+	countAmber     = "text-amber-700 dark:text-amber-300"
+	countOrange    = "text-orange-700 dark:text-orange-300"
+	countRed       = "text-red-600 dark:text-red-400"
+	countNoneShown = "text-destructive"
+)
+
+// entryCountClass colours the count by the share lists show: none from half
+// up (a few entries losing to another source is normal), amber to red below.
+func entryCountClass(c sqlc.CountEntriesBySourceRow) string {
+	if c.Total == 0 {
+		return ""
+	}
+	r := float64(c.Visible) / float64(c.Total)
+	switch {
+	case c.Visible == 0:
+		return countNoneShown
+	case r < countRedBelow:
+		return countRed
+	case r < countOrangeBelow:
+		return countOrange
+	case r < countAmberBelow:
+		return countAmber
+	}
+	return ""
+}
 
 // FiveToolsView is the book picker: books by group, with the import date of
 // each downloaded one. Running disables it while an import runs.
@@ -57,10 +170,16 @@ type FiveToolsJob struct {
 	Current     string
 	Msg         string
 	Failed      bool
+	// Books are the picked 5etools book ids while Running and after a
+	// failed end, so the reloaded picker keeps the GM's ticks.
+	Books []string
 }
 
 func (j FiveToolsJob) label() string {
-	if j.Importing {
+	switch {
+	case j.Total == 0: // the Open5e listing is not in yet
+		return "Starting…"
+	case j.Importing:
 		return fmt.Sprintf("Importing %d of %d: %s", j.Done+1, j.Total, j.Current)
 	}
 	return fmt.Sprintf("Downloading %d of %d: %s", j.Done+1, j.Total, j.Current)
@@ -93,7 +212,9 @@ type FiveToolsGroup struct {
 type FiveToolsBook struct {
 	compendium.Book
 	Downloaded bool
-	Imported   time.Time // zero until the first import
+	// Ticked pre-ticks a book a starting set holds (?set=).
+	Ticked   bool
+	Imported time.Time // zero until the first import
 }
 
 var fiveToolsGroupTitles = map[string]string{

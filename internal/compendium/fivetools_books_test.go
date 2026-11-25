@@ -366,6 +366,29 @@ func TestDownloadFiveToolsReplacesFolder(t *testing.T) {
 	}
 }
 
+func TestFiveTools2024Set(t *testing.T) {
+	const wotc = defaultPublisher
+	in := map[string]Book{
+		"core 2024":       {ID: "XPHB", Group: GroupCore, Publisher: wotc, Published: "2024-09-17"},
+		"supplement 2024": {ID: "XSUP", Group: GroupSupplement, Publisher: wotc, Published: "2025-03-01"},
+		"adventure 2024":  {ID: "XADV", Group: GroupAdventure, Publisher: wotc, Published: "2025-01-01"},
+		"ua 2024":         {ID: "UAX", Group: GroupUA, Publisher: wotc, Published: "2025-01-01"},
+		"third party":     {ID: "HBT", Group: GroupSupplement, Publisher: "Someone", Published: "2025-01-01"},
+		"core 2014":       {ID: "PHB", Group: GroupCore, Publisher: wotc, Published: "2014-08-19"},
+	}
+	want := []string{"core 2024", "supplement 2024"}
+	var books []Book
+	for _, b := range in {
+		books = append(books, b)
+	}
+	got := FiveTools2024Set(books)
+	for name, b := range in {
+		if picked := slices.Contains(got, b); picked != slices.Contains(want, name) {
+			t.Errorf("%s: picked %v", name, picked)
+		}
+	}
+}
+
 func TestRemoveFiveToolsRejectsBadIDs(t *testing.T) {
 	dir := t.TempDir()
 	for _, id := range []string{"", "..", "../x", "a/b", `a\b`, "a b"} {

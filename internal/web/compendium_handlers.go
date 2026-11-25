@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -57,7 +58,7 @@ func (a *App) compendiumRoutes(g *gin.RouterGroup, gm gin.HandlerFunc) {
 	g.POST(route.CompendiumFiveTools, gm, a.h(a.fiveToolsImport))
 	g.POST(route.CompendiumFiveToolsBookDelete, gm, a.h(a.fiveToolsRemove))
 	g.POST(route.CompendiumFiveToolsAuto, gm, a.h(a.fiveToolsAuto))
-	g.POST(route.CompendiumSourceMove, gm, a.h(a.sourceMove))
+	g.POST(route.CompendiumOpen5e, gm, a.h(a.open5eImport))
 	g.POST(route.CompendiumSourceDelete, gm, a.h(a.sourceDelete))
 	g.POST(route.CompendiumSourceOrder, gm, a.h(a.sourceOrder))
 	g.POST(route.CompendiumPagePreview, gm, a.h(a.compendiumPagePreview))
@@ -294,6 +295,9 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 	}
 	if w.isGM() {
 		if v.Sources, v.SharedCounts, err = a.sourcePriority(ctx, viewerCampaign(camp)); err != nil {
+			return err
+		}
+		if v.EntryCounts, err = a.entryCounts(ctx, viewerCampaign(camp)); err != nil {
 			return err
 		}
 	}
@@ -679,7 +683,22 @@ func (a *App) compendiumImport(c *gin.Context) error {
 	}
 	msg, failed := ImportSummary(reports)
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium}) // global: no campaign
-	return a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabFolder, Msg: msg, Failed: failed})
+	notice := views.ImportNotice{Tab: views.ImportTabFolder, Msg: msg, Failed: failed}
+	// A folder import never ticks sources; in a campaign's compendium the
+	// notice offers those it imported that the campaign leaves off.
+	if camp := pathCampaign(c); camp != nil {
+		on, err := a.Store.ListCampaignSources(c.Request.Context(), camp.ID)
+		if err != nil {
+			return err
+		}
+		for _, r := range reports {
+			if r.Err == nil && r.Source != compendium.HomebrewSource && !slices.Contains(on, r.Source) {
+				notice.Off = append(notice.Off, r.Source)
+			}
+		}
+		notice.Campaign = camp.ID
+	}
+	return a.renderCompendium(c, notice)
 }
 
 // compendiumFolder opens DATA_DIR/compendium in the host's file manager. Only
@@ -794,6 +813,11 @@ func (a *App) compendiumPageSave(c *gin.Context) error {
 	}
 	if err != nil {
 		return a.renderPagePreview(c, http.StatusUnprocessableEntity, w, views.HomebrewView{Input: in, Page: p, Back: back, Error: err.Error()})
+	}
+	// Saved from a campaign's compendium (its path), the page's source is
+	// ticked there, or the entry it opens next would be hidden.
+	if err := a.allowSources(ctx, viewerCampaign(pathCampaign(c)), []string{key}); err != nil {
+		return err
 	}
 	rows, err := a.Store.ListCompendiumKeysBySource(ctx, key)
 	if err != nil || len(rows) == 0 {

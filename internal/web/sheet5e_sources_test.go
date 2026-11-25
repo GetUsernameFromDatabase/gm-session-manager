@@ -32,7 +32,6 @@ const maxSourceKey = 512
 func TestSourceKeyLimits(t *testing.T) {
 	want := "max=" + strconv.Itoa(maxSourceKey)
 	tagHas(t, pageForm{}, "Page", "max=500") // raising it means raising maxSourceKey
-	tagHas(t, sourceMoveForm{}, "Key", want)
 	tagHas(t, sourceOrderForm{}, "Keys", want)
 	tagHas(t, sourcePreviewForm{}, "Source", want)
 	tagHas(t, sourceDeleteForm{}, "Key", want)

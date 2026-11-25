@@ -210,7 +210,7 @@ func TestSourceOverlap(t *testing.T) {
 		code               int
 		want, hidden       []string
 	}{
-		{"card counts", gm, route.Compendium + "?tab=import", http.StatusOK, []string{"1 shared, 1 shown", "1 shared, 0 shown", "?shared=on-book"}, nil},
+		{"card counts", gm, route.Compendium + "?tab=import", http.StatusOK, []string{"1 shared with other sources, 1 of those win.", "1 shared with other sources, 0 of those win.", "?shared=on-book"}, nil},
 		{"shared filter opens comparisons", gm, route.Compendium + "?shared=on-book", http.StatusOK, []string{"1 shared, 0 shown", compareSubclass, `title="off-book › on-book"`}, []string{"Off School"}},
 		{"kind chips stay in the shared list", gm, route.Compendium + "?shared=on-book", http.StatusOK, []string{"kind=subclass&amp;shared=on-book", "with=off-book"}, nil},
 		{"with narrows to one other source", gm, route.Compendium + "?shared=on-book&with=off-book", http.StatusOK, []string{compareSubclass}, nil},

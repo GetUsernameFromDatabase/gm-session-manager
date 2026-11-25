@@ -71,21 +71,20 @@ func TestSourcePriority(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		move     string
-		up       bool
+		order    []string
 		wantSlug string
 		wantErr  bool
 	}{
-		{"default winner", "", false, "xphb", false},
-		{"srd up past xphb", "srd-2024", true, "srd-2024", false},
-		{"srd down again", "srd-2024", false, "xphb", false},
-		{"srd up once more", "srd-2024", true, "srd-2024", false},
-		{"unknown", "nope", true, "", true},
+		{name: "default winner", wantSlug: "xphb"},
+		{name: "srd above xphb", order: []string{"homebrew", "srd-2024", "xphb", "phb-2014"}, wantSlug: "srd-2024"},
+		{name: "srd below again", order: []string{"homebrew", "xphb", "srd-2024", "phb-2014"}, wantSlug: "xphb"},
+		{name: "srd above once more", order: []string{"homebrew", "srd-2024", "xphb", "phb-2014"}, wantSlug: "srd-2024"},
+		{name: "unknown", order: []string{"nope"}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.move != "" {
-				if err := MoveSource(ctx, store, tt.move, tt.up); (err != nil) != tt.wantErr {
+			if tt.order != nil {
+				if err := SetSourceOrder(ctx, store, tt.order); (err != nil) != tt.wantErr {
 					t.Fatalf("err %v", err)
 				}
 			}
@@ -147,7 +146,7 @@ func TestSetSourceOrder(t *testing.T) {
 	}
 }
 
-func TestMoveSourceBreaksTies(t *testing.T) {
+func TestSourceOrderBeatsDate(t *testing.T) {
 	store := newStore(t)
 	ctx := t.Context()
 	addCopy(t, store, "aaa", "2014", "x")
@@ -163,11 +162,11 @@ func TestMoveSourceBreaksTies(t *testing.T) {
 		t.Errorf("dated tie: %s, want the newer bbb", got)
 	}
 	// The GM's order beats the date.
-	if err := MoveSource(ctx, store, "aaa", true); err != nil {
+	if err := SetSourceOrder(ctx, store, []string{"homebrew", "aaa", "bbb"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := winningSource(t, store, "x"); got != "aaa" {
-		t.Errorf("winner after move: %s", got)
+		t.Errorf("winner after reorder: %s", got)
 	}
 	// Lists (campaign_top) show the same copy.
 	names, err := store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: "spell"})
