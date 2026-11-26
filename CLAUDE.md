@@ -34,7 +34,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 - Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
 - Durable lessons go in the nearest folder's `CLAUDE.md`; workflows in a skill; `HANDOFF.md` holds only current state and open items.
 
-## For the executor and reviewer agents
+## For the executor and every review
 
 - Easy to miss: validator `oneof` tags, `internal/enum` values, a `normalizeVersion` bump when a compendium parser changes, `DownloadVersion` when a 5etools download changes, route constants instead of literals (`internal/web/CLAUDE.md`).
 - Never run the built binary and never touch `data/` (the real DB and certificate); `curl` and other network calls are denied.

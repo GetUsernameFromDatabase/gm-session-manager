@@ -1,10 +1,10 @@
 ---
 name: browser-check
-description: Check UI changes in a real browser with the Playwright MCP server against a test instance of the app, as GM or player, and take before/after screenshot pairs. Use after any change to .templ, CSS or JS, before saying it is done, when a change needs before/after screenshots, and when asked to look at, test or explore pages in the browser.
+description: Check UI changes in a real browser with the Playwright MCP server against a test instance of the app, as GM or player, and on request take before/after screenshot pairs. Use after any change to .templ, CSS or JS, before saying it is done, when the user asks for before/after screenshots, and when asked to look at, test or explore pages in the browser.
 context: fork
 agent: general-purpose
 model: haiku
-argument-hint: "check: <pages and controls> | pair Cnn: <element> on <page>, as GM|player [; pair Cmm: …]"
+argument-hint: "check: <URL> as GM|player|state: <name> — <selectors to work> → <expected result> | pair <name>: <element selector> on <URL>, as GM|player [; pair …]"
 ---
 
 # Browser check
@@ -12,8 +12,8 @@ argument-hint: "check: <pages and controls> | pair Cnn: <element> on <page>, as 
 You run as your own agent and cannot see the caller's conversation. Your task: $ARGUMENTS
 
 - `check: …`: check those pages and controls.
-- `pair Cnn: …`: take a before/after screenshot pair; read `.claude/skills/browser-check/screenshots.md` first and follow it. Several pairs separated by `;` are one batch: set both instances up once and take the pairs in order.
-- If the task names no page, say so and stop.
+- `pair <name>: …`: take a before/after screenshot pair; read `.claude/skills/browser-check/screenshots.md` first and follow it. Several pairs separated by `;` are one batch: set both instances up once and take the pairs in order.
+- If the task names no page, say so and stop. Work only the URLs, selectors and state the task names; where it gives no expected result, report what you saw instead of guessing one.
 
 ## You are alone
 
@@ -57,11 +57,11 @@ You are the only agent using the browser and the test instances. Any tab, browse
 
 ## What to check
 
-- The changed pages only. Work the controls through `browser_snapshot`. Take at most one screenshot per page per width (390px, 1280px), after the controls are tried, not after every step. Read the console once per page (CSP errors included).
+- The changed pages only. Every tool call re-reads your whole context, so turns are the cost: per page, do the named steps, assertions and screenshots in one `browser_run_code_unsafe` that returns a small JSON result (counts, texts, `scrollWidth`, errors), not a call per click. Use `browser_find` or `browser_snapshot` only to locate an element the task did not name, or to see why a script failed. Take at most one screenshot per page per width (390px, 1280px), after the controls are tried. Read the console once per page (CSP errors included).
 - At 390px, check `document.documentElement.scrollWidth` is 390: anything wider is a horizontal page scroll, a failure.
 - After a restart, wait for the page to load before clicking: a click that lands too early is lost without any error.
 - The MCP takes over `confirm()` dialogs: click the control, then answer with `browser_handle_dialog` (dismiss destructive ones unless told otherwise).
 - Report back in 15 lines or fewer: what you checked, what was wrong, console errors, and the screenshot names.
-- **Sample, don't crawl.** When exploring, open one page of each kind, not every entry. No scripted crawls. `browser_run_code_unsafe` only to reach another context's page (`page.context().browser().contexts()`).
-- Read screenshots yourself and report what you saw. Save them in one run folder per task, `data-test/screenshots/<date>-<topic>/` (`filename: ../screenshots/<date>-<topic>/<page>-<width>.png`, relative to the MCP output dir `data-test/playwright`), never elsewhere in the repo. In that folder write a `README.md`: one line on what was checked and the files changed, then each image as a Markdown link (`![<page> 390px](<page>-390.png)`). Add a line at the top of `data-test/screenshots/README.md` (newest first): `- [<date> <topic>](<date>-<topic>/README.md)`. Cite screenshots by path in a handoff.
+- **Sample, don't crawl.** When exploring, open one page of each kind, not every entry. A script drives the named steps of one page, never a loop over entries. Another context's page: `page.context().browser().contexts()`.
+- Read `check` screenshots yourself and report what you saw. Save them in one run folder per task, `data-test/screenshots/<date>-<topic>/<page>-<width>.png` (MCP `filename: ../screenshots/…`, relative to its output dir `data-test/playwright`; in a script, relative to the repo root), never elsewhere in the repo. No README: report the paths.
 - Test data in `data-test` is shared between sessions: don't delete campaigns or characters you did not create.
