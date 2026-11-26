@@ -222,3 +222,9 @@ func CanReadImage(v Viewer, linkingBlocks []Block, look ImageLook) bool {
 	return v.IsGM || (v.IsPlayer() && look.Revealed) || v.owns(look.Owner) ||
 		slices.ContainsFunc(linkingBlocks, func(b Block) bool { return CanReadBlock(v, b) })
 }
+
+// CanTakeHome reports whether v may take a character home as a file: the GM,
+// or the character's own player.
+func CanTakeHome(v Viewer, characterID int64) bool {
+	return v.IsGM || v.owns(characterID)
+}

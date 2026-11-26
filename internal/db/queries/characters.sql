@@ -60,8 +60,8 @@ WHERE id = ?;
 DELETE FROM characters
 WHERE id = ?;
 
--- Level-up snapshots, newest reverted first.
-
+-- CreateLevelUp saves a level-up snapshot; snapshots are reverted newest
+-- first.
 -- name: CreateLevelUp :exec
 INSERT INTO level_ups (character_id, max_hp, sheet_json)
 VALUES (?, ?, ?);

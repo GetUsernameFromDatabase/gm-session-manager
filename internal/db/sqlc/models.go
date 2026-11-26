@@ -191,6 +191,13 @@ type EntityImage struct {
 	IsCurrent  bool
 }
 
+type HomeCopy struct {
+	CharacterID      int64
+	ServerID         string
+	TableCharacterID int64
+	ManifestJson     string
+}
+
 type Image struct {
 	ID           int64
 	CampaignID   int64
@@ -257,6 +264,11 @@ type NoteLink struct {
 	TargetImageID  sql.NullInt64
 }
 
+type ServerIdentity struct {
+	Only     int64
+	ServerID string
+}
+
 type Session struct {
 	ID          int64
 	TokenHash   []byte
@@ -265,4 +277,13 @@ type Session struct {
 	LastSeenAt  time.Time
 	UserAgent   string
 	CreatedAt   time.Time
+}
+
+type TakeHome struct {
+	ID          int64
+	CharacterID int64
+	Token       string
+	BaseJson    string
+	CreatedAt   time.Time
+	ReturnedAt  sql.NullTime
 }

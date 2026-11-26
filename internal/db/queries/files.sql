@@ -1,9 +1,8 @@
--- The admin Files page: every attachment and where it is used. Uses are
--- found in Go (internal/web/files.go) from the texts below.
-
 -- ListAttachmentFiles lists every attachment with its campaign and, for one
 -- in a note block, that block's visibility ('' for none: a NULL would not
--- scan into the overridden enum.Visibility type).
+-- scan into the overridden enum.Visibility type). It feeds the admin Files
+-- page; where each file is used is found in Go (internal/web/files.go) from
+-- the texts the queries below return.
 -- name: ListAttachmentFiles :many
 SELECT a.id, a.campaign_id, a.block_id, a.path, a.name, a.mime, a.size, a.created_at,
        c.name AS campaign_name, COALESCE(b.visibility, '') AS block_visibility

@@ -54,6 +54,8 @@ func (a *App) home(c *gin.Context) error {
 		a.render(c, http.StatusOK, views.GMHome(a.layout(w, "Campaigns", views.NavHome, nil, false), campaigns, a.joinInfo(0), a.feedbackPath()))
 	case w.character != nil:
 		c.Redirect(http.StatusSeeOther, route.Path(route.Character, w.character.ID))
+	case a.Player:
+		c.Redirect(http.StatusSeeOther, route.AtHome)
 	default:
 		c.Redirect(http.StatusSeeOther, route.Join)
 	}
@@ -147,7 +149,7 @@ func (a *App) adminLogin(c *gin.Context) error {
 		return err
 	}
 
-	auth.SetCookie(c, token)
+	a.Auth.SetCookie(c, token)
 	c.Redirect(http.StatusSeeOther, route.Home)
 	return nil
 }
@@ -155,21 +157,10 @@ func (a *App) adminLogin(c *gin.Context) error {
 // logout deletes this device's session row, the same thing a kick does. On
 // localhost this is also how a player switches back to admin.
 func (a *App) logout(c *gin.Context) error {
-	if sess := auth.FromContext(c).Session; sess != nil {
-		w, err := a.whoami(c)
-		if err != nil {
-			return err
-		}
-		if err := a.Auth.Revoke(c.Request.Context(), sess.ID); err != nil {
-			return err
-		}
-		a.Hub.CloseSession(sess.ID)
-		a.reqs.forget(sessionKey(*sess))
-		if w.character != nil {
-			a.Hub.Publish(w.character.CampaignID, hub.Topic{Kind: hub.TopicCampaign, ID: w.character.CampaignID})
-		}
+	if err := a.dropSession(c); err != nil {
+		return err
 	}
-	auth.ClearCookie(c)
+	a.Auth.ClearCookie(c)
 	c.Redirect(http.StatusSeeOther, route.Home)
 	return nil
 }
@@ -284,7 +275,7 @@ func (a *App) login(c *gin.Context, ch sqlc.Character) error {
 	if err != nil {
 		return err
 	}
-	auth.SetCookie(c, token)
+	a.Auth.SetCookie(c, token)
 	a.Hub.Publish(ch.CampaignID, hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID})
 	return nil
 }

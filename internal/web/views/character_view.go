@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
@@ -46,6 +47,11 @@ type SheetView struct {
 	// HeldLabels name what holds each effect on the sheet ("Caster: spell"),
 	// by condition id.
 	HeldLabels map[int64]string
+	// CanTakeHome lets the viewer download the character's take-home file;
+	// TakenHome is when the newest open one was written (zero: none, or the
+	// viewer may not know).
+	CanTakeHome bool
+	TakenHome   time.Time
 }
 
 // editableMod is whether modifier i is the sheet's own, not an effect's.

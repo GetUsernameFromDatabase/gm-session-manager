@@ -22,6 +22,8 @@ type Device struct {
 type RosterCharacter struct {
 	Character sqlc.Character
 	Devices   []Device
+	// TakenHome is when the newest open take-home file was written (zero: none).
+	TakenHome time.Time
 }
 
 // Online and Offline split the devices: the card folds the offline ones away.

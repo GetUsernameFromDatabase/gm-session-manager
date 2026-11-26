@@ -32,6 +32,7 @@ templ CharacterPage(l Layout, s SheetView) {
 		@CharacterSheet(s)
 		if s.CanSheet {
 			@builderDialog()
+			@TakeHomeDialog()
 		}
 	}
 }
@@ -61,6 +62,9 @@ templ CharacterSheet(s SheetView) {
 					}
 					if s.C.Sheet.Dead() {
 						@deadBadge()
+					}
+					if !s.TakenHome.IsZero() {
+						@takenHomeBadge(s.TakenHome)
 					}
 				</h1>
 				<p class="text-sm text-muted-foreground">
@@ -113,6 +117,12 @@ templ CharacterSheet(s SheetView) {
 										Change subclass
 									}
 								}
+							}
+						}
+						if s.CanTakeHome {
+							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: with(takeHomeLoad(s.ID), templ.Attributes{"data-menu-item": ""})}) {
+								@icon.House()
+								Take home…
 							}
 						}
 						@menuDelete("Delete character", route.Path(route.CharacterRemove, s.ID), "Delete "+s.C.Name+"? This logs out every device playing it. The GM can restore it.")

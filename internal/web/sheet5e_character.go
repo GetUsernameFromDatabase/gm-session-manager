@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -75,7 +76,18 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 			return views.SheetView{}, err
 		}
 	}
+	// The player app has no table to bring a take-home back to.
+	canTakeHome := !a.Player && perm.CanTakeHome(v, row.ID)
+	var takenHome time.Time
+	if canTakeHome {
+		th, err := a.Store.LatestOpenTakeHome(ctx, row.ID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return views.SheetView{}, err
+		}
+		takenHome = th.CreatedAt
+	}
 	return views.SheetView{
+		CanTakeHome: canTakeHome, TakenHome: takenHome,
 		ID: row.ID, CampaignID: row.CampaignID, Conditions: conds, Looks: perm.VisibleLooks(v, row.ID, looks), SpellData: spells,
 		C:             dnd5e.Character{Name: row.Name, HP: int(row.Hp), MaxHP: int(row.MaxHp), TempHP: int(row.TempHp), Sheet: sheet},
 		CanHP:         perm.CanCharacter(v, row.ID, perm.ScopeHP),

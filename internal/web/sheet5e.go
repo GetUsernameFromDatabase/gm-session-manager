@@ -6,6 +6,7 @@ package web
 // Everything else 5e lives in sheet5e_*.go.
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -290,4 +291,27 @@ func (a *App) addHomebrewToSheet(ctx context.Context, ch sqlc.Character, id int6
 		line = "spell add " + e.Slug
 	}
 	return a.runLine(ctx, ch, line)
+}
+
+// errNewerSheet means a take-home sheet holds something this app does not know.
+var errNewerSheet = errors.New("the sheet comes from a newer app")
+
+// checkSheetFile refuses a sheet a newer app wrote: an unknown field (decoded
+// strictly) or a higher EffectsVersion. Older sheets pass and UpgradeSheets
+// catches them up. shortcut: new ProseMirror node types in notes are not
+// detected, when a note format changes bump the zip format instead.
+func checkSheetFile(raw json.RawMessage) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var s dnd5e.Sheet
+	if err := dec.Decode(&s); err != nil {
+		if strings.HasPrefix(err.Error(), "json: unknown field") {
+			return errNewerSheet
+		}
+		return fmt.Errorf("sheet: %w", err)
+	}
+	if s.EffectsVersion > dnd5e.EffectsVersion {
+		return errNewerSheet
+	}
+	return nil
 }

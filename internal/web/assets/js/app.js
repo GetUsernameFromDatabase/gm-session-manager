@@ -1029,12 +1029,18 @@ import {
 
   // Times arrive in UTC; show them in this browser's timezone and locale.
   const localTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const localDate = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
   const relTime = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
   // Seconds in each unit "ago" may use, largest first.
   const units = [["year", 31536000], ["month", 2592000], ["day", 86400], ["hour", 3600], ["minute", 60]];
   // A <time data-ago> reads "10 days ago", the full date on hover.
   const localize = (t) => {
     const at = new Date(t.dateTime);
+    if ("date" in t.dataset) {
+      t.textContent = localDate.format(at); // "24 Nov"
+      t.title = localTime.format(at);
+      return;
+    }
     if (!("ago" in t.dataset)) {
       t.textContent = localTime.format(at);
       return;

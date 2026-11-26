@@ -14,7 +14,6 @@ import (
 )
 
 const createCombatant = `-- name: CreateCombatant :one
-
 INSERT INTO combatants (
     encounter_id, character_id, entity_id, monster_ref, name, initiative,
     hp, max_hp, ac, hp_visible, sort_order
@@ -39,7 +38,6 @@ type CreateCombatantParams struct {
 	HpVisible   bool
 }
 
-// Combatants
 func (q *Queries) CreateCombatant(ctx context.Context, arg CreateCombatantParams) (Combatant, error) {
 	row := q.db.QueryRowContext(ctx, createCombatant,
 		arg.EncounterID,
@@ -121,7 +119,6 @@ func (q *Queries) CreateCondition(ctx context.Context, arg CreateConditionParams
 }
 
 const createEncounter = `-- name: CreateEncounter :one
-
 INSERT INTO encounters (campaign_id, name)
 VALUES (?, ?)
 RETURNING id, campaign_id, name, status, round, active_combatant_id, created_at
@@ -132,7 +129,6 @@ type CreateEncounterParams struct {
 	Name       string
 }
 
-// Encounters
 func (q *Queries) CreateEncounter(ctx context.Context, arg CreateEncounterParams) (Encounter, error) {
 	row := q.db.QueryRowContext(ctx, createEncounter, arg.CampaignID, arg.Name)
 	var i Encounter
@@ -630,13 +626,11 @@ func (q *Queries) ListCombatants(ctx context.Context, encounterID int64) ([]List
 }
 
 const listConditionsByCharacter = `-- name: ListConditionsByCharacter :many
-
 SELECT id, character_id, combatant_id, slug, note, expires_round, ends_on, held_by, mods_json, applied_by, created_at FROM conditions
 WHERE character_id = ?
 ORDER BY slug, id
 `
 
-// Conditions
 func (q *Queries) ListConditionsByCharacter(ctx context.Context, characterID sql.NullInt64) ([]Condition, error) {
 	rows, err := q.db.QueryContext(ctx, listConditionsByCharacter, characterID)
 	if err != nil {

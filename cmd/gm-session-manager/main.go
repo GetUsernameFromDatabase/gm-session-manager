@@ -180,8 +180,14 @@ func run() error {
 		slog.Info("sheets upgraded", "changed", n)
 	}
 
+	manager := auth.NewManager(store, cfg.AdminUsername, cfg.AdminPassword)
+	if cfg.Player {
+		manager = auth.NewPlayerManager(store)
+	}
 	app := web.New(web.Deps{
-		Auth:        auth.NewManager(store, cfg.AdminUsername, cfg.AdminPassword),
+		Auth:        manager,
+		Player:      cfg.Player,
+		Version:     version,
 		Store:       store,
 		DataDir:     cfg.DataDir,
 		Port:        cfg.Port,

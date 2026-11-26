@@ -88,13 +88,14 @@ JOIN compendium_sources AS s ON s.source_key = e.source_key
 WHERE e.kind = ? AND e.slug = ?
 ORDER BY e.scoped, s.priority, s.published DESC, e.id;
 
--- Overlaps between sources, for deciding their priority: an entry is shared
--- when another source the campaign allows (all of them for campaign 0) holds
--- its kind and slug. Player homebrew (scoped) never counts: it always ranks last.
-
 -- CountSharedBySource is each source's shared entries, and how many of them
 -- lists show (campaign_top) rather than another source's copy. A source the
 -- campaign leaves out still counts (none shown), as its shared list does.
+--
+-- Overlaps between sources (here and in the queries below) are for deciding
+-- their priority: an entry is shared when another source the campaign allows
+-- (all of them for campaign 0) holds its kind and slug. Player homebrew
+-- (scoped) never counts: it always ranks last.
 -- name: CountSharedBySource :many
 SELECT e.source_key, count(*) AS shared,
     CAST(COALESCE(sum(e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))), 0) AS INTEGER) AS shown
@@ -200,15 +201,15 @@ WHERE source_key = ?;
 DELETE FROM compendium_sources
 WHERE source_key = ? AND source_key <> 'homebrew';
 
--- Browse, random and search show player homebrew (scoped) only in the
--- campaigns it is linked to; campaign_id 0 is the GM, who sees it all
--- (perm.CanSeeEntry). campaign_top ranks over the sources the campaign
+-- ListCompendiumByKind reads one kind, or every kind when kind is '', after
+-- the (name, id) cursor; names repeat, so id breaks ties.
+--
+-- Browse (here and below), random and search show player homebrew (scoped)
+-- only in the campaigns it is linked to; campaign_id 0 is the GM, who sees it
+-- all (perm.CanSeeEntry). campaign_top ranks over the sources the campaign
 -- allows, so an unticked book's entry falls back to the next allowed copy,
 -- and applies that scoping itself: a scoped entry is in it only for the
 -- campaigns it is linked to.
-
--- ListCompendiumByKind reads one kind, or every kind when kind is '', after
--- the (name, id) cursor; names repeat, so id breaks ties.
 -- name: ListCompendiumByKind :many
 SELECT e.id, e.kind, e.slug, e.name, e.source_key, CAST(e.source_key = 'homebrew' AS BOOLEAN) AS is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,

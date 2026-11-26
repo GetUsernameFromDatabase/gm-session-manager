@@ -23,6 +23,9 @@ type Deps struct {
 	// DataDir holds attachments/ and compendium/.
 	DataDir string
 	Port    int
+	// Player is the player app (--player); Version is this binary's version.
+	Player  bool
+	Version string
 	// LANIPs and Fingerprint are shown on the GM's join panel.
 	LANIPs      []net.IP
 	Fingerprint string
@@ -79,16 +82,20 @@ func (a *App) Router() *gin.Engine {
 	// Within each section: sorted by full path, then GET before POST.
 
 	// Joining.
+	// The player app has no admin login and no table to join.
 	r.GET(route.Home, a.h(a.home))
-	r.GET(route.AdminLogin, a.adminLoginForm)
-	r.POST(route.AdminLogin, a.h(a.adminLogin))
+	r.GET(route.AdminLogin, a.notPlayerApp, a.adminLoginForm)
+	r.POST(route.AdminLogin, a.notPlayerApp, a.h(a.adminLogin))
 	r.GET(route.AppDownload, a.h(a.appDownload))
+	r.GET(route.AtHome, a.h(a.homePage))
+	r.POST(route.AtHome, a.h(a.homeImport))
+	r.POST(route.AtHomePlay, a.h(a.homePlay))
 	r.POST(route.Feedback, a.h(a.sendFeedback))
-	r.GET(route.Join, a.h(a.joinCampaigns))
-	r.GET(route.JoinQR, a.h(a.joinQR))
-	r.GET(route.JoinCampaign, a.joinCharacters)
-	r.POST(route.JoinClaim, a.h(a.joinClaim))
-	r.POST(route.JoinCreate, a.h(a.joinCreate))
+	r.GET(route.Join, a.notPlayerApp, a.h(a.joinCampaigns))
+	r.GET(route.JoinQR, a.notPlayerApp, a.h(a.joinQR))
+	r.GET(route.JoinCampaign, a.notPlayerApp, a.joinCharacters)
+	r.POST(route.JoinClaim, a.notPlayerApp, a.h(a.joinClaim))
+	r.POST(route.JoinCreate, a.notPlayerApp, a.h(a.joinCreate))
 	r.GET(route.Live, a.h(a.liveHTML))
 	r.POST(route.Logout, a.h(a.logout))
 	r.POST(route.RequestsComplete, a.h(a.completeRequest))
@@ -134,6 +141,8 @@ func (a *App) Router() *gin.Engine {
 	ch.GET(route.SourcesPreview, a.h(a.sourcePreview))
 	ch.GET(route.Subclass, a.h(a.subclassChangeForm))
 	ch.POST(route.Subclass, a.h(a.changeSubclass))
+	ch.GET(route.TakeHome, a.h(a.takeHomeDialog))
+	ch.POST(route.TakeHome, a.h(a.takeHome))
 	r.POST(route.ConditionDelete, a.h(a.deleteCondition))
 
 	// Combat.

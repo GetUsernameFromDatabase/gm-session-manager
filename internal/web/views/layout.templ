@@ -110,7 +110,7 @@ templ navbar(l Layout) {
 			if l.HasSession {
 				@logoutButton("ml-2 hidden sm:block")
 			}
-			if l.HasSession || l.CampaignID != 0 || l.IsGM || l.CharacterID != 0 {
+			if l.HasSession || l.CampaignID != 0 || l.IsGM || l.CharacterID != 0 || l.PlayerApp {
 				@button.Button(button.Props{
 					Variant: button.VariantGhost,
 					Size:    button.SizeIconSm,
@@ -140,6 +140,9 @@ templ logoutButton(class string) {
 }
 
 templ navLinks(l Layout) {
+	if l.PlayerApp {
+		@navLink(route.AtHome, "Characters", l.Active == NavAtHome, nil)
+	}
 	if l.CampaignID != 0 {
 		if l.IsGM {
 			@navLink(route.Path(route.Campaign, l.CampaignID), l.CampaignName, l.Active == NavHome, nil)

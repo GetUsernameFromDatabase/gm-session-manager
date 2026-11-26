@@ -454,3 +454,23 @@ func TestCanReadImage(t *testing.T) {
 		}
 	}
 }
+
+func TestCanTakeHome(t *testing.T) {
+	tests := []struct {
+		name string
+		v    Viewer
+		want bool
+	}{
+		{"gm", GM, true},
+		{"owner", asAlice, true},
+		{"other player", asBob, false},
+		{"visitor", anon, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanTakeHome(tt.v, alice); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

@@ -64,7 +64,6 @@ func (q *Queries) CreateCharacterWithSheet(ctx context.Context, arg CreateCharac
 }
 
 const createLevelUp = `-- name: CreateLevelUp :exec
-
 INSERT INTO level_ups (character_id, max_hp, sheet_json)
 VALUES (?, ?, ?)
 `
@@ -75,7 +74,8 @@ type CreateLevelUpParams struct {
 	SheetJson   string
 }
 
-// Level-up snapshots, newest reverted first.
+// CreateLevelUp saves a level-up snapshot; snapshots are reverted newest
+// first.
 func (q *Queries) CreateLevelUp(ctx context.Context, arg CreateLevelUpParams) error {
 	_, err := q.db.ExecContext(ctx, createLevelUp, arg.CharacterID, arg.MaxHp, arg.SheetJson)
 	return err

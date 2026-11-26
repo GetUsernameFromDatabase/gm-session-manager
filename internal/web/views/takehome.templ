@@ -1,0 +1,195 @@
+package views
+
+import (
+	"gm-session-manager/internal/route"
+	"gm-session-manager/internal/web/components/alert"
+	"gm-session-manager/internal/web/components/badge"
+	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/dialog"
+	"gm-session-manager/internal/web/components/empty"
+	"gm-session-manager/internal/web/components/icon"
+	"gm-session-manager/internal/web/components/input"
+	"time"
+)
+
+// localDate is a stored (UTC) time as a day and month; app.js rewrites it in
+// the viewer's timezone and locale.
+templ localDate(t time.Time) {
+	<time datetime={ t.UTC().Format(time.RFC3339) } data-date>{ t.UTC().Format("2 Jan") }</time>
+}
+
+// takenHomeBadge marks a character whose file is out at someone's computer.
+templ takenHomeBadge(t time.Time) {
+	@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+		@icon.House()
+		{ "Taken home " }
+		@localDate(t)
+	}
+}
+
+// TakeHomeDialog is the empty dialog a take-home button fills; one per page,
+// outside any live region.
+templ TakeHomeDialog() {
+	@dialog.Dialog(dialog.Props{ID: takeHomeID}) {
+		@dialog.Content(dialog.ContentProps{Class: "max-h-[90dvh] overflow-y-auto sm:max-w-lg"}) {
+			<div id="take-home"></div>
+		}
+	}
+}
+
+// takeHomeStep is one numbered step of the dialog.
+templ takeHomeStep(n, title string) {
+	<li class="flex gap-3">
+		<span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">{ n }</span>
+		<div class="min-w-0 grow space-y-2">
+			<p class="font-medium">{ title }</p>
+			{ children... }
+		</div>
+	</li>
+}
+
+// TakeHomeBody is what the dialog loads: where to get the app, and the file.
+templ TakeHomeBody(v TakeHomeView) {
+	@dialog.Header() {
+		@dialog.Title() {
+			{ "Take " + v.Name + " home" }
+		}
+		@dialog.Description() {
+			{ "Play " + v.Name + " on your computer, then bring the changes back to the table." }
+		}
+	}
+	<ol class="space-y-4 text-sm">
+		@takeHomeStep("1", "Get the player app") {
+			if len(v.Downloads) > 0 {
+				<ul class="space-y-1">
+					for _, name := range v.Downloads {
+						<li>
+							<a class="inline-flex items-center gap-2 underline-offset-2 hover:underline" href={ templ.SafeURL(route.Path(route.AppDownload, name)) }>
+								@icon.Download()
+								{ name }
+							</a>
+						</li>
+					}
+				</ul>
+			} else {
+				<p class="text-muted-foreground">{ v.noApp() }</p>
+			}
+		}
+		@takeHomeStep("2", "Open "+v.Name+"'s file in the player app") {
+			<form method="post" action={ templ.SafeURL(route.Path(route.CharacterTakeHome, v.CharacterID)) }>
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					@icon.Download()
+					{ "Download " + v.Name + "'s file" }
+				}
+			</form>
+		}
+	</ol>
+	<p class="text-xs text-muted-foreground">
+		{ v.Name + " stays playable here meanwhile." }
+		if v.ByGM {
+			{ " Leaves out " + v.Name + "'s private notes: only the player can take those home." }
+		}
+	</p>
+	@dialog.Footer() {
+		@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.CloseFor(takeHomeID)}) {
+			Close
+		}
+	}
+}
+
+// HomePage lists the characters on this computer (the player app) and opens a file.
+templ HomePage(l Layout, copies []HomeCopyView) {
+	@Page(l) {
+		<div class="mx-auto max-w-xl">
+			@PageHeader("Characters on this computer", "")
+			if len(copies) == 0 {
+				@empty.Empty(empty.Props{Class: "border"}) {
+					@empty.Header() {
+						@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+							@icon.House()
+						}
+						@empty.Title() {
+							No characters here yet
+						}
+						@empty.Description() {
+							At the table, open your character and choose Take home in its menu. Then open the file here.
+						}
+					}
+				}
+			} else {
+				<ul class="space-y-2">
+					for _, c := range copies {
+						<li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+							<div class="min-w-0 grow basis-48">
+								<p class="truncate font-medium">{ c.Name + " · " + c.Campaign }</p>
+								<p class="text-sm text-muted-foreground">
+									{ "Taken home " }
+									@localDate(c.TakenAt)
+								</p>
+							</div>
+							if c.Current {
+								@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+									Playing
+								}
+							} else {
+								<form method="post" action={ templ.SafeURL(route.Path(route.AtHomePlay, c.CharacterID)) }>
+									@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+										@icon.Play()
+										Play
+									}
+								</form>
+							}
+						</li>
+					}
+				</ul>
+				<h2 class="mt-8 mb-2 text-sm font-semibold">Open another take-home file</h2>
+			}
+			@homeImportForm(len(copies) == 0)
+		</div>
+	}
+}
+
+// homeImportForm posts a take-home zip; a copy of the same character already
+// here is answered with a question in #home-import-confirm, inside the form so
+// the chosen file is still there when Replace submits it.
+templ homeImportForm(first bool) {
+	<form
+		class={ "group/busy space-y-3", templ.KV("mt-4", first) }
+		data-busy
+		hx-post={ route.AtHome }
+		hx-encoding="multipart/form-data"
+		hx-target="#home-import-confirm"
+		hx-swap="innerHTML"
+	>
+		<div class="flex flex-wrap items-center gap-2">
+			@input.Input(input.Props{Name: "file", Type: "file", Required: true, Class: "w-auto", Attributes: templ.Attributes{"accept": ".zip,application/zip", "aria-label": "Take-home file"}})
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				Open
+			}
+		</div>
+		<div id="home-import-confirm"></div>
+		@busyIndicator("Opening…")
+	</form>
+}
+
+// HomeReplaceConfirm asks before a copy here is replaced; it holds no form,
+// and Replace submits the import form around it.
+templ HomeReplaceConfirm(v HomeConfirmView) {
+	@alert.Alert() {
+		@icon.TriangleAlert()
+		@alert.Title() {
+			{ v.Name + " is already on this computer" }
+		}
+		@alert.Description() {
+			{ v.message() }
+		}
+	}
+	<div class="mt-3 flex justify-end gap-2">
+		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"onclick": templ.JSUnsafeFuncCall("this.closest('#home-import-confirm').replaceChildren()")}}) {
+			Cancel
+		}
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "replace", "value": "1"}}) {
+			{ "Replace " + v.Name }
+		}
+	</div>
+}

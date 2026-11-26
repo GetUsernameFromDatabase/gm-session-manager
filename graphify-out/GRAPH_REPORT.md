@@ -1,23 +1,23 @@
 # Graph Report - gm-session-manager  (2026-11-27)
 
 ## Corpus Check
-- 382 files · ~670,613 words
+- 392 files · ~689,585 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 58 file(s) not represented in the graph (top: .templ 48, .css 4, (none) 3)
+- Unclassified: 59 file(s) not represented in the graph (top: .templ 49, .css 4, (none) 3)
 
 ## Summary
-- 4922 nodes · 25671 edges · 185 communities (121 shown, 64 thin omitted)
-- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 2564 edges (avg confidence: 0.85)
+- 5078 nodes · 26711 edges · 181 communities (125 shown, 56 thin omitted)
+- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 2639 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `928d5da3`
+- Built from commit: `7ff868d8`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - compendium_templ.go
-- Button
+- CampaignSources
 - context.Context
 - vendorjs/main.go
 - createProvider
@@ -25,7 +25,7 @@
 - SheetView
 - combobox.js
 - Path
-- Store
+- combobox_templ.go
 - encoding/json.RawMessage
 - select.js
 - Command
@@ -43,29 +43,29 @@
 - popover.js
 - github.com/a-h/templ.Attributes
 - Project Rules (CLAUDE.md, README)
-- Sum
+- Sheet
 - CombatantView
 - Condition
 - app.js
 - tabbable.js
 - useDismiss
-- Sheet
-- github.com/a-h/templ.Component
+- Slugify
+- Layout
 - command.js
 - dialog.js
-- Handlers
+- CharacterFile
 - ParseWikidot
 - tooltip.js
-- Client
+- .wizardView
 - tabs_templ.go
 - WizardView
-- State
+- Client
 - composite.js
 - time.Time
 - CustomMod
-- run
-- CompendiumView
-- config.go
+- ParseSheet
+- github.com/a-h/templ.Component
+- Option
 - testing.T
 - floating_focus_manager.js
 - Release Workflow
@@ -74,14 +74,14 @@
 - shadcn-templ Config
 - ParseEffects
 - golangci-lint Config
-- Entity
-- Weapon
+- Queries
+- ImagePage
 - radiogroup.js
 - Player
-- nullID
-- ParseArmorTraining
+- Character
+- .renderCompendium
 - sqlc Config
-- monsterBody
+- .sourceIssues
 - Session
 - Claude Settings
 - starterEnv
@@ -92,7 +92,7 @@
 - checkbox.js
 - ParseAidedd
 - switch.js
-- Hub
+- config.go
 - tabs.js
 - portal.js
 - useClick
@@ -110,51 +110,51 @@
 - fields.js
 - live.js
 - internal_backdrop.js
-- CompendiumKind
+- .levelUp
 - mounted
-- pause_windows.go
-- nullID
+- net/http/httptest.ResponseRecorder
+- newEffectFix
 - profFocus
 - cert.go
-- .q
+- .Router
 - ftBook
-- .sendFeedback
+- .editEntity
 - BlockEditor
-- NewClient
+- Hub
 - popover_templ.go
 - capReader
-- Amount
-- ListSharedWithRow
+- buildReview
+- Attachment
 - build.sh
 - Pending
 - looseString
 - errBodyWriter
-- sourcesEnv
-- fakeHandler
+- takehome.go
+- storeSource
 - Before/after pairs
-- ParseFiveTools
+- deathFix
 - jsconfig.json
 - open5e.go
 - testing.M
-- .renderCompendium
-- perm/CLAUDE.md
+- CompendiumKind
+- TakeHomeFile
 - names
 - ASIError
 - DownloadFiveTools
 - .Entry
 - sourceUsedError
-- parseCommand
-- CampaignOverview
-- condMods
-- WeaponKind
-- CharacterFile
+- takehome_test.go
+- .deleteUnused
+- sourcesEnv
+- Campaign
+- ftItemData
 - shared.d.ts
 - CMD_FIELD
 - CONSOLE_LEVELS
 - CONSOLE_MSG
 - CONSOLE_PAGE
 - CONSOLE_SIZE
-- spellBoxes
+- .importParam
 - KEY
 - MAX_STEP_BYTES
 - MAX_STEPS
@@ -172,40 +172,35 @@
 - IMPORT_STATUS_BROKEN
 - IMPORT_STATUS_TICKED
 - IMPORT_STATUS_UNTICKED
-- planSwitch
-- .Router
-- SearchReadableBlocksRow
-- .ListBlockStepsSince
-- .ListImageLookAccess
+- pause_windows.go
+- importLooks
+- Browser check
 - player-app.sh
-- .ListItemsByCategory
-- .ListSpellsForClass
 - IMPORT_FILTER_CAT_PREFIX
-- .ListSubracesOf
 
 ## God Nodes (most connected - your core abstractions)
-1. `App` - 388 edges
-2. `Path()` - 278 edges
-3. `newTestEnv()` - 179 edges
+1. `App` - 398 edges
+2. `Path()` - 291 edges
+3. `newTestEnv()` - 183 edges
 4. `Sheet` - 134 edges
-5. `Button()` - 126 edges
+5. `Button()` - 130 edges
 6. `CN()` - 114 edges
-7. `SheetView` - 79 edges
+7. `SheetView` - 80 edges
 8. `IfElse()` - 67 edges
-9. `Command` - 60 edges
-10. `Queries` - 57 edges
+9. `Queries` - 62 edges
+10. `Command` - 60 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `What to check` --references--> `check()`  [INFERRED]
-  .claude/skills/browser-check/SKILL.md → cmd/vendorjs/main.go
-- `Notes` --references--> `linkClick()`  [INFERRED]
-  internal/web/CLAUDE.md → internal/web/assets/js/wikilink.js
 - `graphify skill trigger` --semantically_similar_to--> `graphify Usage Rules`  [INFERRED] [semantically similar]
   .claude/CLAUDE.md → CLAUDE.md
-- `TestScopedEntryInEveryCompendiumQuery()` --calls--> `check()`  [INFERRED]
-  internal/perm/sql_agreement_test.go → cmd/vendorjs/main.go
-- `internal/compendium` --references--> `DecodeData()`  [INFERRED]
+- `internal/compendium` --references--> `Slugify()`  [INFERRED]
   internal/compendium/CLAUDE.md → internal/compendium/entry.go
+- `internal/compendium` --references--> `FiveToolsBooks()`  [INFERRED]
+  internal/compendium/CLAUDE.md → internal/compendium/fivetools_books.go
+- `internal/compendium` --references--> `DownloadFiveTools()`  [INFERRED]
+  internal/compendium/CLAUDE.md → internal/compendium/fivetools_books.go
+- `internal/compendium` --references--> `Import()`  [INFERRED]
+  internal/compendium/CLAUDE.md → internal/compendium/importer.go
 
 ## Import Cycles
 - None detected.
@@ -215,35 +210,35 @@
 - **Device identity and admin access model** — claude_session_tokens, claude_admin_rule, claude_identity_rule, claude_sessions_vs_game_sessions, readme_gm_other_device [INFERRED 0.85]
 - **Command to live-view patch pipeline** — claude_commands_not_sheets, claude_minimal_ws_patches, claude_live_views, claude_ui_conventions [INFERRED 0.85]
 
-## Communities (185 total, 64 thin omitted)
+## Communities (181 total, 56 thin omitted)
 
 ### Community 0 - "compendium_templ.go"
 Cohesion: 0.15
-Nodes (55): contextKey, classRef, ftBookInfo, indexed, o5eAssignment, o5eChild, o5eClass, o5eDescribes (+47 more)
+Nodes (56): contextKey, classRef, ftBookInfo, indexed, o5eAssignment, o5eChild, o5eClass, o5eDescribes (+48 more)
 
-### Community 1 - "Button"
-Cohesion: 0.05
-Nodes (92): ListEntryCopiesRow, ListMonstersByNameRow, Habitat, UI conventions, Description(), Button(), Checkbox(), Label() (+84 more)
+### Community 1 - "CampaignSources"
+Cohesion: 0.08
+Nodes (35): Content(), DisableTrigger(), state(), Tooltip(), Trigger(), BuilderPickItems(), BuilderPicks(), BuilderPick (+27 more)
 
 ### Community 2 - "context.Context"
 Cohesion: 0.01
-Nodes (119): keepAwake(), linkTarget, linkTargets(), targetColumns(), ListHomebrewByOwnerRow, ListHomebrewRow, ListAttachmentFilesRow, GetImageRow (+111 more)
+Nodes (140): keepAwake(), targetColumns(), ListImageCharactersRow, CountSharedBySourceRow, ListHomebrewLinksRow, ListSharedWithRow, ListImageEntitiesRow, GetImageRow (+132 more)
 
 ### Community 3 - "vendorjs/main.go"
-Cohesion: 0.12
-Nodes (26): Browser check, Roles, Saved states, The test instance, What to check, You are alone, canonical(), changedPaths() (+18 more)
+Cohesion: 0.18
+Nodes (20): canonical(), changedPaths(), check(), checkSums(), crawl(), fetch(), fetchURL(), highestVersions() (+12 more)
 
 ### Community 4 - "createProvider"
 Cohesion: 0.08
 Nodes (26): applyDirectionalDamping(), applyLimited(), createProvider(), flushMouseLeave(), handleFocusGuard(), handleWindowBlur(), handleWindowFocus(), provider (+18 more)
 
 ### Community 5 - "export/markdown.go"
-Cohesion: 0.05
-Nodes (47): Links, pmMark, pmNode, writer, applyMarks(), escape(), Markdown(), plain() (+39 more)
+Cohesion: 0.15
+Nodes (16): Links, pmMark, pmNode, writer, applyMarks(), escape(), Markdown(), plain() (+8 more)
 
 ### Community 6 - "SheetView"
-Cohesion: 0.05
-Nodes (112): Slot, Signed(), Variant, Action(), Card(), Content(), Description(), Header() (+104 more)
+Cohesion: 0.06
+Nodes (100): Coins, Slot, Signed(), Button(), Variant, Action(), Card(), Content() (+92 more)
 
 ### Community 7 - "combobox.js"
 Cohesion: 0.12
@@ -251,27 +246,27 @@ Nodes (55): afterSelectionChange(), allContents(), anchorFor(), applyFilter(), b
 
 ### Community 8 - "Path"
 Cohesion: 0.04
-Nodes (125): TestRealSource(), Import(), TestUpgradeSheet(), ParseSheet(), TestMarkdown(), Path(), TestPath(), TestPathPanicsOnWrongIDCount() (+117 more)
+Nodes (114): TestMarkdown(), nullID(), Path(), TestPath(), TestPathPanicsOnWrongIDCount(), Gotchas, internal/web, activeFight() (+106 more)
 
-### Community 9 - "Store"
-Cohesion: 0.15
-Nodes (27): Source, copySource(), importOnce(), newStore(), TestImportIsIdempotent(), TestImportRefusesHomebrewKey(), TestMonsterImageBinding(), TestNormalizedShapes() (+19 more)
+### Community 9 - "combobox_templ.go"
+Cohesion: 0.05
+Nodes (85): Align, ChipProps, ChipsInputProps, ChipsProps, ContentProps, ctxKey, ctxState, EmptyProps (+77 more)
 
 ### Community 10 - "encoding/json.RawMessage"
 Cohesion: 0.06
-Nodes (53): ftClass, ftDistance, ftEntry, ftFeat, ftModOp, ftMonster, ftNamed, ftRace (+45 more)
+Nodes (48): ftClass, ftCopyRef, ftEntry, ftFeat, ftModOp, ftMonster, ftNamed, ftRace (+40 more)
 
 ### Community 11 - "select.js"
 Cohesion: 0.10
 Nodes (53): allContents(), armCancelOpen(), arrowScrollStep(), clamp(), close(), closeAll(), commitValue(), contentFor() (+45 more)
 
 ### Community 12 - "Command"
-Cohesion: 0.09
-Nodes (44): CondOpKind, Effects, parseProf(), parseProfSet(), parseSet(), parseSpell(), setIn(), parseArmor() (+36 more)
+Cohesion: 0.06
+Nodes (56): Amount, CondOpKind, Effects, userText, parseFeature(), parseProf(), parseProfSet(), parseSet() (+48 more)
 
 ### Community 13 - "viewerCtx"
-Cohesion: 0.15
-Nodes (11): Topic, TopicKind, heldCollected(), notFoundIsNil(), parseLiveKey(), WithCampaign(), heldTopics, liveKey (+3 more)
+Cohesion: 0.23
+Nodes (6): notFoundIsNil(), parseLiveKey(), liveKey, liveKind, liveView, viewerCtx
 
 ### Community 14 - "redirect.go"
 Cohesion: 0.26
@@ -282,8 +277,8 @@ Cohesion: 0.13
 Nodes (51): autoUpdate(), frameLoop(), convertOffsetParentRelativeRectToViewportRelativeRect(), getBoundingClientRect(), getClientRectFromClippingAncestor(), getClippingElementAncestors(), getClippingRect(), getComputedStyle$1() (+43 more)
 
 ### Community 16 - "perm.go"
-Cohesion: 0.06
-Nodes (44): ListCharacterNamesRow, GetBlockRow, Visibility, VisibleEntity(), VisibleLooks(), BlockVisibilities(), CanAddEffect(), CanChangeSubclass() (+36 more)
+Cohesion: 0.04
+Nodes (68): ListCharacterNamesRow, GetBlockRow, IsConditionSlug(), EffectMods(), TestValidateEffectMods(), TestWithEffects(), ValidateEffectMods(), Visibility (+60 more)
 
 ### Community 17 - "use_hover.js"
 Cohesion: 0.09
@@ -299,19 +294,19 @@ Nodes (15): anchoredPopupScrollLock(), AnimationFrame, getViewportScroller(), ha
 
 ### Community 20 - "App"
 Cohesion: 0.04
-Nodes (37): ClearCookie(), SetCookie(), writeCookie(), FromContext(), Campaign, LinkTarget, downloadNames(), browserName() (+29 more)
+Nodes (31): FromContext(), Campaign, LinkTarget, compendiumBack(), compendiumPath(), pathCampaign(), viewerCampaign(), downloadNames() (+23 more)
 
 ### Community 21 - "Input"
-Cohesion: 0.05
-Nodes (80): ListImageCharactersRow, ListImageEntitiesRow, ImageCategory, ListBacklinksRow, Coins, Defenses, Description(), Field() (+72 more)
+Cohesion: 0.04
+Nodes (66): ImageCategory, Defenses, Title(), Content(), Group(), initialValue(), Item(), itemLabel() (+58 more)
 
 ### Community 22 - "wikilink.js"
-Cohesion: 0.17
-Nodes (18): nodeActions(), closeMenu(), imagesIn(), imageSrc(), isGM(), isImage(), KeepImages, LAYOUTS (+10 more)
+Cohesion: 0.13
+Nodes (22): nodeActions(), openWeb(), closeMenu(), imagesIn(), imageSrc(), isGM(), isImage(), KEEP_IMAGES (+14 more)
 
 ### Community 23 - "dialog_templ.go"
 Cohesion: 0.08
-Nodes (52): ContentProps, ctxKey, ctxState, DescriptionProps, FooterProps, HeaderProps, OverlayProps, PortalProps (+44 more)
+Nodes (55): ContentProps, ctxKey, ctxState, DescriptionProps, FooterProps, HeaderProps, OverlayProps, PortalProps (+47 more)
 
 ### Community 24 - "popover.js"
 Cohesion: 0.22
@@ -319,23 +314,23 @@ Nodes (29): allContents(), close(), closeAll(), closeNearest(), contentFor(), de
 
 ### Community 25 - "github.com/a-h/templ.Attributes"
 Cohesion: 0.02
-Nodes (198): ActionProps, DescriptionProps, Props, TitleProps, Variant, Props, Props, Size (+190 more)
+Nodes (161): Props, Props, Variant, Props, Size, ActionProps, ContentProps, DescriptionProps (+153 more)
 
 ### Community 26 - "Project Rules (CLAUDE.md, README)"
 Cohesion: 0.06
 Nodes (28): graphify skill trigger, Admin via Loopback or .env Credentials, Collaborative Note Blocks (server authority, 409 rebase), graphify Usage Rules, HTTPS only with self-signed certificate, Device Identity (one role per device, logout = kick), Live Views (live kind, liveAffects, loadLive, Hot/Shape, bind), Note Block Visibility (gm, players, listed, owner) (+20 more)
 
-### Community 27 - "Sum"
-Cohesion: 0.11
-Nodes (10): findItem(), TestCustomMods(), TestExplainSums(), ArmorEffect(), Sum(), TestGearCommands(), ensureItem(), Item (+2 more)
+### Community 27 - "Sheet"
+Cohesion: 0.05
+Nodes (30): Part, Skill, ItemData, Completions(), parseMastery(), TestCustomMods(), TestModifier(), TestResistances() (+22 more)
 
 ### Community 28 - "CombatantView"
-Cohesion: 0.09
-Nodes (42): Header(), Title(), effectBits(), addCombatantForm(), addCombatants(), beingBadge(), combatantChip(), combatantName() (+34 more)
+Cohesion: 0.11
+Nodes (36): addCombatantForm(), addCombatants(), beingBadge(), combatantChip(), combatantName(), combatantRow(), conditionDialog(), conditionList() (+28 more)
 
 ### Community 29 - "Condition"
-Cohesion: 0.07
-Nodes (39): Combatant, Condition, CreateConditionParams, ListCombatantsRow, EffectEnd, combatantRow(), passTurn(), rollFor() (+31 more)
+Cohesion: 0.04
+Nodes (49): Combatant, Condition, Encounter, ListCombatantsRow, EncounterStatus, combatantRow(), passTurn(), rollFor() (+41 more)
 
 ### Community 30 - "app.js"
 Cohesion: 0.08
@@ -349,13 +344,13 @@ Nodes (28): activeElement(), appendCandidates(), appendMatchingElements(), conta
 Cohesion: 0.19
 Nodes (25): contains(), getTarget(), isLastTraversableNode(), normalizeBubbles(), useDismiss(), addTargetEventListenerOnce(), close(), closeOnEscapeKeyDown() (+17 more)
 
-### Community 33 - "Sheet"
-Cohesion: 0.03
-Nodes (115): sourceFormat, LevelUpChoice, internal/compendium, Cantrips(), firstTable(), LevelSpells(), OptionPrerequisite(), Options() (+107 more)
+### Community 33 - "Slugify"
+Cohesion: 0.07
+Nodes (43): Cantrips(), firstTable(), LevelSpells(), OptionPrerequisite(), Options(), TestOptions(), NameDesc, Slugify() (+35 more)
 
-### Community 34 - "github.com/a-h/templ.Component"
-Cohesion: 0.05
-Nodes (96): ListEntityFieldBacklinksRow, Entity, Field, Look, Content(), Description(), Empty(), Header() (+88 more)
+### Community 34 - "Layout"
+Cohesion: 0.09
+Nodes (40): Scripts(), Separator(), Toast(), Toaster(), toastIcon(), toastListItem(), campaignLink(), PendingRequests() (+32 more)
 
 ### Community 35 - "command.js"
 Cohesion: 0.18
@@ -365,9 +360,9 @@ Nodes (24): activateItem(), commandScore(), commandScoreInner(), filterItems(), 
 Cohesion: 0.20
 Nodes (23): closeDialog(), createInternalBackdrop(), destroyDialog(), dialogFor(), ensureDialog(), getDialog(), init(), isDialogOpen() (+15 more)
 
-### Community 37 - "Handlers"
-Cohesion: 0.29
-Nodes (5): Handlers, keepsBody(), fieldError, pickError, userError
+### Community 37 - "CharacterFile"
+Cohesion: 0.22
+Nodes (8): CharacterFile, parseCharacterFile(), userf(), checkSheetFile(), normalizeCharacterFile(), fieldError, pickError, userError
 
 ### Community 38 - "ParseWikidot"
 Cohesion: 0.14
@@ -377,45 +372,49 @@ Nodes (23): block, ClassFeature, ClassData, cellAt(), classTable(), featuresUnde
 Cohesion: 0.26
 Nodes (22): arrowOf(), close(), contentFor(), destroy(), emitOpenChange(), init(), joinGroup(), leaveGroup() (+14 more)
 
+### Community 40 - ".wizardView"
+Cohesion: 0.07
+Nodes (32): EquipmentItem, internal/compendium, CoreTraits(), EquipmentOptions(), EquipmentOption, SkillChoice(), TestCoreTraits(), TestEquipmentOptions() (+24 more)
+
 ### Community 41 - "tabs_templ.go"
-Cohesion: 0.13
-Nodes (32): Content(), contentID(), IDFromContext(), initialValue(), List(), listVariant(), listVariantClasses(), orientation() (+24 more)
+Cohesion: 0.10
+Nodes (35): Content(), contentID(), IDFromContext(), initialValue(), List(), listVariant(), listVariantClasses(), orientation() (+27 more)
 
 ### Community 42 - "WizardView"
-Cohesion: 0.08
-Nodes (48): SpellColumn(), initialValue(), Item(), RadioGroup(), state(), abilitySelect(), levelUpForm(), spellChecklist() (+40 more)
+Cohesion: 0.09
+Nodes (52): ActionProps, DescriptionProps, Props, TitleProps, Variant, Action(), Alert(), Description() (+44 more)
 
-### Community 43 - "State"
-Cohesion: 0.13
-Nodes (8): Handler, patchMessage, stateHandler, viewPatch, Diff(), State, TestDiff(), rosterHP()
+### Community 43 - "Client"
+Cohesion: 0.08
+Nodes (17): countingHandler, event, fakeHandler, Handler, message, patchMessage, stateHandler, viewPatch (+9 more)
 
 ### Community 44 - "composite.js"
 Cohesion: 0.18
 Nodes (18): findNonDisabledListIndex(), getMaxListIndex(), getMinListIndex(), getOffset(), getStyles(), isElementDisabled(), isListIndexDisabled(), isModifierKeySet() (+10 more)
 
 ### Community 45 - "time.Time"
-Cohesion: 0.07
-Nodes (14): ListImagesRow, Attachment, firstLine(), folderName(), mdLinkText(), BlockStep, CreateAttachmentParams, LevelUp (+6 more)
+Cohesion: 0.08
+Nodes (16): folderName(), slugify(), TestFolderName(), devicesWhere(), deviceLabel(), rosterHP(), BlockStep, CreateLevelUpAtParams (+8 more)
 
 ### Community 46 - "CustomMod"
 Cohesion: 0.08
-Nodes (23): FeatureEffects, findMod(), newMod(), parseFeature(), parseFeatureSet(), parseMod(), parseUses(), SaveFeature() (+15 more)
+Nodes (23): FeatureEffects, findMod(), newMod(), parseFeatureSet(), parseMod(), parseUses(), AddFeat(), SaveFeature() (+15 more)
 
-### Community 47 - "run"
-Cohesion: 0.17
-Nodes (9): main(), run(), openBrowser(), bookFolder(), CleanDownloads(), TestCleanDownloads(), LANAddresses(), New() (+1 more)
+### Community 47 - "ParseSheet"
+Cohesion: 0.08
+Nodes (51): TestRealSource(), Import(), TestUpgradeSheet(), ParseSheet(), TestCompendiumHabitatFilter(), TestEntryBackKeepsFilters(), TestMonsterImageLink(), TestBuilderCompendium() (+43 more)
 
-### Community 48 - "CompendiumView"
-Cohesion: 0.06
-Nodes (54): Props, Variant, CountEntriesBySourceRow, CountHabitatsRow, CountSharedBySourceRow, ListHomebrewLinksRow, SearchCompendiumRow, Badge() (+46 more)
+### Community 48 - "github.com/a-h/templ.Component"
+Cohesion: 0.04
+Nodes (110): CountHabitatsRow, ListEntryCopiesRow, ListMonstersByNameRow, Habitat, UI conventions, Badge(), Spinner(), Cell() (+102 more)
 
-### Community 49 - "config.go"
-Cohesion: 0.18
-Nodes (14): parseFlags(), TestParseFlags(), Config, lookupFunc, describe(), fromLookup(), Load(), newValidator() (+6 more)
+### Community 49 - "Option"
+Cohesion: 0.08
+Nodes (24): ListSubclassesOfRow, SpellColumn(), formErrors(), spellNeed(), TestSubclassPanels(), TestSpellNeed(), subclassIndex(), subclassOptions() (+16 more)
 
 ### Community 50 - "testing.T"
-Cohesion: 0.02
-Nodes (147): Defense, TestIsLoopback(), TestDecode(), TestCoreTraits(), TestSkillChoice(), TestTokensReadAsLabels(), feature(), RemoveSourceDir() (+139 more)
+Cohesion: 0.03
+Nodes (116): Defense, TestDecode(), feature(), RemoveSourceDir(), TestRemoveSourceDir(), TestPageClientRedirect(), TestArmorTrainingGrantsAndRemoval(), TestArmorUntrained() (+108 more)
 
 ### Community 51 - "floating_focus_manager.js"
 Cohesion: 0.23
@@ -430,64 +429,64 @@ Cohesion: 0.24
 Nodes (12): doSwitch(), isCrossOrientationCloseKey(), isCrossOrientationOpenKey(), isMainOrientationKey(), isMainOrientationToEndKey(), isVirtualClick(), isVirtualPointerEvent(), useListNavigation() (+4 more)
 
 ### Community 54 - "Open"
-Cohesion: 0.11
-Nodes (28): migration, internal/db, apply(), loadMigrations(), Migrate(), Open(), openPool(), openTemp() (+20 more)
+Cohesion: 0.07
+Nodes (48): linkTarget, migration, copySource(), importOnce(), newStore(), TestImportIsIdempotent(), TestImportRefusesHomebrewKey(), TestMonsterImageBinding() (+40 more)
 
 ### Community 55 - "shadcn-templ Config"
 Cohesion: 0.12
 Nodes (16): aliases, components, utils, iconLibrary, menuAccent, menuColor, rtl, $schema (+8 more)
 
 ### Community 56 - "ParseEffects"
-Cohesion: 0.10
-Nodes (15): TestArmorGrants(), TestSlotMaxima(), armorCondition(), columnInts(), ParseEffects(), parseProfs(), TestParseEffects(), TestParseProfs() (+7 more)
+Cohesion: 0.07
+Nodes (22): LevelUpChoice, armorGrants(), armorKinds(), armorOnly(), armorSourceKey(), ArmorTrainingText(), ParseArmorTraining(), TestArmorGrants() (+14 more)
 
 ### Community 57 - "golangci-lint Config"
 Cohesion: 0.06
 Nodes (32): deny, files, rules, generated, paths, rules, formatters, enable (+24 more)
 
-### Community 58 - "Entity"
-Cohesion: 0.11
-Nodes (11): Entity, Fields, ParseFields(), entityTopics(), linkEntityLook(), saveFieldLinks(), SetEntityCurrentImageParams, ToggleEntityImageRevealedParams (+3 more)
+### Community 58 - "Queries"
+Cohesion: 0.08
+Nodes (35): featureSwitch, Decode(), Queries, CompendiumEntry, Env, TestSlotMaxima(), ClassFeature, ClassInfo (+27 more)
 
-### Community 59 - "Weapon"
-Cohesion: 0.10
-Nodes (13): Part, Skill, ItemData, TestModifier(), skillByKey(), TestDualWield(), damageLabel(), Weapon (+5 more)
+### Community 59 - "ImagePage"
+Cohesion: 0.12
+Nodes (27): ListEntityFieldBacklinksRow, ListBacklinksRow, Entity, Look, initials(), EntityDetail(), entityForm(), EntityPage() (+19 more)
 
 ### Community 60 - "radiogroup.js"
 Cohesion: 0.28
 Nodes (10): groupOf(), initGroup(), inputOf(), itemOf(), itemsOf(), requestValueChange(), setupItem(), syncByInput() (+2 more)
 
 ### Community 61 - "Player"
-Cohesion: 0.09
-Nodes (34): Player(), TestCanRemoveCondition(), BenchmarkEncounterState(), BenchmarkSheetState(), Websocket and live views, TestStarterSets(), TestNoteViewAudiences(), isRandomID() (+26 more)
+Cohesion: 0.08
+Nodes (40): Player(), TestCanRemoveCondition(), BenchmarkCompendiumList(), BenchmarkCompendiumSearch(), BenchmarkEncounterState(), BenchmarkImportReview(), BenchmarkSheetState(), testEnv (+32 more)
 
-### Community 62 - "nullID"
-Cohesion: 0.09
-Nodes (27): EffectMods(), TestValidateEffectMods(), TestWithEffects(), ValidateEffectMods(), nullID(), Gotchas, internal/web, Notes (+19 more)
+### Community 62 - "Character"
+Cohesion: 0.13
+Nodes (11): Character, Character, NewCharacterFile(), checkSkillPick(), postedSkills(), backgroundRaises(), setupOnce(), buildTakeHome() (+3 more)
 
-### Community 63 - "ParseArmorTraining"
-Cohesion: 0.16
-Nodes (9): armorGrants(), armorKinds(), armorOnly(), armorSourceKey(), ArmorTrainingText(), ParseArmorTraining(), TestArmorTrainingTextReadsBack(), TestParseArmorTraining() (+1 more)
+### Community 63 - ".renderCompendium"
+Cohesion: 0.15
+Nodes (5): ImportSummary(), fiveToolsBack(), fiveToolsKey(), sourceInUseMsg(), sourceUsers()
 
 ### Community 64 - "sqlc Config"
 Cohesion: 0.14
 Nodes (13): go, emit_empty_slices, out, overrides, package, column, go_type, sql (+5 more)
 
-### Community 65 - "monsterBody"
-Cohesion: 0.19
-Nodes (21): commaPrefixed(), compendiumFindURL(), levelsText(), parenthesized(), signedMap(), speeds(), classBody(), entryBody() (+13 more)
+### Community 65 - ".sourceIssues"
+Cohesion: 0.31
+Nodes (8): pinnedRefs(), sourceIssue(), featKey(), pinFeat(), SourceCopy, SourceIssue, SourceLabel(), sheetRef
 
 ### Community 66 - "Session"
-Cohesion: 0.09
-Nodes (24): fixture, tokens, loopbackHostOnly(), TestLoopbackHostOnly(), constantTimeEqual(), credentialsMatch(), newFixture(), serve() (+16 more)
+Cohesion: 0.08
+Nodes (28): fixture, tokens, constantTimeEqual(), credentialsMatch(), IsLoopback(), isCleared(), newFixture(), serve() (+20 more)
 
 ### Community 67 - "Claude Settings"
 Cohesion: 0.25
 Nodes (7): hooks, PreToolUse, permissions, allow, ask, deny, $schema
 
 ### Community 68 - "starterEnv"
-Cohesion: 0.24
-Nodes (12): TestFiveToolsBooks(), UseTestServer(), testEnv, pickerTicks(), serveStarterSets(), starterEnv(), TestImportsTickFromCampaignOnly(), TestPartialDownloadTicks() (+4 more)
+Cohesion: 0.14
+Nodes (20): replaceDir(), TestFiveToolsBooks(), DownloadOpen5e(), serveOpen5e(), TestDownloadOpen5e(), TestDownloadOpen5eBadName(), TestDownloadOpen5eFailureKeepsOld(), TestDownloadOpen5eUnknownDoc() (+12 more)
 
 ### Community 69 - "use_transition_status.js"
 Cohesion: 0.40
@@ -498,8 +497,8 @@ Cohesion: 0.50
 Nodes (3): npx, playwright, @playwright/mcp
 
 ### Community 71 - "ftPrerequisite"
-Cohesion: 0.14
-Nodes (14): ArmorData, ftClassFeature, ftClassRefs, ftItem, o5eArmor, ftArmor(), ftCode(), ftItemData() (+6 more)
+Cohesion: 0.24
+Nodes (6): ftClassFeature, ftClassRefs, ftCode(), keepReferencedFeatures(), featuresSearchText(), ftFeatureKey()
 
 ### Community 72 - "Book"
 Cohesion: 0.11
@@ -517,9 +516,9 @@ Nodes (19): abilityMod(), ParseAidedd(), statLabel(), textLines(), firstInt(), T
 Cohesion: 0.31
 Nodes (5): forwardClick(), inputOf(), requestCheckedChange(), setup(), sync()
 
-### Community 76 - "Hub"
-Cohesion: 0.23
-Nodes (5): ClientInfo, event, goneDevice, Hub, TestCloseSessionAndCharacter()
+### Community 76 - "config.go"
+Cohesion: 0.14
+Nodes (16): loopbackHostOnly(), parseFlags(), TestLoopbackHostOnly(), TestParseFlags(), Config, lookupFunc, describe(), fromLookup() (+8 more)
 
 ### Community 77 - "tabs.js"
 Cohesion: 0.56
@@ -546,24 +545,24 @@ Cohesion: 0.52
 Nodes (6): applyAttributeToOthers(), buildKeepSet(), collectOutsideElements(), correctElements(), markOthers(), unwrapHost()
 
 ### Community 83 - "notes.js"
-Cohesion: 0.10
-Nodes (8): ATTACHMENT_PREFIX, ATTACHMENT_SRC, Collab, editors, openWeb(), randomID(), KEEP_IMAGES, LINK_PATHS
+Cohesion: 0.11
+Nodes (8): ATTACHMENT_PREFIX, ATTACHMENT_SRC, Collab, editors, json(), links(), randomID(), sync()
 
 ### Community 85 - "Run Script"
-Cohesion: 0.60
-Nodes (5): changes(), GOFLAGS, restart_server(), run.sh script, stop_server()
+Cohesion: 0.53
+Nodes (8): changes(), GOFLAGS, lock(), restart_server(), run.sh script, stop_server(), superseded(), unlock()
 
 ### Community 86 - "mirror"
-Cohesion: 0.20
-Nodes (12): bookWriter, mirror, downloadBook(), fetchJSON(), filterDoc(), filterSource(), replaceDir(), TestMirrorGetMissingFile() (+4 more)
+Cohesion: 0.25
+Nodes (8): bookWriter, mirror, downloadBook(), fetchJSON(), filterDoc(), TestMirrorGetMissingFile(), open5eFiles(), fetch()
 
 ### Community 87 - "useTypeahead"
 Cohesion: 0.53
 Nodes (4): useTypeahead(), getMatchingIndex(), isItemAvailable(), onKeyDown()
 
 ### Community 88 - ".source"
-Cohesion: 0.12
-Nodes (17): ParsePageURL(), TestParsePageURL(), UpsertCompendiumEntryParams, testEnv, TestEntryAlsoInAndCrossRefs(), TestFiveToolsGMOnly(), TestFiveToolsImportRunning(), TestFiveToolsRemove() (+9 more)
+Cohesion: 0.10
+Nodes (20): UpsertCompendiumEntryParams, testEnv, TestEntryAlsoInAndCrossRefs(), TestFiveToolsGMOnly(), TestFiveToolsImportRunning(), TestFiveToolsRemove(), TestSourceDeleteUsed(), TestSourceKeyWithSlash() (+12 more)
 
 ### Community 96 - "fields.js"
 Cohesion: 0.18
@@ -573,49 +572,53 @@ Nodes (14): editors, extensions, focusRow(), mount(), parts(), save(), setValue(
 Cohesion: 0.33
 Nodes (4): bindings(), reload(), roots(), within()
 
-### Community 100 - "CompendiumKind"
-Cohesion: 0.04
-Nodes (42): CoreTraits(), dataFor(), DecodeData(), ValidKind(), Character, Character, CompendiumKind, Campaign() (+34 more)
+### Community 100 - ".levelUp"
+Cohesion: 0.14
+Nodes (15): TextData, FreeCast(), SwapFeatSpell(), Spell, textMarkdown(), spellFromRow(), addClassSpells(), takenFeat() (+7 more)
 
 ### Community 101 - "mounted"
 Cohesion: 0.83
 Nodes (3): mounted(), register(), sync()
 
-### Community 103 - "nullID"
-Cohesion: 0.13
-Nodes (29): DeathSaves, deathFix(), effectFix, TestDeathClearsConditions(), TestMonsterAtZeroHPUnaffected(), TestQuickFormCritAtZeroHP(), TestTrackerCritAtZeroHP(), TestTrackerRefusesWhileDead() (+21 more)
+### Community 102 - "net/http/httptest.ResponseRecorder"
+Cohesion: 0.10
+Nodes (29): TestEffectFields(), bugForm(), testEnv, TestAutoReport(), TestBadConsole(), TestBugReport(), TestFeedbackAccess(), TestFeedbackIndex() (+21 more)
+
+### Community 103 - "newEffectFix"
+Cohesion: 0.23
+Nodes (19): acBonusForm(), effectFix, newEffectFix(), notes(), TestAllyEffects(), TestConcentrationCascade(), TestEffectModRows(), TestEffectModsReadOnly() (+11 more)
 
 ### Community 105 - "cert.go"
-Cohesion: 0.15
-Nodes (10): Fingerprint(), generate(), LoadOrCreateCert(), seedCert(), seedGarbage(), TestCertNames(), TestCertUsableHostname(), TestKeyFileIsPrivate() (+2 more)
+Cohesion: 0.09
+Nodes (17): main(), run(), openBrowser(), bookFolder(), CleanDownloads(), TestCleanDownloads(), Fingerprint(), generate() (+9 more)
 
-### Community 106 - ".q"
-Cohesion: 0.08
-Nodes (31): isCleared(), testEnv, testEnv, mustJSON(), pendingSecret(), TestBlockDocGone(), TestClaimNeedsApproval(), TestCollabConflict() (+23 more)
+### Community 106 - ".Router"
+Cohesion: 0.21
+Nodes (5): RequireAdmin(), assetETags(), immutableAsset(), sameOriginOnly(), useValidateTag()
 
 ### Community 107 - "ftBook"
-Cohesion: 0.16
-Nodes (16): ftBook, ftCopyRef, ftRec, each(), ftCopyTargets(), ftDecode(), ftRecords(), TestFiveToolsCopy() (+8 more)
+Cohesion: 0.14
+Nodes (24): ftBook, ftDistance, ftRec, each(), ftAmount(), ftCastingTime(), ftCopyTargets(), ftDecode() (+16 more)
 
-### Community 108 - ".sendFeedback"
-Cohesion: 0.36
-Nodes (10): bugForm(), testEnv, TestAutoReport(), TestBadConsole(), TestBugReport(), TestFeedbackAccess(), TestFeedbackIndex(), TestFeedbackTooBig() (+2 more)
+### Community 108 - ".editEntity"
+Cohesion: 0.15
+Nodes (9): Entity, Fields, ParseFields(), entityTopics(), linkEntityLook(), saveFieldLinks(), linkCharacterLook(), lookFree() (+1 more)
 
-### Community 109 - "BlockEditor"
-Cohesion: 0.22
-Nodes (5): attachedPicture(), BlockEditor, json(), links(), sync()
-
-### Community 111 - "NewClient"
-Cohesion: 0.16
-Nodes (20): isDevice(), New(), NewClient(), drain(), TestApprovedSurvivesDisconnect(), TestCatchUp(), TestCompendiumReachesEveryCampaign(), TestDeviceAnnouncements() (+12 more)
+### Community 111 - "Hub"
+Cohesion: 0.10
+Nodes (23): ClientInfo, goneDevice, Hub, isDevice(), New(), NewClient(), TestApprovedSurvivesDisconnect(), TestCatchUp() (+15 more)
 
 ### Community 112 - "popover_templ.go"
-Cohesion: 0.19
-Nodes (12): Description(), state(), triggerID(), Align, ContentProps, ctxKey, ctxState, DescriptionProps (+4 more)
+Cohesion: 0.13
+Nodes (23): Field, Description(), Header(), state(), Title(), Trigger(), triggerID(), effectBits() (+15 more)
 
-### Community 116 - "Amount"
-Cohesion: 0.22
-Nodes (7): Amount, userText, CritDamage(), Damage(), parseRevive(), Set(), TestApplyHPDeath()
+### Community 116 - "buildReview"
+Cohesion: 0.10
+Nodes (26): buildReview(), categoryKey(), cell(), columnOverview(), formValues(), guessMapping(), headerScore(), httpHost() (+18 more)
+
+### Community 117 - "Attachment"
+Cohesion: 0.06
+Nodes (16): Identity, Attachment, Handlers, browserName(), firstLine(), mdLinkText(), saveScreenshot(), TestUserAgent() (+8 more)
 
 ### Community 118 - "build.sh"
 Cohesion: 0.21
@@ -633,93 +636,101 @@ Nodes (3): looseString, o5eCreature, o5eItem
 Cohesion: 0.43
 Nodes (3): errorText(), TestErrorText(), errBodyWriter
 
-### Community 125 - "sourcesEnv"
-Cohesion: 0.24
-Nodes (8): testEnv, sourcesEnv(), TestCampaignSourcePicks(), TestCampaignSourcesSet(), TestCampaignSourceVisibility(), TestCompendiumAddresses(), TestSourceOverlap(), TestSubclassPickBySlug()
+### Community 125 - "takehome.go"
+Cohesion: 0.23
+Nodes (14): HomeManifest, TakeHomeBaseCharacter, TakeHomeBaseLook, TakeHomeBlock, TakeHomeBlockFile, TakeHomeCampaign, TakeHomeEntry, TakeHomeLevelUp (+6 more)
+
+### Community 127 - "storeSource"
+Cohesion: 0.17
+Nodes (14): Source, sourceFormat, TestStoreSourceRollsBackOnAfterSave(), formatOf(), Report, ImportProgress(), importSource(), readSource() (+6 more)
 
 ### Community 130 - "Before/after pairs"
 Cohesion: 0.33
 Nodes (5): After, Before/after pairs, Rules, Taking a pair: one script, The "before" instance (once per batch)
 
-### Community 131 - "ParseFiveTools"
-Cohesion: 0.33
-Nodes (5): habitatsFrom(), FiveToolsImages(), TestHabitatsFrom(), ParseFiveTools(), TestParseFiveTools()
+### Community 131 - "deathFix"
+Cohesion: 0.29
+Nodes (7): DeathSaves, deathFix(), effectFix, TestDeathClearsConditions(), TestQuickFormCritAtZeroHP(), TestTrackerCritAtZeroHP(), TestTrackerRefusesWhileDead()
 
 ### Community 132 - "jsconfig.json"
 Cohesion: 0.33
 Nodes (5): compilerOptions, module, target, exclude, include
 
 ### Community 133 - "open5e.go"
-Cohesion: 0.13
-Nodes (20): Entry, fixture, fixtures, normalizer, o5eProperty, TestOpen5eHabitats(), TestOpen5eMastery(), TestUnflattenTable() (+12 more)
+Cohesion: 0.10
+Nodes (27): Entry, fixture, fixtures, normalizer, o5eProperty, TestOpen5eHabitats(), TestOpen5eMastery(), TestUnflattenTable() (+19 more)
 
-### Community 135 - ".renderCompendium"
-Cohesion: 0.06
-Nodes (29): HomebrewOwner, Site, TestHomebrew(), fiveToolsPage(), ftsQuery(), HomebrewInput, InputForEntry(), SaveHomebrew() (+21 more)
+### Community 135 - "CompendiumKind"
+Cohesion: 0.03
+Nodes (53): HomebrewOwner, Site, TestHomebrew(), ValidKind(), ftsQuery(), HomebrewInput, SaveHomebrew(), Search() (+45 more)
+
+### Community 136 - "TakeHomeFile"
+Cohesion: 0.30
+Nodes (4): TakeHomeFile, readLimited(), ReadTakeHome(), hasBlock()
 
 ### Community 137 - "names"
 Cohesion: 0.33
-Nodes (6): ftRaceAbility(), SwitchFeature, SwitchPlan, names(), TestPlanSourceSwitch(), SourcePreviewView
+Nodes (7): ftRaceAbility(), SwitchFeature, SwitchPlan, PlanSourceSwitch(), names(), TestPlanSourceSwitch(), SourcePreviewView
 
 ### Community 139 - "DownloadFiveTools"
-Cohesion: 0.10
-Nodes (28): EquipmentItem, EquipmentOptions(), EquipmentOption, TestEquipmentOptions(), parseFiveToolsBook(), parseFiveToolsBookReport(), readBook(), TestFiveToolsCopyTargets() (+20 more)
+Cohesion: 0.14
+Nodes (22): FiveToolsImages(), parseFiveToolsBook(), parseFiveToolsBookReport(), readBook(), TestFiveToolsCopyTargets(), TestFiveToolsEdition(), TestFiveToolsMagicVariants(), TestParseFiveToolsBook() (+14 more)
 
 ### Community 140 - ".Entry"
-Cohesion: 0.09
-Nodes (26): MonsterAction, addEntry(), setStat(), MonsterData, ftSkillNames(), TestFiveToolsCoreTraitsShapes(), HomebrewInputFor(), abilityKey() (+18 more)
+Cohesion: 0.10
+Nodes (24): MonsterAction, addEntry(), setStat(), MonsterData, TestFiveToolsCoreTraitsShapes(), HomebrewInputFor(), abilityKey(), actionsText() (+16 more)
 
-### Community 143 - "parseCommand"
-Cohesion: 0.40
-Nodes (5): coinCommand(), commandText(), hpCommand(), parseCommand(), damageArgs()
+### Community 143 - "takehome_test.go"
+Cohesion: 0.43
+Nodes (7): rewriteZip(), sampleTakeHome(), TestReadTakeHomeRefusals(), TestTakeHomeMissingFileOnDisk(), TestTakeHomeRoundTrip(), writeZip(), ZipFile()
 
-### Community 144 - "CampaignOverview"
-Cohesion: 0.44
-Nodes (7): deviceRow(), rosterCard(), devicesWhere(), agoTime(), deviceLabel(), Device, RosterCharacter
+### Community 144 - ".deleteUnused"
+Cohesion: 0.27
+Nodes (5): ListAttachmentFilesRow, attachmentRefs(), fresh(), inCampaign(), FileUse
 
-### Community 145 - "condMods"
-Cohesion: 0.40
-Nodes (4): isToggle(), condMods(), effectChip(), hasEffect()
+### Community 145 - "sourcesEnv"
+Cohesion: 0.24
+Nodes (8): testEnv, sourcesEnv(), TestCampaignSourcePicks(), TestCampaignSourcesSet(), TestCampaignSourceVisibility(), TestCompendiumAddresses(), TestSourceOverlap(), TestSubclassPickBySlug()
 
-### Community 147 - "WeaponKind"
-Cohesion: 0.67
-Nodes (3): parseMastery(), TestWeaponKind(), WeaponKind()
+### Community 147 - "Campaign"
+Cohesion: 0.28
+Nodes (7): Campaign(), CharacterFileName(), fileSlug(), writeFile(), nonNil(), TakeHomeFileName(), WriteTakeHome()
 
-### Community 148 - "CharacterFile"
-Cohesion: 0.67
-Nodes (3): CharacterFile, parseCharacterFile(), normalizeCharacterFile()
+### Community 148 - "ftItemData"
+Cohesion: 0.28
+Nodes (8): ArmorData, ftItem, o5eArmor, ftArmor(), ftItemData(), TestFiveToolsItemMastery(), armorData(), armorText()
 
-### Community 157 - "spellBoxes"
-Cohesion: 0.67
-Nodes (4): spellBoxes(), TestTaughtPicked(), taughtPicked(), taughtRules()
+### Community 157 - ".importParam"
+Cohesion: 0.39
+Nodes (3): ensureCategory(), csvImport, csvImports
 
-### Community 175 - "planSwitch"
-Cohesion: 0.23
-Nodes (6): featureSwitch, featureNames(), SourceRef, SubclassRef, planSwitch(), sameSlug()
+### Community 176 - "importLooks"
+Cohesion: 0.53
+Nodes (6): HomeIDMaps, cmpOr(), importLooks(), importNotes(), importTakeHome(), savedFile
 
-### Community 176 - ".Router"
-Cohesion: 0.23
-Nodes (4): IsLoopback(), RequireAdmin(), sameOriginOnly(), useValidateTag()
+### Community 178 - "Browser check"
+Cohesion: 0.29
+Nodes (6): Browser check, Roles, Saved states, The test instance, What to check, You are alone
 
 ## Knowledge Gaps
 - **41 isolated node(s):** `npx`, `@playwright/mcp`, `CGO_ENABLED`, `GOFLAGS`, `gm-session-manager` (+36 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 458 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **64 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 461 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **56 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `App` connect `App` to `compendium_templ.go`, `Button`, `context.Context`, `.renderCompendium`, `Command`, `viewerCtx`, `perm.go`, `Condition`, `Sheet`, `State`, `time.Time`, `run`, `.Router`, `testing.T`, `Entity`, `Book`, `Hub`, `CompendiumKind`, `.q`, `Pending`?**
-  _High betweenness centrality (0.065) - this node is a cross-community bridge._
+- **Why does `Values Go and JS share` connect `testing.T` to `Path`, `Command`, `wikilink.js`?**
+  _High betweenness centrality (0.066) - this node is a cross-community bridge._
 - **Are the 3 inferred relationships involving `Path()` (e.g. with `TestPath()` and `TestPathPanicsOnWrongIDCount()`) actually correct?**
   _`Path()` has 3 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `npx`, `@playwright/mcp`, `CGO_ENABLED` to the rest of the system?**
   _41 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `compendium_templ.go` be split into smaller, more focused modules?**
-  _Cohesion score 0.1451905082715772 - nodes in this community are weakly interconnected._
-- **Why does `Path()` connect `Path` to `compendium_templ.go`, `Button`, `context.Context`, `export/markdown.go`, `SheetView`, `.renderCompendium`, `perm.go`, `CampaignOverview`, `App`, `Input`, `dialog_templ.go`, `github.com/a-h/templ.Attributes`, `CombatantView`, `Condition`, `Sheet`, `github.com/a-h/templ.Component`, `tabs_templ.go`, `WizardView`, `CompendiumView`, `testing.T`, `Entity`, `Player`, `nullID`, `monsterBody`, `starterEnv`, `ParseWiki`, `.source`, `CompendiumKind`, `nullID`, `.q`, `.sendFeedback`, `sourcesEnv`?**
-  _High betweenness centrality (0.040) - this node is a cross-community bridge._
-- **Should `Button` be split into smaller, more focused modules?**
-  _Cohesion score 0.04854045037531276 - nodes in this community are weakly interconnected._
-- **Why does `Values Go and JS share` connect `testing.T` to `Path`, `Command`, `nullID`, `wikilink.js`?**
-  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+  _Cohesion score 0.14678433759383241 - nodes in this community are weakly interconnected._
+- **Why does `routePath()` connect `wikilink.js` to `testing.T`, `notes.js`, `BlockEditor`?**
+  _High betweenness centrality (0.066) - this node is a cross-community bridge._
+- **Should `CampaignSources` be split into smaller, more focused modules?**
+  _Cohesion score 0.07653061224489796 - nodes in this community are weakly interconnected._
+- **Why does `Path()` connect `Path` to `compendium_templ.go`, `CampaignSources`, `context.Context`, `deathFix`, `export/markdown.go`, `SheetView`, `CompendiumKind`, `combobox_templ.go`, `perm.go`, `sourcesEnv`, `.deleteUnused`, `Campaign`, `App`, `Input`, `dialog_templ.go`, `github.com/a-h/templ.Attributes`, `CombatantView`, `Condition`, `.importParam`, `Layout`, `tabs_templ.go`, `WizardView`, `ParseSheet`, `github.com/a-h/templ.Component`, `testing.T`, `ImagePage`, `Player`, `.renderCompendium`, `starterEnv`, `ParseWiki`, `.source`, `.levelUp`, `net/http/httptest.ResponseRecorder`, `newEffectFix`, `.editEntity`, `popover_templ.go`, `Attachment`?**
+  _High betweenness centrality (0.059) - this node is a cross-community bridge._

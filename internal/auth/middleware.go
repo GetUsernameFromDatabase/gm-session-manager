@@ -17,15 +17,15 @@ const identityKey contextKey = iota
 // a session (logged out, kicked) is cleared.
 func (m *Manager) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := Identity{Loopback: IsLoopback(c.Request)}
+		id := Identity{Loopback: !m.player && IsLoopback(c.Request)}
 
-		if token, err := c.Cookie(CookieName); err == nil {
+		if token, err := c.Cookie(m.CookieName()); err == nil {
 			sess, err := m.Resolve(c.Request.Context(), token)
 			switch {
 			case err == nil:
 				id.Session = &sess
 			case errors.Is(err, ErrNoSession):
-				ClearCookie(c)
+				m.ClearCookie(c)
 			default:
 				slog.Error("session lookup failed", "err", err)
 				c.AbortWithStatus(http.StatusInternalServerError)

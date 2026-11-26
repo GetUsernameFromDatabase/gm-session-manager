@@ -55,6 +55,7 @@ const (
 	NavCompendium = "compendium"
 	NavImages     = "images"
 	NavFiles      = "files"
+	NavAtHome     = "at-home"
 )
 
 // Layout is the frame around every page.
@@ -62,6 +63,8 @@ type Layout struct {
 	Title string
 	// IsGM shows the GM navigation.
 	IsGM bool
+	// PlayerApp is the player app (--player): a Characters link for everyone.
+	PlayerApp bool
 	// Campaign is the campaign the page belongs to (0 for none).
 	CampaignID   int64
 	CampaignName string

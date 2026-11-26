@@ -1,5 +1,3 @@
--- Conditions
-
 -- name: ListConditionsByCharacter :many
 SELECT * FROM conditions
 WHERE character_id = ?
@@ -125,8 +123,6 @@ WHERE expires_round IS NOT NULL AND expires_round < sqlc.arg(round)
     OR character_id = (SELECT cb.character_id FROM combatants AS cb WHERE cb.id = sqlc.arg(combatant_id))
   );
 
--- Encounters
-
 -- name: CreateEncounter :one
 INSERT INTO encounters (campaign_id, name)
 VALUES (?, ?)
@@ -161,8 +157,6 @@ WHERE id = ?;
 -- name: DeleteEncounter :exec
 DELETE FROM encounters
 WHERE id = ?;
-
--- Combatants
 
 -- name: CreateCombatant :one
 INSERT INTO combatants (

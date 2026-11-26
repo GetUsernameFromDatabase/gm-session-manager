@@ -349,3 +349,38 @@ func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
 	m.Run()
 }
+
+// TestPlayerManager: in the player app loopback is not admin, and the cookie
+// has its own name and is not Secure; the GM app keeps gsm_session, Secure.
+func TestPlayerManager(t *testing.T) {
+	f := newFixture(t)
+	tests := []struct {
+		name       string
+		mgr        *Manager
+		wantAdmin  bool
+		wantName   string
+		wantSecure bool
+	}{
+		{"gm app", f.mgr, true, "gsm_session", true},
+		{"player app", NewPlayerManager(f.q), false, "gsm_home", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got Identity
+			r := gin.New()
+			r.Use(tt.mgr.Middleware())
+			r.GET("/", func(c *gin.Context) {
+				got = FromContext(c)
+				tt.mgr.SetCookie(c, "token")
+			})
+			w := serve(t, r, loopbackAddr, "")
+			if got.IsAdmin() != tt.wantAdmin {
+				t.Errorf("IsAdmin = %v, want %v", got.IsAdmin(), tt.wantAdmin)
+			}
+			cookies := w.Result().Cookies()
+			if len(cookies) != 1 || cookies[0].Name != tt.wantName || cookies[0].Secure != tt.wantSecure {
+				t.Errorf("cookies = %v, want %s secure=%v", cookies, tt.wantName, tt.wantSecure)
+			}
+		})
+	}
+}

@@ -798,24 +798,31 @@ func (a *App) storeUpload(ctx context.Context, campaignID int64, blockID sql.Nul
 
 // storeFile saves src under a random name and records it as fileName.
 func (a *App) storeFile(ctx context.Context, campaignID int64, blockID sql.NullInt64, fileName string, src io.Reader) (sqlc.Attachment, error) {
-	name := rand.Text()
-	dir := a.attachmentsDir()
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return sqlc.Attachment{}, err
-	}
-	path := filepath.Join(dir, name)
-	mime, size, err := saveSniffed(path, src)
+	name, mime, size, err := a.saveFile(src)
 	if err != nil {
-		_ = os.Remove(path)
 		return sqlc.Attachment{}, err
 	}
 	att, err := a.Store.CreateAttachment(ctx, sqlc.CreateAttachmentParams{
 		CampaignID: campaignID, BlockID: blockID, Path: name, Name: fileName, Mime: mime, Size: size,
 	})
 	if err != nil {
-		_ = os.Remove(path)
+		_ = os.Remove(filepath.Join(a.attachmentsDir(), name))
 	}
 	return att, err
+}
+
+// saveFile writes src under a random name in the attachments folder, for a
+// row the caller adds; a failed write leaves nothing behind.
+func (a *App) saveFile(src io.Reader) (name, mime string, size int64, err error) {
+	dir := a.attachmentsDir()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return "", "", 0, err
+	}
+	name = rand.Text()
+	if mime, size, err = saveSniffed(filepath.Join(dir, name), src); err != nil {
+		_ = os.Remove(filepath.Join(dir, name))
+	}
+	return name, mime, size, err
 }
 
 // saveSniffed writes src to path and returns the content type sniffed from

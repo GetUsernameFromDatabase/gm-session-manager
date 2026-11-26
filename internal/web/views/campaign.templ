@@ -33,6 +33,7 @@ templ CampaignOverview(l Layout, r Roster, j JoinInfo, s CampaignSourcesView) {
 				@CampaignSourcesLive(s)
 			</div>
 		</div>
+		@TakeHomeDialog()
 	}
 }
 
@@ -193,7 +194,12 @@ templ deviceRow(d Device) {
 templ rosterCard(r Roster, rc RosterCharacter) {
 	<div class="rounded-lg border p-3">
 		<div class="flex flex-wrap items-center justify-between gap-2">
-			<a class="font-medium underline-offset-2 hover:underline" href={ templ.SafeURL(route.Path(route.Character, rc.Character.ID)) }>{ rc.Character.Name }</a>
+			<span class="flex min-w-0 flex-wrap items-center gap-2">
+				<a class="font-medium underline-offset-2 hover:underline" href={ templ.SafeURL(route.Path(route.Character, rc.Character.ID)) }>{ rc.Character.Name }</a>
+				if !rc.TakenHome.IsZero() {
+					@takenHomeBadge(rc.TakenHome)
+				}
+			</span>
 			<span class="text-sm" { bind(fmt.Sprintf("text=ch.%d.hp", rc.Character.ID))... }>{ rosterHP(rc) }</span>
 		</div>
 		<ul class="mt-2 space-y-1 text-sm">
@@ -226,6 +232,10 @@ templ rosterCard(r Roster, rc RosterCharacter) {
 							Copy to campaign
 						}
 					</form>
+				}
+				@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Attributes: takeHomeLoad(rc.Character.ID)}) {
+					@icon.House()
+					Take home…
 				}
 				@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantDestructive, Attributes: templ.Attributes{
 					"hx-post": route.Path(route.CharacterRemove, rc.Character.ID), "hx-confirm": "Delete " + rc.Character.Name + " and log out its devices? You can restore it afterwards.",

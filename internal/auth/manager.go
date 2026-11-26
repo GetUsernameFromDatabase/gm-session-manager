@@ -25,12 +25,20 @@ type Manager struct {
 	q         *db.Store
 	adminUser string
 	adminPass string
+	// player is the player app: no admin, its own cookie.
+	player bool
 }
 
 // NewManager returns a Manager that checks admin logins against the given
 // credentials (from .env).
 func NewManager(q *db.Store, adminUser, adminPass string) *Manager {
 	return &Manager{q: q, adminUser: adminUser, adminPass: adminPass}
+}
+
+// NewPlayerManager returns the player app's Manager: no credentials, and
+// loopback is not admin.
+func NewPlayerManager(q *db.Store) *Manager {
+	return &Manager{q: q, player: true}
 }
 
 // IssuePlayer creates a session bound to a character and returns its token.

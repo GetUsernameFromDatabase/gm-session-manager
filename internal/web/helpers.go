@@ -306,7 +306,7 @@ func (a *App) changedWith(c *gin.Context, campaignID int64, res templ.Component,
 // layout fills the frame for a page. Pages that show live data pass a
 // websocket URL; the hub position is read here, before the page's data.
 func (a *App) layout(w who, title, active string, camp *sqlc.Campaign, live bool) views.Layout {
-	l := views.Layout{Title: title, Active: active, IsGM: w.isGM(), HasSession: w.id.Session != nil}
+	l := views.Layout{Title: title, Active: active, IsGM: w.isGM(), HasSession: w.id.Session != nil, PlayerApp: a.Player}
 	if w.character != nil {
 		l.CharacterID = w.character.ID
 	}

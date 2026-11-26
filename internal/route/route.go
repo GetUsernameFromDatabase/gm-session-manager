@@ -34,6 +34,7 @@ func Path(pattern string, ids ...any) string {
 const (
 	Home       = "/"
 	AdminLogin = "/admin/login"
+	AtHome     = "/at-home" // the player app's characters and import
 	Campaigns  = "/campaigns"
 	Compendium = "/compendium"
 	Feedback   = "/feedback"
@@ -50,6 +51,7 @@ const (
 // Group roots, with their params.
 const (
 	AppDownload  = "/downloads/:file"
+	AtHomeCopy   = AtHome + "/:character"
 	Attachment   = "/attachments/:attachment"
 	Block        = "/blocks/:block"
 	Campaign     = "/campaigns/:campaign"
@@ -113,6 +115,7 @@ const (
 	Npc                = "/npc"
 	OpenJoin           = "/open-join"
 	Picks              = "/picks"
+	Play               = "/play"
 	Remove             = "/remove"
 	Rename             = "/rename"
 	RequestDecision    = "/requests/:request/:decision"
@@ -125,6 +128,7 @@ const (
 	Steps              = "/steps"
 	Subclass           = "/subclass"
 	Switcher           = "/switcher"
+	TakeHome           = "/take-home"
 	ToImage            = "/to-image"
 )
 
@@ -168,6 +172,8 @@ const CampaignCompendium = Campaign + Compendium
 
 // Full patterns: the routes a caller or test names.
 const (
+	AtHomePlay = AtHomeCopy + Play
+
 	AttachmentToImage = Attachment + ToImage
 
 	BlockAccess      = Block + Access
@@ -220,6 +226,7 @@ const (
 	CharacterRestore        = Character + Restore
 	CharacterSourcesPreview = Character + SourcesPreview
 	CharacterSubclass       = Character + Subclass
+	CharacterTakeHome       = Character + TakeHome
 
 	CombatantAction = Combatant + Action
 

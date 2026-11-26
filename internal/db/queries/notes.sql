@@ -1,9 +1,3 @@
--- Read rules for note blocks live in two places that must agree: the
--- readable-block predicate below (for listings) and perm.CanReadBlock (for
--- single checks and websocket fan-out). perm's table-driven tests run both.
---
--- A viewer is (is_gm, character_id). The GM never reads 'owner' blocks.
-
 -- name: CreateNote :one
 INSERT INTO notes (campaign_id, kind, title, owner_character_id)
 VALUES (?, ?, ?, ?)
@@ -30,6 +24,12 @@ WHERE id = ?;
 -- ListReadableNotes lists notes with at least one block the viewer may read,
 -- plus the viewer's own notes and, for the GM, the GM's notes (which may
 -- still be empty).
+--
+-- Read rules for note blocks live in two places that must agree: the
+-- readable-block predicate here and in the listings below, and
+-- perm.CanReadBlock (for single checks and websocket fan-out). perm's
+-- table-driven tests run both. A viewer is (is_gm, character_id). The GM
+-- never reads 'owner' blocks.
 -- name: ListReadableNotes :many
 SELECT n.* FROM notes AS n
 WHERE n.campaign_id = sqlc.arg(campaign_id)
@@ -145,8 +145,8 @@ WHERE id = ?;
 DELETE FROM note_blocks
 WHERE id = ?;
 
--- Collaboration (ProseMirror collab, central authority)
-
+-- InsertBlockStep records one step of a block's collaborative editing
+-- (ProseMirror collab, with the server as the central authority).
 -- name: InsertBlockStep :exec
 INSERT INTO block_steps (block_id, version, client_id, step_json)
 VALUES (?, ?, ?, ?);
@@ -171,8 +171,6 @@ WHERE id = sqlc.arg(id) AND sqlc.arg(doc_version) >= doc_version AND sqlc.arg(do
 -- name: TrimBlockSteps :exec
 DELETE FROM block_steps
 WHERE block_id = ? AND version <= ?;
-
--- Links and backlinks
 
 -- name: ClearBlockLinks :exec
 DELETE FROM note_links
@@ -212,8 +210,6 @@ WHERE (l.target_note_id = sqlc.narg(target_note_id) OR l.target_entity_id = sqlc
   )
 ORDER BY n.title;
 
--- Attachments
-
 -- name: CreateAttachment :one
 INSERT INTO attachments (campaign_id, block_id, path, name, mime, size)
 VALUES (?, ?, ?, ?, ?, ?)
@@ -225,8 +221,6 @@ WHERE id = ?;
 
 -- name: ListAttachmentPaths :many
 SELECT path FROM attachments;
-
--- Export
 
 -- ListExportBlocks returns every block of a campaign except 'owner' blocks,
 -- which never leave the player who wrote them.

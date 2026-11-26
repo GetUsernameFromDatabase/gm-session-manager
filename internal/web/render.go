@@ -86,8 +86,17 @@ func (a *App) roster(ctx context.Context, campaignID int64) (views.Roster, error
 			r.OtherCampaigns = append(r.OtherCampaigns, oc)
 		}
 	}
+	taken, err := a.Store.ListOpenTakeHomesByCampaign(ctx, campaignID)
+	if err != nil {
+		return views.Roster{}, err
+	}
 	for _, ch := range chars {
 		rc := views.RosterCharacter{Character: ch}
+		for _, t := range taken {
+			if t.CharacterID == ch.ID {
+				rc.TakenHome = t.CreatedAt
+			}
+		}
 		for _, s := range sessions {
 			if s.CharacterID.Int64 == ch.ID {
 				ua, on := online[s.ID]

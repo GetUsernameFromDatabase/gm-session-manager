@@ -70,19 +70,16 @@ func (q *Queries) ClearBlockAudience(ctx context.Context, blockID int64) error {
 }
 
 const clearBlockLinks = `-- name: ClearBlockLinks :exec
-
 DELETE FROM note_links
 WHERE source_block_id = ?
 `
 
-// Links and backlinks
 func (q *Queries) ClearBlockLinks(ctx context.Context, sourceBlockID int64) error {
 	_, err := q.db.ExecContext(ctx, clearBlockLinks, sourceBlockID)
 	return err
 }
 
 const createAttachment = `-- name: CreateAttachment :one
-
 INSERT INTO attachments (campaign_id, block_id, path, name, mime, size)
 VALUES (?, ?, ?, ?, ?, ?)
 RETURNING id, campaign_id, block_id, path, name, mime, size, created_at
@@ -97,7 +94,6 @@ type CreateAttachmentParams struct {
 	Size       int64
 }
 
-// Attachments
 func (q *Queries) CreateAttachment(ctx context.Context, arg CreateAttachmentParams) (Attachment, error) {
 	row := q.db.QueryRowContext(ctx, createAttachment,
 		arg.CampaignID,
@@ -164,7 +160,6 @@ func (q *Queries) CreateBlock(ctx context.Context, arg CreateBlockParams) (NoteB
 }
 
 const createNote = `-- name: CreateNote :one
-
 INSERT INTO notes (campaign_id, kind, title, owner_character_id)
 VALUES (?, ?, ?, ?)
 RETURNING id, campaign_id, kind, title, owner_character_id, created_at, updated_at
@@ -177,11 +172,6 @@ type CreateNoteParams struct {
 	OwnerCharacterID sql.NullInt64
 }
 
-// Read rules for note blocks live in two places that must agree: the
-// readable-block predicate below (for listings) and perm.CanReadBlock (for
-// single checks and websocket fan-out). perm's table-driven tests run both.
-//
-// A viewer is (is_gm, character_id). The GM never reads 'owner' blocks.
 func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (Note, error) {
 	row := q.db.QueryRowContext(ctx, createNote,
 		arg.CampaignID,
@@ -306,7 +296,6 @@ func (q *Queries) GetNote(ctx context.Context, id int64) (Note, error) {
 }
 
 const insertBlockStep = `-- name: InsertBlockStep :exec
-
 INSERT INTO block_steps (block_id, version, client_id, step_json)
 VALUES (?, ?, ?, ?)
 `
@@ -318,7 +307,8 @@ type InsertBlockStepParams struct {
 	StepJson string
 }
 
-// Collaboration (ProseMirror collab, central authority)
+// InsertBlockStep records one step of a block's collaborative editing
+// (ProseMirror collab, with the server as the central authority).
 func (q *Queries) InsertBlockStep(ctx context.Context, arg InsertBlockStepParams) error {
 	_, err := q.db.ExecContext(ctx, insertBlockStep,
 		arg.BlockID,
@@ -559,7 +549,6 @@ func (q *Queries) ListBlockStepsSince(ctx context.Context, arg ListBlockStepsSin
 }
 
 const listExportBlocks = `-- name: ListExportBlocks :many
-
 SELECT b.id, b.note_id, b.position, b.visibility, b.doc_json
 FROM note_blocks AS b
 JOIN notes AS n ON n.id = b.note_id
@@ -575,7 +564,6 @@ type ListExportBlocksRow struct {
 	DocJson    string
 }
 
-// Export
 // ListExportBlocks returns every block of a campaign except 'owner' blocks,
 // which never leave the player who wrote them.
 func (q *Queries) ListExportBlocks(ctx context.Context, campaignID int64) ([]ListExportBlocksRow, error) {
@@ -766,6 +754,12 @@ type ListReadableNotesParams struct {
 // ListReadableNotes lists notes with at least one block the viewer may read,
 // plus the viewer's own notes and, for the GM, the GM's notes (which may
 // still be empty).
+//
+// Read rules for note blocks live in two places that must agree: the
+// readable-block predicate here and in the listings below, and
+// perm.CanReadBlock (for single checks and websocket fan-out). perm's
+// table-driven tests run both. A viewer is (is_gm, character_id). The GM
+// never reads 'owner' blocks.
 func (q *Queries) ListReadableNotes(ctx context.Context, arg ListReadableNotesParams) ([]Note, error) {
 	rows, err := q.db.QueryContext(ctx, listReadableNotes,
 		arg.CampaignID,
