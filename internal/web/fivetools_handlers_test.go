@@ -317,6 +317,10 @@ func TestFiveToolsRemove(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("remove: %d %s", w.Code, w.Body)
 	}
+	// A toast: the picker's notice would vanish with the reload the publish causes.
+	if body := w.Body.String(); !strings.Contains(body, "Removed phb.") || !strings.Contains(body, `id="`+views.FiveToolsID+`"`) {
+		t.Errorf("remove answer lacks the toast or the picker: %s", body)
+	}
 	if _, err := os.Stat(folder); !os.IsNotExist(err) {
 		t.Errorf("folder kept: %v", err)
 	}

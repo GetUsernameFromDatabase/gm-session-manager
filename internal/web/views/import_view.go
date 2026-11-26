@@ -260,7 +260,7 @@ const (
 )
 
 // Compendium list query keys: the search, kind and habitat filters, the open
-// tab, and the browse cursor (the after_* keys).
+// tab, the browse cursor (the after_* keys) and how many rows a reload keeps.
 const (
 	QueryKey     = "q"
 	KindKey      = "kind"
@@ -268,6 +268,7 @@ const (
 	TabKey       = "tab"
 	AfterNameKey = "after_name"
 	AfterIDKey   = "after_id"
+	RowsKey      = "rows"
 )
 
 // sharedHref browses source's shared entries in the campaign ctx renders in.

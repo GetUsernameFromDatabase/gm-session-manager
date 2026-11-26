@@ -11,6 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mileusna/useragent"
+
+	"gm-session-manager/internal/web/views"
 )
 
 func TestHandlerErrors(t *testing.T) {
@@ -73,6 +75,28 @@ func TestUserAgent(t *testing.T) {
 		}
 		if u.Mobile != tt.phone {
 			t.Errorf("Mobile(%q) = %v, want %v", tt.ua, u.Mobile, tt.phone)
+		}
+	}
+}
+
+// TestBrowsePageSize checks a Browse reload's row count: at least a batch,
+// at most 20.
+func TestBrowsePageSize(t *testing.T) {
+	for _, tt := range []struct {
+		rows string
+		want int
+	}{
+		{"", compendiumBatch},
+		{"junk", compendiumBatch},
+		{"-5", compendiumBatch},
+		{"40", compendiumBatch},
+		{"350", 350},
+		{"999999", 20 * compendiumBatch},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x?"+views.RowsKey+"="+tt.rows, nil)
+		if got := browsePageSize(c); got != tt.want {
+			t.Errorf("rows=%q: %d, want %d", tt.rows, got, tt.want)
 		}
 	}
 }

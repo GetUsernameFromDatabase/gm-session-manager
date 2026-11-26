@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 // FiveToolsPrefix starts the name of every downloaded book's folder.
@@ -159,18 +160,33 @@ func fetchBooks(ctx context.Context) ([]Book, error) {
 	return all, nil
 }
 
-// FiveToolsBooks lists every 5etools book, falling back to the cached list
-// when the mirror cannot be reached.
+// booksFresh is how long the cached book list answers without asking the
+// mirror: the picker reloads whenever the sources change.
+const booksFresh = 10 * time.Minute
+
+// readBooks reads the cached book list.
+func readBooks(cache string) ([]Book, error) {
+	data, err := os.ReadFile(cache) //nolint:gosec // our own cache path
+	if err != nil {
+		return nil, err
+	}
+	var cached []Book
+	return cached, json.Unmarshal(data, &cached)
+}
+
+// FiveToolsBooks lists every 5etools book: the cached list while it is
+// fresh, else the mirror's, falling back to the cache when it is down.
 func FiveToolsBooks(ctx context.Context, dir string) ([]Book, error) {
 	cache := filepath.Join(dir, fiveToolsCacheDir, "books.json")
+	if fi, err := os.Stat(cache); err == nil && time.Since(fi.ModTime()) < booksFresh {
+		if cached, err := readBooks(cache); err == nil {
+			return cached, nil
+		}
+	}
 	books, err := fetchBooks(ctx)
 	if err != nil {
-		data, rerr := os.ReadFile(cache) //nolint:gosec // our own cache path
+		cached, rerr := readBooks(cache)
 		if rerr != nil {
-			return nil, err
-		}
-		var cached []Book
-		if json.Unmarshal(data, &cached) != nil {
 			return nil, err
 		}
 		return cached, nil

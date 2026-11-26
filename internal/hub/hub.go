@@ -42,13 +42,15 @@ const (
 	TopicPending TopicKind = "pending"
 	// TopicCompendium: books or source priority changed, for every campaign.
 	TopicCompendium TopicKind = "compendium"
+	// TopicHabitats: monster habitats changed, for every campaign.
+	TopicHabitats TopicKind = "habitats"
 	// TopicImport: the GM's background 5etools import moved on.
 	TopicImport TopicKind = "import"
 )
 
 var (
 	// everyCampaign topics reach every client, whatever its campaign.
-	everyCampaign = []TopicKind{TopicCompendium}
+	everyCampaign = []TopicKind{TopicCompendium, TopicHabitats}
 	// gmEverywhere topics reach the GM on whatever page they are on.
 	gmEverywhere = []TopicKind{TopicPending, TopicImport}
 )

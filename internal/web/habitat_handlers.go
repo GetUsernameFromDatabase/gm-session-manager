@@ -14,6 +14,7 @@ import (
 	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/web/views"
 )
 
@@ -92,6 +93,11 @@ func (a *App) habitatsPage(c *gin.Context) error {
 	return nil
 }
 
+// habitatsChanged tells open compendium pages, in every campaign, to reload.
+func (a *App) habitatsChanged() {
+	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicHabitats})
+}
+
 // habitatCell saves one box of the grid.
 func (a *App) habitatCell(c *gin.Context) error {
 	var f habitatCellForm
@@ -104,6 +110,7 @@ func (a *App) habitatCell(c *gin.Context) error {
 		if err := a.Store.RemoveMonsterHabitat(ctx, sqlc.RemoveMonsterHabitatParams{EntryID: f.EntryID, Habitat: enum.Habitat(f.Habitat)}); err != nil {
 			return err
 		}
+		a.habitatsChanged()
 		a.render(c, http.StatusOK, views.Flash("", false))
 		return nil
 	}
@@ -115,6 +122,7 @@ func (a *App) habitatCell(c *gin.Context) error {
 		a.fail(c, http.StatusUnprocessableEntity, "Only monsters have habitats.")
 		return nil
 	}
+	a.habitatsChanged()
 	a.render(c, http.StatusOK, views.Flash("", false))
 	return nil
 }
@@ -160,6 +168,7 @@ func (a *App) habitatAny(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
+	a.habitatsChanged()
 	e, err := a.Store.GetCompendiumEntry(ctx, f.EntryID)
 	if err != nil {
 		return err
@@ -182,6 +191,7 @@ func (a *App) habitatFill(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
+	a.habitatsChanged()
 	v, err := a.habitatView(ctx, filter)
 	if err != nil {
 		return err
@@ -206,6 +216,7 @@ func (a *App) habitatCopy(c *gin.Context) error {
 	if err := compendium.SeedHabitats(ctx, a.Store.Queries, f.EntryID, from); err != nil {
 		return err
 	}
+	a.habitatsChanged()
 	e, err := a.Store.GetCompendiumEntry(ctx, f.EntryID)
 	if err != nil {
 		return err
@@ -236,6 +247,7 @@ func (a *App) habitatBatch(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
+	a.habitatsChanged()
 	v, err := a.habitatView(ctx, f.Filter)
 	if err != nil {
 		return err

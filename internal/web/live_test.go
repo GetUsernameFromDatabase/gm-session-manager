@@ -119,6 +119,11 @@ func TestLiveVisibility(t *testing.T) {
 		{"player may not see the source priority", player, f.campaignID, views.LiveKey(views.LiveSources, f.campaignID), false, nil, nil},
 		{"GM sees the Sources card", perm.GM, f.campaignID, views.LiveKey(views.LiveCampaignSources, f.campaignID), true, nil, nil},
 		{"player may not see the Sources card", player, f.campaignID, views.LiveKey(views.LiveCampaignSources, f.campaignID), false, nil, nil},
+		{"GM follows the whole compendium", perm.GM, 0, views.LiveKey(views.LiveCompendium, 0), true, nil, nil},
+		{"GM follows a campaign's compendium", perm.GM, f.campaignID, views.LiveKey(views.LiveCompendium, f.campaignID), true, nil, nil},
+		{"player follows own campaign's compendium", player, f.campaignID, views.LiveKey(views.LiveCompendium, f.campaignID), true, nil, nil},
+		{"player may not follow the whole compendium", player, f.campaignID, views.LiveKey(views.LiveCompendium, 0), false, nil, nil},
+		{"outsider may not follow another campaign's compendium", f.outsider, f.outsiderCampaign, views.LiveKey(views.LiveCompendium, f.campaignID), false, nil, nil},
 		{"player sees a revealed NPC", player, f.campaignID, views.LiveKey(views.LiveEntity, f.entity), true, nil, nil},
 		{"player may not see a GM-only note", player, f.campaignID, views.LiveKey(views.LiveNote, f.gmNote), false, nil, nil},
 		{"player sees own sheet with HP", player, f.campaignID, views.LiveKey(views.LiveCharacter, f.characterID), true, []string{"hp"}, nil},
@@ -170,7 +175,7 @@ func TestLiveVisibility(t *testing.T) {
 		views.LiveRoster, views.LiveRequests, views.LiveWaiting, views.LiveCharacter,
 		views.LiveEncounters, views.LiveEncounter, views.LivePlayerCombat, views.LiveNotes,
 		views.LiveNote, views.LiveEntities, views.LiveEntity, views.LiveImport,
-		views.LiveSources, views.LiveCampaignSources,
+		views.LiveSources, views.LiveCampaignSources, views.LiveCompendium,
 	}
 	if len(liveKinds) != len(all) {
 		t.Errorf("liveKinds has %d kinds, this test lists %d", len(liveKinds), len(all))
@@ -429,6 +434,11 @@ func TestLiveBindsMatchState(t *testing.T) {
 		if page := f.do(t, http.MethodGet, path, gm, nil, false).Body.String(); !strings.Contains(page, `data-live="`+kind+`:`) {
 			t.Errorf("%s does not show the live %s view", path, kind)
 		}
+	}
+	// A player's compendium is live too, so its Browse tab reloads.
+	playerCompendium := route.Path(route.CampaignCompendium, f.campaignID)
+	if page := f.do(t, http.MethodGet, playerCompendium, player, nil, false).Body.String(); !strings.Contains(page, `data-live="`+views.LiveKey(views.LiveCompendium, f.campaignID)+`"`) || !strings.Contains(page, "ws-connect") {
+		t.Errorf("%s does not follow the live compendium view", playerCompendium)
 	}
 	for _, dead := range []bool{false, true} { // the dead sheet swaps its buttons and the tracker its badge
 		if dead {

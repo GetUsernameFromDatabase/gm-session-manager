@@ -179,6 +179,7 @@ func (a *App) homebrewLink(c *gin.Context) error {
 	if err := a.Store.LinkEntryCampaign(c.Request.Context(), sqlc.LinkEntryCampaignParams{EntryID: e.ID, CampaignID: campaignID}); err != nil {
 		return err
 	}
+	a.Hub.Publish(campaignID, hub.Topic{Kind: hub.TopicCompendium})
 	redirect(c, homebrewTabURL(c))
 	return nil
 }
@@ -196,6 +197,7 @@ func (a *App) homebrewUnlink(c *gin.Context) error {
 	if err := a.Store.UnlinkEntryCampaign(c.Request.Context(), sqlc.UnlinkEntryCampaignParams{EntryID: e.ID, CampaignID: campaignID}); err != nil {
 		return err
 	}
+	a.Hub.Publish(campaignID, hub.Topic{Kind: hub.TopicCompendium})
 	redirect(c, homebrewTabURL(c))
 	return nil
 }

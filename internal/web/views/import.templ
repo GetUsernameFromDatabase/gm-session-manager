@@ -21,7 +21,8 @@ import (
 )
 
 // FiveToolsPicker is the book list. Unchecking an imported book does
-// nothing; Remove deletes it with its entries.
+// nothing; Remove deletes it with its entries. It reloads with its ticks
+// when the source card refetches (a book removed there, live.js).
 templ FiveToolsPicker(v FiveToolsView) {
 	<form
 		id={ FiveToolsID }
@@ -29,6 +30,8 @@ templ FiveToolsPicker(v FiveToolsView) {
 		action={ templ.SafeURL(CompendiumPath(ctx, route.CompendiumFiveTools)) }
 		class="group/busy space-y-4"
 		data-busy
+		data-reload-on={ LiveKey(LiveSources, ctxCampaign(ctx)) }
+		data-reload-url={ CompendiumPath(ctx, route.CompendiumFiveTools) }
 		hx-target={ "#" + FiveToolsID }
 		hx-swap="outerHTML"
 	>
@@ -62,7 +65,14 @@ templ FiveToolsPicker(v FiveToolsView) {
 					</div>
 					<ul class="divide-y rounded-lg border">
 						for _, b := range g.Books {
-							<li class="relative flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+							// A reload leaves a downloaded book's box out (live.js): the server
+							// ticks it again if it is still downloaded.
+							<li
+								class="relative flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5"
+								if b.Downloaded {
+									data-reload-skip
+								}
+							>
 								<div class="min-w-0 grow basis-48">
 									@checkField(FiveToolsField, b.ID, b.Downloaded || b.Ticked) {
 										<span class="min-w-0">{ b.Name } <code class="text-xs text-muted-foreground">{ b.ID }</code></span>
@@ -74,7 +84,7 @@ templ FiveToolsPicker(v FiveToolsView) {
 									}
 									// Not removeButton: that one is 16px, too small to tap.
 									@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: quietDestructive, Attributes: templ.Attributes{
-										"aria-label": "Remove " + b.Name, "hx-post": route.Compendium + route.Path(route.CompendiumFiveToolsBookDelete, b.ID),
+										"aria-label": "Remove " + b.Name, "hx-post": CompendiumPath(ctx, route.Path(route.CompendiumFiveToolsBookDelete, b.ID)),
 										"hx-confirm": "Remove " + b.Name + " and its entries from the compendium?",
 									}}) {
 										@icon.X(icon.Props{Size: 16})

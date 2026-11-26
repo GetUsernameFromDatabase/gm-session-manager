@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
 	"github.com/gin-gonic/gin"
 
 	"gm-session-manager/internal/compendium"
@@ -318,7 +319,13 @@ func (a *App) fiveToolsRemove(c *gin.Context) error {
 		return a.renderFiveTools(c, "Could not remove "+id+": "+err.Error(), true)
 	}
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
-	return a.renderFiveTools(c, "Removed "+id+".", false)
+	// A toast, not the picker's notice: the publish reloads the picker.
+	v, err := a.fiveToolsView(ctx, "", false)
+	if err != nil {
+		return err
+	}
+	a.render(c, http.StatusOK, templ.Join(views.FiveToolsPicker(v), views.Toast("Removed "+id+".", false)))
+	return nil
 }
 
 // sourceOrderForm is every source key in the new order (a drag or a typed

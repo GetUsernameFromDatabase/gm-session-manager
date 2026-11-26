@@ -56,17 +56,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 			}
 			// Browse fits the window on desktop (data-fit-screen, globals.css).
 			@tabs.Content(tabs.ContentProps{Value: CompendiumTabBrowse, Attributes: templ.Attributes{"data-fit-screen": true}}) {
-				if len(v.Counts) == 0 && v.Shared == "" {
-					@compendiumEmpty(v.IsGM, v.Import.Job)
-				} else {
-					// On phones the list scrolls with the page, so the search and
-					// filters stick under the navbar (3rem + its border).
-					<div class="sticky top-[calc(3rem+1px)] z-20 -mx-4 bg-background px-4 pt-2 md:static md:mx-0 md:p-0">
-						@compendiumSearchForm(v)
-						@kindCounts(v)
-					</div>
-					@CompendiumResults(v)
-				}
+				@CompendiumBrowse(v)
 			}
 			@tabs.Content(tabs.ContentProps{Value: CompendiumTabHomebrew}) {
 				@homebrewTab(v)
@@ -83,7 +73,36 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 				}
 			}
 		}
+		// Outside Browse: inside, Browse's own reload would carry it and reload again.
+		@CompendiumLive(v.Campaign)
 	}
+}
+
+// CompendiumLive is an empty live view whose every refetch reloads the
+// Browse tab (data-reload-on), for the GM and players alike.
+templ CompendiumLive(campaign int64) {
+	<div id="compendium-live" hidden hx-swap-oob="true" { live(LiveCompendium, campaign)... }></div>
+}
+
+// CompendiumBrowse is the Browse tab. A change to the compendium or to
+// habitats (CompendiumLive refetched) reloads it from the page's address
+// with as many rows as it shows (live.js). Like a live view it swaps out of
+// band, so htmx swaps its nested out-of-band parts (kind badges, starting
+// sets) instead of dropping them.
+templ CompendiumBrowse(v CompendiumView) {
+	<div id={ CompendiumBrowseID } class="contents" hx-swap-oob="true" data-reload-on={ LiveKey(LiveCompendium, v.Campaign) } data-reload-rows={ RowsKey }>
+		if len(v.Counts) == 0 && v.Shared == "" {
+			@compendiumEmpty(v.IsGM, v.Import.Job)
+		} else {
+			// On phones the list scrolls with the page, so the search and
+			// filters stick under the navbar (3rem + its border).
+			<div class="sticky top-[calc(3rem+1px)] z-20 -mx-4 bg-background px-4 pt-2 md:static md:mx-0 md:p-0">
+				@compendiumSearchForm(v)
+				@kindCounts(v)
+			</div>
+			@CompendiumResults(v)
+		}
+	</div>
 }
 
 // compendiumSearchForm searches once typing pauses: it swaps only the
@@ -255,7 +274,7 @@ templ CompendiumResults(v CompendiumView) {
 			// grid-cols-1 caps the column at the screen width, so long rows truncate
 			// on phones instead of scrolling sideways.
 			<div class="grid grid-cols-1 gap-4 md:min-h-0 md:flex-1 md:grid-cols-2 md:grid-rows-1">
-				<ul class="divide-y rounded-lg border text-sm md:min-h-0 md:overflow-y-auto">
+				<ul id={ CompendiumListID } class="divide-y rounded-lg border text-sm md:min-h-0 md:overflow-y-auto" data-keep-scroll>
 					@CompendiumRows(v)
 					if len(v.Results) == 0 && len(v.TextResults) == 0 {
 						<li class="p-2 text-muted-foreground">Nothing found.</li>
@@ -346,7 +365,7 @@ templ copyOrder(order []string, listed string) {
 templ compendiumRow(r sqlc.SearchCompendiumRow, href string, order []string) {
 	// Relative, so the sr-only kind stays inside the scrolling list instead
 	// of stretching the page.
-	<li class="relative flex items-center gap-2 px-2 py-1.5 hover:bg-muted" hx-get={ entryHref(ctx, r.ID) + "?preview=1" } hx-trigger="mouseenter[document.getElementById('entry-preview').checkVisibility()] delay:150ms" hx-target="#entry-preview" hx-swap="innerHTML">
+	<li class="relative flex items-center gap-2 px-2 py-1.5 hover:bg-muted" data-row hx-get={ entryHref(ctx, r.ID) + "?preview=1" } hx-trigger="mouseenter[document.getElementById('entry-preview').checkVisibility()] delay:150ms" hx-target="#entry-preview" hx-swap="innerHTML">
 		@kindIcon(r.Kind, "")
 		<span class="sr-only">{ r.Kind }</span>
 		<a class="truncate hover:underline" href={ templ.SafeURL(href) }>{ r.Name }</a>

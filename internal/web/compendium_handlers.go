@@ -170,7 +170,8 @@ func compendiumPath(c *gin.Context, rest string) string {
 // compendiumLayout is the frame of a compendium page: the campaign's, with
 // the GM's switcher to the same page elsewhere.
 func (a *App) compendiumLayout(c *gin.Context, w who, title string, camp *sqlc.Campaign) (views.Layout, error) {
-	l := a.layout(w, title, views.NavCompendium, camp, false)
+	// Live for players too: Browse reloads when the compendium changes.
+	l := a.layout(w, title, views.NavCompendium, camp, true)
 	if !w.isGM() {
 		return l, nil
 	}
@@ -230,6 +231,13 @@ func (a *App) decodeLinked(ctx context.Context, e sqlc.CompendiumEntry, campaign
 // compendiumBatch is how many rows one search or scroll step loads.
 const compendiumBatch = 100
 
+// browsePageSize is the first batch's size: a Browse reload asks for as many
+// rows as the page shows (rows), so it keeps them, capped at 20 batches.
+func browsePageSize(c *gin.Context) int {
+	rows, _ := strconv.Atoi(c.Query(views.RowsKey))
+	return min(max(rows, compendiumBatch), 20*compendiumBatch)
+}
+
 func (a *App) compendiumPage(c *gin.Context) error {
 	return a.renderCompendium(c, views.ImportNotice{Tab: c.Query("import")})
 }
@@ -263,14 +271,15 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 		// Browse the kind ("" is every kind) a batch at a time; the last row
 		// of a full batch is the cursor for the next.
 		afterID, _ := strconv.ParseInt(c.Query(views.AfterIDKey), 10, 64)
-		rows, err := a.Store.ListCompendiumByKind(ctx, sqlc.ListCompendiumByKindParams{Kind: v.Kind, Habitat: v.Habitat, AfterName: c.Query(views.AfterNameKey), AfterID: afterID, CampaignID: viewerCampaign(camp), PageSize: compendiumBatch})
+		pageSize := browsePageSize(c)
+		rows, err := a.Store.ListCompendiumByKind(ctx, sqlc.ListCompendiumByKindParams{Kind: v.Kind, Habitat: v.Habitat, AfterName: c.Query(views.AfterNameKey), AfterID: afterID, CampaignID: viewerCampaign(camp), PageSize: int64(pageSize)})
 		if err != nil {
 			return err
 		}
 		for _, r := range rows {
 			v.Results = append(v.Results, sqlc.SearchCompendiumRow(r))
 		}
-		if len(rows) == compendiumBatch {
+		if len(rows) == pageSize {
 			last := rows[len(rows)-1]
 			v.More = views.CompendiumURL(url.Values{views.KindKey: {v.Kind}, views.HabitatKey: {v.Habitat}, views.AfterNameKey: {last.Name}, views.AfterIDKey: {strconv.FormatInt(last.ID, 10)}}, v.Campaign)
 		}
@@ -287,9 +296,15 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 	if v.HabitatCounts, err = a.Store.CountHabitats(ctx, viewerCampaign(camp)); err != nil {
 		return err
 	}
-	if isHTMX(c) && c.GetHeader("HX-Target") == views.CompendiumResultsID {
-		a.render(c, http.StatusOK, views.CompendiumSearch(v))
-		return nil
+	if isHTMX(c) {
+		switch c.GetHeader("HX-Target") {
+		case views.CompendiumResultsID:
+			a.render(c, http.StatusOK, views.CompendiumSearch(v))
+			return nil
+		case views.CompendiumBrowseID:
+			a.render(c, http.StatusOK, views.CompendiumBrowse(v))
+			return nil
+		}
 	}
 	if err := a.homebrewLists(ctx, w, &v); err != nil {
 		return err
@@ -321,14 +336,15 @@ func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
 		v.With = c.Query(views.SharedWithKey)
 	}
 	afterID, _ := strconv.ParseInt(c.Query(views.AfterIDKey), 10, 64)
-	rows, err := a.Store.ListSharedEntries(ctx, sqlc.ListSharedEntriesParams{SourceKey: v.Shared, With: v.With, Only: v.Only, Kind: v.Kind, AfterName: c.Query(views.AfterNameKey), AfterID: afterID, CampaignID: v.Campaign, PageSize: compendiumBatch})
+	pageSize := browsePageSize(c)
+	rows, err := a.Store.ListSharedEntries(ctx, sqlc.ListSharedEntriesParams{SourceKey: v.Shared, With: v.With, Only: v.Only, Kind: v.Kind, AfterName: c.Query(views.AfterNameKey), AfterID: afterID, CampaignID: v.Campaign, PageSize: int64(pageSize)})
 	if err != nil {
 		return err
 	}
 	for _, r := range rows {
 		v.Results = append(v.Results, sqlc.SearchCompendiumRow(r))
 	}
-	if len(rows) == compendiumBatch {
+	if len(rows) == pageSize {
 		last := rows[len(rows)-1]
 		q := url.Values{views.SharedKey: {v.Shared}, views.SharedWithKey: {v.With}, views.KindKey: {v.Kind}, views.AfterNameKey: {last.Name}, views.AfterIDKey: {strconv.FormatInt(last.ID, 10)}}
 		if v.Only {
@@ -820,6 +836,7 @@ func (a *App) compendiumPageSave(c *gin.Context) error {
 	if err != nil {
 		return a.renderPagePreview(c, http.StatusUnprocessableEntity, w, views.HomebrewView{Input: in, Page: p, Back: back, Error: err.Error()})
 	}
+	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
 	// Saved from a campaign's compendium (its path), the page's source is
 	// ticked there, or the entry it opens next would be hidden.
 	if err := a.allowSources(ctx, viewerCampaign(pathCampaign(c)), []string{key}); err != nil {

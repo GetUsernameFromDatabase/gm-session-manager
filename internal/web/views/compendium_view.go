@@ -123,6 +123,13 @@ func bookIDs(books []compendium.Book) string {
 // CompendiumResultsID is the element htmx swaps when searching or changing kind.
 const CompendiumResultsID = "compendium-results"
 
+// CompendiumBrowseID is the Browse tab's content, reloaded whole when the
+// compendium changes.
+const CompendiumBrowseID = "compendium-browse"
+
+// CompendiumListID is the result list, whose scroll a Browse reload keeps.
+const CompendiumListID = "compendium-list"
+
 // rowFigure is a result row's right-hand text and its colour: a monster's
 // CR, a spell's level, else the category; an item's is tinted by rarity, a
 // subclass's (its class) by the class colour.
@@ -209,8 +216,13 @@ func WithCampaign(ctx context.Context, campaign int64) context.Context {
 // CompendiumPath is rest (e.g. "/entries/7") under the compendium of the
 // campaign ctx renders in.
 func CompendiumPath(ctx context.Context, rest string) string {
+	return CompendiumBase(ctxCampaign(ctx)) + rest
+}
+
+// ctxCampaign is the campaign ctx renders in (0: the whole compendium).
+func ctxCampaign(ctx context.Context) int64 {
 	id, _ := ctx.Value(campaignCtxKey{}).(int64)
-	return CompendiumBase(id) + rest
+	return id
 }
 
 // entryHref is an entry's page in the campaign ctx renders in.

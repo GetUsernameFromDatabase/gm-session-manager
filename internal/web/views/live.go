@@ -33,6 +33,7 @@ const (
 	LiveImport          = "import"          // GM: the background 5etools import, id = 0
 	LiveSources         = "sources"         // GM: the source priority card, id = campaign (0: whole compendium)
 	LiveCampaignSources = "campaignsources" // GM: the campaign page's Sources card, id = campaign
+	LiveCompendium      = "compendium"      // empty marker that reloads the Browse tab, id = campaign (0: whole compendium)
 )
 
 // LiveKey builds a view key.

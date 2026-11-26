@@ -181,11 +181,17 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 		return nil
 	}
 	ctx := c.Request.Context()
+	// Whoever wears it as a look shows the new picture and name; read
+	// first, so a failure here never answers an error for a saved image.
+	topics, err := a.imageTopics(ctx, img)
+	if err != nil {
+		return err
+	}
 	upload, ok := a.imageUpload(c, img.CampaignID)
 	if !ok {
 		return nil
 	}
-	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		if img.ID != 0 {
 			// Read again: another device may have saved while the upload came in.
 			fresh, err := q.GetImage(ctx, img.ID)
@@ -232,8 +238,37 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 		return err
 	}
 	a.sweepFiles(c)
+	a.Hub.Publish(img.CampaignID, topics...)
 	redirect(c, route.Path(route.Image, img.ID))
 	return nil
+}
+
+// imageTopics are the live views showing img as a look: its NPCs (their
+// pages and the NPC list's portraits) and its PCs.
+func (a *App) imageTopics(ctx context.Context, img sqlc.GetImageRow) ([]hub.Topic, error) {
+	var topics []hub.Topic
+	npcs, err := a.Store.ListImageEntities(ctx, img.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range npcs {
+		topics = append(topics, hub.Topic{Kind: hub.TopicEntity, ID: e.ID})
+	}
+	if len(npcs) > 0 {
+		topics = append(topics, hub.Topic{Kind: hub.TopicEntities, ID: img.CampaignID})
+	}
+	pcs, err := a.Store.ListImageCharacters(ctx, img.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, ch := range pcs {
+		more, err := a.characterTopics(ctx, ch.ID)
+		if err != nil {
+			return nil, err
+		}
+		topics = append(topics, more...)
+	}
+	return topics, nil
 }
 
 // imageUpload stores the editor's uploaded picture, if any (an invalid ID
@@ -379,24 +414,9 @@ func (a *App) deleteImage(c *gin.Context) error {
 	}
 	ctx := c.Request.Context()
 	// Whoever wears it as a look loses it.
-	var topics []hub.Topic
-	npcs, err := a.Store.ListImageEntities(ctx, img.ID)
+	topics, err := a.imageTopics(ctx, img)
 	if err != nil {
 		return err
-	}
-	for _, e := range npcs {
-		topics = append(topics, hub.Topic{Kind: hub.TopicEntity, ID: e.ID})
-	}
-	pcs, err := a.Store.ListImageCharacters(ctx, img.ID)
-	if err != nil {
-		return err
-	}
-	for _, ch := range pcs {
-		more, err := a.characterTopics(ctx, ch.ID)
-		if err != nil {
-			return err
-		}
-		topics = append(topics, more...)
 	}
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		// The image goes first: its CHECK needs the link or the file.

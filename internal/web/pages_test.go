@@ -188,6 +188,14 @@ func TestPagesRender(t *testing.T) {
 		!strings.Contains(body, `href="`+cb+`?kind=monster%2Cspell"`) { // badges re-rendered without a stale query
 		t.Errorf("results fragment: %d %s", w.Code, body)
 	}
+	// A compendium change reloads the Browse tab alone, kind badges inside it.
+	req.Header.Set("HX-Target", views.CompendiumBrowseID)
+	w = httptest.NewRecorder()
+	e.router.ServeHTTP(w, req)
+	if body := w.Body.String(); w.Code != http.StatusOK || !strings.HasPrefix(body, `<div id="`+views.CompendiumBrowseID+`"`) || !strings.Contains(body, "Fire Bolt") ||
+		!strings.Contains(body, `id="compendium-kinds"`) || strings.Contains(body, "<html") {
+		t.Errorf("browse fragment: %d %s", w.Code, body)
+	}
 	for _, p := range pages {
 		for _, as := range []struct {
 			name   string

@@ -95,12 +95,54 @@ import { ROUTES } from "./shared.js";
     inflight.set(view, false);
     // The page's campaign keeps the view's compendium links in it.
     const q = new URLSearchParams({ v: view, campaign: document.body.dataset.campaign ?? "" });
-    htmx.ajax("GET", ROUTES.live + "?" + q, { source: document.body, swap: "none" }).finally(() => {
+    gsm.ajax("GET", ROUTES.live + "?" + q, { swap: "none" }).finally(() => {
       const again = inflight.get(view);
       inflight.delete(view);
       if (again) gsm.refetch(view);
     });
   };
+
+  // reload loads a region that follows a live view (data-reload-on) from
+  // data-reload-url, or the page's address (its tab's query). A region that
+  // is itself an out-of-band root is answered out of band like a refetch;
+  // any other is swapped in place. A form sends its fields (ticked boxes
+  // stay ticked); data-reload-rows names a parameter carrying how many rows
+  // ([data-row]) it shows, so a scrolled list keeps them. Like refetch, it
+  // loads again after one in flight, and waits while focus is inside (a
+  // search being typed is not in the address yet).
+  const reloading = new Map(); // id -> load again
+  const held = new Set();
+  function reload(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.contains(document.activeElement)) {
+      held.add(id);
+      return;
+    }
+    held.delete(id);
+    if (reloading.has(id)) {
+      reloading.set(id, true);
+      return;
+    }
+    reloading.set(id, false);
+    const values = {};
+    // A form sends what it holds, except inside [data-reload-skip] (the
+    // picker's downloaded books, ticked by the server, maybe deleted since).
+    if (el instanceof HTMLFormElement) {
+      for (const f of el.elements) {
+        if (!f.name || f.disabled || (/^(checkbox|radio)$/.test(f.type) && !f.checked) || f.closest("[data-reload-skip]")) continue;
+        values[f.name] = f.name in values ? [values[f.name], f.value].flat() : f.value;
+      }
+    }
+    if (el.dataset.reloadRows) values[el.dataset.reloadRows] = el.querySelectorAll("[data-row]").length;
+    const url = el.dataset.reloadUrl ?? location.pathname + gsm.tabSearch(el);
+    const swap = el.hasAttribute("hx-swap-oob") ? "none" : "outerHTML";
+    gsm.ajax("GET", url, { target: "#" + id, swap, values }).finally(() => {
+      const again = reloading.get(id);
+      reloading.delete(id);
+      if (again) reload(id);
+    });
+  }
 
   // A refetched view replaces its markup; scrolled lists inside it keep
   // their place (data-keep-scroll, matched by id), expanded lists and opened
@@ -115,6 +157,9 @@ import { ROUTES } from "./shared.js";
       e.detail.shouldSwap = false;
       waiting.add(view);
       return;
+    }
+    if (view) {
+      for (const el of document.querySelectorAll(`[data-reload-on="${CSS.escape(view)}"][id]`)) reload(el.id);
     }
     for (const el of e.detail.target.querySelectorAll('[data-slot="tabs"][id]')) {
       const value = el.querySelector('[data-slot="tabs-trigger"][data-active]')?.dataset.templValue;
@@ -178,7 +223,10 @@ import { ROUTES } from "./shared.js";
   });
 
   // A saved form's text is no longer unsaved; then the waiting views load.
-  const retry = () => [...waiting].forEach(gsm.refetch);
+  const retry = () => {
+    [...waiting].forEach(gsm.refetch);
+    [...held].forEach(reload);
+  };
   document.addEventListener("htmx:afterRequest", (e) => {
     const form = e.detail.elt.closest?.("form");
     // A command form's box already holds the next command, not the sent one.

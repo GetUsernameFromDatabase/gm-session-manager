@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"gm-session-manager/internal/enum"
 )
@@ -100,9 +101,27 @@ func TestFiveToolsBooks(t *testing.T) {
 		t.Fatalf("got %v\nwant %v", got, want)
 	}
 
-	// With the mirror down, the cache answers.
-	serveMirror(t, nil, true)
+	// A fresh cache answers without asking the mirror.
+	asked := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		asked = true
+		http.Error(w, "down", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	restore := UseTestServer(srv.URL)
 	cached, err := FiveToolsBooks(context.Background(), dir)
+	restore()
+	if err != nil || asked || !slices.Equal(cached, books) {
+		t.Fatalf("fresh cache: %v %v, mirror asked %v", cached, err, asked)
+	}
+
+	// An old cache is past fresh, yet still answers while the mirror is down.
+	old := time.Now().Add(-2 * booksFresh)
+	if err := os.Chtimes(filepath.Join(dir, fiveToolsCacheDir, "books.json"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	serveMirror(t, nil, true)
+	cached, err = FiveToolsBooks(context.Background(), dir)
 	if err != nil || !slices.Equal(cached, books) {
 		t.Fatalf("cache fallback: %v %v", cached, err)
 	}

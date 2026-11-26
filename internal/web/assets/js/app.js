@@ -119,6 +119,16 @@ import {
       input.focus();
       htmx.trigger(input, "search");
     },
+
+    // ajax is htmx.ajax from a source of its own: htmx runs one request per
+    // element and drops all but the last one queued, so live refetches of
+    // different views sharing the default source (<body>) were lost. Calls
+    // where only the latest matters (source order, builder) keep <body>.
+    ajax(verb, url, ctx) {
+      const source = document.body.appendChild(document.createElement("span"));
+      source.hidden = true;
+      return htmx.ajax(verb, url, { ...ctx, source }).finally(() => source.remove());
+    },
   });
 
   // The display window shows the image the GM picked. The pick lives in
@@ -1156,6 +1166,17 @@ import {
     url.searchParams.set(param, e.detail.value);
     history.replaceState(history.state, "", url);
   });
+
+  // tabSearch is the query of the page tab holding el: the address's while
+  // that tab is open, else the one it kept (live.js reloads hidden tabs).
+  // The panel is the root's own, so el may sit in an inner tab set.
+  gsm.tabSearch = (el) => {
+    const root = el.closest("[data-url-param]");
+    const panel = [...(root?.querySelectorAll(':scope > [data-slot="tabs-content"]') ?? [])].find((p) => p.contains(el));
+    const open = root?.querySelector('[data-slot="tabs-trigger"][data-active]')?.dataset.templValue;
+    if (!panel || panel.dataset.templValue === open) return location.search;
+    return tabQueries.get(root)?.[panel.dataset.templValue] ?? "";
+  };
 
   // The campaign switcher (compendium, files) opens the page as the address
   // shows it now: the search and tabs update the address without a reload.

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/a-h/templ"
 	"github.com/gin-gonic/gin"
@@ -83,6 +84,7 @@ var liveKinds = map[string]liveKind{
 	views.LiveSources:      {any: []hub.TopicKind{hub.TopicCompendium}, load: (*App).loadSourcesLive},
 	// The card shows the starting sets and their import while nothing is imported.
 	views.LiveCampaignSources: {any: []hub.TopicKind{hub.TopicCompendium, hub.TopicImport}, load: (*App).loadCampaignSourcesLive},
+	views.LiveCompendium:      {any: []hub.TopicKind{hub.TopicCompendium, hub.TopicHabitats}, load: (*App).loadCompendiumLive},
 }
 
 // Affects implements hub.Handler.
@@ -272,6 +274,19 @@ func (a *App) loadSourcesLive(ctx context.Context, vc viewerCtx, k liveKey) (liv
 	}
 	return liveView{html: views.SourcePriorityLive(k.num(), sources, shared, counts), ok: true}, nil
 }
+
+// loadCompendiumLive is the empty marker that reloads the compendium's
+// Browse tab (id = campaign; 0 is the whole one, GM only).
+func (a *App) loadCompendiumLive(_ context.Context, vc viewerCtx, k liveKey) (liveView, error) {
+	if !vc.member(k.num()) {
+		return liveView{}, nil
+	}
+	// A fresh nonce, so every publish that may change the list refetches it
+	// (a counter: Windows clock ticks are coarse enough to repeat a time).
+	return liveView{html: views.CompendiumLive(k.num()), model: compendiumNonce.Add(1), ok: true}, nil
+}
+
+var compendiumNonce atomic.Int64
 
 // loadCampaignSourcesLive is the campaign page's Sources card (id = campaign).
 func (a *App) loadCampaignSourcesLive(ctx context.Context, vc viewerCtx, k liveKey) (liveView, error) {
