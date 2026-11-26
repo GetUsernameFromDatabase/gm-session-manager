@@ -1,7 +1,6 @@
 .env
+# Local instances: data/dev (./run.sh), data/test (browser checks, Playwright output), data/player
 /data/
-# ./run.sh browser: test data and Playwright output
-/data-test/
 *.exe
 # Downloaded by `go run ./cmd/vendorjs`
 /internal/web/assets/vendor/

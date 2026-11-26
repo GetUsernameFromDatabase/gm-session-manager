@@ -27,13 +27,21 @@ const (
 const (
 	DefaultPort    = 8080
 	DefaultDataDir = "data"
+	// DefaultPlayerDataDir differs so a server and a player app run from one folder never share a database.
+	DefaultPlayerDataDir = "data-player"
+	// DefaultPlayerPort differs from DefaultPort so the player app can run beside a server.
+	DefaultPlayerPort = 8042
+	// maxPort matches the max= on Config.Port.
+	maxPort = 65535
 )
 
 // Config is the validated runtime configuration. The env tag names the
 // variable each field comes from and is used in validation messages.
 type Config struct {
-	AdminUsername string `env:"ADMIN_USERNAME" validate:"required"`
-	AdminPassword string `env:"ADMIN_PASSWORD" validate:"required"`
+	// Player is the player app (--player): no admin credentials needed.
+	Player        bool
+	AdminUsername string `env:"ADMIN_USERNAME" validate:"required_unless=Player true"`
+	AdminPassword string `env:"ADMIN_PASSWORD" validate:"required_unless=Player true"`
 	Port          int    `env:"PORT"           validate:"min=1,max=65535"`
 	DataDir       string `env:"DATA_DIR"       validate:"required"`
 }
@@ -55,6 +63,18 @@ func Load(envFile string) (Config, error) {
 		v, ok := fileVars[key]
 		return v, ok
 	})
+}
+
+// Player builds the player app's config from flags only: it reads no .env or environment.
+func Player(port int, dataDir string) (Config, error) {
+	// Checked here, not by the validator: its messages name .env variables.
+	if port < 1 || port > maxPort {
+		return Config{}, fmt.Errorf("config: --port must be 1-%d", maxPort)
+	}
+	if strings.TrimSpace(dataDir) == "" {
+		return Config{}, errors.New("config: --data must not be empty")
+	}
+	return Config{Player: true, Port: port, DataDir: dataDir}, nil
 }
 
 func fromLookup(lookup lookupFunc) (Config, error) {
@@ -103,7 +123,7 @@ func describe(err error) error {
 	msgs := make([]string, 0, len(fieldErrs))
 	for _, fe := range fieldErrs {
 		switch fe.Tag() {
-		case "required":
+		case "required", "required_unless":
 			msgs = append(msgs, fe.Field()+" is required (set it in .env, see .env.example)")
 		default:
 			msgs = append(msgs, fmt.Sprintf("%s is invalid (%s=%s)", fe.Field(), fe.Tag(), fe.Param()))

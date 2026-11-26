@@ -21,10 +21,10 @@ You are the only agent using the browser and the test instances. Any tab, browse
 
 ## The test instance
 
-- Start it once, as a background Bash job: `./run.sh browser`. It builds `build/gm-session-manager-test.exe`, serves `https://localhost:8443` from `data-test/` (never `data/`), and keeps `data-test/playwright` (MCP logs and snapshots) between runs; `./run.sh browser --clean-playwright` empties it on start. Wait for the `listening` line in the job output. A second start takes over from a running one (it stops the old loop and server), and stopping the job ends its server too.
-- After changing sources: run the generate step the change needs (`go generate ./internal/web` for templates and classes), then `touch data-test/restart`. The script rebuilds and restarts; wait for the next `listening` line. A failed build prints `run.sh: build failed`; fix it and touch `restart` again.
-- Stop it when done: `touch data-test/stop`. Fallback if a server outlives its loop anyway: `taskkill //IM gm-session-manager-test.exe //F`. Never kill `gm-session-manager-dev.exe` or `gm-session-manager.exe`: those are the user's real instance.
-- The binary reads `.env` from the folder it starts in: start every instance from the repo root. Never read, print, source or copy `.env`. For the SRD, copy `data/compendium` into `data-test/`.
+- Start it once, as a background Bash job: `./run.sh browser`. It builds `build/gm-session-manager-test.exe`, serves `https://localhost:8443` from `data/test/` (never `data/dev`), and keeps `data/test/playwright` (MCP logs and snapshots) between runs; `./run.sh browser --clean-playwright` empties it on start. Wait for the `listening` line in the job output. A second start takes over from a running one (it stops the old loop and server), and stopping the job ends its server too.
+- After changing sources: run the generate step the change needs (`go generate ./internal/web` for templates and classes), then `touch data/test/restart`. The script rebuilds and restarts; wait for the next `listening` line. A failed build prints `run.sh: build failed`; fix it and touch `restart` again.
+- Stop it when done: `touch data/test/stop`. Fallback if a server outlives its loop anyway: `taskkill //IM gm-session-manager-test.exe //F`. Never kill `gm-session-manager-dev.exe` or `gm-session-manager.exe`: those are the user's real instance.
+- The binary reads `.env` from the folder it starts in: start every instance from the repo root. Never read, print, source or copy `.env`. For the SRD, copy `data/dev/compendium` into `data/test/`.
 
 ## Roles
 
@@ -35,7 +35,7 @@ You are the only agent using the browser and the test instances. Any tab, browse
 
 ## Saved states
 
-`data-test/states/<name>.json` (local, not committed) logs a player in at once and sets up a scene. The caller may name one (`state: warlock-levelup`); otherwise use `player-<id>.json` for the character the task names, if it exists.
+`data/test/states/<name>.json` (local, not committed) logs a player in at once and sets up a scene. The caller may name one (`state: warlock-levelup`); otherwise use `player-<id>.json` for the character the task names, if it exists.
 
 ```json
 {
@@ -53,7 +53,7 @@ You are the only agent using the browser and the test instances. Any tab, browse
 - Scene: run `ready` with `sqlite3 -readonly` against the DB of the instance you use (each instance has its own). No row: post each step with `fetch` from the tab of its role (`as`), header `HX-Request: true`, form-encoded (array values repeat the key), then check `ready` again. A row: skip the steps; they are not idempotent (a level-up twice gives two levels).
 - New state: when you set a scene up by hand that a later run will need again, save it as a new file with `about`, `ready` and the `steps` you posted. `player-<id>.json` is login only (no `ready`, no `steps`).
 - Commands and level-ups can be posted from the player tab with `fetch` and header `HX-Request: true`: `/characters/<id>/cmd`, `/characters/<id>/levelup`, `.../levelup/revert`. Select the level-up form by `input[name=class]`, not `form[method=post]` (the feedback form comes first).
-- `sqlite3 -readonly data-test/gm-session-manager.db` reads sheets directly.
+- `sqlite3 -readonly data/test/gm-session-manager.db` reads sheets directly.
 
 ## What to check
 
@@ -63,5 +63,5 @@ You are the only agent using the browser and the test instances. Any tab, browse
 - The MCP takes over `confirm()` dialogs: click the control, then answer with `browser_handle_dialog` (dismiss destructive ones unless told otherwise).
 - Report back in 15 lines or fewer: what you checked, what was wrong, console errors, and the screenshot names.
 - **Sample, don't crawl.** When exploring, open one page of each kind, not every entry. A script drives the named steps of one page, never a loop over entries. Another context's page: `page.context().browser().contexts()`.
-- Read `check` screenshots yourself and report what you saw. Save them in one run folder per task, `data-test/screenshots/<date>-<topic>/<page>-<width>.png` (MCP `filename: ../screenshots/…`, relative to its output dir `data-test/playwright`; in a script, relative to the repo root), never elsewhere in the repo. No README: report the paths.
-- Test data in `data-test` is shared between sessions: don't delete campaigns or characters you did not create.
+- Read `check` screenshots yourself and report what you saw. Save them in one run folder per task, `data/test/screenshots/<date>-<topic>/<page>-<width>.png` (MCP `filename: ../screenshots/…`, relative to its output dir `data/test/playwright`; in a script, relative to the repo root), never elsewhere in the repo. No README: report the paths.
+- Test data in `data/test` is shared between sessions: don't delete campaigns or characters you did not create.

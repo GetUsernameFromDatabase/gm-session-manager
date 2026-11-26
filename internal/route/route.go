@@ -49,6 +49,7 @@ const (
 
 // Group roots, with their params.
 const (
+	AppDownload  = "/downloads/:file"
 	Attachment   = "/attachments/:attachment"
 	Block        = "/blocks/:block"
 	Campaign     = "/campaigns/:campaign"

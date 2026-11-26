@@ -69,6 +69,15 @@ Releases ship for Windows and Linux on x86-64. On macOS or ARM, build from
 source (see [Development](#development)): `./build.sh` builds for the
 machine it runs on.
 
+### Player app
+
+`gm-session-manager --player` runs the player app for one person: it
+listens on `127.0.0.1` only over plain HTTP, needs no login, reads no `.env`
+(only the flags `--port`, default 8042, and `--data`, default `data-player/`,
+neither valid without `--player`) and opens the browser itself. The
+archive ships `Player app.bat` (Windows) and `player-app.sh` to start it
+with a double-click.
+
 ### GM on another device
 
 Log in at `/admin/login` with the `.env` credentials. A device holds one
@@ -90,6 +99,10 @@ variables override it.
 (`tls/`), uploaded files (`attachments/`) and compendium sources
 (`compendium/`). Back up this folder to keep your campaigns; stop the
 server first, or copy the `-wal` and `-shm` files with the database.
+
+The server also hands out the files in `DATA_DIR/downloads/` to the GM and
+players (`/downloads/<name>`). The update job runs `./build.sh release` and
+copies `dist/*` there (the release build needs `zip`, on Debian too).
 
 App-wide settings changed in the app (not per campaign) are kept in `DATA_DIR/settings.json`.
 
@@ -172,7 +185,7 @@ internal/                 every package below; not importable outside this modul
   web/views/              templ pages and components; live.go holds live-view keys and binds; sheet5e.go is the door to 5e
   web/components/, utils/ shadcn-templ CLI output: never edit by hand
   web/assets/             js/ (app.js, live.js, notes.js, fields.js, wikilink.js), css/ (globals.css → output.css), vendor/
-data/                     DATA_DIR at runtime (database, tls, attachments, compendium); not code
+data/                     local instances, not code: dev (./run.sh), test (browser checks), player (./run.sh player)
 ```
 
 ### After changing sources
@@ -188,7 +201,7 @@ data/                     DATA_DIR at runtime (database, tls, attachments, compe
 Then `go build ./...`, `go test ./...` and `./lint.sh` (golangci-lint, `gopls check` on changed Go files,
 then stale Tailwind classes; `--all` checks every Go file).
 
-`GSM_COMPENDIUM_DIR=data/compendium go test ./internal/compendium -run TestRealSource -v`
+`GSM_COMPENDIUM_DIR=data/dev/compendium go test ./internal/compendium -run TestRealSource -v`
 checks the importer against a real data download.
 
 ### Knowledge graph (graphify)

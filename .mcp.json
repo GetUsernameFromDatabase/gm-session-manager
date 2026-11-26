@@ -10,7 +10,7 @@
         "--isolated",
         "--headless",
         "--output-dir",
-        "data-test/playwright"
+        "data/test/playwright"
       ]
     }
   }

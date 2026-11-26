@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 app=gm-session-manager
 pkg=./cmd/$app
 targets="windows/amd64 linux/amd64" # other systems build from source
-extras="README.md .env.example" # shipped next to the binary in each archive
+extras=(README.md .env.example "Player app.bat" player-app.sh) # shipped next to the binary in each archive
 out=dist                        # binaries and release archives (release.yml, .gitignore)
 stage=build/stage               # scratch folders packed into the archives; build/ also holds run.sh's binaries
 
@@ -65,8 +65,7 @@ for target in $targets; do
 	name=$app-$VERSION-$os-$arch
 	exe=$app; [ "$os" = windows ] && exe=$exe.exe
 	build "$os" "$arch" "$stage/$name/$exe"
-	# shellcheck disable=SC2086 # $extras is a list
-	cp $extras "$stage/$name/"
+	cp "${extras[@]}" "$stage/$name/"
 	if [ "$os" = windows ]; then
 		(cd "$stage" && zip -qr "$OLDPWD/$out/$name.zip" "$name")
 	else

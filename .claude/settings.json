@@ -20,8 +20,8 @@
       "Bash(go tool shadcn-templ *)",
       "Bash(node --check internal/web/assets/js/app.js)",
       "mcp__playwright",
-      "Bash(touch data-test/restart)",
-      "Bash(touch data-test/stop)"
+      "Bash(touch data/test/restart)",
+      "Bash(touch data/test/stop)"
     ],
     "ask": [
       "Bash(gh pr create:*)",

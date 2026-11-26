@@ -335,6 +335,16 @@ func TestResolveDeletedCharacter(t *testing.T) {
 	}
 }
 
+// TestLoginAdminRefusedWithoutCredentials: the player app starts with no admin
+// username, and empty credentials must not log in.
+func TestLoginAdminRefusedWithoutCredentials(t *testing.T) {
+	f := newFixture(t)
+	mgr := NewManager(f.q, "", "")
+	if _, _, err := mgr.LoginAdmin(t.Context(), "", ""); !errors.Is(err, ErrBadCredentials) {
+		t.Errorf("LoginAdmin = %v, want ErrBadCredentials", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
 	m.Run()

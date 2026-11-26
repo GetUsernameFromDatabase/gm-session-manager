@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net"
@@ -41,12 +42,59 @@ var version = "dev"
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "gm-session-manager:", err)
+		waitIfOwnConsole()
 		os.Exit(1)
 	}
 }
 
+// loopbackHostOnly refuses requests addressed to any other host name. Plain
+// HTTP has no certificate to stop DNS rebinding: a web page could point its
+// own domain at 127.0.0.1 and reach the player app with loopback's rights.
+func loopbackHostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.Host)
+		if err != nil {
+			host = r.Host // no port: port 80
+		}
+		if host != "127.0.0.1" && host != "localhost" {
+			http.Error(w, "open this app at 127.0.0.1", http.StatusMisdirectedRequest)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// parseFlags reads the command line; --port and --data only make sense for the player app.
+func parseFlags(args []string) (player bool, port int, data string, err error) {
+	fs := flag.NewFlagSet("gm-session-manager", flag.ContinueOnError)
+	fs.BoolVar(&player, "player", false, "run the player app on this computer: 127.0.0.1 only, plain HTTP, no admin login, configured by flags only")
+	fs.IntVar(&port, "port", config.DefaultPlayerPort, "player app port (with --player)")
+	fs.StringVar(&data, "data", config.DefaultPlayerDataDir, "player app data folder (with --player)")
+	if err = fs.Parse(args); err != nil {
+		return false, 0, "", err
+	}
+	given := false
+	fs.Visit(func(f *flag.Flag) { given = given || f.Name == "port" || f.Name == "data" })
+	if given && !player {
+		return false, 0, "", errors.New("--port and --data apply only with --player")
+	}
+	return player, port, data, nil
+}
+
 func run() error {
-	cfg, err := config.Load(envFile)
+	player, port, data, err := parseFlags(os.Args[1:])
+	if errors.Is(err, flag.ErrHelp) {
+		return nil // the usage is already printed
+	}
+	if err != nil {
+		return err
+	}
+	var cfg config.Config
+	if player {
+		cfg, err = config.Player(port, data)
+	} else {
+		cfg, err = config.Load(envFile)
+	}
 	if err != nil {
 		return err
 	}
@@ -67,15 +115,30 @@ func run() error {
 	}
 	defer func() { _ = conn.Close() }()
 
-	lanIPs, err := join.LANAddresses()
-	if err != nil {
-		return err
+	// The player app is plain HTTP on loopback: no LAN addresses, no certificate.
+	var (
+		lanIPs      []net.IP
+		fingerprint string
+		tlsConfig   *tls.Config
+	)
+	if cfg.Player {
+		slog.Info("player app: this computer only, no login needed")
+	} else {
+		if lanIPs, err = join.LANAddresses(); err != nil {
+			return err
+		}
+		cert, created, err := join.LoadOrCreateCert(filepath.Join(cfg.DataDir, tlsDir), lanIPs, time.Now())
+		if err != nil {
+			return fmt.Errorf("tls certificate: %w", err)
+		}
+		fingerprint = join.Fingerprint(cert)
+		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+		slog.Info("tls certificate", "new", created, "sha256", fingerprint, "lan", lanIPs)
+		// The take-home dialog lists these files for players to download.
+		if err := os.MkdirAll(filepath.Join(cfg.DataDir, web.DownloadsDir), 0o750); err != nil {
+			return fmt.Errorf("create downloads dir: %w", err)
+		}
 	}
-	cert, created, err := join.LoadOrCreateCert(filepath.Join(cfg.DataDir, tlsDir), lanIPs, time.Now())
-	if err != nil {
-		return fmt.Errorf("tls certificate: %w", err)
-	}
-	slog.Info("tls certificate", "new", created, "sha256", join.Fingerprint(cert), "lan", lanIPs)
 
 	store := db.NewStore(conn)
 	if err := compendium.CleanDownloads(filepath.Join(cfg.DataDir, compendiumDir)); err != nil {
@@ -123,7 +186,7 @@ func run() error {
 		DataDir:     cfg.DataDir,
 		Port:        cfg.Port,
 		LANIPs:      lanIPs,
-		Fingerprint: join.Fingerprint(cert),
+		Fingerprint: fingerprint,
 	})
 	defer app.Close()
 	if err := app.CleanAttachments(ctx); err != nil {
@@ -140,28 +203,44 @@ func run() error {
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
 		Handler:           app.Router(),
 		ReadHeaderTimeout: readHeaderTimeout,
-		TLSConfig:         &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+		TLSConfig:         tlsConfig,
+	}
+	if cfg.Player {
+		// IPv4 only: "localhost" may resolve to ::1.
+		srv.Addr = fmt.Sprintf("127.0.0.1:%d", cfg.Port)
+		srv.Handler = loopbackHostOnly(srv.Handler)
 	}
 	// Websockets would otherwise keep Shutdown waiting until its timeout.
 	srv.RegisterOnShutdown(app.Close)
 
-	// Browsers try http:// for an address typed without a scheme, so the same
-	// port redirects plain HTTP to HTTPS.
 	base, err := (&net.ListenConfig{}).Listen(ctx, "tcp", srv.Addr)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = base.Close() }()
-	tlsL, plainL := join.SplitTLS(base)
-	redirect := &http.Server{Handler: join.RedirectHTTPS, ReadHeaderTimeout: readHeaderTimeout}
-	go func() { _ = redirect.Serve(plainL) }()
 
-	go keepAwake(ctx)
+	var redirect *http.Server
 	errc := make(chan error, 1)
-	go func() {
-		slog.Info("listening", "url", fmt.Sprintf("https://localhost:%d", cfg.Port), "data_dir", cfg.DataDir, "version", version)
-		errc <- srv.ServeTLS(tlsL, "", "")
-	}()
+	if cfg.Player {
+		url := fmt.Sprintf("http://127.0.0.1:%d/", cfg.Port)
+		go func() {
+			slog.Info("listening", "url", url, "data_dir", cfg.DataDir, "version", version)
+			errc <- srv.Serve(base)
+		}()
+		openBrowser(url)
+	} else {
+		// Browsers try http:// for an address typed without a scheme, so the same
+		// port redirects plain HTTP to HTTPS.
+		tlsL, plainL := join.SplitTLS(base)
+		redirect = &http.Server{Handler: join.RedirectHTTPS, ReadHeaderTimeout: readHeaderTimeout}
+		go func() { _ = redirect.Serve(plainL) }()
+
+		go keepAwake(ctx)
+		go func() {
+			slog.Info("listening", "url", fmt.Sprintf("https://localhost:%d", cfg.Port), "data_dir", cfg.DataDir, "version", version)
+			errc <- srv.ServeTLS(tlsL, "", "")
+		}()
+	}
 
 	select {
 	case err := <-errc:
@@ -171,7 +250,9 @@ func run() error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-	_ = redirect.Shutdown(shutdownCtx)
+	if redirect != nil {
+		_ = redirect.Shutdown(shutdownCtx)
+	}
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

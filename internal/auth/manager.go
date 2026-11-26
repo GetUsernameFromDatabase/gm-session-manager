@@ -41,7 +41,8 @@ func (m *Manager) IssuePlayer(ctx context.Context, characterID int64) (string, s
 // LoginAdmin checks the credentials and, if they match, creates an admin
 // session with no character.
 func (m *Manager) LoginAdmin(ctx context.Context, user, pass string) (string, sqlc.Session, error) {
-	if !credentialsMatch(m.adminUser, m.adminPass, user, pass) {
+	// The player app has no credentials; two empty pairs would otherwise match.
+	if m.adminUser == "" || !credentialsMatch(m.adminUser, m.adminPass, user, pass) {
 		return "", sqlc.Session{}, ErrBadCredentials
 	}
 	return m.issue(ctx, enum.RoleAdmin, sql.NullInt64{})

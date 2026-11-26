@@ -103,3 +103,35 @@ func TestLoadMissingFileIsNotAnError(t *testing.T) {
 		t.Fatalf("missing .env should fall back to environment: %v", err)
 	}
 }
+
+func TestPlayer(t *testing.T) {
+	tests := []struct {
+		name    string
+		port    int
+		dataDir string
+		wantErr string // the flag the message must name
+	}{
+		{name: "defaults are valid", port: DefaultPlayerPort, dataDir: DefaultPlayerDataDir},
+		{name: "port 0 refused", port: 0, dataDir: DefaultPlayerDataDir, wantErr: "--port"},
+		{name: "port above 65535 refused", port: 70000, dataDir: DefaultPlayerDataDir, wantErr: "--port"},
+		{name: "empty data dir refused", port: DefaultPlayerPort, dataDir: " ", wantErr: "--data"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Player(tt.port, tt.dataDir)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || strings.Contains(err.Error(), ".env") {
+					t.Fatalf("got %v, want an error naming %s and not .env", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			want := Config{Player: true, Port: tt.port, DataDir: tt.dataDir}
+			if got != want {
+				t.Errorf("got %+v, want %+v", got, want)
+			}
+		})
+	}
+}

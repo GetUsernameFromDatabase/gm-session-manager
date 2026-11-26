@@ -82,6 +82,7 @@ func (a *App) Router() *gin.Engine {
 	r.GET(route.Home, a.h(a.home))
 	r.GET(route.AdminLogin, a.adminLoginForm)
 	r.POST(route.AdminLogin, a.h(a.adminLogin))
+	r.GET(route.AppDownload, a.h(a.appDownload))
 	r.POST(route.Feedback, a.h(a.sendFeedback))
 	r.GET(route.Join, a.h(a.joinCampaigns))
 	r.GET(route.JoinQR, a.h(a.joinQR))

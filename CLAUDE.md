@@ -2,7 +2,7 @@
 
 A LAN-hosted helper for tabletop RPG game masters and their players. The GM's PC runs a single Go binary; players on the same network join by address or QR code. All data lives on the host in SQLite; app-wide settings live in `DATA_DIR/settings.json` (no migration for a switch).
 
-Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote play, in-app dice rolling (physical dice only; the one exception is the GM's initiative roll in combat), maps beyond image attachments, device blocklists, offline mode. Ask before adding any of these.
+Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote play, in-app dice rolling (physical dice only; the one exception is the GM's initiative roll in combat), maps beyond image attachments, device blocklists, offline mode (taking a character home is a file round trip, not offline mode or remote play). Ask before adding any of these.
 
 ## Stack
 
@@ -10,7 +10,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 - SQLite (`modernc.org/sqlite`) through `sqlc`. Views: `templ` + [shadcn-templ](https://shadcn-templ.com/llms.txt) + Tailwind standalone CLI + `htmx` websocket extension. Notes: TipTap collab.
 - Builds use the `nomsgpack` tag (gin without its msgpack codec, -6.5 MB): `GOFLAGS` in `build.sh`, `run.sh`, `release.sh` and `build-tags` in `.golangci.yml`, so a gin msgpack use fails the lint.
 - **No node or npm.** Browser libraries are vendored by `cmd/vendorjs`; everything ships in one binary via `go:embed`.
-- HTTPS only, self-signed certificate in `DATA_DIR/tls`.
+- HTTPS only, self-signed certificate in `DATA_DIR/tls` (except the player app, `--player`, on loopback and, from phase 3, the one-time phone handoff).
 - Layout: [README.md](README.md#project-layout).
 
 ## Rules that must not be broken
@@ -19,7 +19,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 - **Websocket data is as small as possible:** changed values as JSON, never HTML; wholesale changes send a refetch order (`internal/web/CLAUDE.md`).
 - **Commands, not saved sheets.** Clients send small delta commands (`hp -5`, `toggle prone`, one NPC field), never whole-object overwrites: several devices may hold one character or NPC. The server applies each in a transaction and publishes topics. A whole-page editor (images) posts the values it opened with (`was_*`); the server changes only what differs and refuses a value another device changed since.
 - **Session tokens:** 32 random bytes; store only the SHA-256 hash; cookie is `HttpOnly`, `SameSite=Lax`, `Secure`.
-- **Admin:** real `RemoteAddr` is loopback (never trust `X-Forwarded-For`), or login with `ADMIN_USERNAME`/`ADMIN_PASSWORD` from `.env` (refuse to start if missing; constant-time compare; never hardcode).
+- **Admin:** real `RemoteAddr` is loopback (never trust `X-Forwarded-For`), or login with `ADMIN_USERNAME`/`ADMIN_PASSWORD` from `.env` (refuse to start if missing, except `--player`, which needs none and listens on loopback only; constant-time compare; never hardcode).
 - **Identity:** players have no passwords. One role per device; logging in while holding a session is refused. Logout and kick both delete the `sessions` row. Pending join requests live in memory only. A character may have several devices, each approved separately.
 - **Naming:** the `sessions` table is the login/device token; game sessions are `game_sessions` everywhere. Never mix the two.
 - **Attachments** are served only through the authorized handler, never as public static files.
@@ -37,7 +37,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 ## For the executor and every review
 
 - Easy to miss: validator `oneof` tags, `internal/enum` values, a `normalizeVersion` bump when a compendium parser changes, `DownloadVersion` when a 5etools download changes, route constants instead of literals (`internal/web/CLAUDE.md`).
-- Never run the built binary and never touch `data/` (the real DB and certificate); `curl` and other network calls are denied.
+- Never run the built binary and never touch `data/dev` (the real DB and certificate; `data/test` is the browser-check instance, `data/player` the player app's); `curl` and other network calls are denied.
 - Checks after a change: the Commands table below, then `go build ./...`, `go test ./...`, `./lint.sh`, `graphify update .`.
 
 ## Game systems

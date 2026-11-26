@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# Usage: ./run.sh          the real instance (.env and its DATA_DIR); rebuilds and restarts when sources
-#                          change, keeping the old server if the build fails. A changed migration pauses
-#                          reloading. touch build/restart to force a restart (and resume), build/stop to quit.
+# Usage: ./run.sh          the real instance (.env, but DATA_DIR is data/dev); rebuilds and restarts when
+#                          sources change, keeping the old server if the build fails. A changed migration
+#                          pauses reloading. touch build/restart to force a restart (and resume), build/stop to quit.
 #        ./run.sh browser [--clean-playwright]
-#                          a test instance for browser checks (data-test/, port 8443); restarts only on
-#                          touch data-test/restart, quits on data-test/stop.
-#                          data-test/playwright is kept unless --clean-playwright is given.
+#                          a test instance for browser checks (data/test/, port 8443); restarts only on
+#                          touch data/test/restart, quits on data/test/stop.
+#                          data/test/playwright is kept unless --clean-playwright is given.
 #        ./run.sh before [--head]
 #                          snapshot for "before" screenshots, taken before editing: builds the working tree
-#                          (--head: HEAD) and copies the data-test DB to data-test/.before/pristine.db.
+#                          (--head: HEAD) and copies the data/test DB to data/test/.before/pristine.db.
 #        ./run.sh browser-before
-#                          serves that snapshot on port 8444 from a fresh copy in data-test/.before/data;
-#                          touch data-test/.before/stop to quit.
+#                          serves that snapshot on port 8444 from a fresh copy in data/test/.before/data;
+#                          touch data/test/.before/stop to quit.
+#        ./run.sh player   the player app (--player, port 8042, data/player/); rebuilds like the real
+#                          instance; touch data/player/restart to force a restart, data/player/stop to quit.
 # A second start of a mode takes over from the first; each quits with its terminal.
 cd "$(dirname "$0")"
 export GOFLAGS="${GOFLAGS:+$GOFLAGS }-tags=nomsgpack" # same build as release (build.sh)
@@ -21,17 +23,49 @@ exe=$(go env GOEXE)
 before_bin=build/gm-session-manager-before$exe
 mkdir -p build
 
+# One generate-and-build at a time across loops (./run.sh and ./run.sh player in two terminals share the
+# generated files): mkdir either takes the lock or fails. A lock whose holder died is taken over.
+# shortcut: a holder killed between mkdir and writing its pid leaves a lock nobody removes (rm -r build/.gen.lock),
+# and two waiters seeing one dead holder can, rarely, both get in. Fine for two or three local loops.
+lockdir=build/.gen.lock locked=
+# This loop was taken over by a newer run of its mode, or its terminal closed (Windows sends no signal).
+superseded() {
+	[ -n "$parent" ] && ! kill -0 "$parent" 2>/dev/null ||
+		{ [ -n "$pidfile" ] && [ "$(cat "$pidfile" 2>/dev/null)" != $$ ]; }
+}
+lock() {
+	until mkdir "$lockdir" 2>/dev/null; do
+		# Waiting can take a whole build of the other loop: notice a takeover meanwhile.
+		superseded && exit 0
+		holder=$(cat "$lockdir/pid" 2>/dev/null)
+		[ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null && rm -rf "$lockdir"
+		sleep 0.5
+	done
+	echo $$ >"$lockdir/pid"
+	locked=1
+}
+unlock() {
+	[ -n "$locked" ] && rm -rf "$lockdir"
+	locked=
+}
+
 case $1 in
 '')
+	# Env vars beat .env, so the local instance keeps its data under data/ whatever .env says.
+	export DATA_DIR=data/dev
 	bin=build/gm-session-manager-dev$exe markers=build watch=1
 	;;
+player)
+	bin=build/gm-session-manager-player$exe markers=data/player watch=1
+	args=(--player --data data/player --port 8042)
+	;;
 browser)
-	export DATA_DIR=data-test PORT=8443
-	bin=build/gm-session-manager-test$exe markers=data-test
+	export DATA_DIR=data/test PORT=8443
+	bin=build/gm-session-manager-test$exe markers=data/test
 	[ "$2" = --clean-playwright ] && rm -rf "$DATA_DIR/playwright"
 	;;
 before)
-	mkdir -p data-test/.before
+	mkdir -p data/test/.before
 	if [ "$2" = --head ]; then
 		wt=build/head
 		git worktree remove --force "$wt" 2>/dev/null
@@ -42,19 +76,21 @@ before)
 			cp internal/web/assets/js/shadcn-templ-*.js "$wt/internal/web/assets/js/" &&
 			(cd "$wt" && go build -o "../../$before_bin" "$pkg") || exit 1
 	else
-		go build -o "$before_bin" "$pkg" || exit 1
+		lock
+		go build -o "$before_bin" "$pkg" || { unlock; exit 1; }
+		unlock
 	fi
-	rm -f data-test/.before/pristine.db
-	if [ -f data-test/gm-session-manager.db ]; then
-		sqlite3 data-test/gm-session-manager.db ".backup 'data-test/.before/pristine.db'" || exit 1
+	rm -f data/test/.before/pristine.db
+	if [ -f data/test/gm-session-manager.db ]; then
+		sqlite3 data/test/gm-session-manager.db ".backup 'data/test/.before/pristine.db'" || exit 1
 	fi
 	echo "run.sh: before snapshot ready; serve it with ./run.sh browser-before"
 	exit 0
 	;;
 browser-before)
 	[ -f "$before_bin" ] || { echo "run.sh: no $before_bin; run ./run.sh before first"; exit 1; }
-	export DATA_DIR=data-test/.before/data PORT=8444
-	bin=$before_bin markers=data-test/.before norebuild=1
+	export DATA_DIR=data/test/.before/data PORT=8444
+	bin=$before_bin markers=data/test/.before norebuild=1
 	;;
 *)
 	sed -n '/^# /p;/^cd /q' "$0"
@@ -62,6 +98,7 @@ browser-before)
 	;;
 esac
 
+mkdir -p "$markers"
 rm -f "$markers/restart" "$markers/stop"
 pid=
 stop_server() {
@@ -77,13 +114,22 @@ stop_server() {
 # Build first and swap only on success, so a broken build leaves the old server running.
 restart_server() {
 	new=${bin%"$exe"}-new$exe
-	if [ -z "$norebuild" ] && ! go build -o "$new" "$pkg"; then
-		echo "run.sh: build failed${pid:+; the old server keeps running}. Fix it (or touch $markers/restart)"
-		return
+	if [ -z "$norebuild" ]; then
+		lock
+		# Not templ fmt: the watcher must never rewrite a file someone is editing.
+		[ -n "$gen" ] && go generate -run 'templ generate|tailwindcss' ./internal/web
+		go build -o "$new" "$pkg"
+		built=$?
+		unlock
+		superseded && exit 0 # taken over during the build: the newer loop starts the server
+		if [ "$built" != 0 ]; then
+			echo "run.sh: build failed${pid:+; the old server keeps running}. Fix it (or touch $markers/restart)"
+			return
+		fi
 	fi
 	stop_server
 	[ -z "$norebuild" ] && mv -f "$new" "$bin"
-	"$bin" &
+	"$bin" "${args[@]}" &
 	pid=$!
 }
 # One loop at a time: a newer run takes over (an older one waits for every marker).
@@ -95,15 +141,15 @@ for _ in 1 2 3 4 5; do
 	sleep 1
 done
 stop_server
-trap stop_server EXIT
+trap 'unlock; stop_server' EXIT
 
 if [ "$1" = browser-before ]; then
 	# A fresh copy each start: a stale -wal/-shm next to an old DB corrupts it.
 	rm -rf "$DATA_DIR" && mkdir -p "$DATA_DIR"
 	for d in compendium tls attachments; do
-		[ -d "data-test/$d" ] && cp -r "data-test/$d" "$DATA_DIR/"
+		[ -d "data/test/$d" ] && cp -r "data/test/$d" "$DATA_DIR/"
 	done
-	[ -f data-test/.before/pristine.db ] && cp data-test/.before/pristine.db "$DATA_DIR/gm-session-manager.db"
+	[ -f data/test/.before/pristine.db ] && cp data/test/.before/pristine.db "$DATA_DIR/gm-session-manager.db"
 fi
 
 stamp=$markers/.stamp
@@ -120,7 +166,7 @@ parent=$PPID
 [ "$parent" = 1 ] && parent=
 start=1 paused=
 while :; do
-	if [ -n "$parent" ] && ! kill -0 "$parent" 2>/dev/null || [ "$(cat "$pidfile" 2>/dev/null)" != $$ ]; then
+	if superseded; then
 		exit 0
 	fi
 	if [ -e "$markers/stop" ]; then
@@ -143,12 +189,11 @@ while :; do
 		fi
 	fi
 	if [ -n "$start" ]; then
-		start= paused=
+		start= paused= gen=
 		if [ -n "$watch" ]; then
 			# Before generating and building, so an edit saved meanwhile counts as the next change.
 			touch "$stamp"
-			# Not templ fmt: the watcher must never rewrite a file someone is editing.
-			grep -qE '\.templ$|globals\.css$' <<<"$changed" && go generate -run 'templ generate|tailwindcss' ./internal/web
+			grep -qE '\.templ$|globals\.css$' <<<"$changed" && gen=1
 		fi
 		restart_server
 	fi
