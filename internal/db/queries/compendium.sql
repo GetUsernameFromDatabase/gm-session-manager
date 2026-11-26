@@ -129,7 +129,8 @@ ORDER BY n DESC, o.source_key;
 
 -- ListSharedEntries browses a source's shared entries like
 -- ListCompendiumByKind, whose columns it repeats so its rows convert; with
--- narrows them to those one other source holds ('' for any).
+-- narrows them to those one other source holds ('' for any). only flips it
+-- to the entries no other source holds (with is then '').
 -- name: ListSharedEntries :many
 SELECT e.id, e.kind, e.slug, e.name, e.source_key, CAST(e.source_key = 'homebrew' AS BOOLEAN) AS is_homebrew,
     CAST(COALESCE((SELECT group_concat(c.value, ' ') FROM json_each(e.data_json, '$.classes') AS c), json_extract(e.data_json, '$.subclass_of'), '') AS TEXT) AS classes,
@@ -148,6 +149,7 @@ WHERE e.source_key = CAST(sqlc.arg(source_key) AS TEXT) AND e.scoped = 0
         AND (CAST(sqlc.arg(with) AS TEXT) = '' OR o.source_key = CAST(sqlc.arg(with) AS TEXT))
         AND (CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR o.source_key = 'homebrew'
              OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = o.source_key)))
+      <> CAST(sqlc.arg(only) AS BOOLEAN)
 ORDER BY e.name, e.id
 LIMIT sqlc.arg(page_size);
 
@@ -161,6 +163,7 @@ WHERE e.source_key = CAST(sqlc.arg(source_key) AS TEXT) AND e.scoped = 0
         AND (CAST(sqlc.arg(with) AS TEXT) = '' OR o.source_key = CAST(sqlc.arg(with) AS TEXT))
         AND (CAST(sqlc.arg(campaign_id) AS INTEGER) = 0 OR o.source_key = 'homebrew'
              OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER) AND cs.source_key = o.source_key)))
+      <> CAST(sqlc.arg(only) AS BOOLEAN)
 GROUP BY e.kind
 ORDER BY e.kind;
 

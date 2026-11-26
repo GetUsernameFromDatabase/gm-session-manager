@@ -80,6 +80,9 @@ var liveKinds = map[string]liveKind{
 	views.LiveEntities:     {any: []hub.TopicKind{hub.TopicEntities}, load: (*App).loadEntitiesLive},
 	views.LiveEntity:       {own: hub.TopicEntity, load: (*App).loadEntityLive},
 	views.LiveImport:       {any: []hub.TopicKind{hub.TopicImport}, load: (*App).loadImportLive},
+	views.LiveSources:      {any: []hub.TopicKind{hub.TopicCompendium}, load: (*App).loadSourcesLive},
+	// The card shows the starting sets and their import while nothing is imported.
+	views.LiveCampaignSources: {any: []hub.TopicKind{hub.TopicCompendium, hub.TopicImport}, load: (*App).loadCampaignSourcesLive},
 }
 
 // Affects implements hub.Handler.
@@ -190,7 +193,7 @@ func (a *App) liveHTML(c *gin.Context) error {
 	key := c.Query("v")
 	// The GM's page names its campaign (as its socket does); a player's is
 	// always their own. member and inCampaign let the GM through first, so
-	// only campaign-keyed views (the Sources card's sets) read it.
+	// the GM's views read it only for their compendium links.
 	vc := viewerCtx{viewer: w.viewer, campaignID: w.campaignID()}
 	if w.isGM() {
 		vc.campaignID, _ = strconv.ParseInt(c.Query("campaign"), 10, 64)
@@ -245,22 +248,44 @@ func (a *App) loadRosterLive(ctx context.Context, vc viewerCtx, k liveKey) (live
 }
 
 // loadImportLive is the import tab's progress (id 0), or the starting sets
-// of the empty compendium (id 1) or of the page campaign's Sources card (id 2).
+// of the empty compendium (id 1).
 func (a *App) loadImportLive(_ context.Context, vc viewerCtx, k liveKey) (liveView, error) {
 	if !vc.viewer.IsGM {
 		return liveView{}, nil
 	}
 	j := a.fiveTools.get()
-	switch k.num() {
-	case views.StarterLiveCompendium:
+	if k.num() == views.StarterLiveCompendium {
 		return liveView{html: views.StarterSets(j, 0), shape: views.StarterSets(j.Shape(), 0), hot: j.Hot, ok: true}, nil
-	case views.StarterLiveCard:
-		if vc.campaignID == 0 { // the card lives on a campaign page
-			return liveView{}, nil
-		}
-		return liveView{html: views.StarterSets(j, vc.campaignID), shape: views.StarterSets(j.Shape(), vc.campaignID), hot: j.Hot, ok: true}, nil
 	}
 	return liveView{html: views.FiveToolsProgress(j, true), shape: views.FiveToolsProgress(j.Shape(), true), hot: j.Hot, ok: true}, nil
+}
+
+// loadSourcesLive is the priority card of the campaign's compendium (id; 0
+// is the whole one).
+func (a *App) loadSourcesLive(ctx context.Context, vc viewerCtx, k liveKey) (liveView, error) {
+	if !vc.viewer.IsGM {
+		return liveView{}, nil
+	}
+	sources, shared, counts, err := a.sourcesCard(ctx, k.num())
+	if err != nil {
+		return liveView{}, err
+	}
+	return liveView{html: views.SourcePriorityLive(k.num(), sources, shared, counts), ok: true}, nil
+}
+
+// loadCampaignSourcesLive is the campaign page's Sources card (id = campaign).
+func (a *App) loadCampaignSourcesLive(ctx context.Context, vc viewerCtx, k liveKey) (liveView, error) {
+	if !vc.viewer.IsGM {
+		return liveView{}, nil
+	}
+	v, err := a.campaignSourcesView(ctx, k.num())
+	if err != nil {
+		return liveView{}, err
+	}
+	shape := v
+	shape.Job = v.Job.Shape()
+	// The card shows the bar whenever an import runs, so its keys always match.
+	return liveView{html: views.CampaignSourcesLive(v), shape: views.CampaignSourcesLive(shape), hot: v.Job.Hot, ok: true}, nil
 }
 
 func (a *App) loadRequestsLive(_ context.Context, vc viewerCtx, _ liveKey) (liveView, error) {

@@ -11,6 +11,14 @@ import (
 	"strings"
 )
 
+// CampaignSourcesLive is the Sources card as a live view: refetches swap
+// this wrapper out of band, the card's own toggles the card inside it.
+templ CampaignSourcesLive(v CampaignSourcesView) {
+	<div id={ CampaignSourcesID + "-live" } class="contents" hx-swap-oob="true" { live(LiveCampaignSources, v.CampaignID)... }>
+		@CampaignSources(v)
+	</div>
+}
+
 // CampaignSources is the GM's allow list for the campaign: pickers and lists
 // in it offer only ticked sources.
 templ CampaignSources(v CampaignSourcesView) {
@@ -38,6 +46,12 @@ templ CampaignSources(v CampaignSourcesView) {
 					<p class="text-sm text-muted-foreground">No sources imported yet. Download a starting set:</p>
 					@StarterSets(v.Job, v.CampaignID)
 				} else {
+					// A running import fills the list source by source; a failed one says why.
+					if v.Job.Running {
+						@importBar(v.Job)
+					} else if v.Job.Failed {
+						@jobNotice(v.Job)
+					}
 					// Kept across the card's swaps; app.js filters the rows.
 					@input.Input(input.Props{ID: "campaign-sources-filter", Type: "search", Placeholder: "Filter sources…", Attributes: templ.Attributes{"aria-label": "Filter sources", "autocomplete": "off", "data-source-filter": "", "hx-preserve": "true"}})
 					<div class={ "space-y-3 pr-1", scrollBox }>

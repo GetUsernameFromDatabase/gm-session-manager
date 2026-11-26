@@ -39,24 +39,25 @@ const (
 	FiveToolsSet2024  = "2024"
 	// Open5eDocField names the SRD an Open5e download fetches (compendium.SRD*Key).
 	Open5eDocField = "doc"
-	// StarterSetsID starts the element id of each StarterSets.
+	// DismissWasField is the summary the dismiss X was shown, so a stale tab
+	// cannot clear a newer one.
+	DismissWasField = "was"
+	// StarterSetsID is the element id of StarterSets.
 	StarterSetsID = "starter-sets"
 )
 
-// StarterSets' live ids (LiveImport): the empty compendium's and a
-// campaign's Sources card's.
-const (
-	StarterLiveCompendium = 1
-	StarterLiveCard       = 2
-)
+// StarterLiveCompendium is the empty compendium's StarterSets' live id
+// (LiveImport).
+const StarterLiveCompendium = 1
 
-// starterLive is StarterSets' live id; card is the Sources card's campaign
-// (0 in the empty compendium).
-func starterLive(card int64) int {
+// starterLive makes the empty compendium's StarterSets live; card is the
+// Sources card's campaign (0 in the empty compendium), whose card is live
+// itself.
+func starterLive(card int64) templ.Attributes {
 	if card > 0 {
-		return StarterLiveCard
+		return nil
 	}
-	return StarterLiveCompendium
+	return live(LiveImport, StarterLiveCompendium)
 }
 
 // starterBase is the compendium the set forms post to: the card's campaign,
@@ -249,10 +250,13 @@ func copyLabel(c sqlc.ListEntryCopiesRow) string { return SourceLabel(c.SourceKe
 
 // SharedKey is the browse filter to one source's entries another source
 // also holds (CompendiumView.Shared); SharedWithKey narrows it to one other
-// source (CompendiumView.With).
+// source (CompendiumView.With); SharedOnlyKey set to SharedOnlyOn flips it
+// to the entries no other source holds (CompendiumView.Only).
 const (
 	SharedKey     = "shared"
 	SharedWithKey = "with"
+	SharedOnlyKey = "only"
+	SharedOnlyOn  = "1"
 )
 
 // Compendium list query keys: the search, kind and habitat filters, the open
@@ -271,17 +275,41 @@ func sharedHref(ctx context.Context, source string) templ.SafeURL {
 	return templ.SafeURL(CompendiumPath(ctx, "?"+url.Values{SharedKey: {source}}.Encode()))
 }
 
+// sharedOnlyHref browses the entries only source holds in the campaign ctx
+// renders in.
+func sharedOnlyHref(ctx context.Context, source string) templ.SafeURL {
+	return templ.SafeURL(CompendiumPath(ctx, "?"+url.Values{SharedKey: {source}, SharedOnlyKey: {SharedOnlyOn}}.Encode()))
+}
+
 // sharedWithHref narrows the shared list to entries with also holds ("" for
 // any); the kind filter stays.
 func sharedWithHref(v CompendiumView, with string) templ.SafeURL {
-	q := url.Values{SharedKey: {v.Shared}}
+	q := url.Values{}
 	if with != "" {
 		q.Set(SharedWithKey, with)
 	}
+	return sharedListHref(v, q)
+}
+
+// sharedListHref is v's shared list with q's filters and the kind filter.
+func sharedListHref(v CompendiumView, q url.Values) templ.SafeURL {
+	q.Set(SharedKey, v.Shared)
 	if v.Kind != "" {
 		q.Set(KindKey, v.Kind)
 	}
 	return templ.SafeURL(CompendiumURL(q, v.Campaign))
+}
+
+// onlyChipHref lists the entries only v.Shared holds; the kind filter stays.
+func onlyChipHref(v CompendiumView) templ.SafeURL {
+	return sharedListHref(v, url.Values{SharedOnlyKey: {SharedOnlyOn}})
+}
+
+// onlyCounts are how many of v.Shared's entries no other source holds, and
+// how many of those lists show, from the priority card's counts.
+func (v CompendiumView) onlyCounts() (total, shown int64) {
+	e, s := v.EntryCounts[v.Shared], v.SharedCounts[v.Shared]
+	return e.Total - s.Shared, e.Visible - s.Shown
 }
 
 // CopyKey keys CompendiumView.CopyOrder by an entry's kind and slug.

@@ -114,8 +114,11 @@ func TestLiveVisibility(t *testing.T) {
 		{"player may not see the 5etools import", player, f.campaignID, views.LiveKey(views.LiveImport, 0), false, nil, nil},
 		{"GM sees the starting sets", perm.GM, 0, views.LiveKey(views.LiveImport, views.StarterLiveCompendium), true, nil, nil},
 		{"player may not see the starting sets", player, f.campaignID, views.LiveKey(views.LiveImport, views.StarterLiveCompendium), false, nil, nil},
-		{"GM sees the Sources card's starting sets", perm.GM, f.campaignID, views.LiveKey(views.LiveImport, views.StarterLiveCard), true, nil, nil},
-		{"player may not see the Sources card's starting sets", player, f.campaignID, views.LiveKey(views.LiveImport, views.StarterLiveCard), false, nil, nil},
+		{"GM sees the source priority", perm.GM, 0, views.LiveKey(views.LiveSources, 0), true, nil, nil},
+		{"GM sees a campaign's source priority", perm.GM, f.campaignID, views.LiveKey(views.LiveSources, f.campaignID), true, nil, nil},
+		{"player may not see the source priority", player, f.campaignID, views.LiveKey(views.LiveSources, f.campaignID), false, nil, nil},
+		{"GM sees the Sources card", perm.GM, f.campaignID, views.LiveKey(views.LiveCampaignSources, f.campaignID), true, nil, nil},
+		{"player may not see the Sources card", player, f.campaignID, views.LiveKey(views.LiveCampaignSources, f.campaignID), false, nil, nil},
 		{"player sees a revealed NPC", player, f.campaignID, views.LiveKey(views.LiveEntity, f.entity), true, nil, nil},
 		{"player may not see a GM-only note", player, f.campaignID, views.LiveKey(views.LiveNote, f.gmNote), false, nil, nil},
 		{"player sees own sheet with HP", player, f.campaignID, views.LiveKey(views.LiveCharacter, f.characterID), true, []string{"hp"}, nil},
@@ -167,6 +170,7 @@ func TestLiveVisibility(t *testing.T) {
 		views.LiveRoster, views.LiveRequests, views.LiveWaiting, views.LiveCharacter,
 		views.LiveEncounters, views.LiveEncounter, views.LivePlayerCombat, views.LiveNotes,
 		views.LiveNote, views.LiveEntities, views.LiveEntity, views.LiveImport,
+		views.LiveSources, views.LiveCampaignSources,
 	}
 	if len(liveKinds) != len(all) {
 		t.Errorf("liveKinds has %d kinds, this test lists %d", len(liveKinds), len(all))
@@ -418,7 +422,13 @@ func TestLiveBindsMatchState(t *testing.T) {
 		{"GM sheet", route.Path(route.Character, f.characterID), gm, perm.GM},
 		{"player combat", route.Path(route.CampaignCombat, f.campaignID), player, perm.Player(f.characterID)},
 		{"GM combat", fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, f.campaignID), f.encounter), gm, perm.GM},
-		{"GM overview", route.Path(route.Campaign, f.campaignID), gm, perm.GM}, // the Sources card's starting sets too
+		{"GM overview", route.Path(route.Campaign, f.campaignID), gm, perm.GM}, // the live Sources card too
+	}
+	// The source cards are live views, so the loop below checks them too.
+	for path, kind := range map[string]string{route.Compendium + "?import=" + views.ImportTabFiveTools: views.LiveSources, route.Path(route.Campaign, f.campaignID): views.LiveCampaignSources} {
+		if page := f.do(t, http.MethodGet, path, gm, nil, false).Body.String(); !strings.Contains(page, `data-live="`+kind+`:`) {
+			t.Errorf("%s does not show the live %s view", path, kind)
+		}
 	}
 	for _, dead := range []bool{false, true} { // the dead sheet swaps its buttons and the tracker its badge
 		if dead {

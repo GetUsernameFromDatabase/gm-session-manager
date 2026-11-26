@@ -76,6 +76,7 @@ func TestFiveToolsGMOnly(t *testing.T) {
 		{http.MethodPost, views.FiveToolsPath},
 		{http.MethodPost, route.Compendium + route.Path(route.CompendiumFiveToolsBookDelete, "phb")},
 		{http.MethodPost, route.Compendium + route.CompendiumFiveToolsAuto},
+		{http.MethodPost, route.Compendium + route.CompendiumImportDismiss},
 		{http.MethodPost, route.Compendium + route.CompendiumOpen5e},
 		{http.MethodPost, route.Compendium + route.CompendiumSourceDelete},
 		{http.MethodPost, views.SourceOrderPath},
@@ -159,12 +160,30 @@ func TestFiveToolsImportRunning(t *testing.T) {
 	if w := e.do(t, http.MethodPost, views.FiveToolsPath+"/phb/delete", gm, nil, true); !strings.Contains(w.Body.String(), errImportRunning) {
 		t.Errorf("removal during an import: %d, not refused", w.Code)
 	}
+	dismiss := route.Compendium + route.CompendiumImportDismiss
+	if w := e.do(t, http.MethodPost, dismiss, gm, nil, true); !strings.Contains(w.Body.String(), errImportRunning) || !e.app.fiveTools.get().Running {
+		t.Errorf("dismiss during an import: %d, not refused or the job dropped", w.Code)
+	}
 	// Done, the tab shows the summary instead.
 	e.app.fiveTools.update(func(j *views.FiveToolsJob) {
 		*j = views.FiveToolsJob{Msg: "5etools-phb: 3 entries imported, 0 removed"}
 	})
-	if body := e.do(t, http.MethodGet, route.Compendium+"?import="+views.ImportTabFiveTools, gm, nil, false).Body.String(); !strings.Contains(body, "3 entries imported") || strings.Contains(body, "Downloading") {
-		t.Error("finished import shows no summary, or still its progress")
+	if body := e.do(t, http.MethodGet, route.Compendium+"?import="+views.ImportTabFiveTools, gm, nil, false).Body.String(); !strings.Contains(body, "3 entries imported") || strings.Contains(body, "Downloading") || !strings.Contains(body, `hx-post="`+dismiss+`"`) {
+		t.Error("finished import shows no summary with its dismiss button, or still its progress")
+	}
+	// A player may not dismiss it; the GM's X clears it.
+	if w := e.do(t, http.MethodPost, dismiss, e.token(t, enum.RolePlayer), nil, true); w.Code != http.StatusForbidden || e.app.fiveTools.get().Msg == "" {
+		t.Errorf("player dismiss: %d", w.Code)
+	}
+	// A stale tab's X names an older summary and clears nothing.
+	if w := e.do(t, http.MethodPost, dismiss, gm, url.Values{views.DismissWasField: {"older summary"}}, true); !strings.Contains(w.Body.String(), "changed meanwhile") || e.app.fiveTools.get().Msg == "" {
+		t.Errorf("stale dismiss: %d, job %+v", w.Code, e.app.fiveTools.get())
+	}
+	if w := e.do(t, http.MethodPost, dismiss, gm, url.Values{views.DismissWasField: {"5etools-phb: 3 entries imported, 0 removed"}}, true); w.Code != http.StatusNoContent || e.app.fiveTools.get().Msg != "" {
+		t.Errorf("GM dismiss: %d, job %+v", w.Code, e.app.fiveTools.get())
+	}
+	if body := e.do(t, http.MethodGet, route.Compendium+"?import="+views.ImportTabFiveTools, gm, nil, false).Body.String(); strings.Contains(body, "3 entries imported") {
+		t.Error("dismissed summary still shows")
 	}
 }
 

@@ -936,6 +936,17 @@ import {
   document.addEventListener("htmx:afterRequest", (e) => {
     if (!e.detail.successful) sourceRow = null; // a refusal swaps nothing
   });
+  // A live refetch of the card (after every change, the GM's own too) would
+  // drop the focus from a position box: focus the same row's new box.
+  document.addEventListener("htmx:oobBeforeSwap", (e) => {
+    const box = document.activeElement;
+    if (!box?.matches("[data-source-position]") || !e.detail.target.contains(box)) return;
+    const key = box.closest("li").dataset.sourceKey;
+    queueMicrotask(() => {
+      const row = [...(document.querySelector("[data-sortable]")?.children ?? [])].find((li) => li.dataset.sourceKey === key);
+      row?.querySelector("[data-source-position]")?.focus();
+    });
+  });
   document.addEventListener("htmx:afterSwap", (e) => {
     if (e.detail.xhr?.status >= 400) return; // only the error toast swapped in; the list did not change
     const list = sourceRow && document.querySelector("[data-sortable]");

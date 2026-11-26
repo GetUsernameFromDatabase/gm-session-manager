@@ -25,8 +25,8 @@ const (
 )
 
 // sourcesEnv is a campaign with the srd-mini data and on-book ticked, and
-// wizard subclasses only off-book has (Off School), both books have (Shared
-// School) and homebrew has (Brew School).
+// wizard subclasses only off-book has (Off School), only on-book has (On
+// School), both books have (Shared School) and homebrew has (Brew School).
 func sourcesEnv(t *testing.T) testEnv {
 	t.Helper()
 	e := newTestEnv(t)
@@ -46,6 +46,7 @@ func sourcesEnv(t *testing.T) testEnv {
 		}
 	}
 	sub(offBook, "off-school", "Off School")
+	sub(onBook, "on-school", "On School")
 	sub(offBook, "shared-school", "Shared School")
 	sub(onBook, "shared-school", "Shared School")
 	sub(compendium.HomebrewSource, "brew-school", "Brew School")
@@ -217,6 +218,11 @@ func TestSourceOverlap(t *testing.T) {
 		{"unticked source is never first in its rows", gm, base + "?shared=off-book", http.StatusOK, []string{"1 shared, 0 shown", `title="on-book"`}, []string{`title="off-book › on-book"`}},
 		{"with a source sharing nothing", gm, route.Compendium + "?shared=on-book&with=srd-mini", http.StatusOK, []string{"Nothing found"}, []string{compareSubclass}},
 		{"player ignores the shared filter", player, base + "?shared=on-book", http.StatusOK, []string{"Brew School"}, []string{route.Path(route.CompendiumCompare, "subclass", "shared-school")}},
+		{"only lists the entries no other source holds", gm, route.Compendium + "?shared=on-book&only=1", http.StatusOK, []string{"On School", "1 only here, 1 shown."}, []string{"Shared School", compareSubclass}},
+		{"only in the campaign ignores unticked copies", gm, base + "?shared=on-book&only=1", http.StatusOK, []string{"On School", "Shared School", "2 only here, 2 shown."}, nil},
+		{"shared list offers the only chip", gm, route.Compendium + "?shared=on-book", http.StatusOK, []string{"only=1&amp;shared=on-book"}, nil},
+		{"card links a source sharing nothing to its only list", gm, route.Compendium + "?tab=import", http.StatusOK, []string{"only=1&amp;shared=srd-mini", "Browse the entries only this source holds."}, nil},
+		{"player ignores the only filter", player, base + "?shared=on-book&only=1", http.StatusOK, []string{"Brew School"}, []string{"only here"}},
 		{"comparison of every source", gm, compareSubclass, http.StatusOK, []string{"2 copies", "off-book, 2024", "on-book, 2014", "Shown"}, nil},
 		{"comparison in the campaign", gm, base + route.Path(route.CompendiumCompare, "subclass", "shared-school"), http.StatusOK, []string{"1 copy,", "on-book, 2014"}, []string{"off-book, 2024"}},
 		{"unticked-only entry", gm, base + route.Path(route.CompendiumCompare, "subclass", "off-school"), http.StatusNotFound, nil, nil},

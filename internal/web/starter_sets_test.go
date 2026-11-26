@@ -320,14 +320,14 @@ func TestPickerKeepsJobTicks(t *testing.T) {
 
 // TestSourcesCardStarterSets: with nothing imported, the GM's campaign page
 // offers the sets in its Sources card, posting to that campaign's
-// compendium and coming back to the page; its live view loads for the GM;
-// once imported, the card lists the ticked source instead.
+// compendium and coming back to the page; the card is a live view for the
+// GM; once imported, it lists the ticked source instead, live too.
 func TestSourcesCardStarterSets(t *testing.T) {
 	e, gm, _ := starterEnv(t)
 	player := e.token(t, enum.RolePlayer)
 	page := route.Path(route.Campaign, e.campaignID)
 	srdPost := route.Path(route.CampaignCompendium, e.campaignID) + route.CompendiumOpen5e
-	key := views.LiveKey(views.LiveImport, views.StarterLiveCard)
+	key := views.LiveKey(views.LiveCampaignSources, e.campaignID)
 	live := `data-live="` + key + `"`
 
 	body := e.do(t, http.MethodGet, page, gm, nil, false).Body.String()
@@ -339,7 +339,7 @@ func TestSourcesCardStarterSets(t *testing.T) {
 	}
 	// The page's refetch names its campaign, as its socket does.
 	refetch := route.Live + "?" + url.Values{"v": {key}, "campaign": {strconv.FormatInt(e.campaignID, 10)}}.Encode()
-	if w := e.do(t, http.MethodGet, refetch, gm, nil, true); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `id="starter-sets-2"`) || !strings.Contains(w.Body.String(), `action="`+srdPost+`"`) {
+	if w := e.do(t, http.MethodGet, refetch, gm, nil, true); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `id="`+views.StarterSetsID+`"`) || !strings.Contains(w.Body.String(), `action="`+srdPost+`"`) {
 		t.Errorf("GM refetch: %d %s", w.Code, w.Body)
 	}
 
@@ -355,16 +355,24 @@ func TestSourcesCardStarterSets(t *testing.T) {
 	}
 	msg := waitJob(t, e)
 
-	body = e.do(t, http.MethodGet, page, gm, nil, false).Body.String()
-	if strings.Contains(body, live) || !strings.Contains(body, compendium.SRD2024Key) {
-		t.Error("card still offers the sets, or lacks the SRD")
+	if w := e.do(t, http.MethodGet, refetch, gm, nil, true); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "Import SRD") || !strings.Contains(w.Body.String(), compendium.SRD2024Key) {
+		t.Errorf("refetch after the import still offers the sets, or lacks the SRD: %d", w.Code)
 	}
-	// The card does not refresh live, so the finished sets link back to the page.
+	// With sources in, the card still shows a running import's bar and a failed one's reason.
+	for _, job := range []views.FiveToolsJob{{Running: true, Total: 2, Current: "Book Two"}, {Msg: "Could not add them to the campaign", Failed: true}} {
+		e.app.fiveTools.update(func(j *views.FiveToolsJob) { *j = job })
+		if body := e.do(t, http.MethodGet, refetch, gm, nil, true).Body.String(); !strings.Contains(body, job.Current+job.Msg) || !strings.Contains(body, compendium.SRD2024Key) {
+			t.Errorf("card with sources hides the job %+v", job)
+		}
+	}
+	e.app.fiveTools.update(func(j *views.FiveToolsJob) { *j = views.FiveToolsJob{} })
+	// The live card turns into the source list by itself, so the finished
+	// sets in it offer no link, only the summary.
 	var b strings.Builder
 	if err := views.StarterSets(views.FiveToolsJob{Msg: msg}, e.campaignID).Render(t.Context(), &b); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(b.String(), "Show sources") || !strings.Contains(b.String(), `href="`+page+`"`) {
+	if !strings.Contains(b.String(), msg) || strings.Contains(b.String(), "Show entries") || strings.Contains(b.String(), "data-live") {
 		t.Errorf("finished card sets: %s", b.String())
 	}
 }

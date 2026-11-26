@@ -38,6 +38,18 @@ func (j *fiveToolsJob) start(total int) bool {
 	return true
 }
 
+// dismiss forgets the last import's summary if it is still was; false while
+// one runs or after a newer one replaced it.
+func (j *fiveToolsJob) dismiss(was string) bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.job.Running || j.job.Msg != was {
+		return false
+	}
+	j.job = views.FiveToolsJob{}
+	return true
+}
+
 func (j *fiveToolsJob) update(f func(*views.FiveToolsJob)) {
 	j.mu.Lock()
 	defer j.mu.Unlock()

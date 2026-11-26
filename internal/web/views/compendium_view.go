@@ -49,8 +49,11 @@ type CompendiumView struct {
 	Shared     string
 	SharedWith []sqlc.ListSharedWithRow
 	With       string
-	CopyOrder  map[string][]string
-	More       string // URL of the next batch when browsing; "" at the end
+	// Only lists Shared's entries no other source holds instead (With is
+	// then ""); its rows open the entry, as there are no copies to order.
+	Only      bool
+	CopyOrder map[string][]string
+	More      string // URL of the next batch when browsing; "" at the end
 	// Tab is the page tab to open (CompendiumTab*); "" is Browse.
 	Tab string
 	// Campaign is the campaign in the page's path (a player's is always
@@ -216,7 +219,7 @@ func entryHref(ctx context.Context, id int64) string {
 }
 
 // kindBase is what the kind chips keep: the search, or the shared list and
-// its other source. New on each call, since kindHref adds to it.
+// its other source or only mode. New on each call, since kindHref adds to it.
 func (v CompendiumView) kindBase() url.Values {
 	q := url.Values{}
 	if v.Query != "" {
@@ -227,6 +230,9 @@ func (v CompendiumView) kindBase() url.Values {
 	}
 	if v.With != "" {
 		q.Set(SharedWithKey, v.With)
+	}
+	if v.Only {
+		q.Set(SharedOnlyKey, SharedOnlyOn)
 	}
 	return q
 }

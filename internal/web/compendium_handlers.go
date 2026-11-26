@@ -58,6 +58,7 @@ func (a *App) compendiumRoutes(g *gin.RouterGroup, gm gin.HandlerFunc) {
 	g.POST(route.CompendiumFiveTools, gm, a.h(a.fiveToolsImport))
 	g.POST(route.CompendiumFiveToolsBookDelete, gm, a.h(a.fiveToolsRemove))
 	g.POST(route.CompendiumFiveToolsAuto, gm, a.h(a.fiveToolsAuto))
+	g.POST(route.CompendiumImportDismiss, gm, a.importDismiss)
 	g.POST(route.CompendiumOpen5e, gm, a.h(a.open5eImport))
 	g.POST(route.CompendiumSourceDelete, gm, a.h(a.sourceDelete))
 	g.POST(route.CompendiumSourceOrder, gm, a.h(a.sourceOrder))
@@ -294,10 +295,7 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 		return err
 	}
 	if w.isGM() {
-		if v.Sources, v.SharedCounts, err = a.sourcePriority(ctx, viewerCampaign(camp)); err != nil {
-			return err
-		}
-		if v.EntryCounts, err = a.entryCounts(ctx, viewerCampaign(camp)); err != nil {
+		if v.Sources, v.SharedCounts, v.EntryCounts, err = a.sourcesCard(ctx, viewerCampaign(camp)); err != nil {
 			return err
 		}
 	}
@@ -314,12 +312,16 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 
 // sharedEntries fills v with a batch of v.Shared's entries that another
 // source of v.Campaign (v.With, if set) also holds, each with its copy
-// order, and the counts for the source and kind chips.
+// order, or with v.Only those no other source holds, and the counts for the
+// source and kind chips.
 func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
 	ctx := c.Request.Context()
-	v.With = c.Query(views.SharedWithKey)
+	v.Only = c.Query(views.SharedOnlyKey) == views.SharedOnlyOn
+	if !v.Only {
+		v.With = c.Query(views.SharedWithKey)
+	}
 	afterID, _ := strconv.ParseInt(c.Query(views.AfterIDKey), 10, 64)
-	rows, err := a.Store.ListSharedEntries(ctx, sqlc.ListSharedEntriesParams{SourceKey: v.Shared, With: v.With, Kind: v.Kind, AfterName: c.Query(views.AfterNameKey), AfterID: afterID, CampaignID: v.Campaign, PageSize: compendiumBatch})
+	rows, err := a.Store.ListSharedEntries(ctx, sqlc.ListSharedEntriesParams{SourceKey: v.Shared, With: v.With, Only: v.Only, Kind: v.Kind, AfterName: c.Query(views.AfterNameKey), AfterID: afterID, CampaignID: v.Campaign, PageSize: compendiumBatch})
 	if err != nil {
 		return err
 	}
@@ -328,9 +330,13 @@ func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
 	}
 	if len(rows) == compendiumBatch {
 		last := rows[len(rows)-1]
-		v.More = views.CompendiumURL(url.Values{views.SharedKey: {v.Shared}, views.SharedWithKey: {v.With}, views.KindKey: {v.Kind}, views.AfterNameKey: {last.Name}, views.AfterIDKey: {strconv.FormatInt(last.ID, 10)}}, v.Campaign)
+		q := url.Values{views.SharedKey: {v.Shared}, views.SharedWithKey: {v.With}, views.KindKey: {v.Kind}, views.AfterNameKey: {last.Name}, views.AfterIDKey: {strconv.FormatInt(last.ID, 10)}}
+		if v.Only {
+			q.Set(views.SharedOnlyKey, views.SharedOnlyOn)
+		}
+		v.More = views.CompendiumURL(q, v.Campaign)
 	}
-	if len(rows) > 0 {
+	if len(rows) > 0 && !v.Only { // only-here entries have no other copy to order
 		order, err := a.Store.ListSharedOrder(ctx, sqlc.ListSharedOrderParams{SourceKey: v.Shared, CampaignID: v.Campaign})
 		if err != nil {
 			return err
@@ -344,7 +350,7 @@ func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
 	if c.Query(views.AfterIDKey) != "" {
 		return nil // a later batch: the chips are already on the page
 	}
-	kinds, err := a.Store.CountSharedByKind(ctx, sqlc.CountSharedByKindParams{SourceKey: v.Shared, With: v.With, CampaignID: v.Campaign})
+	kinds, err := a.Store.CountSharedByKind(ctx, sqlc.CountSharedByKindParams{SourceKey: v.Shared, With: v.With, Only: v.Only, CampaignID: v.Campaign})
 	for _, k := range kinds {
 		v.Counts = append(v.Counts, sqlc.CountCompendiumRow(k))
 	}

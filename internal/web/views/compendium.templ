@@ -78,7 +78,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 						<div class="min-w-0">
 							@importTabs(v.Import)
 						</div>
-						@SourcePriority(v.Sources, v.SharedCounts, v.EntryCounts)
+						@SourcePriorityLive(v.Campaign, v.Sources, v.SharedCounts, v.EntryCounts)
 					</div>
 				}
 			}
@@ -275,7 +275,7 @@ templ CompendiumResults(v CompendiumView) {
 // its place once scrolled into view (intersect, since the list scrolls itself).
 templ CompendiumRows(v CompendiumView) {
 	for _, r := range v.Results {
-		if v.Shared != "" {
+		if v.Shared != "" && !v.Only {
 			@compendiumRow(r, compareHref(ctx, r.Kind, r.Slug), v.CopyOrder[CopyKey(r.Kind, r.Slug)])
 		} else {
 			@compendiumRow(r, entryHref(ctx, r.ID), nil)
@@ -294,25 +294,32 @@ templ CompendiumRows(v CompendiumView) {
 	}
 }
 
-// sharedHeader heads the shared list: the source, its counts, and a chip per
-// other source it shares entries with, to narrow the list to one of them.
+// sharedHeader heads the shared list: the source, its counts, a chip for the
+// entries only it holds, and a chip per other source it shares entries with,
+// to narrow the list to one of them.
 templ sharedHeader(v CompendiumView) {
 	{{ n := v.SharedCounts[v.Shared] }}
+	{{ onlyTotal, onlyShown := v.onlyCounts() }}
 	<div class="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
 		<span class="font-medium">{ v.Shared }</span>
-		<span class="text-muted-foreground tabular-nums">{ fmt.Sprintf("%d shared, %d shown. Rows list every copy, the shown one first; open one to compare.", n.Shared, n.Shown) }</span>
+		if v.Only {
+			<span class="text-muted-foreground tabular-nums">{ fmt.Sprintf("%d only here, %d shown.", onlyTotal, onlyShown) }</span>
+		} else {
+			<span class="text-muted-foreground tabular-nums">{ fmt.Sprintf("%d shared, %d shown. Rows list every copy, the shown one first; open one to compare.", n.Shared, n.Shown) }</span>
+		}
 		<a class="ml-auto text-muted-foreground underline underline-offset-4" href={ templ.SafeURL(CompendiumPath(ctx, "")) }>Show all entries</a>
 	</div>
-	if len(v.SharedWith) == 0 {
-		<p class="mb-2 text-sm text-muted-foreground">No other source this campaign allows holds its entries.</p>
-	} else {
-		<div class={ chipRow, "mb-2" }>
-			@sharedChip(sharedWithHref(v, ""), "All", n.Shared, v.With == "")
+	<div class={ chipRow, "mb-2" }>
+		@sharedChip(onlyChipHref(v), "Only here", onlyTotal, v.Only)
+		if len(v.SharedWith) == 0 {
+			<p class="text-sm text-muted-foreground">No other source this campaign allows holds its entries.</p>
+		} else {
+			@sharedChip(sharedWithHref(v, ""), "All", n.Shared, !v.Only && v.With == "")
 			for _, s := range v.SharedWith {
 				@sharedChip(sharedWithHref(v, s.SourceKey), s.SourceKey, s.N, v.With == s.SourceKey)
 			}
-		</div>
-	}
+		}
+	</div>
 }
 
 templ sharedChip(href templ.SafeURL, label string, n int64, on bool) {

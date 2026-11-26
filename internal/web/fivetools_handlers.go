@@ -271,6 +271,22 @@ func (a *App) fiveToolsAuto(c *gin.Context) error {
 // errImportRunning refuses a second import, or a removal under the running one.
 const errImportRunning = "An import is running; wait for it to finish."
 
+// importDismiss clears the last import's summary from every GM page, unless
+// it is no longer the one the page showed.
+func (a *App) importDismiss(c *gin.Context) {
+	if a.fiveTools.get().Running {
+		a.fail(c, http.StatusConflict, errImportRunning)
+		return
+	}
+	was := strings.ReplaceAll(c.PostForm(views.DismissWasField), "\r\n", "\n")
+	if !a.fiveTools.dismiss(was) {
+		a.fail(c, http.StatusConflict, "The import changed meanwhile; dismiss the summary shown now.")
+		return
+	}
+	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicImport})
+	c.Status(http.StatusNoContent)
+}
+
 // fiveToolsRemove deletes a book's entries and source, then its folder.
 func (a *App) fiveToolsRemove(c *gin.Context) error {
 	ctx := c.Request.Context()
@@ -333,18 +349,22 @@ func (a *App) sourceOrder(c *gin.Context) error {
 // sourcesChanged tells every page and answers with the priority card.
 func (a *App) sourcesChanged(c *gin.Context) {
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
-	campaign := viewerCampaign(pathCampaign(c))
-	sources, shared, err := a.sourcePriority(c.Request.Context(), campaign)
-	if err != nil {
-		a.serverError(c, err)
-		return
-	}
-	counts, err := a.entryCounts(c.Request.Context(), campaign)
+	sources, shared, counts, err := a.sourcesCard(c.Request.Context(), viewerCampaign(pathCampaign(c)))
 	if err != nil {
 		a.serverError(c, err)
 		return
 	}
 	a.render(c, http.StatusOK, views.SourcePriority(sources, shared, counts))
+}
+
+// sourcesCard is what the priority card of campaignID's compendium shows.
+func (a *App) sourcesCard(ctx context.Context, campaignID int64) ([]sqlc.CompendiumSource, map[string]sqlc.CountSharedBySourceRow, map[string]sqlc.CountEntriesBySourceRow, error) {
+	sources, shared, err := a.sourcePriority(ctx, campaignID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	counts, err := a.entryCounts(ctx, campaignID)
+	return sources, shared, counts, err
 }
 
 // entryCounts is, by source key, each source's entries and how many of them

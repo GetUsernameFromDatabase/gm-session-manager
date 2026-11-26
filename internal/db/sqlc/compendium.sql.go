@@ -247,6 +247,7 @@ WHERE e.source_key = CAST(?1 AS TEXT) AND e.scoped = 0
         AND (CAST(?2 AS TEXT) = '' OR o.source_key = CAST(?2 AS TEXT))
         AND (CAST(?3 AS INTEGER) = 0 OR o.source_key = 'homebrew'
              OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?3 AS INTEGER) AND cs.source_key = o.source_key)))
+      <> CAST(?4 AS BOOLEAN)
 GROUP BY e.kind
 ORDER BY e.kind
 `
@@ -255,6 +256,7 @@ type CountSharedByKindParams struct {
 	SourceKey  string
 	With       string
 	CampaignID int64
+	Only       bool
 }
 
 type CountSharedByKindRow struct {
@@ -264,7 +266,12 @@ type CountSharedByKindRow struct {
 
 // CountSharedByKind counts ListSharedEntries' rows by kind, for its chips.
 func (q *Queries) CountSharedByKind(ctx context.Context, arg CountSharedByKindParams) ([]CountSharedByKindRow, error) {
-	rows, err := q.db.QueryContext(ctx, countSharedByKind, arg.SourceKey, arg.With, arg.CampaignID)
+	rows, err := q.db.QueryContext(ctx, countSharedByKind,
+		arg.SourceKey,
+		arg.With,
+		arg.CampaignID,
+		arg.Only,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1410,8 +1417,9 @@ WHERE e.source_key = CAST(?1 AS TEXT) AND e.scoped = 0
         AND (CAST(?5 AS TEXT) = '' OR o.source_key = CAST(?5 AS TEXT))
         AND (CAST(?6 AS INTEGER) = 0 OR o.source_key = 'homebrew'
              OR EXISTS (SELECT 1 FROM campaign_sources AS cs WHERE cs.campaign_id = CAST(?6 AS INTEGER) AND cs.source_key = o.source_key)))
+      <> CAST(?7 AS BOOLEAN)
 ORDER BY e.name, e.id
-LIMIT ?7
+LIMIT ?8
 `
 
 type ListSharedEntriesParams struct {
@@ -1421,6 +1429,7 @@ type ListSharedEntriesParams struct {
 	AfterID    int64
 	With       string
 	CampaignID int64
+	Only       bool
 	PageSize   int64
 }
 
@@ -1440,7 +1449,8 @@ type ListSharedEntriesRow struct {
 
 // ListSharedEntries browses a source's shared entries like
 // ListCompendiumByKind, whose columns it repeats so its rows convert; with
-// narrows them to those one other source holds (” for any).
+// narrows them to those one other source holds (” for any). only flips it
+// to the entries no other source holds (with is then ”).
 func (q *Queries) ListSharedEntries(ctx context.Context, arg ListSharedEntriesParams) ([]ListSharedEntriesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listSharedEntries,
 		arg.SourceKey,
@@ -1449,6 +1459,7 @@ func (q *Queries) ListSharedEntries(ctx context.Context, arg ListSharedEntriesPa
 		arg.AfterID,
 		arg.With,
 		arg.CampaignID,
+		arg.Only,
 		arg.PageSize,
 	)
 	if err != nil {

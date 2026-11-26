@@ -107,10 +107,23 @@ templ FiveToolsProgress(j FiveToolsJob, reload bool) {
 		if j.Running {
 			@importBar(j)
 		} else if j.Msg != "" {
-			@Notice(j.Msg, j.Failed, scrollBox)
+			@jobNotice(j)
 			if reload {
 				<div hidden hx-get={ CompendiumPath(ctx, route.CompendiumFiveTools) } hx-trigger="load" hx-target={ "#" + FiveToolsID } hx-swap="outerHTML"></div>
 			}
+		}
+	</div>
+}
+
+// jobNotice is the last import's summary; its X clears it on every GM page.
+templ jobNotice(j FiveToolsJob) {
+	<div class="relative">
+		@Notice(j.Msg, j.Failed, scrollBox+" pr-10")
+		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeIconSm, Class: "absolute top-1.5 right-1.5", Attributes: templ.Attributes{
+			"type": "button", "aria-label": "Dismiss", "hx-post": route.Compendium + route.CompendiumImportDismiss, "hx-swap": "none",
+			"hx-vals": toJSON(map[string]string{DismissWasField: j.Msg}),
+		}}) {
+			@icon.X()
 		}
 	</div>
 }
@@ -132,26 +145,27 @@ templ importBar(j FiveToolsJob) {
 // StarterSets fills an empty compendium in one click: the 2024 SRD from
 // Open5e, or the 5etools 2024 set. It shows the job's progress in place.
 // card is the campaign whose Sources card holds it (0 in the empty
-// compendium): the sets are then ticked for it, and as that card does not
-// refresh live, success links back to the campaign page.
+// compendium): the sets are then ticked for it, and that card, live itself,
+// turns into the source list on success.
 templ StarterSets(j FiveToolsJob, card int64) {
 	{{ base := starterBase(ctx, card) }}
-	<div id={ fmt.Sprint(StarterSetsID, "-", starterLive(card)) } class="w-full space-y-3 text-left text-sm" hx-swap-oob="true" { live(LiveImport, starterLive(card))... }>
+	<div
+		id={ StarterSetsID }
+		class="w-full space-y-3 text-left text-sm"
+		if card == 0 {
+			hx-swap-oob="true"
+		}
+		{ starterLive(card)... }
+	>
 		if j.Running {
 			@importBar(j)
 		} else {
 			if j.Msg != "" {
-				@Notice(j.Msg, j.Failed, scrollBox)
+				@jobNotice(j)
 			}
-			if j.Msg != "" && !j.Failed {
-				if card > 0 {
-					@button.Button(button.Props{Href: route.Path(route.Campaign, card)}) {
-						Show sources
-					}
-				} else {
-					@button.Button(button.Props{Href: base}) {
-						Show entries
-					}
+			if j.Msg != "" && !j.Failed && card == 0 {
+				@button.Button(button.Props{Href: base}) {
+					Show entries
 				}
 			}
 			<ul class="divide-y rounded-lg border">
@@ -241,6 +255,16 @@ templ StaleBooksBanner(books []compendium.Book, auto bool) {
 	}
 }
 
+// SourcePriorityLive is the priority card of campaign's compendium (0: the
+// whole one) as a live view. Live refetches swap this wrapper out of band;
+// the card's own posts swap the card inside it, and "contents" keeps the
+// card's sticky place in the page grid.
+templ SourcePriorityLive(campaign int64, sources []sqlc.CompendiumSource, shared map[string]sqlc.CountSharedBySourceRow, counts map[string]sqlc.CountEntriesBySourceRow) {
+	<div id={ SourcesID + "-live" } class="contents" hx-swap-oob="true" { live(LiveSources, campaign)... }>
+		@SourcePriority(sources, shared, counts)
+	</div>
+}
+
 // SourcePriority orders the sources: the first holding an entry wins its
 // lookups and shows alone in lists.
 templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.CountSharedBySourceRow, counts map[string]sqlc.CountEntriesBySourceRow) {
@@ -277,7 +301,8 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 					}
 				</div>
 				// app.js makes the list sortable (SortableJS) and posts the new order.
-				<ol class={ "divide-y rounded-lg border text-sm", scrollBox, "md:max-h-none md:min-h-0 md:flex-1" } data-sortable={ CompendiumPath(ctx, CompendiumRest(SourceOrderPath)) } data-sort-target={ "#" + SourcesID }>
+				// A live refetch keeps its scroll (live.js, data-keep-scroll).
+				<ol id={ SourcesID + "-list" } data-keep-scroll class={ "divide-y rounded-lg border text-sm", scrollBox, "md:max-h-none md:min-h-0 md:flex-1" } data-sortable={ CompendiumPath(ctx, CompendiumRest(SourceOrderPath)) } data-sort-target={ "#" + SourcesID }>
 					for i, s := range sources {
 						// Two lines: grip, position, full key, delete (homebrew leaves that
 						// cell empty); under the key, edition and count.
@@ -313,15 +338,9 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 									<span class="cursor-text" data-no-drag>{ s.Edition + " · " }</span>
 								}
 								if hasShared {
-									<a
-										class={ "inline-flex items-center gap-0.5 tabular-nums hover:underline underline-offset-4", entryCountClass(count) }
-										href={ sharedHref(ctx, s.SourceKey) }
-										title={ entryCountTitle(count, sh, true) }
-										aria-label={ entryCountTitle(count, sh, true) + " Browse the shared entries." }
-									>
-										{ entryCountText(count) }
-										@icon.ArrowUpRight(icon.Props{Size: 12})
-									</a>
+									@sourceCountLink(count, sharedHref(ctx, s.SourceKey), entryCountTitle(count, sh, true), "Browse the shared entries.")
+								} else if count.Total > 0 {
+									@sourceCountLink(count, sharedOnlyHref(ctx, s.SourceKey), entryCountTitle(count, sh, false), "Browse the entries only this source holds.")
 								} else {
 									<span class={ "tabular-nums", entryCountClass(count) } title={ entryCountTitle(count, sh, false) }>{ entryCountText(count) }</span>
 								}
@@ -332,6 +351,19 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 			}
 		}
 	</div>
+}
+
+// sourceCountLink is a source's entry count, linking to a list of them.
+templ sourceCountLink(count sqlc.CountEntriesBySourceRow, href templ.SafeURL, title, action string) {
+	<a
+		class={ "inline-flex items-center gap-0.5 tabular-nums hover:underline underline-offset-4", entryCountClass(count) }
+		href={ href }
+		title={ title }
+		aria-label={ title + " " + action }
+	>
+		{ entryCountText(count) }
+		@icon.ArrowUpRight(icon.Props{Size: 12})
+	</a>
 }
 
 // sourceDeleteButton posts the key in the body, not the path (page sources

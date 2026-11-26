@@ -19,18 +19,20 @@ import (
 // data-live="kind:id[:extra]"; the hub sends that view's changed data and
 // live.js binds it, or refetches the view's HTML from /live.
 const (
-	LiveRoster       = "roster"       // GM: characters and devices, id = campaign
-	LiveRequests     = "requests"     // GM: every campaign's join requests, id = 0
-	LiveWaiting      = "waiting"      // visitor: own request, id = request secret
-	LiveCharacter    = "character"    // id = character
-	LiveEncounters   = "encounters"   // GM: encounter list, id = campaign, extra = shown encounter
-	LiveEncounter    = "encounter"    // GM: one tracker, id = encounter
-	LivePlayerCombat = "playercombat" // player: own fights, id = campaign, extra = asked-for encounter
-	LiveNotes        = "notes"        // note list, id = campaign
-	LiveNote         = "note"         // note title and block layout, id = note
-	LiveEntities     = "entities"     // NPC list, id = campaign
-	LiveEntity       = "entity"       // id = entity
-	LiveImport       = "import"       // GM: the background 5etools import, id = 0
+	LiveRoster          = "roster"          // GM: characters and devices, id = campaign
+	LiveRequests        = "requests"        // GM: every campaign's join requests, id = 0
+	LiveWaiting         = "waiting"         // visitor: own request, id = request secret
+	LiveCharacter       = "character"       // id = character
+	LiveEncounters      = "encounters"      // GM: encounter list, id = campaign, extra = shown encounter
+	LiveEncounter       = "encounter"       // GM: one tracker, id = encounter
+	LivePlayerCombat    = "playercombat"    // player: own fights, id = campaign, extra = asked-for encounter
+	LiveNotes           = "notes"           // note list, id = campaign
+	LiveNote            = "note"            // note title and block layout, id = note
+	LiveEntities        = "entities"        // NPC list, id = campaign
+	LiveEntity          = "entity"          // id = entity
+	LiveImport          = "import"          // GM: the background 5etools import, id = 0
+	LiveSources         = "sources"         // GM: the source priority card, id = campaign (0: whole compendium)
+	LiveCampaignSources = "campaignsources" // GM: the campaign page's Sources card, id = campaign
 )
 
 // LiveKey builds a view key.

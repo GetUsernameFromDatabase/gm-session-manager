@@ -149,6 +149,7 @@ const (
 	CompendiumHomebrewNew         = "/homebrew/new"
 	CompendiumHomebrew            = "/homebrew"
 	CompendiumImport              = "/import"
+	CompendiumImportDismiss       = CompendiumImport + "/dismiss"
 	CompendiumFolder              = "/folder"
 	CompendiumFiveTools           = "/5etools"
 	CompendiumFiveToolsBookDelete = CompendiumFiveTools + "/:book/delete"
