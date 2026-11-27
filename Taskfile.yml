@@ -1,0 +1,216 @@
+# https://taskfile.dev: `task --list` shows the tasks, `task <name> -- <args>` passes arguments.
+# Install: go install github.com/go-task/task/v3/cmd/task@latest
+version: "3"
+
+env:
+  CGO_ENABLED: "0"
+  # nomsgpack drops gin's unused msgpack codec (40.0 -> 33.5 MB, measured 2026-11-18). Every go command
+  # here and .golangci.yml carry it, so dev, lint and release build the same code.
+  GOFLAGS: '{{with env "GOFLAGS"}}{{.}} {{end}}-tags=nomsgpack'
+
+vars:
+  APP: gm-session-manager
+  PKG: ./cmd/gm-session-manager
+  EXE: "{{exeExt}}"
+
+tasks:
+  setup:
+    desc: After cloning, fetch the gitignored assets and enable the pre-commit hook
+    cmds:
+      - go run ./cmd/vendorjs
+      - go tool shadcn-templ bundle
+      - git config core.hooksPath .githooks
+
+  generate:db:
+    desc: sqlc code after migrations or queries change
+    cmds:
+      - go generate ./internal/db
+
+  generate:web:
+    desc: Script bundle, templ fmt, templ and Tailwind after .templ or class changes
+    cmds:
+      - go generate ./internal/web
+
+  lint:
+    desc: "golangci-lint, gopls and stale Tailwind classes (task lint -- --all: gopls on every Go file)"
+    silent: true
+    cmds:
+      - source ./scripts/lint.sh {{.CLI_ARGS}}
+
+  test:
+    desc: Run the tests
+    cmds:
+      - go test ./...
+
+  # Both outputs are gitignored, so a fresh checkout (CI included) lacks them.
+  prepare:
+    internal: true
+    cmds:
+      - go run ./cmd/vendorjs
+      - go tool shadcn-templ bundle --silent
+      - go tool templ fmt -fail internal/web/views # fixes the files too; rerun after go generate ./internal/web
+
+  build:
+    desc: Vendor JS, lint, test and build for this machine into dist/
+    env: &build-env
+      APP: "{{.APP}}"
+      PKG: "{{.PKG}}"
+    cmds:
+      - task: prepare
+      - task: lint
+      - task: test
+      - source ./scripts/build.sh
+
+  build:release:
+    desc: Every release target into dist/ archives plus SHA256SUMS (Linux only; needs zip)
+    # Release CI skips lint: it has no tailwindcss (output.css is committed) and release.yml already runs
+    # golangci-lint. Commits are linted by .githooks/pre-commit.
+    env: *build-env
+    cmds:
+      - task: prepare
+      - task: test
+      - source ./scripts/build.sh release
+
+  release:
+    desc: "Tag a release and push the tag (task release -- 0.2.0 [--force]: --force allows a version older than the newest tag)"
+    cmds:
+      - source ./scripts/release.sh {{.CLI_ARGS}}
+
+  # The dev:* and before:copy tasks have no desc (hidden from --list) and are not internal: scripts/run.sh
+  # calls them through the task CLI, which refuses internal tasks.
+  # Called by scripts/run.sh: `task --status dev:changed` is non-zero when sources changed since the task last
+  # ran. The script sets TASK_TEMP_DIR per mode, so each mode keeps its own timestamp (a label does not key
+  # it). Generated files are left out: the watcher regenerates them, and its own output must not count as a change.
+  dev:changed:
+    method: timestamp
+    sources:
+      - cmd/**/*.go
+      - internal/**/*.go
+      - internal/**/*.templ
+      - internal/**/*.sql
+      - internal/**/*.css
+      - internal/**/*.js
+      - exclude: internal/**/*_templ.go
+      - exclude: internal/web/assets/css/output.css
+      - exclude: internal/web/assets/vendor/**
+    cmds:
+      - ":"
+
+  # A migration from half-finished work would change the real DB: the script pauses on this.
+  dev:migrations:
+    method: timestamp
+    sources:
+      - internal/db/migrations/**
+    cmds:
+      - ":"
+
+  # Called by scripts/run.sh: regenerates only templ and Tailwind, then builds to OUT. Not templ fmt: the
+  # watcher must never rewrite a file someone is editing.
+  dev:generate:
+    internal: true
+    sources:
+      - internal/web/**/*.templ
+      - internal/web/assets/css/globals.css
+    generates:
+      - internal/web/assets/css/output.css
+    cmds:
+      - go generate -run 'templ generate' ./internal/web
+      # Tailwind is only needed to change classes (README); without it the committed output.css is served.
+      - cmd: go generate -run tailwindcss ./internal/web
+        if: command -v tailwindcss >/dev/null
+
+  dev:build:
+    requires:
+      vars: [OUT]
+    deps: [dev:generate]
+    cmds:
+      - go build -o {{.OUT}} {{.PKG}}
+
+  # The run modes share scripts/run.sh (usage in its header); a mode is its env: BIN and MARKERS always, the
+  # rest optional. DATA_DIR in env beats .env, so the local instance keeps its data under data/.
+  run:
+    desc: The real instance (DATA_DIR data/dev); rebuilds and restarts when sources change
+    env:
+      DATA_DIR: data/dev
+      BIN: build/gm-session-manager-dev{{.EXE}}
+      MARKERS: build
+      WATCH: "1"
+      MODE: dev
+    cmds:
+      - source ./scripts/run.sh
+
+  run:player:
+    desc: The player app (port 8042, data/player); rebuilds like run
+    env:
+      BIN: build/gm-session-manager-player{{.EXE}}
+      MARKERS: data/player
+      WATCH: "1"
+      MODE: player
+      SERVER_ARGS: --player --data data/player --port 8042
+      RESTART_ARGS: --no-browser # the tab opened on launch is still there
+    cmds:
+      - source ./scripts/run.sh
+
+  run:browser:
+    desc: "Test instance for browser checks (data/test, port 8443); task run:browser -- --clean-playwright"
+    env:
+      DATA_DIR: data/test
+      PORT: "8443"
+      BIN: build/gm-session-manager-test{{.EXE}}
+      MARKERS: data/test
+      MODE: browser
+    cmds:
+      - |
+        if [ "{{.CLI_ARGS}}" = --clean-playwright ]; then rm -rf data/test/playwright; fi # else kept between runs
+      - source ./scripts/run.sh
+
+  before:
+    desc: "Snapshot for before screenshots, taken before editing (task before -- --head: HEAD instead of the working tree)"
+    vars:
+      BEFORE_BIN: build/gm-session-manager-before{{.EXE}}
+    cmds:
+      - mkdir -p data/test/.before
+      - |
+        if [ "{{.CLI_ARGS}}" = --head ]; then
+          wt=build/head
+          git worktree remove --force "$wt" 2>/dev/null
+          git worktree add --detach "$wt" HEAD || exit 1
+          trap 'git worktree remove --force "$wt"' EXIT
+          # The worktree lacks the gitignored browser assets.
+          cp -r internal/web/assets/vendor "$wt/internal/web/assets/" &&
+            cp internal/web/assets/js/shadcn-templ-*.js "$wt/internal/web/assets/js/" &&
+            (cd "$wt" && go build -o "../../{{.BEFORE_BIN}}" {{.PKG}}) || exit 1
+        else
+          go build -o {{.BEFORE_BIN}} {{.PKG}} || exit 1
+        fi
+      - rm -f data/test/.before/pristine.db
+      - |
+        if [ -f data/test/gm-session-manager.db ]; then
+          sqlite3 data/test/gm-session-manager.db ".backup 'data/test/.before/pristine.db'" || exit 1
+        fi
+        echo "before snapshot ready; serve it with task run:before"
+
+  run:before:
+    desc: Serve the before snapshot on port 8444 from a fresh copy in data/test/.before/data
+    env:
+      DATA_DIR: data/test/.before/data
+      PORT: "8444"
+      BIN: build/gm-session-manager-before{{.EXE}}
+      MARKERS: data/test/.before
+      NOREBUILD: "1"
+      MODE: before
+      PREPARE: before:copy
+    cmds:
+      - source ./scripts/run.sh
+
+  # Run by the script once the old before-server is stopped (on Windows it holds the DB open).
+  before:copy:
+    cmds:
+      # A fresh copy each start: a stale -wal/-shm next to an old DB corrupts it.
+      - rm -rf data/test/.before/data
+      - mkdir -p data/test/.before/data
+      - |
+        for d in compendium tls attachments; do
+          if [ -d "data/test/$d" ]; then cp -r "data/test/$d" data/test/.before/data/; fi
+        done
+        if [ -f data/test/.before/pristine.db ]; then cp data/test/.before/pristine.db data/test/.before/data/gm-session-manager.db; fi

@@ -1,6 +1,6 @@
 # Before/after pairs
 
-For `pair <name>: <element> on <page>, as GM|player`, one pair or several separated by `;` (a batch). "Before" is the snapshot `./run.sh before` took before the edits, on port 8444; "after" is the working tree on 8443. The run folder is `data/test/screenshots/<date>-<topic>/`.
+For `pair <name>: <element> on <page>, as GM|player`, one pair or several separated by `;` (a batch). "Before" is the snapshot `task before` took before the edits, on port 8444; "after" is the working tree on 8443. The run folder is `data/test/screenshots/<date>-<topic>/`.
 
 ## Rules
 
@@ -12,8 +12,8 @@ For `pair <name>: <element> on <page>, as GM|player`, one pair or several separa
 
 ## The "before" instance (once per batch)
 
-1. If `build/gm-session-manager-before.exe` is missing (nobody ran `./run.sh before` before editing), run `./run.sh before --head`: it builds HEAD and copies the current test DB. Say so in the report: "before" is then HEAD, with data the 8443 instance may already have upgraded.
-2. From the repo root (the binary reads `.env` there), start `./run.sh browser-before` as a background job and wait for its `listening` line (port 8444). It serves a fresh copy of the snapshot from `data/test/.before/data` on each start.
+1. If `build/gm-session-manager-before.exe` is missing (nobody ran `task before` before editing), run `task before -- --head`: it builds HEAD and copies the current test DB. Say so in the report: "before" is then HEAD, with data the 8443 instance may already have upgraded.
+2. From the repo root (the binary reads `.env` there), start `task run:before` as a background job and wait for its `listening` line (port 8444). It serves a fresh copy of the snapshot from `data/test/.before/data` on each start.
 3. Then start the 8443 instance. A saved state's scene (`SKILL.md`) is applied to each instance separately, checking `ready` against that instance's DB.
 
 ## Taking a pair: one script

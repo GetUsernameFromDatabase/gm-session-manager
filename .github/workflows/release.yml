@@ -18,12 +18,15 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0
+      - uses: go-task/setup-task@v2
+        with:
+          version: 3.x
       - name: Build
         env:
           VERSION: ${{ github.ref_name }}
-        run: bash build.sh release
+        run: task build:release
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        # dist is $out in build.sh
+        # dist/ is where task build:release writes the archives
         run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes

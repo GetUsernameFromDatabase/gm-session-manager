@@ -8,7 +8,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 
 - Go, no CGO, gin; tools (`templ`, `shadcn-templ`) are `tool` deps in `go.mod`.
 - SQLite (`modernc.org/sqlite`) through `sqlc`. Views: `templ` + [shadcn-templ](https://shadcn-templ.com/llms.txt) + Tailwind standalone CLI + `htmx` websocket extension. Notes: TipTap collab.
-- Builds use the `nomsgpack` tag (gin without its msgpack codec, -6.5 MB): `GOFLAGS` in `build.sh`, `run.sh`, `release.sh` and `build-tags` in `.golangci.yml`, so a gin msgpack use fails the lint.
+- Builds use the `nomsgpack` tag (gin without its msgpack codec, -6.5 MB): `GOFLAGS` in `Taskfile.yml` and `build-tags` in `.golangci.yml`, so a gin msgpack use fails the lint.
 - **No node or npm.** Browser libraries are vendored by `cmd/vendorjs`; everything ships in one binary via `go:embed`.
 - HTTPS only, self-signed certificate in `DATA_DIR/tls` (except the player app, `--player`, on loopback and, from phase 3, the one-time phone handoff).
 - Layout: [README.md](README.md#project-layout).
@@ -30,7 +30,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 - Constants for cookie, context, header and event keys. Validate structs with `go-playground/validator` tags.
 - Values a SQL CHECK lists are typed in `internal/enum` and wired through sqlc `overrides`; goconst guards other repeated strings. A family of values (one list, map or switch domain, numbers too) is all constants or none.
 - Table-driven tests for all permission and visibility logic. Positional test-table rows break when a field is added; add a separate loop instead.
-- `./lint.sh` (golangci-lint, `gopls check` on Go files changed against HEAD, then stale Tailwind classes via `tailwindcss canonicalize`) stays clean; `./lint.sh --all` after upgrading golangci-lint, gopls or tailwindcss. Formatters always win: keep what `templ fmt` and `golangci-lint fmt` change, even in untouched files.
+- `task lint` (golangci-lint, `gopls check` on Go files changed against HEAD, then stale Tailwind classes via `tailwindcss canonicalize`) stays clean; `task lint -- --all` after upgrading golangci-lint, gopls or tailwindcss. Formatters always win: keep what `templ fmt` and `golangci-lint fmt` change, even in untouched files.
 - Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
 - Durable lessons go in the nearest folder's `CLAUDE.md`; workflows in a skill; `HANDOFF.md` holds only current state and open items.
 
@@ -38,7 +38,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 
 - Easy to miss: validator `oneof` tags, `internal/enum` values, a `normalizeVersion` bump when a compendium parser changes, `DownloadVersion` when a 5etools download changes, route constants instead of literals (`internal/web/CLAUDE.md`).
 - Never run the built binary and never touch `data/dev` (the real DB and certificate; `data/test` is the browser-check instance, `data/player` the player app's); `curl` and other network calls are denied.
-- Checks after a change: the Commands table below, then `go build ./...`, `go test ./...`, `./lint.sh`, `graphify update .`.
+- Checks after a change: the Commands table below, then `go build ./...`, `go test ./...`, `task lint`, `graphify update .`.
 
 ## Game systems
 
@@ -52,7 +52,7 @@ D&D 5e (2024) is the only system, fenced in rather than abstracted:
 
 ## Commands
 
-After cloning: `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` (both outputs gitignored), and `git config core.hooksPath .githooks` (pre-commit runs `lint.sh`; git then ignores `.git/hooks`). After changing sources:
+Dev commands are tasks in `Taskfile.yml` ([Task](https://taskfile.dev), installed with `go install github.com/go-task/task/v3/cmd/task@latest`; `task --list`). The player-app launchers (`Player app.bat`, `player-app.sh`) are written by `task build:release` into each archive. After cloning: `task setup` (`go run ./cmd/vendorjs`, `go tool shadcn-templ bundle` (both outputs gitignored) and `git config core.hooksPath .githooks`; pre-commit runs `task lint`, and git then ignores `.git/hooks`). After changing sources:
 
 | Change | Command |
 |---|---|
@@ -61,7 +61,7 @@ After cloning: `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` (both o
 | Go formatting | `golangci-lint fmt` |
 | browser JS versions | `go run ./cmd/vendorjs -check`, edit `cmd/vendorjs/main.go`, `go run ./cmd/vendorjs -update`, commit `cmd/vendorjs/vendor.sum` (a plain run refuses changed files) |
 
-Then `go build ./...`, `go test ./...`, `./lint.sh`, `graphify update .`. Full build: `./build.sh`; release: `./release.sh <version>`; run: `./run.sh`.
+Then `go build ./...`, `go test ./...`, `task lint`, `graphify update .`. Full build: `task build`; release archives: `task build:release` (Linux); release tag: `task release -- <version>`; run: `task run` (`run:player`, `run:browser`, `before`, `run:before`; the watcher loop is `scripts/run.sh`, the modes are the env of those tasks in `Taskfile.yml`).
 
 ## graphify
 

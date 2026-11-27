@@ -6,6 +6,7 @@
     "esbenp.prettier-vscode",
     "golang.go",
     "redhat.vscode-yaml",
+    "task.vscode-task",
     "yzhang.markdown-all-in-one"
   ]
 }

@@ -66,7 +66,7 @@ again; a built binary keeps its permission.
 ### Other systems
 
 Releases ship for Windows and Linux on x86-64. On macOS or ARM, build from
-source (see [Development](#development)): `./build.sh` builds for the
+source (see [Development](#development)): `task build` builds for the
 machine it runs on.
 
 ### Player app
@@ -76,7 +76,7 @@ listens on `127.0.0.1` only over plain HTTP, needs no login, reads no `.env`
 (only the flags `--port`, default 8042, `--data`, default `data-player/`, and
 `--no-browser`, none valid without `--player`) and opens the browser itself
 unless given `--no-browser`. The
-archive ships `Player app.bat` (Windows) and `player-app.sh` to start it
+archive ships `Player app.bat` (Windows) or `player-app.sh` (Linux) to start it
 with a double-click.
 
 ### GM on another device
@@ -102,8 +102,8 @@ variables override it.
 server first, or copy the `-wal` and `-shm` files with the database.
 
 The server also hands out the files in `DATA_DIR/downloads/` to the GM and
-players (`/downloads/<name>`). The update job runs `./build.sh release` and
-copies `dist/*` there (the release build needs `zip`, on Debian too).
+players (`/downloads/<name>`). The update job runs `task build:release` and
+copies `dist/*` there (the release build needs [Task](https://taskfile.dev) and `zip`, on Debian too).
 
 App-wide settings changed in the app (not per campaign) are kept in `DATA_DIR/settings.json`.
 
@@ -141,8 +141,11 @@ Homebrew is written in the Compendium page and is shared by all campaigns.
   to build and run: generated code and built assets are committed, except the
   browser libraries and the component script bundle: run
   `go run ./cmd/vendorjs` and `go tool shadcn-templ bundle` once after cloning.
-  To lint every commit, also run `git config core.hooksPath .githooks`
-  (`.githooks/pre-commit` runs `lint.sh`, which needs the tools below).
+- [Task](https://taskfile.dev/docs/installation#build-from-source) for the dev
+  commands (`go install github.com/go-task/task/v3/cmd/task@latest`).
+  `task setup` runs the two commands above and sets
+  `git config core.hooksPath .githooks`, so every commit is linted
+  (`.githooks/pre-commit` runs `task lint`, which needs the tools below).
 - Only for changing sources:
   - [sqlc](https://docs.sqlc.dev/en/latest/overview/install.html) on PATH
     (migrations and queries),
@@ -159,18 +162,21 @@ Homebrew is written in the Compendium page and is shared by all campaigns.
 
 ```sh
 cp .env.example .env    # then set ADMIN_USERNAME and ADMIN_PASSWORD
-./run.sh                # or: go run ./cmd/gm-session-manager
+task run                # or: go run ./cmd/gm-session-manager
 ```
 
-`./run.sh` rebuilds and restarts when sources change (a failed build keeps the
+`task run` rebuilds and restarts when sources change (a failed build keeps the
 old server). A changed migration pauses reloading until `touch build/restart`;
-`touch build/stop` quits. `./run.sh help` lists the other modes.
+`touch build/stop` quits. `task --list` lists the other tasks (`run:player`,
+`run:browser`, `before`, `run:before`, `lint`, `build`, `release`).
 
 ### Project layout
 
 ```md
 cmd/gm-session-manager/   main: config, DB, hub, HTTPS server
 cmd/vendorjs/             downloads pinned browser JS into internal/web/assets/vendor
+Taskfile.yml              dev, lint, build and release tasks (task --list); the run modes are env there
+scripts/                  the longer tasks (run loop, lint, build, release tag), run in Task's shell
 internal/                 every package below; not importable outside this module
   config/                 .env loading and fail-fast validation
   enum/                   typed values of every SQL CHECK list (wired through sqlc overrides)
@@ -186,7 +192,7 @@ internal/                 every package below; not importable outside this modul
   web/views/              templ pages and components; live.go holds live-view keys and binds; sheet5e.go is the door to 5e
   web/components/, utils/ shadcn-templ CLI output: never edit by hand
   web/assets/             js/ (app.js, live.js, notes.js, fields.js, wikilink.js), css/ (globals.css → output.css), vendor/
-data/                     local instances, not code: dev (./run.sh), test (browser checks), player (./run.sh player)
+data/                     local instances, not code: dev (task run), test (browser checks), player (task run:player)
 ```
 
 ### After changing sources
@@ -199,8 +205,8 @@ data/                     local instances, not code: dev (./run.sh), test (brows
 | shadcn-templ components | `go tool shadcn-templ add <name>`, then `go generate ./internal/web` |
 | browser JS versions | `go run ./cmd/vendorjs -check` lists newer releases; edit `cmd/vendorjs/main.go`, then `go run ./cmd/vendorjs -update` and commit `cmd/vendorjs/vendor.sum` (every other run refuses files that differ from it) |
 
-Then `go build ./...`, `go test ./...` and `./lint.sh` (golangci-lint, `gopls check` on changed Go files,
-then stale Tailwind classes; `--all` checks every Go file).
+Then `go build ./...`, `go test ./...` and `task lint` (golangci-lint, `gopls check` on changed Go files,
+then stale Tailwind classes; `task lint -- --all` checks every Go file).
 
 `GSM_COMPENDIUM_DIR=data/dev/compendium go test ./internal/compendium -run TestRealSource -v`
 checks the importer against a real data download.
@@ -250,31 +256,31 @@ everything else (queries, hooks, exports).
 
 ## Releasing on GitHub
 
-`build.sh` is the one build process, for you and CI. It fetches the vendored
-JS, builds the shadcn-templ script bundle (both are gitignored), runs
-`lint.sh` (host builds only) and the tests and stamps the version
+The `build` and `build:release` tasks in `Taskfile.yml` are the one build process, for you and CI. They fetch the vendored
+JS, build the shadcn-templ script bundle (both are gitignored), run
+`task lint` (`build` only) and the tests and stamp the version
 (`git describe`, or `$VERSION`) into the binary:
 
 ```sh
-./build.sh           # this machine → dist/gm-session-manager[.exe]
-./build.sh release   # every target → dist/ archives + SHA256SUMS (needs zip)
+task build           # this machine → dist/gm-session-manager[.exe]
+task build:release   # every target → dist/ archives + SHA256SUMS (Linux; needs zip)
 ```
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`: it runs
-`golangci-lint`, then `build.sh release` (Windows and Linux x86-64 binaries,
+`golangci-lint`, then `task build:release` (Windows and Linux x86-64 binaries,
 no CGO, so every target builds from one runner, each packed with
-`README.md` and `.env.example`), and publishes a GitHub release with
+`README.md`, `.env.example` and a player-app launcher), and publishes a GitHub release with
 generated notes. `.env` and `data/` are git-ignored and never shipped.
 
 ### Each release
 
 1. If sources changed, regenerate (`go generate ./internal/db ./internal/web`) and commit.
-2. Check: `go build ./...`, `go test ./...`, `./lint.sh`.
+2. Check: `go build ./...`, `go test ./...`, `task lint`.
 3. Tag and push (from a clean, pushed `main`; it refuses a version that
    isn't newer than the latest tag unless you add `--force`):
 
    ```sh
-   ./release.sh 0.2.0
+   task release -- 0.2.0
    ```
 
 4. Watch the run on the repository's Actions tab (`gh run watch`); the
@@ -285,6 +291,6 @@ generated notes. `.env` and `data/` are git-ignored and never shipped.
 Build and upload it yourself:
 
 ```sh
-VERSION=v0.1.0 ./build.sh release
+VERSION=v0.1.0 task build:release
 gh release create v0.1.0 dist/* --generate-notes
 ```

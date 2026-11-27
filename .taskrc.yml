@@ -1,0 +1,3 @@
+# Taskfile env beats the OS env, so a GOFLAGS set in the shell cannot drop -tags=nomsgpack (see Taskfile.yml).
+experiments:
+  ENV_PRECEDENCE: 1

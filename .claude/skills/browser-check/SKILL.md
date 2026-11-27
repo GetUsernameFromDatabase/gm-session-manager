@@ -21,8 +21,8 @@ You are the only agent using the browser and the test instances. Any tab, browse
 
 ## The test instance
 
-- Start it once, as a background Bash job: `./run.sh browser`. It builds `build/gm-session-manager-test.exe`, serves `https://localhost:8443` from `data/test/` (never `data/dev`), and keeps `data/test/playwright` (MCP logs and snapshots) between runs; `./run.sh browser --clean-playwright` empties it on start. Wait for the `listening` line in the job output. A second start takes over from a running one (it stops the old loop and server), and stopping the job ends its server too.
-- After changing sources: run the generate step the change needs (`go generate ./internal/web` for templates and classes), then `touch data/test/restart`. The script rebuilds and restarts; wait for the next `listening` line. A failed build prints `run.sh: build failed`; fix it and touch `restart` again.
+- Start it once, as a background Bash job: `task run:browser`. It builds `build/gm-session-manager-test.exe`, serves `https://localhost:8443` from `data/test/` (never `data/dev`), and keeps `data/test/playwright` (MCP logs and snapshots) between runs; `task run:browser -- --clean-playwright` empties it on start. Wait for the `listening` line in the job output. A second start takes over from a running one (it stops the old loop and server), and stopping the job ends its server too.
+- After changing sources: run the generate step the change needs (`go generate ./internal/web` for templates and classes), then `touch data/test/restart`. The run loop (`scripts/run.sh`) rebuilds and restarts; wait for the next `listening` line. A failed build prints `run: build failed`; fix it and touch `restart` again.
 - Stop it when done: `touch data/test/stop`. Fallback if a server outlives its loop anyway: `taskkill //IM gm-session-manager-test.exe //F`. Never kill `gm-session-manager-dev.exe` or `gm-session-manager.exe`: those are the user's real instance.
 - The binary reads `.env` from the folder it starts in: start every instance from the repo root. Never read, print, source or copy `.env`. For the SRD, copy `data/dev/compendium` into `data/test/`.
 

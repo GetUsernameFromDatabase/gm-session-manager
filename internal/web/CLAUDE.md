@@ -1,6 +1,6 @@
 # internal/web
 
-Changes to `.templ`, CSS or JS can be checked with the `browser-check` skill. Ask with AskUserQuestion before running it, unless the prompt already says to run checks (e.g. a batch of HANDOFF items). Its cost is turns, so name exact targets and it won't explore: `check: <URL> as GM|player|state: <name> — <selectors to work> → <expected result>`. Before/after pairs (`pair <name>: <element selector> on <URL>, as GM|player`) only when the user asks for them; then run `./run.sh before` before editing, and view the PNGs yourself (the agent doesn't). Don't drive the browser from the main session.
+Changes to `.templ`, CSS or JS can be checked with the `browser-check` skill. Ask with AskUserQuestion before running it, unless the prompt already says to run checks (e.g. a batch of HANDOFF items). Its cost is turns, so name exact targets and it won't explore: `check: <URL> as GM|player|state: <name> — <selectors to work> → <expected result>`. Before/after pairs (`pair <name>: <element selector> on <URL>, as GM|player`) only when the user asks for them; then run `task before` before editing, and view the PNGs yourself (the agent doesn't). Don't drive the browser from the main session.
 
 ## Values Go and JS share
 

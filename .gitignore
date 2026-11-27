@@ -1,14 +1,15 @@
 .env
-# Local instances: data/dev (./run.sh), data/test (browser checks, Playwright output), data/player
+# Local instances: data/dev (task run), data/test (browser checks, Playwright output), data/player
 /data/
 *.exe
 # Downloaded by `go run ./cmd/vendorjs`
 /internal/web/assets/vendor/
 # Built by `go tool shadcn-templ bundle` (go generate ./internal/web); scripts_bundle.go is committed
 /internal/web/assets/js/shadcn-templ-*.js
-# Output of ./build.sh ($stage, $out)
+# Output of task build and run (dev binaries, release staging), and Task's fingerprints
 /build/
 /dist/
+/.task/
 
 ### AI agent, Claude
 # Personal Claude Code settings and backups

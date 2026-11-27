@@ -2,4 +2,4 @@
 # Enabled by `git config core.hooksPath .githooks` (README, Development). Git then ignores
 # .git/hooks, so a tool that installs a hook there must have it added here instead.
 # Lints the working tree, not only the staged files. Skip once with `git commit --no-verify`.
-exec bash "$(git rev-parse --show-toplevel)/lint.sh"
+exec task lint

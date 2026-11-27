@@ -36,7 +36,7 @@ const (
 	readHeaderTimeout = 10 * time.Second
 )
 
-// version is set at build time by build.sh (-X main.version=…).
+// version is set at build time by scripts/build.sh (-X main.version=…).
 var version = "dev"
 
 func main() {
