@@ -205,6 +205,8 @@ type TakeHomeBase struct {
 
 // TakeHomeBaseCharacter is the character as sent.
 type TakeHomeBaseCharacter struct {
+	// Name is empty in a take-out recorded before the review needed it.
+	Name   string          `json:"name"`
 	Sheet  json.RawMessage `json:"sheet"`
 	HP     int64           `json:"hp"`
 	MaxHP  int64           `json:"max_hp"`

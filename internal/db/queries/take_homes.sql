@@ -13,6 +13,21 @@ WHERE character_id = ? AND returned_at IS NULL
 ORDER BY id DESC
 LIMIT 1;
 
+-- name: GetTakeHomeByToken :one
+SELECT * FROM take_homes
+WHERE token = ?;
+
+-- ReturnTakeHome closes a take-out; 0 rows means it was already closed.
+-- name: ReturnTakeHome :execrows
+UPDATE take_homes SET returned_at = CURRENT_TIMESTAMP
+WHERE id = ? AND returned_at IS NULL;
+
+-- ReturnOlderTakeHomes closes the character's take-outs older than an accepted
+-- one: its bring-back already holds what they took home.
+-- name: ReturnOlderTakeHomes :exec
+UPDATE take_homes SET returned_at = CURRENT_TIMESTAMP
+WHERE character_id = ? AND id < ? AND returned_at IS NULL;
+
 -- The newest open take-home of each character in a campaign.
 -- name: ListOpenTakeHomesByCampaign :many
 SELECT t.character_id, t.created_at

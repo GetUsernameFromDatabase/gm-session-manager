@@ -64,4 +64,6 @@ type PendingGroup struct {
 	CampaignID   int64
 	CampaignName string
 	Requests     []PendingView
+	// BringBacks are files players sent, waiting for the GM to review.
+	BringBacks []BringBackNotice
 }

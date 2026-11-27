@@ -280,6 +280,25 @@ func (q *Queries) GetServerID(ctx context.Context) (string, error) {
 	return server_id, err
 }
 
+const getTakeHomeByToken = `-- name: GetTakeHomeByToken :one
+SELECT id, character_id, token, base_json, created_at, returned_at FROM take_homes
+WHERE token = ?
+`
+
+func (q *Queries) GetTakeHomeByToken(ctx context.Context, token string) (TakeHome, error) {
+	row := q.db.QueryRowContext(ctx, getTakeHomeByToken, token)
+	var i TakeHome
+	err := row.Scan(
+		&i.ID,
+		&i.CharacterID,
+		&i.Token,
+		&i.BaseJson,
+		&i.CreatedAt,
+		&i.ReturnedAt,
+	)
+	return i, err
+}
+
 const hasOtherServerHomeCopy = `-- name: HasOtherServerHomeCopy :one
 SELECT EXISTS (SELECT 1 FROM home_copies WHERE server_id <> ?)
 `
@@ -855,6 +874,37 @@ func (q *Queries) ListTakeHomeSources(ctx context.Context, campaignID int64) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const returnOlderTakeHomes = `-- name: ReturnOlderTakeHomes :exec
+UPDATE take_homes SET returned_at = CURRENT_TIMESTAMP
+WHERE character_id = ? AND id < ? AND returned_at IS NULL
+`
+
+type ReturnOlderTakeHomesParams struct {
+	CharacterID int64
+	ID          int64
+}
+
+// ReturnOlderTakeHomes closes the character's take-outs older than an accepted
+// one: its bring-back already holds what they took home.
+func (q *Queries) ReturnOlderTakeHomes(ctx context.Context, arg ReturnOlderTakeHomesParams) error {
+	_, err := q.db.ExecContext(ctx, returnOlderTakeHomes, arg.CharacterID, arg.ID)
+	return err
+}
+
+const returnTakeHome = `-- name: ReturnTakeHome :execrows
+UPDATE take_homes SET returned_at = CURRENT_TIMESTAMP
+WHERE id = ? AND returned_at IS NULL
+`
+
+// ReturnTakeHome closes a take-out; 0 rows means it was already closed.
+func (q *Queries) ReturnTakeHome(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, returnTakeHome, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setCharacterImageFlags = `-- name: SetCharacterImageFlags :exec

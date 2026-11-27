@@ -35,19 +35,28 @@ func (a *App) waiting(p *hub.Pending) views.Waiting {
 	return views.Waiting{Secret: p.Secret, Name: p.Name, State: state}
 }
 
-// pendingViews groups every campaign's waiting requests, campaigns in the
-// order of their oldest request.
+// pendingViews groups every campaign's waiting requests and bring-back files,
+// campaigns in the order of their oldest request.
 func (a *App) pendingViews() []views.PendingGroup {
 	var out []views.PendingGroup
-	for _, p := range a.Hub.PendingList(0) {
-		i := slices.IndexFunc(out, func(g views.PendingGroup) bool { return g.CampaignID == p.CampaignID })
+	group := func(campaignID int64, name string) int {
+		i := slices.IndexFunc(out, func(g views.PendingGroup) bool { return g.CampaignID == campaignID })
 		if i < 0 {
 			i = len(out)
-			out = append(out, views.PendingGroup{CampaignID: p.CampaignID, CampaignName: p.CampaignName})
+			out = append(out, views.PendingGroup{CampaignID: campaignID, CampaignName: name})
 		}
+		return i
+	}
+	for _, p := range a.Hub.PendingList(0) {
+		i := group(p.CampaignID, p.CampaignName)
 		out[i].Requests = append(out[i].Requests, views.PendingView{ID: p.ID, CampaignID: p.CampaignID, Name: p.Name, Claim: p.Kind == hub.PendingClaim,
 			Player: p.Player, Device: p.Device, Phone: p.Phone, Host: p.Host,
 		})
+	}
+	// Files wait for review after the join requests; the GM's own too, so leaving its review page loses nothing.
+	for _, f := range a.homeFiles.list() {
+		i := group(f.campaignID, f.campaignName)
+		out[i].BringBacks = append(out[i].BringBacks, views.BringBackNotice{ID: f.id, CampaignID: f.campaignID, Name: f.characterName, SavedAt: f.savedAt})
 	}
 	return out
 }

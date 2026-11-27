@@ -21,6 +21,7 @@ import (
 	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/export"
+	"gm-session-manager/internal/web/views"
 )
 
 // The game system and edition new campaigns and characters are created in.
@@ -331,3 +332,237 @@ func checkSheetFile(raw json.RawMessage) error {
 	}
 	return nil
 }
+
+// checkFileEntries checks the compendium entries of a bring-back: homebrew only
+// of the kinds players write, and every entry's data readable.
+func checkFileEntries(file *export.TakeHomeFile) error {
+	for _, e := range file.Homebrew {
+		if !slices.Contains(compendium.PlayerKinds, e.Kind) {
+			return userf("the homebrew %q is a kind players cannot write", e.Name)
+		}
+	}
+	for _, e := range slices.Concat(file.Homebrew, file.Entries) {
+		if _, err := compendium.DecodeData(e.Kind, string(e.Data)); err != nil {
+			return userf("the entry %q is not valid: %w", e.Name, err)
+		}
+	}
+	return nil
+}
+
+// charState is a character as the bring-back review merges it: the columns and
+// the sheet's JSON, so neutral code holds no 5e types.
+type charState struct {
+	Name              string
+	HP, MaxHP, TempHP int64
+	Sheet             string
+}
+
+func (c charState) parse() (dnd5e.Character, error) {
+	s, err := dnd5e.ParseSheet(c.Sheet)
+	return dnd5e.Character{Name: c.Name, HP: int(c.HP), MaxHP: int(c.MaxHP), TempHP: int(c.TempHP), Sheet: s}, err
+}
+
+func stateOf(c dnd5e.Character) (charState, error) {
+	raw, err := c.Sheet.JSON()
+	return charState{Name: c.Name, HP: int64(c.HP), MaxHP: int64(c.MaxHP), TempHP: int64(c.TempHP), Sheet: raw}, err
+}
+
+// Where the merged build comes from (dnd5e's sides, or the fallback).
+const (
+	buildFromHome     = dnd5e.SideHome
+	buildFromTable    = dnd5e.SideTable
+	buildFromFallback = "fallback"
+)
+
+// reviewSource is a source added at home that the campaign does not allow yet.
+type reviewSource struct{ Key, Label string }
+
+// bringBackIn is what the review merges: the character at take-out, at the
+// table now and at home now, the fallback build if the file has one, and what
+// the GM picked (a side per conflicting group, allow or decline per source).
+type bringBackIn struct {
+	Base, Table, Home charState
+	Fallback          *charState
+	Sources           []reviewSource
+	// Form reads the page's fields (views.PickParam, views.SourceParam).
+	Form func(key string) string
+}
+
+// bringBackPlan is what Accept would do, and how the page shows it.
+type bringBackPlan struct {
+	Merged  charState
+	Groups  []views.HomeFileGroup
+	Sources []views.HomeFileSource
+	Removed []string
+	// BuildFrom is buildFromHome, buildFromTable or buildFromFallback: whose
+	// level-ups the character keeps.
+	BuildFrom          string
+	LevelFrom, LevelTo int
+	// Block is why Accept must wait (a source not chosen, a build that needs a
+	// declined source); Error is a merge that is not a valid character.
+	Block, Error string
+}
+
+// planBringBack merges the three characters and applies the source choices.
+// Undecided sources count as allowed, so the page can show a state before
+// every choice is made.
+func planBringBack(in bringBackIn) (bringBackPlan, error) {
+	var p bringBackPlan
+	base, err := in.Base.parse()
+	if err != nil {
+		return p, err
+	}
+	table, err := in.Table.parse()
+	if err != nil {
+		return p, err
+	}
+	home, err := in.Home.parse()
+	if err != nil {
+		return p, err
+	}
+	var fb *dnd5e.Character
+	if in.Fallback != nil {
+		c, err := in.Fallback.parse()
+		if err != nil {
+			return p, err
+		}
+		fb = &c
+	}
+	p.LevelFrom = base.Sheet.Level()
+	picks := map[string]string{}
+	for _, g := range dnd5e.MergeGroups {
+		picks[g] = in.Form(views.PickParam(g))
+	}
+	merged, diffs, err := dnd5e.Merge(base, table, home, picks)
+	p.BuildFrom = buildFromTable
+	for _, d := range diffs {
+		p.Groups = append(p.Groups, groupView(d))
+		if d.Group == dnd5e.GroupBuild {
+			p.BuildFrom = d.Side
+		}
+	}
+	if err != nil {
+		p.Error = "The merged character is not valid: " + err.Error()
+		return p, nil
+	}
+
+	var declined []string
+	// The fallback stands in only if it uses no declined source, this one included.
+	fallbackFree := func(key string) bool {
+		return fb != nil && !fb.Sheet.BuildPinsSource(key) && !slices.ContainsFunc(in.Sources, func(o reviewSource) bool {
+			return in.Form(views.SourceParam(o.Key)) == views.SourceDecline && fb.Sheet.BuildPinsSource(o.Key)
+		})
+	}
+	mergedJSON, err := merged.Sheet.JSON()
+	if err != nil {
+		return p, err
+	}
+	for _, rs := range in.Sources {
+		choice := in.Form(views.SourceParam(rs.Key))
+		if choice != views.SourceAllow && choice != views.SourceDecline {
+			choice = ""
+		}
+		sv := views.HomeFileSource{Key: rs.Key, Label: rs.Label, Choice: choice, Uses: "Not used"}
+		if uses := home.Sheet.SourceUses(rs.Key); len(uses) > 0 {
+			sv.Uses = "Used: " + strings.Join(uses, ", ")
+		}
+		ms, err := dnd5e.ParseSheet(mergedJSON) // a copy: DropSource edits in place
+		if err != nil {
+			return p, err
+		}
+		switch {
+		case ms.BuildPinsSource(rs.Key) && fallbackFree(rs.Key):
+			sv.Effect = "Declining: the Build comes from the fallback (" + buildSummary(fb.Sheet) + ")"
+		case ms.BuildPinsSource(rs.Key):
+			sv.Effect = "Declining blocks Accept"
+		default:
+			if gone := ms.DropSource(rs.Key); len(gone) > 0 {
+				sv.Effect = "Declining removes: " + strings.Join(gone, ", ")
+			}
+		}
+		switch choice {
+		case views.SourceDecline:
+			declined = append(declined, rs.Key)
+		case "":
+			p.Block = "Choose Allow or Decline for each source."
+		}
+		p.Sources = append(p.Sources, sv)
+	}
+
+	var pinned []string
+	for _, k := range declined {
+		if merged.Sheet.BuildPinsSource(k) {
+			pinned = append(pinned, k)
+		}
+	}
+	if len(pinned) > 0 {
+		if fb != nil && !slices.ContainsFunc(declined, fb.Sheet.BuildPinsSource) {
+			if merged, err = dnd5e.TakeBuild(merged, *fb); err != nil {
+				p.Error = "The fallback build is not valid: " + err.Error()
+				return p, nil
+			}
+			p.BuildFrom = buildFromFallback
+			for i, g := range p.Groups {
+				if g.Key == dnd5e.GroupBuild {
+					p.Groups[i].Note = "A declined source is in the build, so it comes from the fallback."
+				}
+			}
+		} else if p.Block == "" {
+			p.Block = fmt.Sprintf("%s's build uses %s and has no fallback without it. Allow it, or reject and ask the player to revert that level-up at home.", merged.Name, strings.Join(pinned, ", "))
+		}
+	}
+	for _, k := range declined {
+		for _, gone := range merged.Sheet.DropSource(k) {
+			if !slices.Contains(p.Removed, gone) {
+				p.Removed = append(p.Removed, gone)
+			}
+		}
+	}
+	if err := merged.Validate(); err != nil {
+		p.Error = "The merged character is not valid: " + err.Error()
+		return p, nil
+	}
+	p.LevelTo = merged.Sheet.Level()
+	p.Merged, err = stateOf(merged)
+	return p, err
+}
+
+// groupView is a merge group as the review shows it.
+func groupView(d dnd5e.GroupDiff) views.HomeFileGroup {
+	g := views.HomeFileGroup{Key: d.Group, Label: dnd5e.GroupLabel(d.Group)}
+	switch d.State {
+	case dnd5e.SideHome:
+		g.Badge, g.Lines = "Home", d.Home
+	case dnd5e.SideTable:
+		g.Badge, g.Lines = "Table", d.Table
+	case dnd5e.MergeConflict:
+		g.Badge = "Both"
+		g.Columns = []views.HomeFileColumn{
+			{Side: dnd5e.SideHome, Title: "Home", Lines: d.Home, Checked: d.Side == dnd5e.SideHome},
+			{Side: dnd5e.SideTable, Title: "Table", Lines: d.Table, Checked: d.Side == dnd5e.SideTable},
+		}
+	}
+	return g
+}
+
+// buildSummary is "level 5, Wizard 5" for a sheet.
+func buildSummary(s dnd5e.Sheet) string {
+	parts := []string{fmt.Sprintf("level %d", s.Level())}
+	for _, c := range s.Classes {
+		parts = append(parts, fmt.Sprintf("%s %d", c.Name, c.Level))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// writeMerged stores the merged character in the caller's transaction, through
+// the same path as a command, so dropping to 0 HP still ends concentration.
+func writeMerged(ctx context.Context, q *sqlc.Queries, id int64, m charState) error {
+	return changeCharacterTx(ctx, q, id, func(_ *sqlc.Queries, dc *dnd5e.Character) error {
+		c, err := m.parse()
+		*dc = c
+		return err
+	})
+}
+
+// sourceLabel names a source for the GM.
+func sourceLabel(s export.TakeHomeSource) string { return views.SourceLabel(s.SourceKey, s.Edition) }

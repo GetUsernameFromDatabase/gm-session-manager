@@ -68,11 +68,13 @@ const (
 
 // Path parts, one per distinct string, appended to a root.
 const (
+	Accept             = "/accept"
 	Access             = "/access"
 	Action             = "/:action"
 	Attachments        = "/attachments"
 	AttachmentDelete   = "/:attachment/delete"
 	Blocks             = "/blocks"
+	BringBack          = "/bring-back"
 	Builder            = "/builder"
 	Claim              = "/claim/:character"
 	Cmd                = "/cmd"
@@ -99,6 +101,7 @@ const (
 	FieldsReveal       = "/fields/reveal"
 	FieldsText         = "/fields/text"
 	File               = "/file"
+	HomeFile           = "/home-files/:file"
 	ImageAction        = "/images/:image/:action"
 	Images             = "/images"
 	ImagesImport       = "/images/import"
@@ -116,6 +119,7 @@ const (
 	OpenJoin           = "/open-join"
 	Picks              = "/picks"
 	Play               = "/play"
+	Reject             = "/reject"
 	Remove             = "/remove"
 	Rename             = "/rename"
 	RequestDecision    = "/requests/:request/:decision"
@@ -175,7 +179,7 @@ const (
 	AtHomePlay = AtHomeCopy + Play
 
 	// The player app's bring-back file and the phone handoff.
-	AtHomeBringBack   = AtHomeCopy + "/bring-back"
+	AtHomeBringBack   = AtHomeCopy + BringBack
 	AtHomeSendPhone   = AtHomeCopy + "/send-to-phone"
 	AtHomeMakeCopy    = AtHomeCopy + Copy
 	AtHomeFallback    = AtHomeCopy + "/fallback"
@@ -203,6 +207,9 @@ const (
 	CampaignEntities            = Campaign + Entities
 	CampaignExport              = Campaign + Export
 	CampaignFiles               = Campaign + Files
+	CampaignHomeFile            = Campaign + HomeFile
+	CampaignHomeFileAccept      = CampaignHomeFile + Accept
+	CampaignHomeFileReject      = CampaignHomeFile + Reject
 	CampaignImages              = Campaign + Images
 	CampaignImagesImport        = Campaign + ImagesImport
 	CampaignImagesImportReview  = Campaign + ImagesImportReview
@@ -217,6 +224,7 @@ const (
 	CampaignSources             = Campaign + Sources
 	CampaignSwitcher            = Campaign + Switcher
 
+	CharacterBringBack      = Character + BringBack
 	CharacterBuilder        = Character + Builder
 	CharacterCmd            = Character + Cmd
 	CharacterComplete       = Character + Complete

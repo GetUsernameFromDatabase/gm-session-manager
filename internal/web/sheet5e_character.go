@@ -493,36 +493,39 @@ func formErrors(err error, draws func(string) bool) (string, views.FieldErrors) 
 
 // updateCharacter reads, changes and writes a character in one transaction.
 func (a *App) updateCharacter(ctx context.Context, id int64, fn func(q *sqlc.Queries, dc *dnd5e.Character) error) error {
-	return a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		row, err := q.GetCharacter(ctx, id)
-		if err != nil {
+	return a.Store.InTx(ctx, func(q *sqlc.Queries) error { return changeCharacterTx(ctx, q, id, fn) })
+}
+
+// changeCharacterTx is updateCharacter inside the caller's transaction.
+func changeCharacterTx(ctx context.Context, q *sqlc.Queries, id int64, fn func(q *sqlc.Queries, dc *dnd5e.Character) error) error {
+	row, err := q.GetCharacter(ctx, id)
+	if err != nil {
+		return err
+	}
+	sheet, err := dnd5e.ParseSheet(row.SheetJson)
+	if err != nil {
+		return err
+	}
+	dc := dnd5e.Character{Name: row.Name, HP: int(row.Hp), MaxHP: int(row.MaxHp), TempHP: int(row.TempHp), Sheet: sheet}
+	if err := fn(q, &dc); err != nil {
+		return err
+	}
+	if !sheet.Dead() && dc.Sheet.Dead() { // dying for good drops every condition and effect, whichever path got here
+		if err := applyCondOps(ctx, q, condOwner{characterID: id}, []dnd5e.CondOp{{Op: dnd5e.CondClearAll}}, condExtra{}); err != nil {
 			return err
 		}
-		sheet, err := dnd5e.ParseSheet(row.SheetJson)
-		if err != nil {
+	}
+	if row.Hp > 0 && dc.HP <= 0 { // falling to 0 HP (overkill stays below) knocks the caster unconscious
+		if err := endConcentration(ctx, q, condOwner{characterID: id}); err != nil {
 			return err
 		}
-		dc := dnd5e.Character{Name: row.Name, HP: int(row.Hp), MaxHP: int(row.MaxHp), TempHP: int(row.TempHp), Sheet: sheet}
-		if err := fn(q, &dc); err != nil {
-			return err
-		}
-		if !sheet.Dead() && dc.Sheet.Dead() { // dying for good drops every condition and effect, whichever path got here
-			if err := applyCondOps(ctx, q, condOwner{characterID: id}, []dnd5e.CondOp{{Op: dnd5e.CondClearAll}}, condExtra{}); err != nil {
-				return err
-			}
-		}
-		if row.Hp > 0 && dc.HP <= 0 { // falling to 0 HP (overkill stays below) knocks the caster unconscious
-			if err := endConcentration(ctx, q, condOwner{characterID: id}); err != nil {
-				return err
-			}
-		}
-		raw, err := dc.Sheet.JSON()
-		if err != nil {
-			return err
-		}
-		return q.UpdateCharacter(ctx, sqlc.UpdateCharacterParams{
-			ID: id, Name: dc.Name, Hp: int64(dc.HP), MaxHp: int64(dc.MaxHP), TempHp: int64(dc.TempHP), SheetJson: raw,
-		})
+	}
+	raw, err := dc.Sheet.JSON()
+	if err != nil {
+		return err
+	}
+	return q.UpdateCharacter(ctx, sqlc.UpdateCharacterParams{
+		ID: id, Name: dc.Name, Hp: int64(dc.HP), MaxHp: int64(dc.MaxHP), TempHp: int64(dc.TempHP), SheetJson: raw,
 	})
 }
 

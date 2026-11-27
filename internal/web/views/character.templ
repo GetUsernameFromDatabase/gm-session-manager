@@ -124,6 +124,12 @@ templ CharacterSheet(s SheetView) {
 								@icon.House()
 								Take home…
 							}
+							if !s.TakenHome.IsZero() {
+								@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: with(bringBackLoad(s.ID), templ.Attributes{"data-menu-item": ""})}) {
+									@icon.Undo2()
+									Bring back…
+								}
+							}
 						}
 						@menuDelete("Delete character", route.Path(route.CharacterRemove, s.ID), "Delete "+s.C.Name+"? This logs out every device playing it. The GM can restore it.")
 					}

@@ -97,6 +97,9 @@ templ PendingRequests(groups []PendingGroup) {
 					</div>
 				</div>
 			}
+			for _, n := range g.BringBacks {
+				@bringBackCard(g, n)
+			}
 		}
 	</div>
 }

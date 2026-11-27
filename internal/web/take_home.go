@@ -137,7 +137,7 @@ func takeHomeCompendium(ctx context.Context, q *sqlc.Queries, ch sqlc.Character,
 func buildTakeHome(ctx context.Context, q *sqlc.Queries, ch sqlc.Character) (export.TakeHome, export.TakeHomeBase, error) {
 	th := export.TakeHome{Character: export.NewCharacterFile(ch)}
 	base := export.TakeHomeBase{
-		Character: export.TakeHomeBaseCharacter{Sheet: json.RawMessage(ch.SheetJson), HP: ch.Hp, MaxHP: ch.MaxHp, TempHP: ch.TempHp},
+		Character: export.TakeHomeBaseCharacter{Name: ch.Name, Sheet: json.RawMessage(ch.SheetJson), HP: ch.Hp, MaxHP: ch.MaxHp, TempHP: ch.TempHp},
 		Blocks:    map[int64]int64{}, Homebrew: map[int64]string{},
 	}
 

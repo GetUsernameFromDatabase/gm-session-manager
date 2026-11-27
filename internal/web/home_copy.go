@@ -192,10 +192,23 @@ func (a *App) checkTakeHome(file *export.TakeHomeFile) (export.CharacterFile, er
 	if m.Campaign.System != gameSystem || cf.System != gameSystem {
 		return cf, userError{errors.New("this app plays " + gameSystem + " only")}
 	}
+	cf, err := checkFileContent(file)
+	if errors.Is(err, errNewerSheet) {
+		return cf, userf("This file comes from a newer app (%s); this player app is %s. Get the matching app from your GM.", m.AppVersion, a.Version)
+	}
+	return cf, err
+}
+
+// checkFileContent is checkTakeHome's part that looks at what the file holds
+// (the table's check of a bring-back runs it too): sheets (errNewerSheet when a
+// newer app wrote one, for the caller to word), the character, notes, looks and
+// sources. It stores the character's and the fallback's sheets as parsed.
+func checkFileContent(file *export.TakeHomeFile) (export.CharacterFile, error) {
+	cf := file.Character
 	for _, s := range fileSheets(file) {
 		switch err := checkSheetFile(s); {
 		case errors.Is(err, errNewerSheet):
-			return cf, userf("This file comes from a newer app (%s); this player app is %s. Get the matching app from your GM.", m.AppVersion, a.Version)
+			return cf, err
 		case err != nil:
 			return cf, userError{err}
 		}
@@ -205,6 +218,13 @@ func (a *App) checkTakeHome(file *export.TakeHomeFile) (export.CharacterFile, er
 	}
 	if err := normalizeCharacterFile(&cf); err != nil {
 		return cf, userError{fmt.Errorf("the character is not valid: %w", err)}
+	}
+	if fb := file.Fallback; fb != nil {
+		fcf := export.CharacterFile{Name: cf.Name, System: cf.System, MaxHP: fb.MaxHP, Sheet: fb.Sheet}
+		if err := normalizeCharacterFile(&fcf); err != nil {
+			return cf, userError{fmt.Errorf("the fallback build is not valid: %w", err)}
+		}
+		fb.Sheet = fcf.Sheet
 	}
 	for _, n := range file.Notes {
 		for _, b := range n.Blocks {

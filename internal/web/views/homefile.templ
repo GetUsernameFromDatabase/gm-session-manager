@@ -1,0 +1,256 @@
+package views
+
+import (
+	"gm-session-manager/internal/route"
+	"gm-session-manager/internal/web/components/alert"
+	"gm-session-manager/internal/web/components/badge"
+	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/dialog"
+	"gm-session-manager/internal/web/components/icon"
+	"gm-session-manager/internal/web/components/input"
+	"gm-session-manager/internal/web/components/radiogroup"
+)
+
+// HomeFilePage is the GM's review of a bring-back file.
+templ HomeFilePage(l Layout, v HomeFileView) {
+	@Page(l) {
+		<div class="mx-auto max-w-3xl">
+			@HomeFileReview(v)
+		</div>
+	}
+}
+
+// HomeFileReview is the whole review form. Every change of a pick asks the
+// server for the page again, so the picks live in the address.
+templ HomeFileReview(v HomeFileView) {
+	<form
+		id={ homeFileReviewID }
+		method="get"
+		action={ templ.SafeURL(v.URL()) }
+		class="space-y-6"
+		hx-get={ v.URL() }
+		hx-trigger="change"
+		hx-target={ "#" + homeFileReviewID }
+		hx-swap="outerHTML"
+		hx-push-url="true"
+	>
+		<div>
+			<h1 class="text-2xl font-semibold">{ v.Name }</h1>
+			<p class="text-sm text-muted-foreground">
+				{ "Taken home " }
+				@localDate(v.TakenAt)
+				{ v.meta() }
+			</p>
+		</div>
+		if len(v.Sources) > 0 {
+			<section class="space-y-2">
+				<h2 class="text-lg font-semibold">Sources added at home</h2>
+				<ul class="divide-y rounded-lg border">
+					for _, s := range v.Sources {
+						@homeFileSource(s)
+					}
+				</ul>
+			</section>
+		}
+		<section class="space-y-2">
+			<h2 class="text-lg font-semibold">Changes</h2>
+			if v.Stale != "" {
+				@Notice(v.Stale, true, "")
+			}
+			if v.Error != "" {
+				@Notice(v.Error, true, "")
+			}
+			<ul class="divide-y rounded-lg border">
+				for _, g := range v.Groups {
+					@homeFileGroup(g)
+				}
+			</ul>
+			if len(v.Removed) > 0 {
+				<p class="text-sm">{ "Removed: " + joinNames(v.Removed) }</p>
+			}
+		</section>
+		<div class="sticky bottom-0 -mx-4 space-y-2 border-t bg-background px-4 py-3 sm:static sm:mx-0 sm:border-0 sm:p-0">
+			if v.Block != "" {
+				@alert.Alert() {
+					@icon.TriangleAlert()
+					@alert.Description() {
+						{ v.Block }
+					}
+				}
+			}
+			<div class="flex justify-end gap-2">
+				@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{
+					"hx-post": v.rejectURL(), "hx-vals": `{"page":"1"}`, "hx-swap": "none", "hx-push-url": "false", "hx-trigger": "click",
+				}}) {
+					Reject
+				}
+				@button.Button(button.Props{Type: button.TypeButton, Disabled: v.Block != "" || v.Error != "", Attributes: templ.Attributes{
+					"hx-post": v.acceptURL(), "hx-vals": v.acceptVals(), "hx-target": "#" + homeFileReviewID, "hx-swap": "outerHTML", "hx-push-url": "false", "hx-trigger": "click",
+				}}) {
+					Accept bring-back
+				}
+			</div>
+		</div>
+	</form>
+}
+
+// homeFileSource is one source with its Decline and Allow choice.
+templ homeFileSource(s HomeFileSource) {
+	<li class="space-y-1 p-3">
+		<div class="flex flex-wrap items-center justify-between gap-2">
+			<span class="min-w-0 font-medium wrap-break-word">{ s.Label }</span>
+			@radiogroup.RadioGroup(radiogroup.Props{Name: SourceParam(s.Key), DefaultValue: s.Choice, Class: "flex w-auto flex-wrap gap-4", Attributes: templ.Attributes{"aria-label": "Choice for " + s.Label}}) {
+				<label class="flex items-center gap-2 text-sm">
+					@radiogroup.Item(radiogroup.ItemProps{Value: SourceDecline})
+					Decline
+				</label>
+				<label class="flex items-center gap-2 text-sm">
+					@radiogroup.Item(radiogroup.ItemProps{Value: SourceAllow})
+					Allow for the campaign
+				</label>
+			}
+		</div>
+		<p class="text-sm text-muted-foreground">{ s.Uses }</p>
+		if s.Effect != "" {
+			<p class="text-sm text-muted-foreground">{ s.Effect }</p>
+		}
+	</li>
+}
+
+// homeFileGroup is one row of the Changes list.
+templ homeFileGroup(g HomeFileGroup) {
+	<li class="flex flex-col gap-2 p-3 sm:flex-row sm:gap-4">
+		<span class="font-medium sm:w-32 sm:shrink-0">{ g.Label }</span>
+		<div class="min-w-0 grow space-y-2">
+			if g.Badge == "" {
+				<p class="text-sm text-muted-foreground">Unchanged</p>
+			} else {
+				@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+					{ g.Badge }
+				}
+				if len(g.Columns) > 0 {
+					@radiogroup.RadioGroup(radiogroup.Props{Name: PickParam(g.Key), DefaultValue: checkedSide(g), Class: "gap-2 sm:grid-cols-2", Attributes: templ.Attributes{"aria-label": g.Label}}) {
+						for _, col := range g.Columns {
+							<label class="flex cursor-pointer items-start gap-2 rounded-lg border p-3 has-data-checked:opacity-100 has-data-checked:ring-2 has-data-checked:ring-primary has-data-unchecked:opacity-60">
+								@radiogroup.Item(radiogroup.ItemProps{Value: col.Side, Class: "mt-0.5"})
+								<span class="min-w-0 space-y-1 text-sm">
+									<span class="block font-medium">{ col.Title }</span>
+									for _, line := range col.Lines {
+										<span class="block wrap-break-word">{ line }</span>
+									}
+								</span>
+							</label>
+						}
+					}
+				} else {
+					<ul class="space-y-0.5 text-sm">
+						for _, line := range g.Lines {
+							<li class="wrap-break-word">{ line }</li>
+						}
+					</ul>
+				}
+				if g.Note != "" {
+					<p class="text-sm text-muted-foreground">{ g.Note }</p>
+				}
+			}
+		</div>
+	</li>
+}
+
+// HomeFileDone replaces the review once the bring-back is accepted.
+templ HomeFileDone(name string, characterID int64) {
+	<div id={ homeFileReviewID } class="space-y-4">
+		@Flash("Brought back.", false)
+		<h1 class="text-2xl font-semibold">{ name + " is back at the table." }</h1>
+		@button.Button(button.Props{Href: route.Path(route.Character, characterID)}) {
+			Open sheet
+		}
+	</div>
+}
+
+// HomeFileRejected answers the popup's Reject: the popup without the card.
+templ HomeFileRejected(groups []PendingGroup) {
+	@PendingRequests(groups)
+	@Flash("Rejected. The take-out stays open.", false)
+}
+
+// BringBackBody is what the take-home dialog loads for a bring-back file.
+templ BringBackBody(v BringBackView) {
+	@dialog.Header() {
+		@dialog.Title() {
+			{ "Bring " + v.Name + " back" }
+		}
+		@dialog.Description() {
+			if v.ByGM {
+				{ "Choose " + v.Name + "'s bring-back file to review it." }
+			} else {
+				{ "Choose the bring-back file you saved at home. The GM reviews it before it changes " + v.Name + "." }
+			}
+		}
+	}
+	<form
+		class="group/busy space-y-3"
+		data-busy
+		hx-post={ route.Path(route.CharacterBringBack, v.CharacterID) }
+		hx-encoding="multipart/form-data"
+		hx-target={ takeHomeTarget }
+		hx-swap="innerHTML"
+	>
+		@input.Input(input.Props{Name: "file", Type: "file", Required: true, Attributes: templ.Attributes{"accept": ".zip,application/zip", "aria-label": "Bring-back file"}})
+		<div class="flex justify-end gap-2">
+			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: dialog.CloseFor(takeHomeID)}) {
+				Close
+			}
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				if v.ByGM {
+					Review
+				} else {
+					Send to the GM
+				}
+			}
+		</div>
+		@busyIndicator("Checking the file…")
+	</form>
+}
+
+// BringBackSent is the dialog's answer once a player's file waits for the GM.
+templ BringBackSent(name string) {
+	@Flash("Sent to the GM.", false)
+	@dialog.Header() {
+		@dialog.Title() {
+			Sent to the GM
+		}
+		@dialog.Description() {
+			{ "The GM reviews " + name + "'s file before it changes " + name + "." }
+		}
+	}
+	@dialog.Footer() {
+		@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.CloseFor(takeHomeID)}) {
+			Close
+		}
+	}
+}
+
+// bringBackCard is a player's bring-back file in the GM's popup.
+templ bringBackCard(g PendingGroup, n BringBackNotice) {
+	<div class="rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg" role="alertdialog">
+		<p class="font-medium">{ n.Name + " is back from home" }</p>
+		if len(g.Requests)+len(g.BringBacks) == 1 {
+			<p class="text-sm">
+				@campaignLink(g)
+			</p>
+		}
+		<p class="mb-3 text-xs text-muted-foreground">
+			{ "Saved " }
+			@localDate(n.SavedAt)
+		</p>
+		<div class="flex gap-2">
+			@button.Button(button.Props{Size: button.SizeSm, Href: route.Path(route.CampaignHomeFile, n.CampaignID, n.ID)}) {
+				Review
+			}
+			@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": RejectURL(n.CampaignID, n.ID)}}) {
+				Reject
+			}
+		</div>
+	</div>
+}

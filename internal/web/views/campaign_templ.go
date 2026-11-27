@@ -474,6 +474,12 @@ func PendingRequests(groups []PendingGroup) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
+			for _, n := range g.BringBacks {
+				templ_7745c5c3_Err = bringBackCard(g, n).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
 		}
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</div>")
 		if templ_7745c5c3_Err != nil {
@@ -508,7 +514,7 @@ func campaignLink(g PendingGroup) templ.Component {
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(route.Path(route.Campaign, g.CampaignID))).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 106, Col: 84}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 109, Col: 84}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 		if templ_7745c5c3_Err != nil {
@@ -521,7 +527,7 @@ func campaignLink(g PendingGroup) templ.Component {
 		var templ_7745c5c3_Var21 string
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(g.CampaignName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 106, Col: 134}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 109, Col: 134}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 		if templ_7745c5c3_Err != nil {
@@ -597,7 +603,7 @@ func CampaignRoster(r Roster) templ.Component {
 			var templ_7745c5c3_Var24 string
 			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(utils.IfElse(r.Campaign.OpenJoin, "on", "off"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 118, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 121, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
@@ -646,7 +652,7 @@ func CampaignRoster(r Roster) templ.Component {
 				var templ_7745c5c3_Var25 string
 				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(ch.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 135, Col: 16}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 138, Col: 16}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 				if templ_7745c5c3_Err != nil {
@@ -693,7 +699,7 @@ func CampaignRoster(r Roster) templ.Component {
 				var templ_7745c5c3_Var27 string
 				templ_7745c5c3_Var27, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(route.Path(route.CharacterDownload, ch.ID))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 142, Col: 100}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 145, Col: 100}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
 				if templ_7745c5c3_Err != nil {
@@ -744,7 +750,7 @@ func CampaignRoster(r Roster) templ.Component {
 		var templ_7745c5c3_Var29 string
 		templ_7745c5c3_Var29, templ_7745c5c3_Err = templruntime.NewAttributeExpression(route.Path(route.CampaignImportCharacter, r.Campaign.ID)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 156, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 159, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 		if templ_7745c5c3_Err != nil {
@@ -818,7 +824,7 @@ func deviceRow(d Device) templ.Component {
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprint(d.Online)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 175, Col: 155}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 178, Col: 155}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 		if templ_7745c5c3_Err != nil {
@@ -831,7 +837,7 @@ func deviceRow(d Device) templ.Component {
 		var templ_7745c5c3_Var33 string
 		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(deviceLabel(d))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 177, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 180, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 		if templ_7745c5c3_Err != nil {
@@ -849,7 +855,7 @@ func deviceRow(d Device) templ.Component {
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs("seen ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 180, Col: 15}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 183, Col: 15}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -924,7 +930,7 @@ func rosterCard(r Roster, rc RosterCharacter) templ.Component {
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(route.Path(route.Character, rc.Character.ID))).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 198, Col: 128}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 201, Col: 128}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 		if templ_7745c5c3_Err != nil {
@@ -937,7 +943,7 @@ func rosterCard(r Roster, rc RosterCharacter) templ.Component {
 		var templ_7745c5c3_Var38 string
 		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(rc.Character.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 198, Col: 150}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 201, Col: 150}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 		if templ_7745c5c3_Err != nil {
@@ -986,7 +992,7 @@ func rosterCard(r Roster, rc RosterCharacter) templ.Component {
 		var templ_7745c5c3_Var39 string
 		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(rosterHP(rc))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 203, Col: 98}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 206, Col: 98}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 		if templ_7745c5c3_Err != nil {
@@ -1010,7 +1016,7 @@ func rosterCard(r Roster, rc RosterCharacter) templ.Component {
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fmt.Sprintf("offline-%d", rc.Character.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 211, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 214, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 			if templ_7745c5c3_Err != nil {
@@ -1023,7 +1029,7 @@ func rosterCard(r Roster, rc RosterCharacter) templ.Component {
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(Plural(len(off), "offline device"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 212, Col: 96}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 215, Col: 96}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
@@ -1062,7 +1068,7 @@ func rosterCard(r Roster, rc RosterCharacter) templ.Component {
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templruntime.NewAttributeExpression(route.Path(route.CharacterCopy, rc.Character.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 229, Col: 101}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/campaign.templ`, Line: 232, Col: 101}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 			if templ_7745c5c3_Err != nil {

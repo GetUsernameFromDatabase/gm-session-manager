@@ -139,6 +139,14 @@ func run() error {
 		if err := os.MkdirAll(filepath.Join(cfg.DataDir, web.DownloadsDir), 0o750); err != nil {
 			return fmt.Errorf("create downloads dir: %w", err)
 		}
+		// Bring-back files waiting for the GM live only until a restart (web.homeFiles).
+		homeFiles := filepath.Join(cfg.DataDir, web.HomeFilesDir)
+		if err := os.RemoveAll(homeFiles); err != nil {
+			return fmt.Errorf("clear home files dir: %w", err)
+		}
+		if err := os.MkdirAll(homeFiles, 0o750); err != nil {
+			return fmt.Errorf("create home files dir: %w", err)
+		}
 	}
 
 	store := db.NewStore(conn)

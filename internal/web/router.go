@@ -36,6 +36,7 @@ type App struct {
 	Deps
 	Hub       *hub.Hub
 	imports   csvImports
+	homeFiles homeFiles
 	reqs      reqLog
 	fiveTools fiveToolsJob
 	state     appState
@@ -125,6 +126,9 @@ func (a *App) Router() *gin.Engine {
 	camp.GET("", gm, a.h(a.campaignOverview))
 	camp.POST(route.ImportCharacter, gm, a.h(a.importCharacter))
 	camp.POST(route.Delete, gm, a.h(a.deleteCampaign))
+	camp.GET(route.HomeFile, gm, a.h(a.homeFilePage))
+	camp.POST(route.HomeFile+route.Accept, gm, a.h(a.homeFileAccept))
+	camp.POST(route.HomeFile+route.Reject, gm, a.h(a.homeFileReject))
 	camp.GET(route.EffectSpell, a.h(a.effectSpell))
 	camp.POST(route.EffectPresetsDel, a.h(a.deleteEffectPreset))
 	camp.GET(route.Export, gm, a.h(a.exportCampaign))
@@ -138,6 +142,8 @@ func (a *App) Router() *gin.Engine {
 
 	// Characters.
 	ch.GET("", a.h(a.characterPage))
+	ch.GET(route.BringBack, a.h(a.bringBackDialog))
+	ch.POST(route.BringBack, a.h(a.bringBackUpload))
 	ch.GET(route.Builder, a.h(a.commandBuilder))
 	ch.POST(route.Cmd, a.h(a.characterCommand))
 	ch.GET(route.Complete, a.h(a.commandCompletions))
