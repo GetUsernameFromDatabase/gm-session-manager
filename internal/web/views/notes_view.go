@@ -91,6 +91,12 @@ type NoteView struct {
 	EntityLinks []sqlc.ListEntityFieldBacklinksRow
 }
 
+// onlyPrivate is true when blocks can only be private (at home): there is no
+// access to choose.
+func (v NoteView) onlyPrivate() bool {
+	return len(v.Visibilities) == 1 && v.Visibilities[0] == enum.VisOwner
+}
+
 func (v NoteView) characterNames(ids []int64) string {
 	var names []string
 	for _, c := range v.Characters {

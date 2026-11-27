@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -41,6 +42,8 @@ const (
 	maxTakeHomeBytes = 512 << 20
 	// formReplace is the import form's field a confirmed replace sets.
 	formReplace = "replace"
+	// formHandoff is the import form's field that takes the file from the phone handoff.
+	formHandoff = "handoff"
 )
 
 // userf is a userError shown to the player as a sentence.
@@ -50,6 +53,14 @@ func userf(format string, args ...any) userError { return userError{fmt.Errorf(f
 func (a *App) notPlayerApp(c *gin.Context) {
 	if a.Player {
 		a.fail(c, http.StatusNotFound, "Not found.")
+	}
+}
+
+// onlyPlayerApp answers 404 where only the GM's app runs.
+func (a *App) onlyPlayerApp(c *gin.Context) {
+	if !a.Player {
+		a.fail(c, http.StatusNotFound, "Not found.")
+		c.Abort()
 	}
 }
 
@@ -101,7 +112,7 @@ func (a *App) homePage(c *gin.Context) error {
 			Current: w.character != nil && w.character.ID == r.CharacterID,
 		})
 	}
-	a.render(c, http.StatusOK, views.HomePage(a.layout(w, "Characters", views.NavAtHome, nil, false), copies))
+	a.render(c, http.StatusOK, views.HomePage(a.layout(w, "Characters", views.NavAtHome, nil, false), copies, a.handoffView()))
 	return nil
 }
 
@@ -205,16 +216,30 @@ func (a *App) homeImport(c *gin.Context) error {
 		return nil
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxTakeHomeBytes)
-	fh, err := c.FormFile("file")
-	if err != nil {
-		return userf("Choose a take-home file (.zip).")
+	fromPhone := c.PostForm(formHandoff) == "1"
+	var f interface {
+		io.ReaderAt
+		io.Closer
 	}
-	f, err := fh.Open()
-	if err != nil {
-		return err
+	var size int64
+	if fromPhone {
+		hf, n, err := a.handoffReceived()
+		if err != nil {
+			return err
+		}
+		f, size = hf, n
+	} else {
+		fh, err := c.FormFile("file")
+		if err != nil {
+			return userf("Choose a take-home file (.zip).")
+		}
+		if f, err = fh.Open(); err != nil {
+			return err
+		}
+		size = fh.Size
 	}
 	defer func() { _ = f.Close() }()
-	file, err := export.ReadTakeHome(f, fh.Size)
+	file, err := export.ReadTakeHome(f, size, export.KindTakeHome)
 	if err != nil {
 		return userf("That is not a take-home file: %w", err)
 	}
@@ -294,6 +319,10 @@ func (a *App) homeImport(c *gin.Context) error {
 		return err
 	}
 	saved = nil // rows own the files now
+	if fromPhone {
+		_ = f.Close() // Windows cannot delete an open file
+		a.stopHandoff()
+	}
 
 	if _, err := UpgradeSheets(ctx, a.Store); err != nil {
 		slog.Warn("sheet upgrade after take-home import", "err", err)

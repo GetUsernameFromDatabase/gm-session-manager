@@ -119,7 +119,7 @@ func (e testEnv) takeHomeRequest(t *testing.T, method, remoteAddr, cookie string
 
 func readZip(t *testing.T, body []byte) *export.TakeHomeFile {
 	t.Helper()
-	f, err := export.ReadTakeHome(bytes.NewReader(body), int64(len(body)))
+	f, err := export.ReadTakeHome(bytes.NewReader(body), int64(len(body)), export.KindTakeHome)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func hasBlock(f *export.TakeHomeFile, id int64) bool {
 }
 
 // TestTakeHomeDownload: who may take a character home, and what the file
-// holds. A GM's file leaves out the player's private blocks and their files.
+// holds. A GM's file holds the player's private blocks and their files too.
 func TestTakeHomeDownload(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -148,7 +148,7 @@ func TestTakeHomeDownload(t *testing.T) {
 		wantOwner  bool
 	}{
 		{"owner", lanAddr, "owner", http.StatusOK, true},
-		{"gm", loopbackAddr, "gm", http.StatusOK, false},
+		{"gm", loopbackAddr, "gm", http.StatusOK, true},
 		{"other player", lanAddr, "other", http.StatusForbidden, false},
 		{"visitor", lanAddr, "visitor", http.StatusForbidden, false},
 	}
@@ -349,7 +349,7 @@ func sampleTakeHome(t *testing.T, mutate func(*export.TakeHome)) []byte {
 	made := time.Date(2026, 11, 24, 18, 0, 0, 0, time.UTC)
 	th := export.TakeHome{
 		Manifest: export.TakeHomeManifest{
-			Format: export.TakeHomeFormat, AppVersion: "v-table", Token: "tok", ServerID: "srv", CharacterID: 7, CreatedAt: made,
+			Format: export.TakeHomeFormat, Kind: export.KindTakeHome, AppVersion: "v-table", Token: "tok", ServerID: "srv", CharacterID: 7, CreatedAt: made,
 			Campaign: export.TakeHomeCampaign{Name: "Table", System: "dnd5e", Edition: "2024"},
 		},
 		Character: export.CharacterFile{ID: 7, Name: "Aria", System: "dnd5e", HP: 0, MaxHP: 0, Sheet: json.RawMessage(sheet)},

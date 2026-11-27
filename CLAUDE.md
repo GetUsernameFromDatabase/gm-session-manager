@@ -15,7 +15,7 @@ Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote p
 
 ## Rules that must not be broken
 
-- **Visibility is enforced on the server.** Never send hidden data to a browser and hide it client-side. Unrevealed entity fields are stripped entirely (keys included). GM and admin queries never return `owner` note blocks. Permission tables: `internal/perm/CLAUDE.md`.
+- **Visibility is enforced on the server.** Never send hidden data to a browser and hide it client-side. Unrevealed entity fields are stripped entirely (keys included). GM and admin queries never return `owner` note blocks; the one exception is the take-home zip the GM downloads for a player (it holds what the player would take home, and the dialog asks the GM to pass it on unopened). Permission tables: `internal/perm/CLAUDE.md`.
 - **Websocket data is as small as possible:** changed values as JSON, never HTML; wholesale changes send a refetch order (`internal/web/CLAUDE.md`).
 - **Commands, not saved sheets.** Clients send small delta commands (`hp -5`, `toggle prone`, one NPC field), never whole-object overwrites: several devices may hold one character or NPC. The server applies each in a transaction and publishes topics. A whole-page editor (images) posts the values it opened with (`was_*`); the server changes only what differs and refuses a value another device changed since.
 - **Session tokens:** 32 random bytes; store only the SHA-256 hash; cookie is `HttpOnly`, `SameSite=Lax`, `Secure` (the player app's cookie is `gsm_home`, not Secure: loopback HTTP).

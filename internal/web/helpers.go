@@ -138,6 +138,7 @@ func (a *App) whoami(c *gin.Context) (who, error) {
 			return w, err
 		}
 		w.viewer, w.character = perm.Player(charID), &ch
+		w.viewer.AtHome = a.Player
 	}
 	return w, nil
 }

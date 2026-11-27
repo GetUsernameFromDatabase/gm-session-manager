@@ -1,0 +1,164 @@
+package views
+
+import (
+	"gm-session-manager/internal/route"
+	"gm-session-manager/internal/web/components/button"
+	"gm-session-manager/internal/web/components/card"
+	"gm-session-manager/internal/web/components/icon"
+	"gm-session-manager/internal/web/components/input"
+	"gm-session-manager/internal/web/components/spinner"
+)
+
+// HandoffPanel is the card #handoff holds while a phone transfer runs or just
+// ended; while waiting it polls itself.
+templ HandoffPanel(v HandoffView) {
+	switch v.State {
+		case HandoffWaiting:
+			@card.Card(card.Props{ID: handoffRoot, Class: "mb-6", Attributes: templ.Attributes{"hx-get": v.pollURL(), "hx-trigger": "every 2s", "hx-swap": "outerHTML"}}) {
+				@card.Header() {
+					@card.Title() {
+						{ v.title() }
+					}
+				}
+				@card.Content() {
+					<div class="flex flex-col gap-4">
+						<ol class="space-y-3 text-sm">
+							@takeHomeStep("1", "Connect the phone to this Wi-Fi.") {
+								<p class="text-muted-foreground">Windows may ask to allow the app on your network: choose Allow.</p>
+							}
+							if v.Send {
+								@takeHomeStep("2", "Scan the code and download the file.")
+							} else {
+								@takeHomeStep("2", "Scan the code, choose the take-home file and send it.")
+							}
+						</ol>
+						<div class="flex flex-col items-center gap-4">
+							@qrAddresses(v.URLs, v.QR, "QR code for the phone address")
+						</div>
+						<p class="flex items-center gap-2 text-sm text-muted-foreground">
+							@spinner.Spinner(spinner.Props{Class: "size-4 shrink-0"})
+							<span>{ "Waiting for the phone · closes at " + v.closesAt() }</span>
+						</p>
+						<div class="flex flex-wrap items-start justify-between gap-3">
+							<details class="min-w-0 grow basis-64 text-xs">
+								<summary class="cursor-pointer text-muted-foreground">Phone can't open the page?</summary>
+								<p class="mt-2 text-muted-foreground">Allow the app in Windows Security → Firewall &amp; network protection → Allow an app through firewall (tick Private). If this Wi-Fi is set to Public in Windows, set it to Private. Don't use this on public Wi-Fi: anyone on it could read the file. You can also move the file with a USB cable or by email.</p>
+							</details>
+							@handoffStop("Stop")
+						</div>
+					</div>
+				}
+			}
+		case HandoffNoNetwork:
+			@handoffNote() {
+				<p>This computer isn't on a network your phone can reach. Connect it to your home Wi-Fi, or move the file another way (USB cable, email to yourself).</p>
+				@handoffStop("Close")
+			}
+		case HandoffReceived:
+			@handoffNote() {
+				<p class="flex items-center gap-2">
+					@icon.CircleCheck(icon.Props{Size: 18, Class: "shrink-0"})
+					<span>{ "Received " + v.Name + "'s take-home file, taken home " }@localDate(v.TakenAt)</span>
+				</p>
+				<p class="text-muted-foreground">{ "Open it to add " + v.Name + " to this computer." }</p>
+				@homeImportForm(false, true, "Open "+v.Name)
+				@handoffStop("Close")
+			}
+		case HandoffSent:
+			@handoffNote() {
+				<p class="flex items-center gap-2">
+					@icon.CircleCheck(icon.Props{Size: 18, Class: "shrink-0"})
+					{ "Sent. At the table, open " + v.Name + " and choose Bring back." }
+				</p>
+				<div class="flex gap-2">
+					@handoffStart(route.Path(route.AtHomeSendPhone, v.CharacterID), "Send again")
+					@handoffStop("Close")
+				</div>
+			}
+		case HandoffClosed:
+			@handoffNote() {
+				<p>Closed after 10 minutes.</p>
+				<div class="flex gap-2">
+					if v.Send {
+						@handoffStart(route.Path(route.AtHomeSendPhone, v.CharacterID), "Start again")
+					} else {
+						@handoffStart(route.AtHomeReceive, "Start again")
+					}
+					@handoffStop("Close")
+				</div>
+			}
+	}
+}
+
+// handoffNote is the card of every state but waiting: no polling.
+templ handoffNote() {
+	@card.Card(card.Props{ID: handoffRoot, Class: "mb-6"}) {
+		@card.Content(card.ContentProps{Class: "space-y-3 pt-6 text-sm"}) {
+			{ children... }
+		}
+	}
+}
+
+templ handoffStart(url, label string) {
+	@button.Button(button.Props{Type: button.TypeButton, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": url, "hx-target": "#handoff", "hx-swap": swapInner}}) {
+		{ label }
+	}
+}
+
+templ handoffStop(label string) {
+	@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": route.AtHomeHandoffStop, "hx-target": "#handoff", "hx-swap": swapInner}}) {
+		{ label }
+	}
+}
+
+// PhonePage is what the phone opens: a file chooser to send the take-home
+// file, or the download of the bring-back file. Its own document with no
+// scripts: the phone has no session and none of the app's assets.
+templ PhonePage(v PhoneView) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>
+				if v.Send {
+					Bring-back file
+				} else {
+					Send a take-home file
+				}
+			</title>
+			<link rel="stylesheet" href={ v.Path + PhoneCSS }/>
+		</head>
+		<body class="bg-background text-foreground">
+			<main class="mx-auto flex max-w-md flex-col gap-4 p-6">
+				if v.Send {
+					<h1 class="text-xl font-semibold">{ v.Name + "'s bring-back file" }</h1>
+					<p class="text-sm text-muted-foreground">{ "Save it on this phone. At the table, open " + v.Name + " and choose Bring back." }</p>
+					@button.Button(button.Props{Href: v.Path + route.File, Attributes: templ.Attributes{"download": v.FileName}}) {
+						@icon.Download()
+						{ "Download (" + v.sizeText() + ")" }
+					}
+				} else {
+					<h1 class="text-xl font-semibold">Send a take-home file</h1>
+					<p class="text-sm text-muted-foreground">Choose the file you downloaded at the table. It is in Downloads, named like <span class="font-medium">yourcharacter-take-home-2026-11-24.zip</span>. If the chooser opens on Recent, open its menu (☰) and pick Downloads.</p>
+					if v.Done {
+						<p class="flex items-center gap-2 text-sm">
+							@icon.CircleCheck(icon.Props{Size: 18, Class: "shrink-0"})
+							Sent. You can close this page.
+						</p>
+					} else {
+						<form method="post" action={ templ.SafeURL(v.Path) } enctype="multipart/form-data" class="flex flex-col gap-3">
+							@input.Input(input.Props{Name: "file", Type: "file", Required: true, Attributes: templ.Attributes{"accept": ".zip,application/zip", "aria-label": "Take-home file"}})
+							@button.Button(button.Props{Type: button.TypeSubmit}) {
+								Send
+							}
+						</form>
+						if v.Error != "" {
+							<p class="text-sm text-destructive">{ v.Error }</p>
+						}
+					}
+				}
+			</main>
+		</body>
+	</html>
+}

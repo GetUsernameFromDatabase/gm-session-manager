@@ -474,3 +474,51 @@ func TestCanTakeHome(t *testing.T) {
 		})
 	}
 }
+
+// At home (the player app) only private blocks of the player's own notes can
+// be changed; everything shared is read-only, even what the player wrote.
+func TestAtHomeBlockRules(t *testing.T) {
+	home := Viewer{CharacterID: alice, AtHome: true}
+	for _, vis := range []enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed, enum.VisOwner} {
+		for _, noteOwner := range []int64{alice, bob, 0} {
+			for _, authored := range []bool{false, true} {
+				b := Block{Visibility: vis, NoteOwnerID: noteOwner, PlayersCanEdit: true, Audience: []int64{alice}}
+				if authored {
+					b.AuthorID = alice
+				}
+				want := vis == enum.VisOwner && noteOwner == alice
+				if got := CanEditBlock(home, b); got != want {
+					t.Errorf("%s note %d authored %v: edit = %v, want %v", vis, noteOwner, authored, got, want)
+				}
+				if got := CanManageBlock(home, b); got != want {
+					t.Errorf("%s note %d authored %v: manage = %v, want %v", vis, noteOwner, authored, got, want)
+				}
+			}
+		}
+	}
+}
+
+func TestAtHomeBlockVisibilities(t *testing.T) {
+	home := Viewer{CharacterID: alice, AtHome: true}
+	for _, gameSession := range []bool{false, true} {
+		if got := BlockVisibilities(home, alice, gameSession); !slices.Equal(got, []enum.Visibility{enum.VisOwner}) {
+			t.Errorf("own note: %v", got)
+		}
+		if got := BlockVisibilities(home, bob, gameSession); got != nil {
+			t.Errorf("other's note: %v", got)
+		}
+		if got := BlockVisibilities(home, 0, gameSession); got != nil {
+			t.Errorf("gm note: %v", got)
+		}
+	}
+}
+
+func TestLocksShared(t *testing.T) {
+	for _, v := range []Viewer{GM, asAlice, {CharacterID: alice, AtHome: true}} {
+		for _, has := range []bool{false, true} {
+			if got, want := LocksShared(v, has), v.AtHome && has; got != want {
+				t.Errorf("%+v has %v: %v, want %v", v, has, got, want)
+			}
+		}
+	}
+}

@@ -336,7 +336,7 @@ templ blockMenu(v NoteView, b BlockView, i int) {
 					}
 				</div>
 			}
-			if b.CanManage && len(v.Visibilities) > 0 {
+			if b.CanManage && len(v.Visibilities) > 0 && !v.onlyPrivate() {
 				<form class="space-y-3 text-sm" hx-post={ route.Path(route.BlockAccess, b.ID) }>
 					@visibilityFields(v, b.Visibility, b.PlayersCanEdit, b.Audience)
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
@@ -399,7 +399,11 @@ templ checkField(name, value string, checked bool) {
 templ addBlockForm(v NoteView) {
 	<form class="mt-8 flex flex-wrap items-start gap-2 border-t pt-4 text-sm" hx-post={ route.Path(route.NoteBlocks, v.Note.ID) }>
 		<div class="w-full space-y-2 sm:w-64">
-			@visibilityFields(v, v.Visibilities[0], false, nil)
+			if v.onlyPrivate() {
+				<input type="hidden" name="visibility" value={ string(enum.VisOwner) }/>
+			} else {
+				@visibilityFields(v, v.Visibilities[0], false, nil)
+			}
 		</div>
 		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
 			@icon.Plus()

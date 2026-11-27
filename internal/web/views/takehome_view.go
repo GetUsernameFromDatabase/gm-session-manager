@@ -28,7 +28,8 @@ type TakeHomeView struct {
 	Name        string
 	// Downloads are the file names in the downloads folder.
 	Downloads []string
-	// ByGM is true when the GM takes a player's character: their private notes stay.
+	// ByGM is true when the GM takes a player's character: the dialog asks them
+	// to pass the file, private notes included, on unopened.
 	ByGM bool
 }
 
@@ -37,6 +38,15 @@ func (v TakeHomeView) noApp() string {
 		return "Put the app files in DATA_DIR/downloads to offer them here."
 	}
 	return "Ask your GM for the app."
+}
+
+// importConfirmID is the container of the replace question: the import form
+// and the handoff panel's each have one.
+func importConfirmID(fromPhone bool) string {
+	if fromPhone {
+		return "handoff-import-confirm"
+	}
+	return "home-import-confirm"
 }
 
 // HomeCopyView is one character on this computer (the player app).

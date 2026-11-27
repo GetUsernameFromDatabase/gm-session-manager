@@ -4,6 +4,7 @@
 package join
 
 import (
+	"context"
 	"fmt"
 	"net"
 )
@@ -31,4 +32,36 @@ func LANAddresses() ([]net.IP, error) {
 		}
 	}
 	return ips, nil
+}
+
+// PreferDefaultRoute moves the address the default route leaves from to the
+// front: Hyper-V and WSL vEthernet adapters are private and up, and can come
+// first. On any error the list is unchanged.
+func PreferDefaultRoute(ips []net.IP) []net.IP {
+	conn, err := (&net.Dialer{}).DialContext(context.Background(), "udp4", "192.0.2.1:9") // UDP connect sends nothing
+	if err != nil {
+		return ips
+	}
+	defer func() { _ = conn.Close() }()
+	addr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		return ips
+	}
+	return preferFirst(ips, addr.IP)
+}
+
+// preferFirst returns ips with the address equal to pref first, order otherwise kept.
+func preferFirst(ips []net.IP, pref net.IP) []net.IP {
+	out := make([]net.IP, 0, len(ips))
+	for _, ip := range ips {
+		if ip.Equal(pref) {
+			out = append(out, ip)
+		}
+	}
+	for _, ip := range ips {
+		if !ip.Equal(pref) {
+			out = append(out, ip)
+		}
+	}
+	return out
 }

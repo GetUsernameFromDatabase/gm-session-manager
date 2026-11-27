@@ -241,3 +241,14 @@ SELECT a.* FROM attachments AS a
 LEFT JOIN note_blocks AS b ON b.id = a.block_id
 WHERE a.campaign_id = ? AND (b.id IS NULL OR b.visibility <> 'owner')
 ORDER BY a.id;
+
+-- NoteHasSharedBlocks is true when the note holds any block that is not 'owner'.
+-- name: NoteHasSharedBlocks :one
+SELECT EXISTS (SELECT 1 FROM note_blocks WHERE note_id = ? AND visibility <> 'owner');
+
+-- ListNotesWithSharedBlocks lists the ids of a campaign's notes holding any
+-- block that is not 'owner'.
+-- name: ListNotesWithSharedBlocks :many
+SELECT DISTINCT b.note_id FROM note_blocks AS b
+JOIN notes AS n ON n.id = b.note_id
+WHERE n.campaign_id = ? AND b.visibility <> 'owner';

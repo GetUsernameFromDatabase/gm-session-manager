@@ -15,7 +15,7 @@ import (
 
 func sampleTakeHome(file string) TakeHome {
 	return TakeHome{
-		Manifest:  TakeHomeManifest{Format: TakeHomeFormat, AppVersion: "v1", Token: "tok", ServerID: "srv", CharacterID: 7, CreatedAt: time.Unix(1700000000, 0).UTC()},
+		Manifest:  TakeHomeManifest{Format: TakeHomeFormat, Kind: KindTakeHome, AppVersion: "v1", Token: "tok", ServerID: "srv", CharacterID: 7, CreatedAt: time.Unix(1700000000, 0).UTC()},
 		Character: CharacterFile{ID: 7, Name: "Aria", System: "dnd5e", Sheet: json.RawMessage(`{}`)},
 		Looks:     []TakeHomeLook{{ImageID: 1, Name: "Hood", File: file, IsCurrent: true}},
 		Notes: []TakeHomeNote{{ID: 3, Kind: enum.NoteGeneric, Title: "Diary", Blocks: []TakeHomeBlock{{
@@ -40,7 +40,7 @@ func TestTakeHomeRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := writeZip(t, sampleTakeHome(ZipFile("abc")), dir)
-	f, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)))
+	f, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), KindTakeHome)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestTakeHomeRoundTrip(t *testing.T) {
 // link goes with it.
 func TestTakeHomeMissingFileOnDisk(t *testing.T) {
 	body := writeZip(t, sampleTakeHome(ZipFile("gone")), t.TempDir())
-	f, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)))
+	f, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), KindTakeHome)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,13 +142,65 @@ func TestReadTakeHomeRefusals(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body := rewriteZip(t, good, tt.edit)
-			_, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)))
+			_, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), KindTakeHome)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want it to contain %q", err, tt.want)
 			}
 		})
 	}
-	if _, err := ReadTakeHome(strings.NewReader("not a zip"), 9); err == nil {
+	if _, err := ReadTakeHome(strings.NewReader("not a zip"), 9, KindTakeHome); err == nil {
 		t.Error("a non-zip was accepted")
+	}
+}
+
+func sampleBringBack() TakeHome {
+	th := sampleTakeHome("")
+	th.Looks, th.Notes = nil, nil
+	th.Manifest.Kind = KindBringBack
+	th.Manifest.SavedAt = time.Unix(1700001000, 0).UTC()
+	th.Maps = &HomeIDMaps{Notes: map[int64]int64{11: 3}, Blocks: map[int64]int64{12: 4}}
+	return th
+}
+
+func TestBringBackRoundTrip(t *testing.T) {
+	body := writeZip(t, sampleBringBack(), t.TempDir())
+	f, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), KindBringBack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Maps == nil || f.Maps.Notes[11] != 3 || f.Maps.Blocks[12] != 4 || f.Manifest.Kind != KindBringBack || f.Manifest.SavedAt.IsZero() {
+		t.Errorf("round trip lost data: %+v %+v", f.Manifest, f.Maps)
+	}
+}
+
+func TestReadTakeHomeKinds(t *testing.T) {
+	dir := t.TempDir()
+	takeHome := writeZip(t, sampleTakeHome(""), dir)
+	bringBack := writeZip(t, sampleBringBack(), dir)
+	noMaps := rewriteZip(t, bringBack, func(n string, d []byte) []byte {
+		if n == mapsFile {
+			return nil
+		}
+		return d
+	})
+	withMaps := writeZip(t, func() TakeHome { th := sampleTakeHome(""); th.Maps = &HomeIDMaps{}; return th }(), dir)
+	tests := []struct {
+		name string
+		body []byte
+		want Kind
+		err  string
+	}{
+		{"bring-back where take-home wanted", bringBack, KindTakeHome, "bring it to the table"},
+		{"take-home where bring-back wanted", takeHome, KindBringBack, "open it in the player app"},
+		{"bring-back without maps", noMaps, KindBringBack, "lacks maps.json"},
+		{"take-home with maps", withMaps, KindTakeHome, "must not hold maps.json"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ReadTakeHome(bytes.NewReader(tt.body), int64(len(tt.body)), tt.want)
+			if err == nil || !strings.Contains(err.Error(), tt.err) {
+				t.Errorf("err = %v, want it to contain %q", err, tt.err)
+			}
+		})
 	}
 }

@@ -293,9 +293,18 @@ func (a *App) noteList(ctx context.Context, v perm.Viewer, campaignID int64) ([]
 	if err != nil {
 		return nil, err
 	}
+	var shared []int64 // only asked at home
+	if v.AtHome {
+		if shared, err = a.Store.ListNotesWithSharedBlocks(ctx, campaignID); err != nil {
+			return nil, err
+		}
+	}
 	items := make([]views.NoteItem, len(notes))
 	for i, n := range notes {
-		items[i] = views.NoteItem{Note: n, Author: author(v, names, n.OwnerCharacterID.Int64), CanManage: perm.CanManageNote(v, n.OwnerCharacterID.Int64)}
+		items[i] = views.NoteItem{
+			Note: n, Author: author(v, names, n.OwnerCharacterID.Int64),
+			CanManage: perm.CanManageNote(v, n.OwnerCharacterID.Int64) && !perm.LocksShared(v, slices.Contains(shared, n.ID)),
+		}
 	}
 	return items, nil
 }
@@ -333,8 +342,13 @@ func (a *App) noteView(ctx context.Context, v perm.Viewer, note sqlc.Note) (view
 	if err != nil {
 		return views.NoteView{}, false, err
 	}
-	nv := views.NoteView{Note: note, CanManage: perm.CanManageNote(v, note.OwnerCharacterID.Int64)}
-	if !nv.CanManage && len(rows) == 0 {
+	manager := perm.CanManageNote(v, note.OwnerCharacterID.Int64)
+	locked, err := a.noteLocked(ctx, v, note.ID)
+	if err != nil {
+		return views.NoteView{}, false, err
+	}
+	nv := views.NoteView{Note: note, CanManage: manager && !locked}
+	if !manager && len(rows) == 0 {
 		return nv, false, nil
 	}
 	nv.Visibilities = perm.BlockVisibilities(v, note.OwnerCharacterID.Int64, note.Kind == enum.NoteGameSession)

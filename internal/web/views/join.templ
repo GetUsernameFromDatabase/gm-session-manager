@@ -26,34 +26,44 @@ templ joinPanel(j JoinInfo) {
 		@card.Content() {
 			// Stacked: the panel often sits in a narrow column, and the URLs need its full width.
 			<div class="flex flex-col items-center gap-4">
-				if len(j.URLs) > 0 {
-					<img src={ j.QR } alt="QR code for the join address" width="224" height="224" class="rounded bg-white p-2"/>
-				}
-				<div class="w-full space-y-1 text-sm">
+				@qrAddresses(j.URLs, j.QR, "QR code for the join address") {
 					if len(j.URLs) == 0 {
 						<p>No private network address found. Connect this PC to the same Wi-Fi as the players.</p>
-					}
-					for _, u := range j.URLs {
-						<div class="flex items-center gap-1">
-							<p class="min-w-0 font-mono wrap-anywhere">{ u }</p>
-							@button.Button(button.Props{Size: button.SizeIconSm, Variant: button.VariantGhost, Class: "group shrink-0", Attributes: templ.Attributes{"data-copy": u, "aria-label": "Copy join link", "title": "Copy join link"}}) {
-								@icon.Copy(icon.Props{Size: 16, Class: "group-data-copied:hidden"})
-								@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-copied:block"})
-							}
-						</div>
-					}
-					if len(j.URLs) > 1 {
-						<p class="text-xs text-muted-foreground">This PC is on more than one network. If one address doesn't load, try the next.</p>
 					}
 					<details class="pt-2 text-xs">
 						<summary class="cursor-pointer text-muted-foreground">Check the certificate</summary>
 						<p class="mt-2 text-muted-foreground">When the browser warns about the certificate, its SHA-256 fingerprint should match:</p>
 						<p class="mt-1 font-mono">{ fingerprintPairs(j.Fingerprint) }</p>
 					</details>
-				</div>
+				}
 			</div>
 		}
 	}
+}
+
+// qrAddresses is a QR code with the addresses it opens, each with a copy
+// button; children follow the rows inside the same column. qrSrc is passed
+// through templ.SafeURL because the handoff's is a data: image, which
+// templ's URL sanitizing would otherwise replace.
+templ qrAddresses(urls []string, qrSrc, alt string) {
+	if len(urls) > 0 {
+		<img src={ templ.SafeURL(qrSrc) } alt={ alt } width="224" height="224" class="rounded bg-white p-2"/>
+	}
+	<div class="w-full space-y-1 text-sm">
+		for _, u := range urls {
+			<div class="flex items-center gap-1">
+				<p class="min-w-0 font-mono wrap-anywhere">{ u }</p>
+				@button.Button(button.Props{Size: button.SizeIconSm, Variant: button.VariantGhost, Class: "group shrink-0", Attributes: templ.Attributes{"data-copy": u, "aria-label": "Copy address", "title": "Copy address"}}) {
+					@icon.Copy(icon.Props{Size: 16, Class: "group-data-copied:hidden"})
+					@icon.Check(icon.Props{Size: 16, Class: "hidden group-data-copied:block"})
+				}
+			</div>
+		}
+		if len(urls) > 1 {
+			<p class="text-xs text-muted-foreground">This PC is on more than one network. If one address doesn't load, try the next.</p>
+		}
+		{ children... }
+	</div>
 }
 
 templ GMHome(l Layout, campaigns []sqlc.Campaign, j JoinInfo, feedbackDir string) {

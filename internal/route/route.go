@@ -174,6 +174,13 @@ const CampaignCompendium = Campaign + Compendium
 const (
 	AtHomePlay = AtHomeCopy + Play
 
+	// The player app's bring-back file and the phone handoff.
+	AtHomeBringBack   = AtHomeCopy + "/bring-back"
+	AtHomeSendPhone   = AtHomeCopy + "/send-to-phone"
+	AtHomeReceive     = AtHome + "/receive"
+	AtHomeHandoff     = AtHome + "/handoff"
+	AtHomeHandoffStop = AtHomeHandoff + "/stop"
+
 	AttachmentToImage = Attachment + ToImage
 
 	BlockAccess      = Block + Access

@@ -14,6 +14,7 @@ import (
 type Viewer struct {
 	IsGM        bool
 	CharacterID int64 // 0 unless a player
+	AtHome      bool  // the player app: shared note blocks are read-only
 }
 
 // GM is the viewer for admin requests.
@@ -85,6 +86,9 @@ func CanReadBlock(v Viewer, b Block) bool {
 // CanEditBlock is the write rule for note blocks (submitting steps).
 // The author may always edit a block they can still read.
 func CanEditBlock(v Viewer, b Block) bool {
+	if v.AtHome {
+		return b.Visibility == enum.VisOwner && v.owns(b.NoteOwnerID)
+	}
 	if v.owns(b.AuthorID) && CanReadBlock(v, b) {
 		return true
 	}
@@ -102,6 +106,9 @@ func CanEditBlock(v Viewer, b Block) bool {
 // CanManageBlock reports whether the viewer may delete or re-scope a block:
 // the note's manager, or the block's author while they can still read it.
 func CanManageBlock(v Viewer, b Block) bool {
+	if v.AtHome {
+		return CanEditBlock(v, b)
+	}
 	return CanManageNote(v, b.NoteOwnerID) || (v.owns(b.AuthorID) && CanReadBlock(v, b))
 }
 
@@ -115,12 +122,22 @@ func CanManageNote(v Viewer, noteOwnerID int64) bool {
 	return v.owns(noteOwnerID)
 }
 
+// LocksShared reports whether a note holding shared (non-owner) blocks is
+// read-only as a whole: no rename, delete or reorder at home.
+func LocksShared(v Viewer, hasShared bool) bool { return v.AtHome && hasShared }
+
 // BlockVisibilities lists the visibilities the viewer may give a block in a
 // note: any in a note they manage, and 'players' for a player writing in the
 // GM's game session note. Players write private blocks or blocks for the
 // table; only the GM keeps secrets from players.
 func BlockVisibilities(v Viewer, noteOwnerID int64, gameSession bool) []enum.Visibility {
 	switch {
+	case v.AtHome:
+		// Everything written at home is private.
+		if CanManageNote(v, noteOwnerID) {
+			return []enum.Visibility{enum.VisOwner}
+		}
+		return nil
 	case !CanManageNote(v, noteOwnerID):
 		if v.IsPlayer() && noteOwnerID == 0 && gameSession {
 			return []enum.Visibility{enum.VisPlayers}

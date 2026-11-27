@@ -9,6 +9,7 @@ import (
 	"gm-session-manager/internal/web/components/empty"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
+	"strconv"
 	"time"
 )
 
@@ -87,7 +88,7 @@ templ TakeHomeBody(v TakeHomeView) {
 	<p class="text-xs text-muted-foreground">
 		{ v.Name + " stays playable here meanwhile." }
 		if v.ByGM {
-			{ " Leaves out " + v.Name + "'s private notes: only the player can take those home." }
+			{ " Includes " + v.Name + "'s private notes: pass the file on without opening it." }
 		}
 	</p>
 	@dialog.Footer() {
@@ -98,11 +99,15 @@ templ TakeHomeBody(v TakeHomeView) {
 }
 
 // HomePage lists the characters on this computer (the player app) and opens a file.
-templ HomePage(l Layout, copies []HomeCopyView) {
+templ HomePage(l Layout, copies []HomeCopyView, handoff HandoffView) {
 	@Page(l) {
 		<div class="mx-auto max-w-xl">
 			@PageHeader("Characters on this computer", "")
-			if len(copies) == 0 {
+			<div id="handoff">
+				@HandoffPanel(handoff)
+			</div>
+			// While a received file waits, its panel above is the next step: "no characters" would contradict it.
+			if len(copies) == 0 && handoff.State != HandoffReceived {
 				@empty.Empty(empty.Props{Class: "border"}) {
 					@empty.Header() {
 						@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
@@ -116,12 +121,18 @@ templ HomePage(l Layout, copies []HomeCopyView) {
 						}
 					}
 				}
-			} else {
+			} else if len(copies) > 0 {
 				<ul class="space-y-2">
 					for _, c := range copies {
 						<li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
 							<div class="min-w-0 grow basis-48">
-								<p class="truncate font-medium">{ c.Name + " · " + c.Campaign }</p>
+								<p class="truncate font-medium">
+									if c.Current {
+										<a class="underline-offset-2 hover:underline" href={ templ.SafeURL(route.Path(route.Character, c.CharacterID)) }>{ c.Name + " · " + c.Campaign }</a>
+									} else {
+										<button type="submit" form={ "play-" + strconv.FormatInt(c.CharacterID, 10) } class="max-w-full cursor-pointer truncate underline-offset-2 hover:underline">{ c.Name + " · " + c.Campaign }</button>
+									}
+								</p>
 								<p class="text-sm text-muted-foreground">
 									{ "Taken home " }
 									@localDate(c.TakenAt)
@@ -132,42 +143,68 @@ templ HomePage(l Layout, copies []HomeCopyView) {
 									Playing
 								}
 							} else {
-								<form method="post" action={ templ.SafeURL(route.Path(route.AtHomePlay, c.CharacterID)) }>
+								<form id={ "play-" + strconv.FormatInt(c.CharacterID, 10) } method="post" action={ templ.SafeURL(route.Path(route.AtHomePlay, c.CharacterID)) }>
 									@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
 										@icon.Play()
 										Play
 									}
 								</form>
 							}
+							<div class="flex basis-full flex-wrap gap-2">
+								// Through htmx so a refusal shows here; success redirects to the download.
+								<form class="group/busy" data-busy hx-post={ route.Path(route.AtHomeBringBack, c.CharacterID) }>
+									@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+										@icon.Download()
+										Save bring-back file
+									}
+									@busyIndicator("Saving…")
+								</form>
+								@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": route.Path(route.AtHomeSendPhone, c.CharacterID), "hx-target": "#handoff", "hx-swap": swapInner}}) {
+									@icon.Smartphone()
+									Send to phone
+								}
+								<p class="basis-full text-xs text-muted-foreground">This file holds your private notes. Bring it to the table yourself to keep them private.</p>
+							</div>
 						</li>
 					}
 				</ul>
 				<h2 class="mt-8 mb-2 text-sm font-semibold">Open another take-home file</h2>
 			}
-			@homeImportForm(len(copies) == 0)
+			@homeImportForm(len(copies) == 0, false, "Open")
+			<p class="mt-3 text-sm text-muted-foreground">or</p>
+			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Class: "mt-2", Attributes: templ.Attributes{"hx-post": route.AtHomeReceive, "hx-target": "#handoff", "hx-swap": swapInner}}) {
+				@icon.Smartphone()
+				Receive from phone
+			}
 		</div>
 	}
 }
 
 // homeImportForm posts a take-home zip; a copy of the same character already
 // here is answered with a question in #home-import-confirm, inside the form so
-// the chosen file is still there when Replace submits it.
-templ homeImportForm(first bool) {
+// the chosen file is still there when Replace submits it. With fromPhone it
+// holds a hidden handoff=1 instead of the file input, and its question goes in
+// its own container (the page may hold both forms).
+templ homeImportForm(first, fromPhone bool, label string) {
 	<form
 		class={ "group/busy space-y-3", templ.KV("mt-4", first) }
 		data-busy
 		hx-post={ route.AtHome }
 		hx-encoding="multipart/form-data"
-		hx-target="#home-import-confirm"
+		hx-target={ "#" + importConfirmID(fromPhone) }
 		hx-swap="innerHTML"
 	>
 		<div class="flex flex-wrap items-center gap-2">
-			@input.Input(input.Props{Name: "file", Type: "file", Required: true, Class: "w-auto", Attributes: templ.Attributes{"accept": ".zip,application/zip", "aria-label": "Take-home file"}})
+			if fromPhone {
+				<input type="hidden" name="handoff" value="1"/>
+			} else {
+				@input.Input(input.Props{Name: "file", Type: "file", Required: true, Class: "w-auto", Attributes: templ.Attributes{"accept": ".zip,application/zip", "aria-label": "Take-home file"}})
+			}
 			@button.Button(button.Props{Type: button.TypeSubmit}) {
-				Open
+				{ label }
 			}
 		</div>
-		<div id="home-import-confirm"></div>
+		<div id={ importConfirmID(fromPhone) } data-confirm></div>
 		@busyIndicator("Opening…")
 	</form>
 }
@@ -185,7 +222,7 @@ templ HomeReplaceConfirm(v HomeConfirmView) {
 		}
 	}
 	<div class="mt-3 flex justify-end gap-2">
-		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"onclick": templ.JSUnsafeFuncCall("this.closest('#home-import-confirm').replaceChildren()")}}) {
+		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"onclick": templ.JSUnsafeFuncCall("this.closest('[data-confirm]').replaceChildren()")}}) {
 			Cancel
 		}
 		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "replace", "value": "1"}}) {

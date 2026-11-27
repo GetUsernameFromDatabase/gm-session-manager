@@ -662,6 +662,37 @@ func (q *Queries) ListNoteAudience(ctx context.Context, noteID int64) ([]NoteBlo
 	return items, nil
 }
 
+const listNotesWithSharedBlocks = `-- name: ListNotesWithSharedBlocks :many
+SELECT DISTINCT b.note_id FROM note_blocks AS b
+JOIN notes AS n ON n.id = b.note_id
+WHERE n.campaign_id = ? AND b.visibility <> 'owner'
+`
+
+// ListNotesWithSharedBlocks lists the ids of a campaign's notes holding any
+// block that is not 'owner'.
+func (q *Queries) ListNotesWithSharedBlocks(ctx context.Context, campaignID int64) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listNotesWithSharedBlocks, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var note_id int64
+		if err := rows.Scan(&note_id); err != nil {
+			return nil, err
+		}
+		items = append(items, note_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listReadableBlocks = `-- name: ListReadableBlocks :many
 SELECT b.id, b.note_id, b.position, b.visibility, b.players_can_edit, b.doc_json, b.doc_version, b.version, b.text, b.author_character_id FROM note_blocks AS b
 JOIN notes AS n ON n.id = b.note_id
@@ -794,6 +825,18 @@ func (q *Queries) ListReadableNotes(ctx context.Context, arg ListReadableNotesPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const noteHasSharedBlocks = `-- name: NoteHasSharedBlocks :one
+SELECT EXISTS (SELECT 1 FROM note_blocks WHERE note_id = ? AND visibility <> 'owner')
+`
+
+// NoteHasSharedBlocks is true when the note holds any block that is not 'owner'.
+func (q *Queries) NoteHasSharedBlocks(ctx context.Context, noteID int64) (bool, error) {
+	row := q.db.QueryRowContext(ctx, noteHasSharedBlocks, noteID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const renameNote = `-- name: RenameNote :exec

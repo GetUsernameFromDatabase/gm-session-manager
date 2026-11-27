@@ -39,6 +39,10 @@ type App struct {
 	reqs      reqLog
 	fiveTools fiveToolsJob
 	state     appState
+	handoffMu sync.Mutex
+	handoff   *handoff
+	// handoffIPsFn replaces the network detection in tests.
+	handoffIPsFn func() []net.IP
 }
 
 // New builds the app. The hub renders fragments through the app.
@@ -49,7 +53,10 @@ func New(d Deps) *App {
 }
 
 // Close disconnects all websockets.
-func (a *App) Close() { a.Hub.Close() }
+func (a *App) Close() {
+	a.stopHandoff()
+	a.Hub.Close()
+}
 
 // Router builds the HTTP handler with session middleware on every route.
 func (a *App) Router() *gin.Engine {
@@ -90,6 +97,12 @@ func (a *App) Router() *gin.Engine {
 	r.GET(route.AtHome, a.h(a.homePage))
 	r.POST(route.AtHome, a.h(a.homeImport))
 	r.POST(route.AtHomePlay, a.h(a.homePlay))
+	r.POST(route.AtHomeBringBack, a.onlyPlayerApp, a.h(a.homeBringBackCheck))
+	r.GET(route.AtHomeBringBack, a.onlyPlayerApp, a.h(a.homeBringBack))
+	r.POST(route.AtHomeSendPhone, a.onlyPlayerApp, a.h(a.handoffSend))
+	r.POST(route.AtHomeReceive, a.onlyPlayerApp, a.h(a.handoffReceive))
+	r.GET(route.AtHomeHandoff, a.onlyPlayerApp, a.h(a.handoffPanel))
+	r.POST(route.AtHomeHandoffStop, a.onlyPlayerApp, a.h(a.handoffStopRoute))
 	r.POST(route.Feedback, a.h(a.sendFeedback))
 	r.GET(route.Join, a.notPlayerApp, a.h(a.joinCampaigns))
 	r.GET(route.JoinQR, a.notPlayerApp, a.h(a.joinQR))

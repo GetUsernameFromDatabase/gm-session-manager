@@ -135,7 +135,26 @@ func (a *App) manageNote(c *gin.Context) (sqlc.Note, bool) {
 		a.fail(c, http.StatusForbidden, "Only the note's author can change it.")
 		return note, false
 	}
+	locked, err := a.noteLocked(c.Request.Context(), w.viewer, note.ID)
+	if err != nil {
+		a.serverError(c, err)
+		return note, false
+	}
+	if locked {
+		a.fail(c, http.StatusForbidden, "Shared notes are read-only at home.")
+		return note, false
+	}
 	return note, true
+}
+
+// noteLocked is perm.LocksShared for a stored note; it asks the database
+// only at home.
+func (a *App) noteLocked(ctx context.Context, v perm.Viewer, noteID int64) (bool, error) {
+	if !v.AtHome {
+		return false, nil
+	}
+	has, err := a.Store.NoteHasSharedBlocks(ctx, noteID)
+	return perm.LocksShared(v, has), err
 }
 
 func (a *App) notePage(c *gin.Context) error {
@@ -338,6 +357,14 @@ func (a *App) blockFor(c *gin.Context, need blockAccessLevel) (who, sqlc.GetBloc
 		allowed = member && perm.CanManageBlock(w.viewer, pb)
 	case needArrange:
 		allowed = member && perm.CanManageNote(w.viewer, pb.NoteOwnerID)
+		if allowed {
+			locked, err := a.noteLocked(c.Request.Context(), w.viewer, b.NoteID)
+			if err != nil {
+				a.serverError(c, err)
+				return w, b, pb, false
+			}
+			allowed = !locked
+		}
 	}
 	if !allowed {
 		// The same answer as a missing block, so secrets stay invisible.

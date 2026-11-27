@@ -46,10 +46,10 @@ func (a *App) takeHomeDialog(c *gin.Context) error {
 }
 
 // takeHome writes the character's take-home zip and records the take-out
-// (token and what was sent) as the merge base for the bring-back. The player
-// sends everything of theirs; the GM leaves out what only the player may read.
+// (token and what was sent) as the merge base for the bring-back. The file
+// holds everything the character may read, whoever asks.
 func (a *App) takeHome(c *gin.Context) error {
-	w, ch, ok := a.takeHomeAccess(c)
+	_, ch, ok := a.takeHomeAccess(c)
 	if !ok {
 		return nil
 	}
@@ -68,7 +68,7 @@ func (a *App) takeHome(c *gin.Context) error {
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		var base export.TakeHomeBase
 		var err error
-		if th, base, err = buildTakeHome(ctx, q, w.viewer, ch); err != nil {
+		if th, base, err = buildTakeHome(ctx, q, ch); err != nil {
 			return err
 		}
 		body, err := json.Marshal(base)
@@ -100,14 +100,14 @@ func (a *App) takeHome(c *gin.Context) error {
 		})
 	}
 	th.Manifest = export.TakeHomeManifest{
-		Format: export.TakeHomeFormat, AppVersion: a.Version, Token: rec.Token, ServerID: serverID,
+		Format: export.TakeHomeFormat, Kind: export.KindTakeHome, AppVersion: a.Version, Token: rec.Token, ServerID: serverID,
 		Campaign:    export.TakeHomeCampaign{Name: camp.Name, System: camp.System, Edition: camp.Edition},
 		CharacterID: ch.ID, CreatedAt: rec.CreatedAt.UTC(),
 	}
 
 	a.publish(c, ch.CampaignID, hub.Topic{Kind: hub.TopicCharacter, ID: ch.ID}, hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID})
 	c.Header("Content-Type", "application/zip")
-	c.Header("Content-Disposition", `attachment; filename="`+export.TakeHomeFileName(ch.Name, rec.CreatedAt)+`"`)
+	c.Header("Content-Disposition", `attachment; filename="`+export.ZipFileName(export.KindTakeHome, ch.Name, rec.CreatedAt)+`"`)
 	if err := export.WriteTakeHome(c.Writer, th, a.attachmentsDir()); err != nil {
 		// Headers are gone; the truncated zip tells the browser it failed.
 		a.serverError(c, err)
@@ -116,10 +116,9 @@ func (a *App) takeHome(c *gin.Context) error {
 }
 
 // buildTakeHome reads what goes into the file about one character, and the
-// base the bring-back is merged against. Only note blocks both the character
-// and the requester may read are sent: a GM's file never holds the player's
-// private blocks, or their files.
-func buildTakeHome(ctx context.Context, q *sqlc.Queries, viewer perm.Viewer, ch sqlc.Character) (export.TakeHome, export.TakeHomeBase, error) {
+// base the bring-back is merged against. Every note block the character may
+// read is sent, private ones included, whoever asks.
+func buildTakeHome(ctx context.Context, q *sqlc.Queries, ch sqlc.Character) (export.TakeHome, export.TakeHomeBase, error) {
 	th := export.TakeHome{Character: export.NewCharacterFile(ch)}
 	base := export.TakeHomeBase{
 		Character: export.TakeHomeBaseCharacter{Sheet: json.RawMessage(ch.SheetJson), HP: ch.Hp, MaxHP: ch.MaxHp, TempHP: ch.TempHp},
@@ -156,7 +155,7 @@ func buildTakeHome(ctx context.Context, q *sqlc.Queries, viewer perm.Viewer, ch 
 		base.Looks = append(base.Looks, export.TakeHomeBaseLook{ImageID: l.ID, IsRevealed: l.IsRevealed, IsCurrent: l.IsCurrent})
 	}
 
-	if err := takeHomeNotes(ctx, q, viewer, ch, &th, &base); err != nil {
+	if err := takeHomeNotes(ctx, q, ch, &th, &base); err != nil {
 		return th, base, err
 	}
 
@@ -174,10 +173,9 @@ func buildTakeHome(ctx context.Context, q *sqlc.Queries, viewer perm.Viewer, ch 
 	return th, base, nil
 }
 
-// takeHomeNotes adds the character's own notes, with the blocks both the
-// character and the requester may read: a GM-initiated file leaves the
-// player's 'owner' blocks and their files at the table.
-func takeHomeNotes(ctx context.Context, q *sqlc.Queries, viewer perm.Viewer, ch sqlc.Character, th *export.TakeHome, base *export.TakeHomeBase) error {
+// takeHomeNotes adds the character's own notes, with the blocks the
+// character may read ('owner' blocks and their files included).
+func takeHomeNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, th *export.TakeHome, base *export.TakeHomeBase) error {
 	notes, err := q.ListOwnNotes(ctx, nullID(ch.ID))
 	if err != nil {
 		return err
@@ -211,7 +209,7 @@ func takeHomeNotes(ctx context.Context, q *sqlc.Queries, viewer perm.Viewer, ch 
 		out := export.TakeHomeNote{ID: n.ID, Kind: n.Kind, Title: n.Title, CreatedAt: n.CreatedAt.UTC(), UpdatedAt: n.UpdatedAt.UTC()}
 		for _, b := range byNote[n.ID] {
 			pb := perm.Block{Visibility: b.Visibility, PlayersCanEdit: b.PlayersCanEdit, NoteOwnerID: ch.ID, Audience: audience[b.ID], AuthorID: b.AuthorCharacterID.Int64}
-			if !perm.CanReadBlock(player, pb) || !perm.CanReadBlock(viewer, pb) {
+			if !perm.CanReadBlock(player, pb) {
 				continue
 			}
 			out.Blocks = append(out.Blocks, export.TakeHomeBlock{
@@ -223,9 +221,8 @@ func takeHomeNotes(ctx context.Context, q *sqlc.Queries, viewer perm.Viewer, ch 
 			// the base is the snapshot's version and the bring-back sees them as table edits.
 			base.Blocks[b.ID] = b.DocVersion
 		}
-		// A note with blocks the requester may not read is left out whole, title
-		// included; an empty one goes only to its own player.
-		if len(out.Blocks) == 0 && (len(byNote[n.ID]) > 0 || viewer.IsGM) {
+		// A note with blocks the character cannot read is left out whole, title included.
+		if len(out.Blocks) == 0 && len(byNote[n.ID]) > 0 {
 			continue
 		}
 		th.Notes = append(th.Notes, out)

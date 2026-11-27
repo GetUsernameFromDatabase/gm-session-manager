@@ -20,7 +20,8 @@ import (
 // part, written and read here so the format lives in one place. The sheet
 // stays opaque JSON; the web layer checks it.
 //
-//	manifest.json            format, versions, token, campaign, the table's character id
+//	manifest.json            format, kind, versions, token, campaign, the table's character id
+//	maps.json                bring-back only: home id to table id of what came from the table
 //	character.json           CharacterFile
 //	levelups.json            the revert history
 //	looks.json               the character's images
@@ -34,6 +35,7 @@ const (
 	TakeHomeFormat = 1
 
 	manifestFile  = "manifest.json"
+	mapsFile      = "maps.json"
 	characterFile = "character.json"
 	levelUpsFile  = "levelups.json"
 	looksFile     = "looks.json"
@@ -51,9 +53,22 @@ const (
 	maxEntriesBytes = 64 << 20
 )
 
+// Kind says which way a take-home zip travels.
+type Kind string
+
+const (
+	// KindTakeHome goes from the table to a home computer.
+	KindTakeHome Kind = "take-home"
+	// KindBringBack goes from a home computer back to the table; its ids are the home's.
+	KindBringBack Kind = "bring-back"
+)
+
 // TakeHomeManifest says what the file is and where it came from.
 type TakeHomeManifest struct {
-	Format      int              `json:"format"`
+	Format int  `json:"format"`
+	Kind   Kind `json:"kind"`
+	// SavedAt is when a bring-back was saved at home; zero for a take-home.
+	SavedAt     time.Time        `json:"saved_at,omitzero"`
 	AppVersion  string           `json:"app_version"`
 	Token       string           `json:"token"`
 	ServerID    string           `json:"server_id"`
@@ -156,6 +171,8 @@ type TakeHome struct {
 	Homebrew  []TakeHomeEntry
 	Sources   []TakeHomeSource
 	Entries   []TakeHomeEntry
+	// Maps is written (as maps.json) only in a bring-back.
+	Maps *HomeIDMaps
 }
 
 // TakeHomeBase is what the table recorded when the file was written, the
@@ -248,6 +265,12 @@ func WriteTakeHome(w io.Writer, t TakeHome, attachmentsDir string) error {
 		{notesFile, nonNil(t.Notes)}, {homebrewFile, nonNil(t.Homebrew)},
 		{sourcesFile, nonNil(t.Sources)}, {entriesFile, nonNil(t.Entries)},
 	}
+	if t.Maps != nil {
+		parts = append(parts, struct {
+			name string
+			v    any
+		}{mapsFile, t.Maps})
+	}
 	if err := writeFile(zw, characterFile, char); err != nil {
 		return err
 	}
@@ -310,27 +333,50 @@ type TakeHomeFile struct {
 	zr *zip.Reader
 }
 
-// ReadTakeHome parses a take-home zip. It refuses a newer format, unknown
-// keys in the envelope, oversize parts and files the JSON names but the zip
-// lacks. The sheets inside are not looked at.
-func ReadTakeHome(r io.ReaderAt, size int64) (*TakeHomeFile, error) {
+// ReadTakeHome parses a take-home zip of the kind want. It refuses a newer
+// format, the other kind, unknown keys in the envelope, oversize parts and
+// files the JSON names but the zip lacks. The sheets inside are not looked at.
+func ReadTakeHome(r io.ReaderAt, size int64, want Kind) (*TakeHomeFile, error) {
 	zr, err := zip.NewReader(r, size)
 	if err != nil {
-		return nil, fmt.Errorf("not a take-home file: %w", err)
+		return nil, fmt.Errorf("it is not a zip file (%w)", err)
 	}
 	f := &TakeHomeFile{zr: zr}
 
 	var head struct {
-		Format int `json:"format"`
+		Format     int    `json:"format"`
+		AppVersion string `json:"app_version"`
 	}
 	if err := f.readJSON(manifestFile, maxJSONBytes, &head, false); err != nil {
 		return nil, err
 	}
 	if head.Format != TakeHomeFormat {
-		return nil, fmt.Errorf("this take-home file has format %d; this app reads format %d", head.Format, TakeHomeFormat)
+		return nil, fmt.Errorf("this take-home file (from app %s) has format %d; this app reads format %d", head.AppVersion, head.Format, TakeHomeFormat)
 	}
 	if err := f.readJSON(manifestFile, maxJSONBytes, &f.Manifest, true); err != nil {
 		return nil, err
+	}
+	if k := f.Manifest.Kind; k != want {
+		switch {
+		case want == KindTakeHome && k == KindBringBack:
+			return nil, errors.New("this is a bring-back file: bring it to the table")
+		case want == KindBringBack && k == KindTakeHome:
+			return nil, errors.New("this is a take-home file: open it in the player app")
+		}
+		// Callers say "not a take-home file" first; this says why and what to do.
+		return nil, fmt.Errorf("it comes from app %s and is neither a take-home nor a bring-back file. Take the character home again from the table", f.Manifest.AppVersion)
+	}
+	if has := f.find(mapsFile) != nil; has != (want == KindBringBack) {
+		if has {
+			return nil, errors.New("a take-home file must not hold " + mapsFile)
+		}
+		return nil, errors.New("the file lacks " + mapsFile)
+	}
+	if want == KindBringBack {
+		f.Maps = &HomeIDMaps{}
+		if err := f.readJSON(mapsFile, maxJSONBytes, f.Maps, true); err != nil {
+			return nil, err
+		}
 	}
 	for _, p := range []struct {
 		name  string
@@ -465,7 +511,8 @@ type HomeManifest struct {
 	Maps HomeIDMaps `json:"maps"`
 }
 
-// HomeIDMaps map a table id to the home row made from it.
+// HomeIDMaps map the id of a home row (the key) to the table's id it was made
+// from (the value).
 type HomeIDMaps struct {
 	LevelUps    map[int64]int64 `json:"level_ups"`
 	Images      map[int64]int64 `json:"images"`
@@ -475,7 +522,7 @@ type HomeIDMaps struct {
 	Homebrew    map[int64]int64 `json:"homebrew"`
 }
 
-// TakeHomeFileName is the download's name: "<name>-take-home-<date>.zip".
-func TakeHomeFileName(characterName string, at time.Time) string {
-	return fmt.Sprintf("%s-take-home-%s.zip", fileSlug(characterName), at.Format("2006-01-02"))
+// ZipFileName is the download's name: "<name>-<kind>-<date>.zip".
+func ZipFileName(kind Kind, characterName string, at time.Time) string {
+	return fmt.Sprintf("%s-%s-%s.zip", fileSlug(characterName), kind, at.Format("2006-01-02"))
 }
