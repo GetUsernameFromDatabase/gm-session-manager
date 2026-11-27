@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"sync"
 
 	"gm-session-manager/internal/compendium"
@@ -116,7 +118,7 @@ func (a *App) runImport(ctx context.Context, dir string, campaign int64, keys []
 		}
 	}
 	if err != nil {
-		msg = "Download failed: " + err.Error()
+		msg = netErrMsg("Download failed", err)
 		tick()
 		return
 	}
@@ -133,6 +135,25 @@ func (a *App) runImport(ctx context.Context, dir string, campaign int64, keys []
 	tick()
 }
 
+// netErrMsg words a failed download: what failed, and for a network error
+// (no connection, DNS, a dropped transfer) that the app could not reach the
+// site. Not *url.Error: a refused redirect or a bad certificate is one too.
+func netErrMsg(what string, err error) string {
+	if errors.As(err, new(*net.OpError)) {
+		return "No internet connection. " + what + ": the app could not reach GitHub or the site. Connect and try again. (" + err.Error() + ")"
+	}
+	return what + ": " + err.Error()
+}
+
+// sinkHomeSources keeps the sources added at home below the table's in the
+// player app (no-op at the table).
+func (a *App) sinkHomeSources(ctx context.Context, q *sqlc.Queries) error {
+	if !a.Player {
+		return nil
+	}
+	return q.SinkHomeSources(ctx)
+}
+
 // allowSources ticks keys for campaign (none for 0); a key no source holds
 // (a book that failed) is passed over.
 func (a *App) allowSources(ctx context.Context, campaign int64, keys []string) error {
@@ -145,7 +166,7 @@ func (a *App) allowSources(ctx context.Context, campaign int64, keys []string) e
 				return err
 			}
 		}
-		return nil
+		return a.sinkHomeSources(ctx, q)
 	})
 	if err == nil {
 		a.Hub.Publish(campaign, hub.Topic{Kind: hub.TopicCompendium})

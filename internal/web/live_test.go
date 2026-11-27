@@ -170,6 +170,24 @@ func TestLiveVisibility(t *testing.T) {
 			}
 		}
 	}
+	// The home player (player app) follows the import and their own
+	// campaign's priority card, no other campaign's (a separate loop: the
+	// table's columns are positional).
+	home := perm.Viewer{CharacterID: f.characterID, AtHome: true}
+	for _, tt := range []struct {
+		name string
+		view string
+		want bool
+	}{
+		{"import progress", views.LiveKey(views.LiveImport, 0), true},
+		{"own priority card", views.LiveKey(views.LiveSources, f.campaignID), true},
+		{"another campaign's priority card", views.LiveKey(views.LiveSources, f.outsiderCampaign), false},
+		{"the whole compendium's priority card", views.LiveKey(views.LiveSources, 0), false},
+	} {
+		if _, ok := f.state(t, home, f.campaignID, tt.view); ok != tt.want {
+			t.Errorf("home player, %s: ok = %v, want %v", tt.name, ok, tt.want)
+		}
+	}
 	// Every live view is registered and has at least one row above.
 	all := []string{
 		views.LiveRoster, views.LiveRequests, views.LiveWaiting, views.LiveCharacter,

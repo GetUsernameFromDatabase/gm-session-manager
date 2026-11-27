@@ -295,6 +295,37 @@ func (q *Queries) ListHomeCopies(ctx context.Context) ([]ListHomeCopiesRow, erro
 	return items, nil
 }
 
+const listHomeSourceKeys = `-- name: ListHomeSourceKeys :many
+SELECT source_key FROM compendium_sources
+WHERE path <> 'take-home' AND source_key <> 'homebrew'
+ORDER BY source_key
+`
+
+// ListHomeSourceKeys lists the sources added at home: not the take-home's
+// marker path, and not homebrew (its path is ”).
+func (q *Queries) ListHomeSourceKeys(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listHomeSourceKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var source_key string
+		if err := rows.Scan(&source_key); err != nil {
+			return nil, err
+		}
+		items = append(items, source_key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLevelUps = `-- name: ListLevelUps :many
 SELECT id, character_id, max_hp, sheet_json, created_at FROM level_ups
 WHERE character_id = ?
@@ -708,6 +739,23 @@ func (q *Queries) SetTakeHomeBlockDoc(ctx context.Context, arg SetTakeHomeBlockD
 	return err
 }
 
+const sinkHomeSources = `-- name: SinkHomeSources :exec
+UPDATE compendium_sources
+SET priority = priority + 1 + (SELECT COALESCE(MAX(priority), 0) FROM compendium_sources WHERE path = 'take-home')
+WHERE path <> 'take-home' AND source_key <> 'homebrew'
+  AND (SELECT MIN(priority) FROM compendium_sources WHERE path <> 'take-home' AND source_key <> 'homebrew')
+      <= (SELECT COALESCE(MAX(priority), 0) FROM compendium_sources WHERE path = 'take-home')
+`
+
+// SinkHomeSources: in the player app, sources added at home rank below every
+// source the take-home wrote, keeping their order among themselves. All move by
+// the same amount, and only when the lowest-numbered one is at or above the
+// table's highest number (so a second run does nothing).
+func (q *Queries) SinkHomeSources(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, sinkHomeSources)
+	return err
+}
+
 const upsertHomeHomebrew = `-- name: UpsertHomeHomebrew :one
 INSERT INTO compendium_entries (
     kind, slug, name, source_key, data_json, body_text, content_hash, owner_character_id, scoped
@@ -781,4 +829,36 @@ func (q *Queries) UpsertSharedHomebrew(ctx context.Context, arg UpsertSharedHome
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const upsertTakeHomeSource = `-- name: UpsertTakeHomeSource :exec
+INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution, published, priority)
+VALUES (?1, 'take-home', '', ?2, ?3, ?4, ?5, ?6)
+ON CONFLICT (source_key) DO UPDATE
+SET edition = excluded.edition, license = excluded.license, attribution = excluded.attribution,
+    published = excluded.published, priority = excluded.priority, last_imported = CURRENT_TIMESTAMP
+WHERE compendium_sources.path = 'take-home'
+`
+
+type UpsertTakeHomeSourceParams struct {
+	SourceKey   string
+	Edition     string
+	License     string
+	Attribution string
+	Published   string
+	Priority    int64
+}
+
+// UpsertTakeHomeSource writes a source the take-home file lists. A source that
+// was added at home stays the home's: its row is kept as it is.
+func (q *Queries) UpsertTakeHomeSource(ctx context.Context, arg UpsertTakeHomeSourceParams) error {
+	_, err := q.db.ExecContext(ctx, upsertTakeHomeSource,
+		arg.SourceKey,
+		arg.Edition,
+		arg.License,
+		arg.Attribution,
+		arg.Published,
+		arg.Priority,
+	)
+	return err
 }

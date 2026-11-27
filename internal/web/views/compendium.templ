@@ -47,7 +47,7 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 						<span class="text-xs text-muted-foreground tabular-nums">{ fmt.Sprint(n) }</span>
 					}
 				}
-				if v.IsGM {
+				if v.CanImport {
 					@tabs.Trigger(tabs.TriggerProps{Value: CompendiumTabImport}) {
 						@icon.Download()
 						Import
@@ -61,11 +61,12 @@ templ CompendiumPage(l Layout, v CompendiumView) {
 			@tabs.Content(tabs.ContentProps{Value: CompendiumTabHomebrew}) {
 				@homebrewTab(v)
 			}
-			if v.IsGM {
+			if v.CanImport {
 				// Ways to add on the left, the sources they fill on the right.
 				@tabs.Content(tabs.ContentProps{Value: CompendiumTabImport}) {
 					<div class="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_20rem] md:items-start">
 						<div class="min-w-0">
+							@homeSourcesWarning(v.Import.HomeName)
 							@importTabs(v.Import)
 						</div>
 						@SourcePriorityLive(v.Campaign, v.Sources, v.SharedCounts, v.EntryCounts)
@@ -508,6 +509,25 @@ templ kindName(kind enum.CompendiumKind) {
 	<span class="first-letter:uppercase">{ string(kind) }</span>
 }
 
+// addedAtHome marks an entry of a source the player added at home.
+templ addedAtHome(key string) {
+	if homeSource(ctx, key) {
+		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "gap-1 border-amber-500/50 text-amber-700 dark:text-amber-300"}) {
+			@icon.House()
+			Added at home
+		}
+	}
+}
+
+// addedAtHomeIcon is addedAtHome for tight spots (combobox items).
+templ addedAtHomeIcon(key string) {
+	if homeSource(ctx, key) {
+		<span class="shrink-0 text-amber-600 dark:text-amber-400" role="img" aria-label="Added at home" title="Added at home">
+			@icon.House(icon.Props{Size: 14})
+		</span>
+	}
+}
+
 templ homebrewBadge() {
 	@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "gap-1"}) {
 		@icon.Feather()
@@ -568,6 +588,7 @@ templ SearchComboItems(rows []sqlc.SearchCompendiumRow) {
 			{{ seen[strings.ToLower(r.Name)] = true }}
 			@combobox.Item(combobox.ItemProps{Value: r.Name}) {
 				{ r.Name }
+				@addedAtHomeIcon(r.SourceKey)
 			}
 		}
 	}
@@ -594,6 +615,7 @@ templ pickerRow(r sqlc.SearchCompendiumRow, t PickerTarget) {
 			"hx-on::after-request": templ.JSUnsafeFuncCall("if (event.detail.successful) this.disabled = true"),
 		}) {
 			{ r.Name }
+			@addedAtHome(r.SourceKey)
 		}
 	} else {
 		<li class="flex items-center justify-between gap-2 py-0.5">

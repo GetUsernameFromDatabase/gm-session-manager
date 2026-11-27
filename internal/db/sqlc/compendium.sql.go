@@ -860,7 +860,7 @@ func (q *Queries) ListCompendiumKeysBySource(ctx context.Context, sourceKey stri
 }
 
 const listCompendiumNames = `-- name: ListCompendiumNames :many
-SELECT e.id, e.kind, e.slug, e.name, CAST(COALESCE(json_extract(e.data_json, '$.subrace_of'), '') AS TEXT) AS subrace_of
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, CAST(COALESCE(json_extract(e.data_json, '$.subrace_of'), '') AS TEXT) AS subrace_of
 FROM compendium_entries AS e
 WHERE e.kind = ?1 AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?2 AS INTEGER))
   AND json_extract(e.data_json, '$.version_of') IS NULL
@@ -877,6 +877,7 @@ type ListCompendiumNamesRow struct {
 	Kind      enum.CompendiumKind
 	Slug      string
 	Name      string
+	SourceKey string
 	SubraceOf string
 }
 
@@ -898,6 +899,7 @@ func (q *Queries) ListCompendiumNames(ctx context.Context, arg ListCompendiumNam
 			&i.Kind,
 			&i.Slug,
 			&i.Name,
+			&i.SourceKey,
 			&i.SubraceOf,
 		); err != nil {
 			return nil, err

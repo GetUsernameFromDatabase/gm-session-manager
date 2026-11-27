@@ -172,9 +172,9 @@ func (a *App) itemPicks(ctx context.Context, q string, campaignID int64, armor b
 			if it.Armor.StrReq > 0 {
 				detail += fmt.Sprintf(" · Str %d", it.Armor.StrReq)
 			}
-			picks = append(picks, views.BuilderPick{EntryID: r.ID, Slug: r.Slug, Name: r.Name, Detail: detail})
+			picks = append(picks, views.BuilderPick{EntryID: r.ID, Slug: r.Slug, Name: r.Name, Detail: detail, Source: r.SourceKey})
 		case !armor && it.Damage != "":
-			picks = append(picks, views.BuilderPick{EntryID: r.ID, Slug: r.Slug, Name: r.Name, Detail: strings.Trim(it.Damage+" · "+it.Properties, " ·")})
+			picks = append(picks, views.BuilderPick{EntryID: r.ID, Slug: r.Slug, Name: r.Name, Detail: strings.Trim(it.Damage+" · "+it.Properties, " ·"), Source: r.SourceKey})
 		}
 	}
 	return picks, nil
@@ -198,7 +198,7 @@ func (a *App) featurePicks(ctx context.Context, q string, campaignID int64) ([]v
 	}
 	var picks []views.BuilderPick
 	for _, r := range feats {
-		picks = append(picks, views.BuilderPick{EntryID: r.ID, Name: r.Name, Detail: "Feat"})
+		picks = append(picks, views.BuilderPick{EntryID: r.ID, Name: r.Name, Detail: "Feat", Source: r.SourceKey})
 	}
 	classes, err := a.searchRows(ctx, q, string(enum.KindClass), campaignID)
 	if err != nil {
@@ -213,7 +213,7 @@ func (a *App) featurePicks(ctx context.Context, q string, campaignID int64) ([]v
 		for _, f := range data.(*compendium.ClassData).Features {
 			name := strings.ToLower(f.Name)
 			if !slices.ContainsFunc(words, func(w string) bool { return !strings.Contains(name, w) }) && len(f.Levels) > 0 {
-				picks = append(picks, views.BuilderPick{EntryID: r.ID, Feature: f.Name, Name: f.Name, Detail: r.Name + " " + strconv.Itoa(f.Levels[0])})
+				picks = append(picks, views.BuilderPick{EntryID: r.ID, Feature: f.Name, Name: f.Name, Detail: r.Name + " " + strconv.Itoa(f.Levels[0]), Source: r.SourceKey})
 			}
 		}
 	}

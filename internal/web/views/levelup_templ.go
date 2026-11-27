@@ -88,7 +88,7 @@ func LevelUpPage(l Layout, v LevelUpView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = formSelect("class", "class", optionItems("Choose a class…", v.Classes, func(o Option) string { return o.Slug }), v.Selected, "", "").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = formSelect("class", "class", optionItems(ctx, "Choose a class…", v.Classes, func(o Option) string { return o.Slug }), v.Selected, "", "").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -823,7 +823,7 @@ func levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), v.Form.Get("feat"), "", "").Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = formSelect("", "feat", optionItems(ctx, "—", v.Feats, func(o Option) string { return o.Slug }), v.Form.Get("feat"), "", "").Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1017,7 +1017,7 @@ func SubclassPicker(subs []Option, panels []SubclassPanel, selected string, leve
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = formSelect("subclass", "subclass", optionItems("Decide later", subs, func(o Option) string { return o.Slug }), selected, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = formSelect("subclass", "subclass", optionItems(ctx, "Decide later", subs, func(o Option) string { return o.Slug }), selected, "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1638,6 +1638,10 @@ func spellBoxes(id string, limit int, spells []Option, form url.Values) templ.Co
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
+				templ_7745c5c3_Err = addedAtHome(sp.Source).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 				return nil
 			})
 			templ_7745c5c3_Err = checkField("spell", sp.Slug, slices.Contains(form["spell"], sp.Slug) && !taughtPicked(sp.TaughtBy, form)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var72), templ_7745c5c3_Buffer)
@@ -1681,7 +1685,7 @@ func abilitySelect(name, label, value string) templ.Component {
 		var templ_7745c5c3_Var76 string
 		templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 309, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/levelup.templ`, Line: 310, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 		if templ_7745c5c3_Err != nil {

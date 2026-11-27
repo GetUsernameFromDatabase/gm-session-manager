@@ -58,7 +58,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		return v, err
 	}
 	for _, cl := range classes {
-		v.Classes = append(v.Classes, views.Option{Slug: cl.Slug, Name: cl.Name})
+		v.Classes = append(v.Classes, views.Option{Slug: cl.Slug, Name: cl.Name, Source: cl.SourceKey})
 	}
 	if classSlug == "" {
 		return v, nil
@@ -103,7 +103,7 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		if td == nil || !dnd5e.MeetsPrerequisite(td.Prerequisite, sheet, offer.plan.NewLevel, nil, compendium.Slugify) || takenFeat(sheet, f.Name, td) {
 			continue
 		}
-		v.Feats = append(v.Feats, views.Option{Slug: f.Slug, Name: f.Name})
+		v.Feats = append(v.Feats, views.Option{Slug: f.Slug, Name: f.Name, Source: f.SourceKey})
 		groups, err := a.featChoices(ctx, "feat_"+f.Slug, f.Name, td, "", sheet, ch.CampaignID)
 		if err != nil {
 			return v, err
@@ -198,7 +198,7 @@ func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]
 	var out []views.Option
 	for _, s := range spells {
 		if !slices.ContainsFunc(known, func(have dnd5e.Spell) bool { return have.Slug == s.Slug }) {
-			out = append(out, views.Option{Slug: s.Slug, Name: s.Name, Level: int(s.Level)})
+			out = append(out, views.Option{Slug: s.Slug, Name: s.Name, Level: int(s.Level), Source: s.SourceKey})
 		}
 	}
 	return out, nil

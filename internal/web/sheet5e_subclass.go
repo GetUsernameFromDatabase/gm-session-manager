@@ -89,7 +89,7 @@ func subclassOptions(subs []sqlc.ListSubclassesOfRow) []views.Option {
 		if slices.ContainsFunc(subs, func(o sqlc.ListSubclassesOfRow) bool { return o.Slug != s.Slug && strings.EqualFold(o.Name, s.Name) }) {
 			name += " · " + s.SourceKey
 		}
-		out = append(out, views.Option{Slug: s.Slug, Name: name})
+		out = append(out, views.Option{Slug: s.Slug, Name: name, Source: s.SourceKey})
 	}
 	return out
 }

@@ -31,7 +31,7 @@ func (a *App) fiveToolsView(ctx context.Context, msg string, failed bool) (views
 	dir := a.compendiumDir()
 	books, err := compendium.FiveToolsBooks(ctx, dir)
 	if err != nil {
-		msg, failed = "Could not load the book list: "+err.Error(), true
+		msg, failed = netErrMsg("Could not load the book list", err), true
 	}
 	have, ierr := compendium.ImportedFiveTools(dir)
 	if ierr != nil {
@@ -156,7 +156,7 @@ func (a *App) fiveToolsImport(c *gin.Context) error {
 	dir := a.compendiumDir()
 	all, err := compendium.FiveToolsBooks(ctx, dir)
 	if err != nil {
-		notice.Msg, notice.Failed = "Could not load the book list: "+err.Error(), true
+		notice.Msg, notice.Failed = netErrMsg("Could not load the book list", err), true
 		return a.renderCompendium(c, notice)
 	}
 	var picked []compendium.Book
@@ -341,7 +341,11 @@ func (a *App) sourceOrder(c *gin.Context) error {
 		a.fail(c, http.StatusBadRequest, "Send every source in its new order.")
 		return nil
 	}
-	err := compendium.SetSourceOrder(c.Request.Context(), a.Store, f.Keys)
+	ctx := c.Request.Context()
+	err := compendium.SetSourceOrder(ctx, a.Store, f.Keys)
+	if err == nil {
+		err = a.sinkHomeSources(ctx, a.Store.Queries)
+	}
 	if errors.Is(err, compendium.ErrNoSource) {
 		a.fail(c, http.StatusConflict, "The sources changed meanwhile: reload the page and drag again.")
 		return nil

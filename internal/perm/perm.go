@@ -245,3 +245,8 @@ func CanReadImage(v Viewer, linkingBlocks []Block, look ImageLook) bool {
 func CanTakeHome(v Viewer, characterID int64) bool {
 	return v.IsGM || v.owns(characterID)
 }
+
+// CanAddSources reports whether v may add compendium sources (books, Open5e,
+// folder, web page): the GM, and a player in the player app for their home
+// campaign.
+func CanAddSources(v Viewer) bool { return v.IsGM || v.AtHome }

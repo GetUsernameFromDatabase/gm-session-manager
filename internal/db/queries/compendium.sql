@@ -391,7 +391,7 @@ ORDER BY e.slug;
 -- a subrace's base: the wizard offers those as variants, free-text pickers
 -- suggest them. Only entries a player in campaign_id may see (0: all).
 -- name: ListCompendiumNames :many
-SELECT e.id, e.kind, e.slug, e.name, CAST(COALESCE(json_extract(e.data_json, '$.subrace_of'), '') AS TEXT) AS subrace_of
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, CAST(COALESCE(json_extract(e.data_json, '$.subrace_of'), '') AS TEXT) AS subrace_of
 FROM compendium_entries AS e
 WHERE e.kind = sqlc.arg(kind) AND e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(sqlc.arg(campaign_id) AS INTEGER))
   AND json_extract(e.data_json, '$.version_of') IS NULL

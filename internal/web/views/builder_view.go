@@ -267,6 +267,8 @@ const OpMastery = "mastery"
 type BuilderPick struct {
 	EntryID                     int64
 	Slug, Feature, Name, Detail string
+	// Source is the entry's source key, for the "Added at home" mark.
+	Source string
 }
 
 // Focus forms are reached by tapping one thing on the sheet, so they have no

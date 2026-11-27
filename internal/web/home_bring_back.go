@@ -6,6 +6,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,15 @@ func (a *App) bringBack(ctx context.Context, homeCharacterID int64) (export.Take
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		var err error
 		if th, _, err = buildTakeHome(ctx, q, ch); err != nil {
+			return err
+		}
+		// Only what the table lacks: sources added at home that the home
+		// campaign allows (homebrew is never one), with their entries.
+		keys, err := q.ListHomeSourceKeys(ctx)
+		if err != nil {
+			return err
+		}
+		if err := takeHomeCompendium(ctx, q, ch, &th, func(k string) bool { return slices.Contains(keys, k) }); err != nil {
 			return err
 		}
 		blocks, err := q.ListOwnNoteBlocks(ctx, nullID(ch.ID))

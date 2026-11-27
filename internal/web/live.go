@@ -250,9 +250,9 @@ func (a *App) loadRosterLive(ctx context.Context, vc viewerCtx, k liveKey) (live
 }
 
 // loadImportLive is the import tab's progress (id 0), or the starting sets
-// of the empty compendium (id 1).
+// of the empty compendium (id 1). Whoever may add sources sees it.
 func (a *App) loadImportLive(_ context.Context, vc viewerCtx, k liveKey) (liveView, error) {
-	if !vc.viewer.IsGM {
+	if !perm.CanAddSources(vc.viewer) {
 		return liveView{}, nil
 	}
 	j := a.fiveTools.get()
@@ -263,9 +263,9 @@ func (a *App) loadImportLive(_ context.Context, vc viewerCtx, k liveKey) (liveVi
 }
 
 // loadSourcesLive is the priority card of the campaign's compendium (id; 0
-// is the whole one).
+// is the whole one), for whoever may add sources (a home player: their own campaign).
 func (a *App) loadSourcesLive(ctx context.Context, vc viewerCtx, k liveKey) (liveView, error) {
-	if !vc.viewer.IsGM {
+	if !perm.CanAddSources(vc.viewer) || !vc.inCampaign(k.num()) {
 		return liveView{}, nil
 	}
 	sources, shared, counts, err := a.sourcesCard(ctx, k.num())

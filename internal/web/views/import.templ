@@ -265,6 +265,22 @@ templ StaleBooksBanner(books []compendium.Book, auto bool) {
 	}
 }
 
+// homeSourcesWarning tells the player app's Import tab that the GM reviews
+// what is added here; shown with a character's name only.
+templ homeSourcesWarning(name string) {
+	if name != "" {
+		@alert.Alert(alert.Props{Class: "mb-4 border-amber-500/50 bg-amber-500/10 text-amber-800 *:data-[slot=alert-description]:text-amber-800/90 dark:text-amber-300 dark:*:data-[slot=alert-description]:text-amber-300/90"}) {
+			@icon.TriangleAlert()
+			@alert.Title() {
+				Sources you add here need your GM's OK
+			}
+			@alert.Description() {
+				<p>{ "Your GM reviews sources you add here when you bring " + name + " back. If they decline one, items and spells from it are removed. A class, subclass, species, background or feat from it means they can't accept " + name + " as is: you'd revert that level here and save a new bring-back file. Ask your GM first if you plan to build on it." }</p>
+			}
+		}
+	}
+}
+
 // SourcePriorityLive is the priority card of campaign's compendium (0: the
 // whole one) as a live view. Live refetches swap this wrapper out of band;
 // the card's own posts swap the card inside it, and "contents" keeps the
@@ -337,13 +353,14 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 							// The text itself selects for copying (data-no-drag); the space after it drags.
 							<span class="cursor-text truncate font-medium" title={ s.Attribution } data-no-drag>{ s.SourceKey }</span>
 							<span hx-target={ "#" + SourcesID } hx-swap="outerHTML">
-								if s.SourceKey != compendium.HomebrewSource {
+								if s.SourceKey != compendium.HomebrewSource && !fromTable(ctx, s.SourceKey) {
 									@sourceDeleteButton(s.SourceKey)
 								}
 							</span>
 							{{ count := counts[s.SourceKey] }}
 							{{ sh, hasShared := shared[s.SourceKey] }}
-							<div class="col-start-3 min-w-0 text-xs text-muted-foreground">
+							<div class="col-start-3 flex min-w-0 flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+								@addedAtHome(s.SourceKey)
 								if s.Edition != "" {
 									<span class="cursor-text" data-no-drag>{ s.Edition + " · " }</span>
 								}

@@ -411,6 +411,13 @@ func (a *App) sourceDelete(c *gin.Context) error {
 		a.fail(c, http.StatusConflict, errImportRunning)
 		return nil
 	}
+	if a.Player {
+		// The table's sources stay at home; a missing row behaves as before.
+		if row, err := a.Store.GetCompendiumSource(ctx, key); err == nil && row.Path == takeHomeSourcePath {
+			a.fail(c, http.StatusConflict, "This source came from your GM's table, so it stays.")
+			return nil
+		}
+	}
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		users, err := sourceUsers(ctx, q, 0, key)
 		if err != nil {
@@ -516,6 +523,9 @@ func (a *App) campaignSourcesSet(c *gin.Context) error {
 			if err != nil {
 				return err
 			}
+		}
+		if f.On {
+			return a.sinkHomeSources(ctx, q)
 		}
 		return nil
 	})

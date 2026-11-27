@@ -331,6 +331,28 @@ func TestCompendiumReachesEveryCampaign(t *testing.T) {
 	}
 }
 
+// The import's progress reaches whoever may add sources: the GM and the home
+// player, not a player at the table.
+func TestImportReachesWhoAddsSources(t *testing.T) {
+	h := New(fakeHandler{})
+	clients := map[string]*Client{
+		"gm":     NewClient(1, perm.GM, 0, "pc"),
+		"home":   NewClient(2, perm.Viewer{CharacterID: 7, AtHome: true}, 100, "pc"),
+		"player": NewClient(3, perm.Player(8), 101, "phone"),
+	}
+	for _, c := range clients {
+		h.register(c)
+		h.sync(c, h.epoch, 0, true)
+		drain(c)
+	}
+	h.Publish(0, Topic{Kind: TopicImport})
+	for name, want := range map[string]int{"gm": 1, "home": 1, "player": 0} {
+		if m := drain(clients[name]); len(m) != want {
+			t.Errorf("%s got %d messages, want %d: %+v", name, len(m), want, m)
+		}
+	}
+}
+
 func TestDMGetsEveryCampaignsRequests(t *testing.T) {
 	h := New(fakeHandler{})
 	gm := NewClient(2, perm.GM, 0, "pc")

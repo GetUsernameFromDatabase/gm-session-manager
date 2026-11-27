@@ -637,12 +637,14 @@ templ BuilderPicks(characterID int64, pick string, picks []BuilderPick) {
 			})) {
 				<span class="truncate">{ p.Name }</span>
 				<span class="text-xs text-muted-foreground">{ p.Detail }</span>
+				@addedAtHome(p.Source)
 			}
 		} else {
 			<li class="flex items-center justify-between gap-2 py-0.5">
 				<span class="min-w-0 truncate">
 					{ p.Name }
 					<span class="text-xs text-muted-foreground">{ p.Detail }</span>
+					@addedAtHome(p.Source)
 				</span>
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{
 					"hx-get":    pickURL(characterID, verbWeapons, opWeaponAdd, p),
@@ -701,6 +703,7 @@ templ BuilderPickItems(characterID int64, picks []BuilderPick) {
 		@combobox.Item(combobox.ItemProps{Value: p.Name, Label: p.Name, Attributes: templ.Attributes{"data-builder-load": pickURL(characterID, verbFeatures, opFeatureAdd, p)}}) {
 			{ p.Name }
 			<span class="text-xs text-muted-foreground">{ p.Detail }</span>
+			@addedAtHomeIcon(p.Source)
 		}
 	}
 	<template data-combobox-create-item>

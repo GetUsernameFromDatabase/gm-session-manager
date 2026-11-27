@@ -73,6 +73,9 @@ func (a *App) Router() *gin.Engine {
 	r.Use(securityHeaders, sameOriginOnly(http.NewCrossOriginProtection()))
 	a.mountAssets(r)
 	r.Use(a.Auth.Middleware(), a.recordRequest, collectHeld)
+	if a.Player {
+		r.Use(a.homeSources)
+	}
 
 	gm := auth.RequireAdmin(a.gmOnly)
 
@@ -126,7 +129,7 @@ func (a *App) Router() *gin.Engine {
 	camp.POST(route.Rename, gm, a.h(a.renameCampaign))
 	camp.POST(route.RequestDecision, gm, a.decideRequest)
 	camp.POST(route.RequestsDecision, gm, a.decideAll)
-	camp.POST(route.Sources, gm, a.h(a.campaignSourcesSet))
+	camp.POST(route.Sources, a.sourcesAdmin(gm), a.h(a.campaignSourcesSet))
 	camp.GET(route.Switcher, a.h(a.switcher))
 	r.POST(route.SessionKick, gm, a.h(a.kick))
 

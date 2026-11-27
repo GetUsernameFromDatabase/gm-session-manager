@@ -51,7 +51,8 @@ const (
 var (
 	// everyCampaign topics reach every client, whatever its campaign.
 	everyCampaign = []TopicKind{TopicCompendium, TopicHabitats}
-	// gmEverywhere topics reach the GM on whatever page they are on.
+	// gmEverywhere topics reach whoever may add sources (the GM; the home
+	// player in the player app) on whatever page they are on.
 	gmEverywhere = []TopicKind{TopicPending, TopicImport}
 )
 
@@ -313,11 +314,11 @@ func (h *Hub) sync(c *Client, epoch string, seq uint64, hello bool) {
 }
 
 // receives reports whether c gets an event: its own campaign's, plus the
-// everyCampaign topics and, for the GM, the gmEverywhere ones.
+// everyCampaign topics and, for who may add sources, the gmEverywhere ones.
 func (c *Client) receives(campaignID int64, topics []Topic) bool {
 	return c.CampaignID == campaignID ||
 		slices.ContainsFunc(topics, func(t Topic) bool { return slices.Contains(everyCampaign, t.Kind) }) ||
-		c.Viewer.IsGM && slices.ContainsFunc(topics, func(t Topic) bool { return slices.Contains(gmEverywhere, t.Kind) })
+		perm.CanAddSources(c.Viewer) && slices.ContainsFunc(topics, func(t Topic) bool { return slices.Contains(gmEverywhere, t.Kind) })
 }
 
 func (h *Hub) enqueueLocked(c *Client, m message) {

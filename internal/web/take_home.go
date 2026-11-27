@@ -82,22 +82,8 @@ func (a *App) takeHome(c *gin.Context) error {
 		return err
 	}
 
-	sources, err := a.Store.ListTakeHomeSources(ctx, ch.CampaignID)
-	if err != nil {
+	if err := takeHomeCompendium(ctx, a.Store.Queries, ch, &th, nil); err != nil {
 		return err
-	}
-	for _, s := range sources {
-		th.Sources = append(th.Sources, export.TakeHomeSource(s))
-	}
-	entries, err := a.Store.ListTakeHomeEntries(ctx, sqlc.ListTakeHomeEntriesParams{CharacterID: nullID(ch.ID), CampaignID: ch.CampaignID})
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		th.Entries = append(th.Entries, export.TakeHomeEntry{
-			Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: e.SourceKey, Data: json.RawMessage(e.DataJson),
-			BodyText: e.BodyText, ContentHash: e.ContentHash, Scoped: e.Scoped,
-		})
 	}
 	th.Manifest = export.TakeHomeManifest{
 		Format: export.TakeHomeFormat, Kind: export.KindTakeHome, AppVersion: a.Version, Token: rec.Token, ServerID: serverID,
@@ -111,6 +97,36 @@ func (a *App) takeHome(c *gin.Context) error {
 	if err := export.WriteTakeHome(c.Writer, th, a.attachmentsDir()); err != nil {
 		// Headers are gone; the truncated zip tells the browser it failed.
 		a.serverError(c, err)
+	}
+	return nil
+}
+
+// takeHomeCompendium adds to th the campaign's sources and the entries the
+// character may use (character kinds, no monsters), only of the sources keep
+// accepts (nil: all). Homebrew entries have the source key "homebrew", so a
+// keep that does not accept it drops them.
+func takeHomeCompendium(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, th *export.TakeHome, keep func(key string) bool) error {
+	sources, err := q.ListTakeHomeSources(ctx, ch.CampaignID)
+	if err != nil {
+		return err
+	}
+	for _, s := range sources {
+		if keep == nil || keep(s.SourceKey) {
+			th.Sources = append(th.Sources, export.TakeHomeSource(s))
+		}
+	}
+	entries, err := q.ListTakeHomeEntries(ctx, sqlc.ListTakeHomeEntriesParams{CharacterID: nullID(ch.ID), CampaignID: ch.CampaignID})
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if keep != nil && !keep(e.SourceKey) {
+			continue
+		}
+		th.Entries = append(th.Entries, export.TakeHomeEntry{
+			Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: e.SourceKey, Data: json.RawMessage(e.DataJson),
+			BodyText: e.BodyText, ContentHash: e.ContentHash, Scoped: e.Scoped,
+		})
 	}
 	return nil
 }

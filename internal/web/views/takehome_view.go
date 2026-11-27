@@ -1,6 +1,7 @@
 package views
 
 import (
+	"strings"
 	"time"
 
 	"github.com/a-h/templ"
@@ -64,13 +65,20 @@ type HomeCopyView struct {
 type HomeConfirmView struct {
 	Name     string
 	Old, New time.Time
+	// Sources are those added here that the copy allows and the new file does
+	// not list: the new copy leaves them off.
+	Sources []string
 }
 
 // message explains what replacing does, by which file is newer.
 func (v HomeConfirmView) message() string {
 	const day = "2 Jan"
+	msg := "The copy here was taken home " + v.Old.Local().Format(day) + "; this file is from " + v.New.Local().Format(day) + ". Replacing it drops the changes made here since " + v.Old.Local().Format(day) + "."
 	if v.New.Before(v.Old) {
-		return "This file (" + v.New.Local().Format(day) + ") is older than the copy here (" + v.Old.Local().Format(day) + "). Replacing it drops the changes made here."
+		msg = "This file (" + v.New.Local().Format(day) + ") is older than the copy here (" + v.Old.Local().Format(day) + "). Replacing it drops the changes made here."
 	}
-	return "The copy here was taken home " + v.Old.Local().Format(day) + "; this file is from " + v.New.Local().Format(day) + ". Replacing it drops the changes made here since " + v.Old.Local().Format(day) + "."
+	if len(v.Sources) > 0 {
+		msg += " The new copy also leaves off the sources added here (" + strings.Join(v.Sources, ", ") + "): add them again from its compendium's Import tab."
+	}
+	return msg
 }

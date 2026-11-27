@@ -24,7 +24,7 @@ templ LevelUpPage(l Layout, v LevelUpView) {
 			@label.Label(label.Props{For: "class-trigger"}) {
 				Class
 			}
-			@formSelect("class", "class", optionItems("Choose a class…", v.Classes, func(o Option) string { return o.Slug }), v.Selected, "", "")
+			@formSelect("class", "class", optionItems(ctx, "Choose a class…", v.Classes, func(o Option) string { return o.Slug }), v.Selected, "", "")
 			<noscript>
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
 					Show
@@ -142,7 +142,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 								@abilitySelect("asi1", "+1 or +2 to", v.Form.Get("asi1"))
 								@abilitySelect("asi2", "and +1 to", v.Form.Get("asi2"))
 								<span class="text-muted-foreground">or feat</span>
-								@formSelect("", "feat", optionItems("—", v.Feats, func(o Option) string { return o.Slug }), v.Form.Get("feat"), "", "")
+								@formSelect("", "feat", optionItems(ctx, "—", v.Feats, func(o Option) string { return o.Slug }), v.Form.Get("feat"), "", "")
 							</div>
 							<p class="text-xs text-muted-foreground">Pick one ability for +2, two different abilities for +1 each, or a feat. A higher Constitution modifier adds hit points for every level, earlier ones included.</p>
 							for _, f := range v.Feats {
@@ -188,7 +188,7 @@ templ levelUpForm(v LevelUpView, p dnd5e.LevelUpPlan) {
 // two sources may name a subclass alike) with a panel per subclass that shows
 // while it is picked; features gained at or below level start open.
 templ SubclassPicker(subs []Option, panels []SubclassPanel, selected string, level int) {
-	@formSelect("subclass", "subclass", optionItems("Decide later", subs, func(o Option) string { return o.Slug }), selected, "", "")
+	@formSelect("subclass", "subclass", optionItems(ctx, "Decide later", subs, func(o Option) string { return o.Slug }), selected, "", "")
 	for _, sp := range panels {
 		<div class="mt-2 space-y-1 rounded-md border p-3 text-sm" data-show-for={ "subclass=" + sp.Slug } hidden?={ selected != sp.Slug }>
 			<div class="font-medium">{ sp.Name }</div>
@@ -299,6 +299,7 @@ templ spellBoxes(id string, limit int, spells []Option, form url.Values) {
 							L{ fmt.Sprint(sp.Level) }
 						}
 					</span>
+					@addedAtHome(sp.Source)
 				}
 			</div>
 		}

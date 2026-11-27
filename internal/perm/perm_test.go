@@ -522,3 +522,23 @@ func TestLocksShared(t *testing.T) {
 		}
 	}
 }
+
+func TestCanAddSources(t *testing.T) {
+	home := Player(alice)
+	home.AtHome = true
+	tests := []struct {
+		name string
+		v    Viewer
+		want bool
+	}{
+		{"gm", GM, true},
+		{"table player", asAlice, false},
+		{"home player", home, true},
+		{"visitor", anon, false},
+	}
+	for _, tc := range tests {
+		if got := CanAddSources(tc.v); got != tc.want {
+			t.Errorf("%s: CanAddSources = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

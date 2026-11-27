@@ -30,6 +30,8 @@ type CompendiumView struct {
 	Habitat       string
 	HabitatCounts []sqlc.CountHabitatsRow
 	IsGM          bool
+	// CanImport shows the Import tab: the GM, and the home player in the player app.
+	CanImport bool
 	// Homebrew is every homebrew entry, with the campaigns each player
 	// entry is linked to and the campaigns it could be, for the GM.
 	Homebrew      []sqlc.ListHomebrewRow
@@ -71,7 +73,7 @@ const (
 // openTab is the page tab to show first: an import message lands on Import.
 func (v CompendiumView) openTab() string {
 	switch {
-	case v.IsGM && (v.Import.Tab != "" || v.Tab == CompendiumTabImport):
+	case v.CanImport && (v.Import.Tab != "" || v.Tab == CompendiumTabImport):
 		return CompendiumTabImport
 	case v.Tab == CompendiumTabHomebrew:
 		return CompendiumTabHomebrew
@@ -105,6 +107,9 @@ type ImportNotice struct {
 	// that the campaign leaves off (offered with "Use selected").
 	Off      []string
 	Campaign int64
+	// HomeName is the home character's name in the player app; it shows the
+	// warning that sources added here need the GM's review.
+	HomeName string
 }
 
 // SourcesBackCompendium is the Sources form's back value that sends the GM
@@ -505,4 +510,38 @@ func homebrewAction(id int64) string {
 		return route.CompendiumHomebrew
 	}
 	return route.Path(route.CompendiumEntry, id)
+}
+
+type homeSourcesCtxKey struct{}
+
+// WithHomeSources marks ctx as rendering in the player app, with keys the
+// sources added at home (the badges and the table sources' protection read it).
+func WithHomeSources(ctx context.Context, keys []string) context.Context {
+	set := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		set[k] = true
+	}
+	return context.WithValue(ctx, homeSourcesCtxKey{}, set)
+}
+
+// homeSource reports whether key was added at home (false when ctx has no set).
+func homeSource(ctx context.Context, key string) bool {
+	set, _ := ctx.Value(homeSourcesCtxKey{}).(map[string]bool)
+	return set[key]
+}
+
+// fromTable reports whether key came with the take-home: the set is there,
+// the key is not in it, and it is not homebrew.
+func fromTable(ctx context.Context, key string) bool {
+	set, ok := ctx.Value(homeSourcesCtxKey{}).(map[string]bool)
+	return ok && !set[key] && key != compendium.HomebrewSource
+}
+
+// homeLabel is label with " (added at home)" for a source added at home, for
+// controls that take plain strings.
+func homeLabel(ctx context.Context, label, sourceKey string) string {
+	if homeSource(ctx, sourceKey) {
+		return label + " (added at home)"
+	}
+	return label
 }

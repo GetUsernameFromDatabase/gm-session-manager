@@ -159,3 +159,31 @@ WHERE character_id = ? AND image_id = ?;
 -- name: SetTakeHomeBlockDoc :exec
 UPDATE note_blocks SET doc_json = ?
 WHERE id = ?;
+
+-- ListHomeSourceKeys lists the sources added at home: not the take-home's
+-- marker path, and not homebrew (its path is '').
+-- name: ListHomeSourceKeys :many
+SELECT source_key FROM compendium_sources
+WHERE path <> 'take-home' AND source_key <> 'homebrew'
+ORDER BY source_key;
+
+-- UpsertTakeHomeSource writes a source the take-home file lists. A source that
+-- was added at home stays the home's: its row is kept as it is.
+-- name: UpsertTakeHomeSource :exec
+INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution, published, priority)
+VALUES (sqlc.arg(source_key), 'take-home', '', sqlc.arg(edition), sqlc.arg(license), sqlc.arg(attribution), sqlc.arg(published), sqlc.arg(priority))
+ON CONFLICT (source_key) DO UPDATE
+SET edition = excluded.edition, license = excluded.license, attribution = excluded.attribution,
+    published = excluded.published, priority = excluded.priority, last_imported = CURRENT_TIMESTAMP
+WHERE compendium_sources.path = 'take-home';
+
+-- SinkHomeSources: in the player app, sources added at home rank below every
+-- source the take-home wrote, keeping their order among themselves. All move by
+-- the same amount, and only when the lowest-numbered one is at or above the
+-- table's highest number (so a second run does nothing).
+-- name: SinkHomeSources :exec
+UPDATE compendium_sources
+SET priority = priority + 1 + (SELECT COALESCE(MAX(priority), 0) FROM compendium_sources WHERE path = 'take-home')
+WHERE path <> 'take-home' AND source_key <> 'homebrew'
+  AND (SELECT MIN(priority) FROM compendium_sources WHERE path <> 'take-home' AND source_key <> 'homebrew')
+      <= (SELECT COALESCE(MAX(priority), 0) FROM compendium_sources WHERE path = 'take-home');

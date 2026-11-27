@@ -160,6 +160,7 @@ templ wizardPick(v WizardView) {
 						for _, o := range v.Options {
 							@combobox.Item(combobox.ItemProps{Value: o.Slug, Label: o.Name}) {
 								{ o.Name }
+								@addedAtHomeIcon(o.Source)
 							}
 						}
 					}
@@ -169,7 +170,7 @@ templ wizardPick(v WizardView) {
 				@label.Label(label.Props{For: "variant-trigger"}) {
 					Variant
 				}
-				@formSelect("variant", "variant", optionItems("Standard", v.Variants, func(o Option) string { return o.Slug }), v.Variant, "", "")
+				@formSelect("variant", "variant", optionItems(ctx, "Standard", v.Variants, func(o Option) string { return o.Slug }), v.Variant, "", "")
 			}
 			<noscript>
 				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {

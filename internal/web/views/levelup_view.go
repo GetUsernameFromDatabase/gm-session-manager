@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -17,6 +18,8 @@ type Option struct {
 	Slug  string
 	Name  string
 	Level int
+	// Source is the entry's source key, for the "Added at home" mark.
+	Source string
 	// TaughtBy are "<group key>=<option>" rules: a lineage picked on the same page
 	// already teaches this spell, so it is not offered while one of them is picked.
 	TaughtBy []string
@@ -228,8 +231,9 @@ func taughtRules(rules []string) string {
 var abilityItems = append([]selectcomp.ItemData{{Value: "", Label: "—"}},
 	selectItems(dnd5e.Abilities, func(a string) string { return a }, func(a string) string { return dnd5e.AbilityNames[a] })...)
 
-// optionItems is a select over opts led by an empty choice labelled none.
-func optionItems(none string, opts []Option, value func(Option) string) []selectcomp.ItemData {
+// optionItems is a select over opts led by an empty choice labelled none; an
+// option from a source added at home says so (the select takes plain labels).
+func optionItems(ctx context.Context, none string, opts []Option, value func(Option) string) []selectcomp.ItemData {
 	return append([]selectcomp.ItemData{{Value: "", Label: none}},
-		selectItems(opts, value, func(o Option) string { return o.Name })...)
+		selectItems(opts, value, func(o Option) string { return homeLabel(ctx, o.Name, o.Source) })...)
 }

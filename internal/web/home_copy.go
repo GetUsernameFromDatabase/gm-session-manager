@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -54,6 +55,21 @@ func (a *App) notPlayerApp(c *gin.Context) {
 	if a.Player {
 		a.fail(c, http.StatusNotFound, "Not found.")
 	}
+}
+
+// homeSources puts the sources added at home on the request's context (the
+// player app only), so the views mark them and protect the table's.
+func (a *App) homeSources(c *gin.Context) {
+	if _, ok := auth.FromContext(c).CharacterID(); !ok {
+		return
+	}
+	keys, err := a.Store.ListHomeSourceKeys(c.Request.Context())
+	if err != nil {
+		a.serverError(c, err)
+		c.Abort()
+		return
+	}
+	c.Request = c.Request.WithContext(views.WithHomeSources(c.Request.Context(), keys))
 }
 
 // onlyPlayerApp answers 404 where only the GM's app runs.
@@ -190,23 +206,39 @@ func (a *App) checkTakeHome(file *export.TakeHomeFile) (export.CharacterFile, er
 			return cf, userError{fmt.Errorf("the look %q has a link that is not a web address", l.Name)}
 		}
 	}
+	return cf, checkFileSources(file)
+}
+
+// checkFileSources checks the compendium part of a take-home or bring-back
+// file: sources with a real key, and entries of a listed source (or homebrew,
+// which a bring-back never lists among its entries: its homebrew is separate).
+// Phase 4 calls it for bring-back files at the table.
+func checkFileSources(file *export.TakeHomeFile) error {
 	known := map[string]bool{}
 	for _, s := range file.Sources {
 		if s.SourceKey == "" || s.SourceKey == homebrewSource {
-			return cf, userError{errors.New("the file lists a source that is not valid")}
+			return userError{errors.New("the file lists a source that is not valid")}
 		}
 		known[s.SourceKey] = true
 	}
 	for _, e := range file.Entries {
+		if e.SourceKey == homebrewSource && file.Manifest.Kind == export.KindBringBack {
+			return userError{errors.New("the file lists homebrew among the compendium entries")}
+		}
 		if e.SourceKey != homebrewSource && !known[e.SourceKey] {
-			return cf, userError{fmt.Errorf("the entry %q comes from a source the file does not list", e.Slug)}
+			return userError{fmt.Errorf("the entry %q comes from a source the file does not list", e.Slug)}
 		}
 	}
-	return cf, nil
+	return nil
 }
 
 // homebrewSource is the compendium source key of homebrew entries.
 const homebrewSource = "homebrew"
+
+// takeHomeSourcePath is compendium_sources.path of a source the take-home
+// wrote; any other path (but homebrew's) means it was added at home. The
+// queries keep the literal 'take-home', like 'homebrew'.
+const takeHomeSourcePath = "take-home"
 
 // homeImport opens a take-home file: a new home copy, or a replacement of the
 // one already here after the player confirmed it.
@@ -261,7 +293,11 @@ func (a *App) homeImport(c *gin.Context) error {
 		if err := json.Unmarshal([]byte(old.ManifestJson), &om); err != nil {
 			return err
 		}
-		a.render(c, http.StatusOK, views.HomeReplaceConfirm(views.HomeConfirmView{Name: cf.Name, Old: om.CreatedAt, New: m.CreatedAt}))
+		lost, err := lostHomeSources(ctx, a.Store.Queries, old.CharacterID, file.Sources)
+		if err != nil {
+			return err
+		}
+		a.render(c, http.StatusOK, views.HomeReplaceConfirm(views.HomeConfirmView{Name: cf.Name, Old: om.CreatedAt, New: m.CreatedAt, Sources: lost}))
 		return nil
 	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
@@ -341,6 +377,31 @@ func (a *App) homeImport(c *gin.Context) error {
 	return nil
 }
 
+// lostHomeSources are the sources added at home that the home copy's campaign
+// allows and the new file does not list: a replace deletes that campaign, so
+// the new copy leaves them off.
+func lostHomeSources(ctx context.Context, q *sqlc.Queries, homeCharacterID int64, listed []export.TakeHomeSource) ([]string, error) {
+	ch, err := q.GetCharacterAny(ctx, homeCharacterID)
+	if err != nil {
+		return nil, err
+	}
+	allowed, err := q.ListCampaignSources(ctx, ch.CampaignID)
+	if err != nil {
+		return nil, err
+	}
+	home, err := q.ListHomeSourceKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var lost []string
+	for _, k := range allowed {
+		if slices.Contains(home, k) && !slices.ContainsFunc(listed, func(s export.TakeHomeSource) bool { return s.SourceKey == k }) {
+			lost = append(lost, k)
+		}
+	}
+	return lost, nil
+}
+
 // oneTable refuses a file from another table than the characters already here.
 func oneTable(ctx context.Context, q *sqlc.Queries, serverID string) error {
 	other, err := q.HasOtherServerHomeCopy(ctx, serverID)
@@ -382,14 +443,23 @@ func importTakeHome(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeF
 
 	// The compendium, shared by every home copy.
 	for _, s := range file.Sources {
-		if err := q.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{
-			SourceKey: s.SourceKey, Path: "take-home", Hash: "", Edition: s.Edition, License: s.License, Attribution: s.Attribution, Published: s.Published,
+		if err := q.UpsertTakeHomeSource(ctx, sqlc.UpsertTakeHomeSourceParams{
+			SourceKey: s.SourceKey, Edition: s.Edition, License: s.License, Attribution: s.Attribution, Published: s.Published, Priority: s.Priority,
 		}); err != nil {
 			return 0, err
 		}
-		if err := q.SetCompendiumSourcePriority(ctx, sqlc.SetCompendiumSourcePriorityParams{Priority: s.Priority, SourceKey: s.SourceKey}); err != nil {
-			return 0, err
-		}
+	}
+	// Sources added at home keep their place below the table's.
+	if err := q.SinkHomeSources(ctx); err != nil {
+		return 0, err
+	}
+	homeKeys, err := q.ListHomeSourceKeys(ctx)
+	if err != nil {
+		return 0, err
+	}
+	atHome := make(map[string]bool, len(homeKeys))
+	for _, k := range homeKeys {
+		atHome[k] = true
 	}
 	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: m.Campaign.Name, System: m.Campaign.System, Edition: m.Campaign.Edition})
 	if err != nil {
@@ -417,6 +487,9 @@ func importTakeHome(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeF
 
 	// Entries: other sources' as they are; homebrew scoped to this campaign.
 	for _, e := range file.Entries {
+		if atHome[e.SourceKey] {
+			continue // the home download is that source's copy
+		}
 		if e.SourceKey != homebrewSource {
 			if err := q.UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{
 				Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: e.SourceKey, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash,

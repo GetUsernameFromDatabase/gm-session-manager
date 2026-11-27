@@ -272,7 +272,7 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 	}
 	for _, n := range names {
 		if n.SubraceOf == "" { // subraces are the variant select's
-			v.Options = append(v.Options, views.Option{Slug: n.Slug, Name: n.Name})
+			v.Options = append(v.Options, views.Option{Slug: n.Slug, Name: n.Name, Source: n.SourceKey})
 		}
 	}
 	if pick == "" {
@@ -316,7 +316,7 @@ func (a *App) speciesVariant(ctx context.Context, v *views.WizardView, e sqlc.Co
 		return e, data, err
 	}
 	for _, s := range subs {
-		v.Variants = append(v.Variants, views.Option{Slug: s.Slug, Name: s.Name + " · " + s.SourceKey})
+		v.Variants = append(v.Variants, views.Option{Slug: s.Slug, Name: s.Name + " · " + s.SourceKey, Source: s.SourceKey})
 	}
 	if v.Variant != "" || !slices.ContainsFunc(subs, func(s sqlc.ListSubracesOfRow) bool { return s.Slug == variant }) {
 		return e, data, nil

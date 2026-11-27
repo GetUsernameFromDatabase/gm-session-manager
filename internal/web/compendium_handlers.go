@@ -28,8 +28,28 @@ import (
 	"gm-session-manager/internal/web/views"
 )
 
+// sourcesAdmin guards the routes that add or manage sources: GM-only at the
+// table, and in the player app also the home player (gm refuses everyone else).
+func (a *App) sourcesAdmin(gm gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if a.Player {
+			w, err := a.whoami(c)
+			if err != nil {
+				a.serverError(c, err)
+				c.Abort()
+				return
+			}
+			if perm.CanAddSources(w.viewer) {
+				return // the chain continues
+			}
+		}
+		gm(c)
+	}
+}
+
 // compendiumRoutes are the compendium's pages under one base (g).
 func (a *App) compendiumRoutes(g *gin.RouterGroup, gm gin.HandlerFunc) {
+	src := a.sourcesAdmin(gm)
 	g.GET("", a.h(a.compendiumPage))
 	g.GET(route.CompendiumSearch, a.h(a.compendiumSearch))
 	g.GET(route.CompendiumRandom, a.h(a.compendiumRandom))
@@ -52,18 +72,18 @@ func (a *App) compendiumRoutes(g *gin.RouterGroup, gm gin.HandlerFunc) {
 	g.POST(route.CompendiumHabitatCopy, gm, a.h(a.habitatCopy))
 	g.GET(route.CompendiumHomebrewNew, a.homebrewNew)
 	g.POST(route.CompendiumHomebrew, a.h(a.homebrewCreate))
-	g.POST(route.CompendiumImport, gm, a.h(a.compendiumImport))
-	g.POST(route.CompendiumFolder, gm, a.h(a.compendiumFolder))
-	g.GET(route.CompendiumFiveTools, gm, a.h(a.fiveToolsList))
-	g.POST(route.CompendiumFiveTools, gm, a.h(a.fiveToolsImport))
-	g.POST(route.CompendiumFiveToolsBookDelete, gm, a.h(a.fiveToolsRemove))
-	g.POST(route.CompendiumFiveToolsAuto, gm, a.h(a.fiveToolsAuto))
-	g.POST(route.CompendiumImportDismiss, gm, a.importDismiss)
-	g.POST(route.CompendiumOpen5e, gm, a.h(a.open5eImport))
-	g.POST(route.CompendiumSourceDelete, gm, a.h(a.sourceDelete))
-	g.POST(route.CompendiumSourceOrder, gm, a.h(a.sourceOrder))
-	g.POST(route.CompendiumPagePreview, gm, a.h(a.compendiumPagePreview))
-	g.POST(route.CompendiumPage, gm, a.h(a.compendiumPageSave))
+	g.POST(route.CompendiumImport, src, a.h(a.compendiumImport))
+	g.POST(route.CompendiumFolder, src, a.h(a.compendiumFolder))
+	g.GET(route.CompendiumFiveTools, src, a.h(a.fiveToolsList))
+	g.POST(route.CompendiumFiveTools, src, a.h(a.fiveToolsImport))
+	g.POST(route.CompendiumFiveToolsBookDelete, src, a.h(a.fiveToolsRemove))
+	g.POST(route.CompendiumFiveToolsAuto, src, a.h(a.fiveToolsAuto))
+	g.POST(route.CompendiumImportDismiss, src, a.importDismiss)
+	g.POST(route.CompendiumOpen5e, src, a.h(a.open5eImport))
+	g.POST(route.CompendiumSourceDelete, src, a.h(a.sourceDelete))
+	g.POST(route.CompendiumSourceOrder, src, a.h(a.sourceOrder))
+	g.POST(route.CompendiumPagePreview, src, a.h(a.compendiumPagePreview))
+	g.POST(route.CompendiumPage, src, a.h(a.compendiumPageSave))
 }
 
 // Keys for what compendiumCampaign resolved: the path's campaign and the
@@ -248,7 +268,10 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 		return nil
 	}
 	ctx := c.Request.Context()
-	v := views.CompendiumView{Query: strings.TrimSpace(c.Query(views.QueryKey)), Kind: c.Query(views.KindKey), IsGM: w.isGM(), Import: notice, Tab: c.Query(views.TabKey), Campaign: viewerCampaign(camp)}
+	v := views.CompendiumView{Query: strings.TrimSpace(c.Query(views.QueryKey)), Kind: c.Query(views.KindKey), IsGM: w.isGM(), CanImport: perm.CanAddSources(w.viewer), Import: notice, Tab: c.Query(views.TabKey), Campaign: viewerCampaign(camp)}
+	if a.Player && w.character != nil {
+		v.Import.HomeName = w.character.Name
+	}
 	v.Import.Dir, v.Import.OnHost, v.Import.Job = a.compendiumDir(), w.id.Loopback, a.fiveTools.get()
 	// Only monsters have habitats, so the filter applies to them alone.
 	if v.Kind == string(enum.KindMonster) {
@@ -256,7 +279,7 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 	}
 	var err error
 	// A source's shared entries, from the GM's priority card; a search leaves them.
-	if w.isGM() && v.Query == "" {
+	if perm.CanAddSources(w.viewer) && v.Query == "" {
 		v.Shared = c.Query(views.SharedKey)
 	}
 	if v.Shared != "" {
@@ -309,7 +332,7 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 	if err := a.homebrewLists(ctx, w, &v); err != nil {
 		return err
 	}
-	if w.isGM() {
+	if perm.CanAddSources(w.viewer) {
 		if v.Sources, v.SharedCounts, v.EntryCounts, err = a.sourcesCard(ctx, viewerCampaign(camp)); err != nil {
 			return err
 		}
@@ -779,7 +802,7 @@ func (a *App) compendiumPagePreview(c *gin.Context) error {
 	}
 	p, err := compendium.FetchPage(c.Request.Context(), f.Page)
 	if err != nil {
-		return a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabPage, Back: back, Page: f.Page, Msg: "Import failed: " + err.Error(), Failed: true})
+		return a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabPage, Back: back, Page: f.Page, Msg: netErrMsg("Import failed", err), Failed: true})
 	}
 	return a.renderPagePreview(c, http.StatusOK, w, views.HomebrewView{Input: compendium.InputForEntry(p.Entry), Page: p, Back: back})
 }
