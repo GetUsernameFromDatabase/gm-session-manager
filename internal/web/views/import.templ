@@ -304,7 +304,7 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 					Source priority
 				}
 				@card.Description() {
-					Higher wins when two sources hold the same entry. Drag or type a position.
+					Higher wins when two sources hold the same entry. Drag or type a position; click or shift-click rows to move or delete several.
 				}
 			}
 			@card.Content(card.ContentProps{Class: "flex min-h-0 flex-col gap-3 md:flex-1"}) {
@@ -326,6 +326,18 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 						}
 					}
 				</div>
+				{{ empty := emptySourceKeys(ctx, sources, counts) }}
+				if len(empty) > 0 {
+					<span hx-target={ "#" + SourcesID } hx-swap="outerHTML">
+						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "w-full " + quietDestructive, Attributes: templ.Attributes{
+							"hx-post": CompendiumPath(ctx, route.CompendiumSourceDelete), "hx-vals": toJSON(map[string][]string{SourceKeyField: empty}),
+							"hx-confirm": "Delete " + utils.IfElse(len(empty) == 1, "1 empty source", fmt.Sprint(len(empty))+" empty sources") + "?",
+						}}) {
+							@icon.Trash2(icon.Props{Size: 16})
+							{ "Delete " + utils.IfElse(len(empty) == 1, "1 empty source", fmt.Sprint(len(empty))+" empty sources") }
+						}
+					</span>
+				}
 				// app.js makes the list sortable (SortableJS) and posts the new order.
 				// A live refetch keeps its scroll (live.js, data-keep-scroll).
 				<ol id={ SourcesID + "-list" } data-keep-scroll class={ "divide-y rounded-lg border text-sm", scrollBox, "md:max-h-none md:min-h-0 md:flex-1" } data-sortable={ CompendiumPath(ctx, CompendiumRest(SourceOrderPath)) } data-sort-target={ "#" + SourcesID }>
@@ -333,10 +345,13 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 						// Two lines: grip, position, full key, delete (homebrew leaves that
 						// cell empty); under the key, edition and count.
 						<li
-							class="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-x-2 cursor-grab bg-card px-3 py-1.5 transition-colors duration-700 active:cursor-grabbing motion-reduce:transition-none data-flash:bg-accent"
+							class="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-x-2 cursor-grab bg-card px-3 py-1.5 transition-colors duration-700 active:cursor-grabbing motion-reduce:transition-none data-flash:bg-accent aria-selected:bg-accent"
 							data-source-key={ s.SourceKey }
 							if s.SourceKey == compendium.HomebrewSource {
 								data-source-homebrew
+							}
+							if s.SourceKey != compendium.HomebrewSource && !fromTable(ctx, s.SourceKey) {
+								data-source-deletable
 							}
 						>
 							<span class="text-muted-foreground" aria-hidden="true">
@@ -375,6 +390,18 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 						</li>
 					}
 				</ol>
+				// app.js shows this while deletable rows are selected and writes the count.
+				<div class="flex items-center gap-2" data-source-selection hidden>
+					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "grow " + quietDestructive, Attributes: templ.Attributes{
+						"type": "button", "data-source-delete-selected": CompendiumPath(ctx, route.CompendiumSourceDelete),
+					}}) {
+						@icon.Trash2(icon.Props{Size: 16})
+						<span data-source-selected-label>Delete selected</span>
+					}
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Attributes: templ.Attributes{"type": "button", "data-source-clear": ""}}) {
+						Clear
+					}
+				</div>
 			}
 		}
 	</div>

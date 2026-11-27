@@ -89,6 +89,18 @@ func sourcePositions(sources []sqlc.CompendiumSource) []int {
 	return out
 }
 
+// emptySourceKeys are the sources holding no entries that the trash button
+// would also offer to delete.
+func emptySourceKeys(ctx context.Context, sources []sqlc.CompendiumSource, counts map[string]sqlc.CountEntriesBySourceRow) []string {
+	var keys []string
+	for _, s := range sources {
+		if s.SourceKey != compendium.HomebrewSource && !fromTable(ctx, s.SourceKey) && counts[s.SourceKey].Total == 0 {
+			keys = append(keys, s.SourceKey)
+		}
+	}
+	return keys
+}
+
 // entryCountText is a source's count chip: shown/total, or the total when
 // lists show every entry.
 func entryCountText(c sqlc.CountEntriesBySourceRow) string {

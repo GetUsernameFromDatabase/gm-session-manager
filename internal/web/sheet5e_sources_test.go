@@ -34,7 +34,7 @@ func TestSourceKeyLimits(t *testing.T) {
 	tagHas(t, pageForm{}, "Page", "max=500") // raising it means raising maxSourceKey
 	tagHas(t, sourceOrderForm{}, "Keys", want)
 	tagHas(t, sourcePreviewForm{}, "Source", want)
-	tagHas(t, sourceDeleteForm{}, "Key", want)
+	tagHas(t, sourceDeleteForm{}, "Keys", want)
 	tagHas(t, campaignSourcesForm{}, "Keys", want)
 	tagHas(t, dnd5e.ClassLevel{}, "Source", want)
 	tagHas(t, dnd5e.ClassLevel{}, "SubclassSource", want)

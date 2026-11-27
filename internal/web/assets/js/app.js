@@ -885,11 +885,54 @@ import {
         delayOnTouchOnly: true, // touch still scrolls the list
         delay: 150,
         animation: 150,
+        multiDrag: true, // click or shift-click selects rows; a drag moves them all
+        // An outside click would deselect on pointerup, before the bar's Delete sees the rows; Esc and Clear deselect.
+        avoidImplicitDeselect: true,
+        onSelect: (e) => selectSourceRow(list, e.item, true),
+        onDeselect: (e) => selectSourceRow(list, e.item, false),
         onEnd(e) {
-          if (e.oldIndex !== e.newIndex) postSourceOrder(list, e.item);
+          // A multi-drag leaves oldIndex unreliable; a needless post of the same order is harmless.
+          if (e.oldIndex !== e.newIndex || e.oldIndicies.some((o, i) => o.index !== e.newIndicies[i]?.index)) postSourceOrder(list, e.item);
         },
       });
     });
+  });
+  // Mirrors the selection into aria-selected and the delete bar (deletable rows only).
+  function selectSourceRow(list, li, on) {
+    li.setAttribute("aria-selected", on);
+    const bar = list.parentElement.querySelector("[data-source-selection]");
+    const n = selectedSourceRows(list).length;
+    bar.hidden = n === 0;
+    bar.querySelector("[data-source-selected-label]").textContent = `Delete ${n} ${n === 1 ? "source" : "sources"}`;
+  }
+  const selectedSourceRows = (list) => [...list.querySelectorAll("[data-source-deletable].sortable-selected")];
+  // utils.deselect fires no onDeselect, so the bar is updated here.
+  function clearSourceSelection(list) {
+    list.querySelectorAll(".sortable-selected").forEach((li) => {
+      Sortable.utils.deselect(li);
+      selectSourceRow(list, li, false);
+    });
+  }
+  // Sortable keeps selected rows in a global list: drop them before a swap
+  // detaches them, or the next multi-drag would carry the old rows along.
+  for (const ev of ["htmx:beforeSwap", "htmx:oobBeforeSwap"]) {
+    document.addEventListener(ev, (e) => e.detail.shouldSwap !== false && e.detail.target?.querySelectorAll?.("[data-sortable]").forEach(clearSourceSelection));
+  }
+  document.addEventListener("click", (e) => {
+    const clear = e.target.closest?.("[data-source-clear]");
+    if (clear) return clearSourceSelection(clear.parentElement.parentElement.querySelector("[data-sortable]"));
+    const btn = e.target.closest?.("[data-source-delete-selected]");
+    if (!btn) return;
+    const list = btn.parentElement.parentElement.querySelector("[data-sortable]");
+    const rows = selectedSourceRows(list);
+    if (!rows.length) return;
+    if (!confirm(`Delete ${rows.length} ${rows.length === 1 ? "source" : "sources"} and all their entries?`)) return;
+    rememberSourceRow(rows[0]);
+    htmx.ajax("POST", btn.dataset.sourceDeleteSelected, { target: list.dataset.sortTarget, swap: "outerHTML", values: { key: rows.map((li) => li.dataset.sourceKey) } });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.target.closest?.("input, textarea, [role=combobox]")) return;
+    document.querySelectorAll("[data-sortable]").forEach(clearSourceSelection);
   });
   function postSourceOrder(list, moved) {
     rememberSourceRow(moved);

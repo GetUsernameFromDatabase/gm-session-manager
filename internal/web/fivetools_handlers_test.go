@@ -450,6 +450,43 @@ func TestSourceDeleteUsed(t *testing.T) {
 	}
 }
 
+// TestSourceDeleteMany: several keys go together or not at all.
+func TestSourceDeleteMany(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	for _, k := range []string{"src-a", "src-b", "src-used"} {
+		e.source(t, k, "2024")
+	}
+	has := func(k string) bool {
+		_, err := e.q().GetCompendiumSource(t.Context(), k)
+		return err == nil
+	}
+	post := func(keys ...string) *httptest.ResponseRecorder {
+		return e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceDelete, gm, url.Values{"key": keys}, true)
+	}
+	if err := e.q().UpdateCharacterSheet(t.Context(), sqlc.UpdateCharacterSheetParams{SheetJson: `{"species_source":"src-used"}`, ID: e.characterID}); err != nil {
+		t.Fatal(err)
+	}
+	if w := post("src-a", "src-used", "src-b"); w.Code == http.StatusOK || !strings.Contains(w.Body.String(), "src-used is used by") {
+		t.Errorf("used key: %d %s", w.Code, w.Body)
+	}
+	if !has("src-a") || !has("src-b") || !has("src-used") {
+		t.Error("a refused request deleted something")
+	}
+	if w := post("src-a", compendium.HomebrewSource); w.Code == http.StatusOK || !strings.Contains(w.Body.String(), "Homebrew cannot be deleted") {
+		t.Errorf("homebrew: %d %s", w.Code, w.Body)
+	}
+	if !has("src-a") {
+		t.Error("homebrew request deleted another key")
+	}
+	if w := post("src-a", "src-b", "src-a"); w.Code != http.StatusOK {
+		t.Fatalf("delete: %d %s", w.Code, w.Body)
+	}
+	if has("src-a") || has("src-b") || !has("src-used") {
+		t.Error("wrong sources left")
+	}
+}
+
 // TestSourceKeyWithSlash: page imports key sources like 5etools:mtf/howler
 // or aidedd:dnd/sorts.php?vf=a+b, whose characters a URL path would mangle;
 // move and delete take the key from the body, which the import tab's

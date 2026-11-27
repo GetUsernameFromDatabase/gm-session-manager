@@ -389,12 +389,12 @@ func sourceInUseMsg(key string, users []string) string {
 	return key + " is used by " + strings.Join(users, ", ") + ". Switch their sources first."
 }
 
-// sourceDeleteForm names the source to delete.
+// sourceDeleteForm names the sources to delete, all or none.
 type sourceDeleteForm struct {
-	Key string `form:"key" validate:"required,max=512"`
+	Keys []string `form:"key" validate:"required,min=1,max=1000,dive,required,max=512"`
 }
 
-// sourceDelete removes a source and its entries unless something uses it.
+// sourceDelete removes sources and their entries unless something uses one.
 func (a *App) sourceDelete(c *gin.Context) error {
 	var f sourceDeleteForm
 	if c.ShouldBind(&f) != nil {
@@ -402,8 +402,9 @@ func (a *App) sourceDelete(c *gin.Context) error {
 		return nil
 	}
 	ctx := c.Request.Context()
-	key := f.Key
-	if key == compendium.HomebrewSource {
+	slices.Sort(f.Keys)
+	f.Keys = slices.Compact(f.Keys)
+	if slices.Contains(f.Keys, compendium.HomebrewSource) {
 		a.fail(c, http.StatusBadRequest, "Homebrew cannot be deleted.")
 		return nil
 	}
@@ -413,29 +414,45 @@ func (a *App) sourceDelete(c *gin.Context) error {
 	}
 	if a.Player {
 		// The table's sources stay at home; a missing row behaves as before.
-		if row, err := a.Store.GetCompendiumSource(ctx, key); err == nil && row.Path == takeHomeSourcePath {
-			a.fail(c, http.StatusConflict, "This source came from your GM's table, so it stays.")
-			return nil
+		for _, key := range f.Keys {
+			if row, err := a.Store.GetCompendiumSource(ctx, key); err == nil && row.Path == takeHomeSourcePath {
+				a.fail(c, http.StatusConflict, "This source came from your GM's table, so it stays.")
+				return nil
+			}
 		}
 	}
+	var usedKey string
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		users, err := sourceUsers(ctx, q, 0, key)
+		users, err := sourceUsers(ctx, q, 0, f.Keys...)
 		if err != nil {
 			return err
 		}
-		if len(users[key]) > 0 {
-			return &sourceUsedError{users[key]}
+		for _, key := range f.Keys {
+			if len(users[key]) > 0 {
+				usedKey = key
+				return &sourceUsedError{users[key]}
+			}
 		}
-		return q.DeleteCompendiumSource(ctx, key)
+		for _, key := range f.Keys {
+			if err := q.DeleteCompendiumSource(ctx, key); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if used, ok := errors.AsType[*sourceUsedError](err); ok {
-		a.fail(c, http.StatusConflict, sourceInUseMsg(key, used.users))
+		a.fail(c, http.StatusConflict, sourceInUseMsg(usedKey, used.users))
 		return nil
 	}
-	if err == nil {
-		err = compendium.RemoveSourceDir(a.compendiumDir(), key)
-	}
 	if err != nil {
+		return err
+	}
+	// Every folder is tried: one locked folder must not leave the rest to come back on the next import.
+	var errs []error
+	for _, key := range f.Keys {
+		errs = append(errs, compendium.RemoveSourceDir(a.compendiumDir(), key))
+	}
+	if err := errors.Join(errs...); err != nil {
 		return err
 	}
 	a.sourcesChanged(c)

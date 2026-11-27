@@ -23,7 +23,16 @@ started=
 # process, and a stray from a killed loop goes too). Linux: the minimum.
 if [ -n "${WINDIR:-}" ]; then
 	alive() { tasklist /FI "PID eq $1" /NH | grep -qw "$1"; }
-	stop_server() { taskkill /F /IM "${BIN##*/}" >/dev/null 2>&1; started=; }
+	stop_server() {
+		taskkill /F /IM "${BIN##*/}" >/dev/null 2>&1
+		# taskkill returns before the process is gone, and a running exe cannot be replaced: wait (up to 5 s).
+		# CSV, because the table format cuts image names at 25 characters.
+		for _ in 1 2 3 4 5 6 7 8 9 10; do
+			tasklist /FI "IMAGENAME eq ${BIN##*/}" /NH /FO CSV | grep -qi "\"${BIN##*/}\"" || break
+			sleep 0.5
+		done
+		started=
+	}
 else
 	alive() { kill -0 "$1" 2>/dev/null; }
 	stop_server() { pkill -f -- "$BIN" 2>/dev/null; started=; }
@@ -79,8 +88,7 @@ start_server() {
 	fi
 	stop_server
 	if [ -z "${NOREBUILD:-}" ]; then
-		rm -f "$BIN"
-		mv "$new" "$BIN"
+		mv "$new" "$BIN" || echo "run: could not replace $BIN; the old build runs. touch $MARKERS/restart to retry"
 	fi
 	"$BIN" $args &
 	started=1
