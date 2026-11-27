@@ -73,8 +73,9 @@ machine it runs on.
 
 `gm-session-manager --player` runs the player app for one person: it
 listens on `127.0.0.1` only over plain HTTP, needs no login, reads no `.env`
-(only the flags `--port`, default 8042, and `--data`, default `data-player/`,
-neither valid without `--player`) and opens the browser itself. The
+(only the flags `--port`, default 8042, `--data`, default `data-player/`, and
+`--no-browser`, none valid without `--player`) and opens the browser itself
+unless given `--no-browser`. The
 archive ships `Player app.bat` (Windows) and `player-app.sh` to start it
 with a double-click.
 

@@ -14,6 +14,7 @@
 #                          touch data/test/.before/stop to quit.
 #        ./run.sh player   the player app (--player, port 8042, data/player/); rebuilds like the real
 #                          instance; touch data/player/restart to force a restart, data/player/stop to quit.
+#                          Opens a browser tab on launch only, not on restarts.
 # A second start of a mode takes over from the first; each quits with its terminal.
 cd "$(dirname "$0")"
 export GOFLAGS="${GOFLAGS:+$GOFLAGS }-tags=nomsgpack" # same build as release (build.sh)
@@ -58,6 +59,7 @@ case $1 in
 player)
 	bin=build/gm-session-manager-player$exe markers=data/player watch=1
 	args=(--player --data data/player --port 8042)
+	restart_args=(--no-browser) # the tab opened on launch is still there
 	;;
 browser)
 	export DATA_DIR=data/test PORT=8443
@@ -131,6 +133,7 @@ restart_server() {
 	[ -z "$norebuild" ] && mv -f "$new" "$bin"
 	"$bin" "${args[@]}" &
 	pid=$!
+	args+=("${restart_args[@]}") restart_args=()
 }
 # One loop at a time: a newer run takes over (an older one waits for every marker).
 pidfile=$markers/run.pid

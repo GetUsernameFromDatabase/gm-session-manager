@@ -22,10 +22,11 @@ func TestParseFlags(t *testing.T) {
 		{name: "player overrides", args: []string{"--player", "--port", "9000", "--data", "x"}, wantPlayer: true, wantPort: 9000, wantData: "x"},
 		{name: "port alone refused", args: []string{"--port", "9000"}, wantErr: true},
 		{name: "data alone refused", args: []string{"--data", "x"}, wantErr: true},
+		{name: "no-browser alone refused", args: []string{"--no-browser"}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			player, port, data, err := parseFlags(tt.args)
+			player, _, port, data, err := parseFlags(tt.args)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected an error")
@@ -39,6 +40,19 @@ func TestParseFlags(t *testing.T) {
 				t.Errorf("got %v %d %q", player, port, data)
 			}
 		})
+	}
+	// A separate loop: a new wantNoBrowser column would touch every row above.
+	for _, tt := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"--player"}, false},
+		{[]string{"--player", "--no-browser"}, true},
+	} {
+		_, noBrowser, _, _, err := parseFlags(tt.args)
+		if err != nil || noBrowser != tt.want {
+			t.Errorf("%v: noBrowser %v, err %v", tt.args, noBrowser, err)
+		}
 	}
 }
 

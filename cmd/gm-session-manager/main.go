@@ -64,25 +64,26 @@ func loopbackHostOnly(next http.Handler) http.Handler {
 	})
 }
 
-// parseFlags reads the command line; --port and --data only make sense for the player app.
-func parseFlags(args []string) (player bool, port int, data string, err error) {
+// parseFlags reads the command line; --port, --data and --no-browser only make sense for the player app.
+func parseFlags(args []string) (player, noBrowser bool, port int, data string, err error) {
 	fs := flag.NewFlagSet("gm-session-manager", flag.ContinueOnError)
 	fs.BoolVar(&player, "player", false, "run the player app on this computer: 127.0.0.1 only, plain HTTP, no admin login, configured by flags only")
+	fs.BoolVar(&noBrowser, "no-browser", false, "do not open the player app in the browser (with --player)")
 	fs.IntVar(&port, "port", config.DefaultPlayerPort, "player app port (with --player)")
 	fs.StringVar(&data, "data", config.DefaultPlayerDataDir, "player app data folder (with --player)")
 	if err = fs.Parse(args); err != nil {
-		return false, 0, "", err
+		return false, false, 0, "", err
 	}
 	given := false
-	fs.Visit(func(f *flag.Flag) { given = given || f.Name == "port" || f.Name == "data" })
+	fs.Visit(func(f *flag.Flag) { given = given || f.Name != "player" })
 	if given && !player {
-		return false, 0, "", errors.New("--port and --data apply only with --player")
+		return false, false, 0, "", errors.New("--port, --data and --no-browser apply only with --player")
 	}
-	return player, port, data, nil
+	return player, noBrowser, port, data, nil
 }
 
 func run() error {
-	player, port, data, err := parseFlags(os.Args[1:])
+	player, noBrowser, port, data, err := parseFlags(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {
 		return nil // the usage is already printed
 	}
@@ -233,7 +234,9 @@ func run() error {
 			slog.Info("listening", "url", url, "data_dir", cfg.DataDir, "version", version)
 			errc <- srv.Serve(base)
 		}()
-		openBrowser(url)
+		if !noBrowser {
+			openBrowser(url)
+		}
 	} else {
 		// Browsers try http:// for an address typed without a scheme, so the same
 		// port redirects plain HTTP to HTTPS.

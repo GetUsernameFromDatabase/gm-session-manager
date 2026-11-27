@@ -1,7 +1,7 @@
 # Graph Report - gm-session-manager  (2026-11-27)
 
 ## Corpus Check
-- 398 files · ~700,454 words
+- 398 files · ~700,569 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 60 file(s) not represented in the graph (top: .templ 50, .css 4, (none) 3)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `98b11a6a`
+- Built from commit: `8d598899`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
