@@ -293,6 +293,22 @@ func (a *App) addHomebrewToSheet(ctx context.Context, ch sqlc.Character, id int6
 	return a.runLine(ctx, ch, line)
 }
 
+// homeBuildSources are the keys the sheet's build (classes, species, background,
+// feats) pins.
+func homeBuildSources(sheetJSON string, keys []string) ([]string, error) {
+	s, err := dnd5e.ParseSheet(sheetJSON)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, k := range keys {
+		if s.BuildPinsSource(k) {
+			out = append(out, k)
+		}
+	}
+	return out, nil
+}
+
 // errNewerSheet means a take-home sheet holds something this app does not know.
 var errNewerSheet = errors.New("the sheet comes from a newer app")
 

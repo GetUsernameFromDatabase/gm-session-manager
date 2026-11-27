@@ -130,6 +130,11 @@ func TestHandoffRoutesPlayerAppOnly(t *testing.T) {
 		{http.MethodPost, route.AtHomeReceive},
 		{http.MethodGet, route.AtHomeHandoff},
 		{http.MethodPost, route.AtHomeHandoffStop},
+		// Without the guard anyone could log in as any table character.
+		{http.MethodPost, route.Path(route.AtHomePlay, 1)},
+		{http.MethodPost, route.Path(route.AtHomeMakeCopy, 1)},
+		{http.MethodPost, route.Path(route.AtHomeFallback, 1)},
+		{http.MethodPost, route.AtHomeNew},
 	} {
 		req := httptest.NewRequestWithContext(t.Context(), r.method, r.path, nil)
 		req.RemoteAddr = loopbackAddr

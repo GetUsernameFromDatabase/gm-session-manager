@@ -177,6 +177,9 @@ const (
 	// The player app's bring-back file and the phone handoff.
 	AtHomeBringBack   = AtHomeCopy + "/bring-back"
 	AtHomeSendPhone   = AtHomeCopy + "/send-to-phone"
+	AtHomeMakeCopy    = AtHomeCopy + Copy
+	AtHomeFallback    = AtHomeCopy + "/fallback"
+	AtHomeNew         = AtHome + "/new"
 	AtHomeReceive     = AtHome + "/receive"
 	AtHomeHandoff     = AtHome + "/handoff"
 	AtHomeHandoffStop = AtHomeHandoff + "/stop"

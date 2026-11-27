@@ -296,10 +296,16 @@ func (c *Character) ChangeSubclass(ref SubclassRef, env Env) error {
 
 // PinsSource reports whether the sheet pins any compendium ref to the source.
 func (s Sheet) PinsSource(key string) bool {
-	if s.SpeciesSource == key || s.BackgroundSource == key || s.Armor != nil && s.Armor.Source == key {
-		return true
-	}
-	return slices.ContainsFunc(s.Classes, func(c ClassLevel) bool { return c.Source == key || c.SubclassSource == key }) ||
-		slices.ContainsFunc(s.Spells, func(sp Spell) bool { return sp.Source == key }) ||
+	return s.BuildPinsSource(key) ||
+		s.Armor != nil && s.Armor.Source == key ||
+		slices.ContainsFunc(s.Spells, func(sp Spell) bool { return sp.Source == key })
+}
+
+// BuildPinsSource is PinsSource for the build only: classes, subclasses,
+// species, background and feats (spells and armor are removed on a decline,
+// the build cannot be).
+func (s Sheet) BuildPinsSource(key string) bool {
+	return s.SpeciesSource == key || s.BackgroundSource == key ||
+		slices.ContainsFunc(s.Classes, func(c ClassLevel) bool { return c.Source == key || c.SubclassSource == key }) ||
 		slices.Contains(slices.Collect(maps.Values(s.FeatSources)), key)
 }

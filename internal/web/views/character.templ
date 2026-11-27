@@ -130,6 +130,17 @@ templ CharacterSheet(s SheetView) {
 				</div>
 			}
 		</div>
+		if s.FallbackFor != "" {
+			<p class="rounded-lg border p-3 text-sm">
+				<strong>{ "Fallback build for " + s.FallbackFor + "." }</strong>
+				{ " Only its build goes back, inside " + s.FallbackFor + "'s file. " }
+				if len(s.FallbackHomeSources) > 0 {
+					{ "It still uses " + sourceList(s.FallbackHomeSources) + " (added here): revert that level-up and level up again with the table's options." }
+				} else {
+					It uses only the table's sources.
+				}
+			</p>
+		}
 		if s.CanSheet && s.C.Sheet.Level() == 0 && !s.C.Sheet.SetUp(StepReview) {
 			<p class="rounded-lg border border-primary/50 bg-primary/5 p-3 text-sm">
 				New character? Choose class, species, scores, background and equipment one step at a time:

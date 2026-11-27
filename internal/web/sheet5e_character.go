@@ -86,8 +86,26 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 		}
 		takenHome = th.CreatedAt
 	}
+	var fallbackFor string
+	var fallbackSources []string
+	if a.Player {
+		owner, err := a.Store.GetFallbackOwner(ctx, nullID(row.ID))
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return views.SheetView{}, err
+		}
+		if err == nil {
+			fallbackFor = owner.Name
+			keys, err := a.Store.ListHomeSourceKeys(ctx)
+			if err != nil {
+				return views.SheetView{}, err
+			}
+			if fallbackSources, err = homeBuildSources(row.SheetJson, keys); err != nil {
+				return views.SheetView{}, err
+			}
+		}
+	}
 	return views.SheetView{
-		CanTakeHome: canTakeHome, TakenHome: takenHome,
+		CanTakeHome: canTakeHome, TakenHome: takenHome, FallbackFor: fallbackFor, FallbackHomeSources: fallbackSources,
 		ID: row.ID, CampaignID: row.CampaignID, Conditions: conds, Looks: perm.VisibleLooks(v, row.ID, looks), SpellData: spells,
 		C:             dnd5e.Character{Name: row.Name, HP: int(row.Hp), MaxHP: int(row.MaxHp), TempHP: int(row.TempHp), Sheet: sheet},
 		CanHP:         perm.CanCharacter(v, row.ID, perm.ScopeHP),

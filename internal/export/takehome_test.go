@@ -204,3 +204,99 @@ func TestReadTakeHomeKinds(t *testing.T) {
 		})
 	}
 }
+
+func sampleNewCharacter() TakeHome {
+	th := sampleBringBack()
+	th.Maps = nil
+	th.Manifest.Kind = KindNewCharacter
+	th.Manifest.Token, th.Manifest.CharacterID = "", 0
+	return th
+}
+
+func sampleFallback() *TakeHomeFallback {
+	return &TakeHomeFallback{
+		MaxHP: 31, Sheet: json.RawMessage(`{"level":3}`),
+		LevelUps: []TakeHomeLevelUp{{ID: 9, MaxHP: 24, Sheet: json.RawMessage(`{}`), CreatedAt: time.Unix(1700000500, 0).UTC()}},
+	}
+}
+
+func TestBringBackFallbackRoundTrip(t *testing.T) {
+	th := sampleBringBack()
+	th.Fallback = sampleFallback()
+	body := writeZip(t, th, t.TempDir())
+	f, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), KindBringBack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Fallback == nil || f.Fallback.MaxHP != 31 || !strings.Contains(string(f.Fallback.Sheet), `"level": 3`) || len(f.Fallback.LevelUps) != 1 || f.Fallback.LevelUps[0].ID != 9 {
+		t.Errorf("fallback lost: %+v", f.Fallback)
+	}
+	plain := writeZip(t, sampleBringBack(), t.TempDir())
+	if f, err := ReadTakeHome(bytes.NewReader(plain), int64(len(plain)), KindBringBack); err != nil || f.Fallback != nil {
+		t.Errorf("a bring-back without a fallback: %v, %+v", err, f)
+	}
+}
+
+func TestNewCharacterRoundTrip(t *testing.T) {
+	body := writeZip(t, sampleNewCharacter(), t.TempDir())
+	f, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), KindNewCharacter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Manifest.Kind != KindNewCharacter || f.Maps != nil || f.Fallback != nil || f.Character.Name != "Aria" {
+		t.Errorf("round trip lost data: %+v", f.TakeHome)
+	}
+}
+
+func TestReadTakeHomeNewCharacterKinds(t *testing.T) {
+	dir := t.TempDir()
+	withFallback := func(th TakeHome) TakeHome { th.Fallback = sampleFallback(); return th }
+	newChar := sampleNewCharacter()
+	withMaps := newChar
+	withMaps.Maps = &HomeIDMaps{}
+	withToken := newChar
+	withToken.Manifest.Token = "tok"
+	withID := newChar
+	withID.Manifest.CharacterID = 7
+	tests := []struct {
+		name string
+		th   TakeHome
+		want Kind
+		err  string
+	}{
+		{"new-character where take-home wanted", newChar, KindTakeHome, "give it to your GM at the table"},
+		{"take-home where new-character wanted", sampleTakeHome(""), KindNewCharacter, "open it in the player app"},
+		{"bring-back where new-character wanted", sampleBringBack(), KindNewCharacter, "bring-back file, not a new-character file"},
+		{"new-character where bring-back wanted", newChar, KindBringBack, "new-character file, not a bring-back file"},
+		{"fallback in take-home", withFallback(sampleTakeHome("")), KindTakeHome, "must not hold fallback.json"},
+		{"fallback in new-character", withFallback(newChar), KindNewCharacter, "must not hold fallback.json"},
+		{"maps in new-character", withMaps, KindNewCharacter, "must not hold maps.json"},
+		{"token in new-character", withToken, KindNewCharacter, "must not name a table character"},
+		{"character id in new-character", withID, KindNewCharacter, "must not name a table character"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := writeZip(t, tt.th, dir)
+			_, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), tt.want)
+			if err == nil || !strings.Contains(err.Error(), tt.err) {
+				t.Errorf("err = %v, want it to contain %q", err, tt.err)
+			}
+		})
+	}
+}
+
+func TestDropMissing(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "here"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	th := sampleTakeHome(ZipFile("gone"))
+	th.Looks = append(th.Looks, TakeHomeLook{ImageID: 2, Name: "Link", URL: "https://example.com/a.png", File: ZipFile("gone2"), FileName: "a"}, TakeHomeLook{ImageID: 3, Name: "Kept", File: ZipFile("here")})
+	missing := DropMissing(&th, dir)
+	if len(th.Looks) != 2 || th.Looks[0].Name != "Link" || th.Looks[0].File != "" || th.Looks[1].Name != "Kept" {
+		t.Errorf("looks = %+v", th.Looks)
+	}
+	if len(th.Notes[0].Blocks[0].Files) != 0 || len(missing) != 3 {
+		t.Errorf("block files %+v, missing %v", th.Notes[0].Blocks[0].Files, missing)
+	}
+}

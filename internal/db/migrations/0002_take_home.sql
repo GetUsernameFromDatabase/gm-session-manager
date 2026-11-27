@@ -30,5 +30,8 @@ CREATE TABLE home_copies (
     server_id           TEXT     NOT NULL CHECK (server_id <> ''),
     table_character_id  INTEGER  NOT NULL,
     manifest_json       TEXT     NOT NULL CHECK (json_valid(manifest_json)),
-    UNIQUE (server_id, table_character_id)
+    -- The build-only copy carried inside the bring-back file.
+    fallback_character_id INTEGER REFERENCES characters (id) ON DELETE SET NULL,
+    UNIQUE (server_id, table_character_id),
+    UNIQUE (fallback_character_id)
 );

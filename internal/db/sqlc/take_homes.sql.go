@@ -13,6 +13,36 @@ import (
 	"gm-session-manager/internal/enum"
 )
 
+const copyCampaignEntryLinks = `-- name: CopyCampaignEntryLinks :exec
+INSERT INTO compendium_campaigns (entry_id, campaign_id)
+SELECT l.entry_id, ?1 FROM compendium_campaigns AS l WHERE l.campaign_id = ?2
+`
+
+type CopyCampaignEntryLinksParams struct {
+	ToCampaignID   int64
+	FromCampaignID int64
+}
+
+func (q *Queries) CopyCampaignEntryLinks(ctx context.Context, arg CopyCampaignEntryLinksParams) error {
+	_, err := q.db.ExecContext(ctx, copyCampaignEntryLinks, arg.ToCampaignID, arg.FromCampaignID)
+	return err
+}
+
+const copyCampaignSources = `-- name: CopyCampaignSources :exec
+INSERT INTO campaign_sources (campaign_id, source_key)
+SELECT ?1, s.source_key FROM campaign_sources AS s WHERE s.campaign_id = ?2
+`
+
+type CopyCampaignSourcesParams struct {
+	ToCampaignID   int64
+	FromCampaignID int64
+}
+
+func (q *Queries) CopyCampaignSources(ctx context.Context, arg CopyCampaignSourcesParams) error {
+	_, err := q.db.ExecContext(ctx, copyCampaignSources, arg.ToCampaignID, arg.FromCampaignID)
+	return err
+}
+
 const createHomeCopy = `-- name: CreateHomeCopy :exec
 INSERT INTO home_copies (character_id, server_id, table_character_id, manifest_json)
 VALUES (?, ?, ?, ?)
@@ -167,8 +197,27 @@ func (q *Queries) DeleteHomebrewByOwner(ctx context.Context, arg DeleteHomebrewB
 	return err
 }
 
+const getFallbackOwner = `-- name: GetFallbackOwner :one
+SELECT ch.id, ch.name FROM home_copies AS h
+JOIN characters AS ch ON ch.id = h.character_id
+WHERE h.fallback_character_id = ? AND ch.deleted_at IS NULL
+`
+
+type GetFallbackOwnerRow struct {
+	ID   int64
+	Name string
+}
+
+// The live character whose bring-back carries this character as its fallback.
+func (q *Queries) GetFallbackOwner(ctx context.Context, fallbackCharacterID sql.NullInt64) (GetFallbackOwnerRow, error) {
+	row := q.db.QueryRowContext(ctx, getFallbackOwner, fallbackCharacterID)
+	var i GetFallbackOwnerRow
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
 const getHomeCopy = `-- name: GetHomeCopy :one
-SELECT character_id, server_id, table_character_id, manifest_json FROM home_copies
+SELECT character_id, server_id, table_character_id, manifest_json, fallback_character_id FROM home_copies
 WHERE character_id = ?
 `
 
@@ -180,12 +229,13 @@ func (q *Queries) GetHomeCopy(ctx context.Context, characterID int64) (HomeCopy,
 		&i.ServerID,
 		&i.TableCharacterID,
 		&i.ManifestJson,
+		&i.FallbackCharacterID,
 	)
 	return i, err
 }
 
 const getHomeCopyByTable = `-- name: GetHomeCopyByTable :one
-SELECT character_id, server_id, table_character_id, manifest_json FROM home_copies
+SELECT character_id, server_id, table_character_id, manifest_json, fallback_character_id FROM home_copies
 WHERE server_id = ? AND table_character_id = ?
 `
 
@@ -202,8 +252,20 @@ func (q *Queries) GetHomeCopyByTable(ctx context.Context, arg GetHomeCopyByTable
 		&i.ServerID,
 		&i.TableCharacterID,
 		&i.ManifestJson,
+		&i.FallbackCharacterID,
 	)
 	return i, err
+}
+
+const getHomeServerID = `-- name: GetHomeServerID :one
+SELECT server_id FROM home_copies LIMIT 1
+`
+
+func (q *Queries) GetHomeServerID(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, getHomeServerID)
+	var server_id string
+	err := row.Scan(&server_id)
+	return server_id, err
 }
 
 const getServerID = `-- name: GetServerID :one
@@ -248,6 +310,102 @@ func (q *Queries) LatestOpenTakeHome(ctx context.Context, characterID int64) (Ta
 		&i.ReturnedAt,
 	)
 	return i, err
+}
+
+const listCampaignHomeHomebrew = `-- name: ListCampaignHomeHomebrew :many
+SELECT e.id, e.kind, e.slug, e.name, e.source_key, e.data_json, e.body_text, e.image_url, e.content_hash, e.imported_at, e.owner_character_id, e.scoped FROM compendium_entries AS e
+JOIN compendium_campaigns AS l ON l.entry_id = e.id
+WHERE e.source_key = 'homebrew' AND e.owner_character_id IS NOT NULL AND l.campaign_id = ?
+ORDER BY e.id
+`
+
+func (q *Queries) ListCampaignHomeHomebrew(ctx context.Context, campaignID int64) ([]CompendiumEntry, error) {
+	rows, err := q.db.QueryContext(ctx, listCampaignHomeHomebrew, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CompendiumEntry{}
+	for rows.Next() {
+		var i CompendiumEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Slug,
+			&i.Name,
+			&i.SourceKey,
+			&i.DataJson,
+			&i.BodyText,
+			&i.ImageUrl,
+			&i.ContentHash,
+			&i.ImportedAt,
+			&i.OwnerCharacterID,
+			&i.Scoped,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHomeCharacters = `-- name: ListHomeCharacters :many
+SELECT ch.id, ch.campaign_id, ch.name, c.name AS campaign_name, ch.sheet_json,
+       COALESCE(h.manifest_json, '') AS manifest_json, h.fallback_character_id
+FROM characters AS ch
+JOIN campaigns AS c ON c.id = ch.campaign_id
+LEFT JOIN home_copies AS h ON h.character_id = ch.id
+WHERE ch.deleted_at IS NULL
+ORDER BY ch.name COLLATE NOCASE, ch.id
+`
+
+type ListHomeCharactersRow struct {
+	ID                  int64
+	CampaignID          int64
+	Name                string
+	CampaignName        string
+	SheetJson           string
+	ManifestJson        string
+	FallbackCharacterID sql.NullInt64
+}
+
+// Every live character on this computer; manifest_json is ” for one with no
+// home copy (a test copy, a new character or a fallback).
+func (q *Queries) ListHomeCharacters(ctx context.Context) ([]ListHomeCharactersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listHomeCharacters)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHomeCharactersRow{}
+	for rows.Next() {
+		var i ListHomeCharactersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CampaignID,
+			&i.Name,
+			&i.CampaignName,
+			&i.SheetJson,
+			&i.ManifestJson,
+			&i.FallbackCharacterID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listHomeCopies = `-- name: ListHomeCopies :many
@@ -724,6 +882,21 @@ func (q *Queries) SetCharacterImageFlags(ctx context.Context, arg SetCharacterIm
 	return err
 }
 
+const setHomeCopyFallback = `-- name: SetHomeCopyFallback :exec
+UPDATE home_copies SET fallback_character_id = ?
+WHERE character_id = ?
+`
+
+type SetHomeCopyFallbackParams struct {
+	FallbackCharacterID sql.NullInt64
+	CharacterID         int64
+}
+
+func (q *Queries) SetHomeCopyFallback(ctx context.Context, arg SetHomeCopyFallbackParams) error {
+	_, err := q.db.ExecContext(ctx, setHomeCopyFallback, arg.FallbackCharacterID, arg.CharacterID)
+	return err
+}
+
 const setTakeHomeBlockDoc = `-- name: SetTakeHomeBlockDoc :exec
 UPDATE note_blocks SET doc_json = ?
 WHERE id = ?
@@ -754,6 +927,37 @@ WHERE path <> 'take-home' AND source_key <> 'homebrew'
 func (q *Queries) SinkHomeSources(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, sinkHomeSources)
 	return err
+}
+
+const softDeleteFallbackOf = `-- name: SoftDeleteFallbackOf :many
+UPDATE characters SET deleted_at = CURRENT_TIMESTAMP
+WHERE deleted_at IS NULL
+  AND id = (SELECT fallback_character_id FROM home_copies WHERE character_id = ?)
+RETURNING id
+`
+
+// A table character deleted at home takes its fallback build with it.
+func (q *Queries) SoftDeleteFallbackOf(ctx context.Context, characterID int64) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, softDeleteFallbackOf, characterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertHomeHomebrew = `-- name: UpsertHomeHomebrew :one

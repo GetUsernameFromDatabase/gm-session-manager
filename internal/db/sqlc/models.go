@@ -192,10 +192,11 @@ type EntityImage struct {
 }
 
 type HomeCopy struct {
-	CharacterID      int64
-	ServerID         string
-	TableCharacterID int64
-	ManifestJson     string
+	CharacterID         int64
+	ServerID            string
+	TableCharacterID    int64
+	ManifestJson        string
+	FallbackCharacterID sql.NullInt64
 }
 
 type Image struct {

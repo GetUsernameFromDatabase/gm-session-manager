@@ -22,6 +22,7 @@ import (
 //
 //	manifest.json            format, kind, versions, token, campaign, the table's character id
 //	maps.json                bring-back only: home id to table id of what came from the table
+//	fallback.json            bring-back only, optional: the build-only fallback (sheet, max HP, level-ups; home ids, not in maps.json)
 //	character.json           CharacterFile
 //	levelups.json            the revert history
 //	looks.json               the character's images
@@ -36,6 +37,7 @@ const (
 
 	manifestFile  = "manifest.json"
 	mapsFile      = "maps.json"
+	fallbackFile  = "fallback.json"
 	characterFile = "character.json"
 	levelUpsFile  = "levelups.json"
 	looksFile     = "looks.json"
@@ -61,6 +63,8 @@ const (
 	KindTakeHome Kind = "take-home"
 	// KindBringBack goes from a home computer back to the table; its ids are the home's.
 	KindBringBack Kind = "bring-back"
+	// KindNewCharacter is a character made at home: the bring-back format without a take-out token, maps or fallback.
+	KindNewCharacter Kind = "new-character"
 )
 
 // TakeHomeManifest says what the file is and where it came from.
@@ -161,6 +165,15 @@ type TakeHomeSource struct {
 	Attribution string `json:"attribution"`
 }
 
+// TakeHomeFallback is a bring-back's build-only copy of the character: the
+// table uses it if the GM declines a source added at home. Its level-up ids
+// are home ids and are not in the maps.
+type TakeHomeFallback struct {
+	MaxHP    int64             `json:"max_hp"`
+	Sheet    json.RawMessage   `json:"sheet"`
+	LevelUps []TakeHomeLevelUp `json:"level_ups"`
+}
+
 // TakeHome is the whole content of a take-home file.
 type TakeHome struct {
 	Manifest  TakeHomeManifest
@@ -173,6 +186,8 @@ type TakeHome struct {
 	Entries   []TakeHomeEntry
 	// Maps is written (as maps.json) only in a bring-back.
 	Maps *HomeIDMaps
+	// Fallback is written (as fallback.json) only in a bring-back, when one was prepared.
+	Fallback *TakeHomeFallback
 }
 
 // TakeHomeBase is what the table recorded when the file was written, the
@@ -212,6 +227,84 @@ func ZipFile(attachmentPath string) string { return filesPrefix + attachmentPath
 // the trip.
 func WriteTakeHome(w io.Writer, t TakeHome, attachmentsDir string) error {
 	zw := zip.NewWriter(w)
+	missing := DropMissing(&t, attachmentsDir)
+
+	char, err := t.Character.JSON()
+	if err != nil {
+		return err
+	}
+	parts := []struct {
+		name string
+		v    any
+	}{
+		{manifestFile, t.Manifest}, {levelUpsFile, nonNil(t.LevelUps)}, {looksFile, nonNil(t.Looks)},
+		{notesFile, nonNil(t.Notes)}, {homebrewFile, nonNil(t.Homebrew)},
+		{sourcesFile, nonNil(t.Sources)}, {entriesFile, nonNil(t.Entries)},
+	}
+	if t.Maps != nil {
+		parts = append(parts, struct {
+			name string
+			v    any
+		}{mapsFile, t.Maps})
+	}
+	if t.Fallback != nil {
+		t.Fallback.LevelUps = nonNil(t.Fallback.LevelUps)
+		parts = append(parts, struct {
+			name string
+			v    any
+		}{fallbackFile, t.Fallback})
+	}
+	if err := writeFile(zw, characterFile, char); err != nil {
+		return err
+	}
+	for _, p := range parts {
+		body, err := json.MarshalIndent(p.v, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := writeFile(zw, p.name, body); err != nil {
+			return err
+		}
+	}
+
+	written := map[string]bool{}
+	copyFile := func(file string) error {
+		if file == "" || written[file] {
+			return nil
+		}
+		written[file] = true
+		body, err := os.ReadFile(filepath.Join(attachmentsDir, path.Base(file))) //nolint:gosec // see DropMissing
+		if err != nil {
+			return err
+		}
+		return writeFile(zw, file, body)
+	}
+	for _, l := range t.Looks {
+		if err := copyFile(l.File); err != nil {
+			return err
+		}
+	}
+	for _, n := range t.Notes {
+		for _, b := range n.Blocks {
+			for _, f := range b.Files {
+				if err := copyFile(f.File); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if len(missing) > 0 {
+		list := "Files that were not on disk, so not taken home:\n" + strings.Join(missing, "\n") + "\n"
+		if err := writeFile(zw, filesPrefix+"MISSING.txt", []byte(list)); err != nil {
+			return err
+		}
+	}
+	return zw.Close()
+}
+
+// DropMissing removes what refers to a file missing from attachmentsDir (a look
+// with no link goes too) and returns the missing names.
+func DropMissing(t *TakeHome, attachmentsDir string) []string {
 	var missing []string
 	have := func(file string) bool {
 		if file == "" {
@@ -252,71 +345,7 @@ func WriteTakeHome(w io.Writer, t TakeHome, attachmentsDir string) error {
 		notes[i] = n
 	}
 	t.Notes = notes
-
-	char, err := t.Character.JSON()
-	if err != nil {
-		return err
-	}
-	parts := []struct {
-		name string
-		v    any
-	}{
-		{manifestFile, t.Manifest}, {levelUpsFile, nonNil(t.LevelUps)}, {looksFile, nonNil(t.Looks)},
-		{notesFile, nonNil(t.Notes)}, {homebrewFile, nonNil(t.Homebrew)},
-		{sourcesFile, nonNil(t.Sources)}, {entriesFile, nonNil(t.Entries)},
-	}
-	if t.Maps != nil {
-		parts = append(parts, struct {
-			name string
-			v    any
-		}{mapsFile, t.Maps})
-	}
-	if err := writeFile(zw, characterFile, char); err != nil {
-		return err
-	}
-	for _, p := range parts {
-		body, err := json.MarshalIndent(p.v, "", "  ")
-		if err != nil {
-			return err
-		}
-		if err := writeFile(zw, p.name, body); err != nil {
-			return err
-		}
-	}
-
-	written := map[string]bool{}
-	copyFile := func(file string) error {
-		if file == "" || written[file] {
-			return nil
-		}
-		written[file] = true
-		body, err := os.ReadFile(filepath.Join(attachmentsDir, path.Base(file))) //nolint:gosec // see have
-		if err != nil {
-			return err
-		}
-		return writeFile(zw, file, body)
-	}
-	for _, l := range t.Looks {
-		if err := copyFile(l.File); err != nil {
-			return err
-		}
-	}
-	for _, n := range t.Notes {
-		for _, b := range n.Blocks {
-			for _, f := range b.Files {
-				if err := copyFile(f.File); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if len(missing) > 0 {
-		list := "Files that were not on disk, so not taken home:\n" + strings.Join(missing, "\n") + "\n"
-		if err := writeFile(zw, filesPrefix+"MISSING.txt", []byte(list)); err != nil {
-			return err
-		}
-	}
-	return zw.Close()
+	return missing
 }
 
 // nonNil makes a nil slice an empty JSON list, never null.
@@ -360,17 +389,34 @@ func ReadTakeHome(r io.ReaderAt, size int64, want Kind) (*TakeHomeFile, error) {
 		switch {
 		case want == KindTakeHome && k == KindBringBack:
 			return nil, errors.New("this is a bring-back file: bring it to the table")
-		case want == KindBringBack && k == KindTakeHome:
+		case want == KindTakeHome && k == KindNewCharacter:
+			return nil, errors.New("this is a new character file: give it to your GM at the table")
+		case k == KindTakeHome && (want == KindBringBack || want == KindNewCharacter):
 			return nil, errors.New("this is a take-home file: open it in the player app")
+		case (k == KindBringBack || k == KindNewCharacter) && (want == KindBringBack || want == KindNewCharacter):
+			return nil, fmt.Errorf("this is a %s file, not a %s file", k, want)
 		}
 		// Callers say "not a take-home file" first; this says why and what to do.
-		return nil, fmt.Errorf("it comes from app %s and is neither a take-home nor a bring-back file. Take the character home again from the table", f.Manifest.AppVersion)
+		return nil, fmt.Errorf("it comes from app %s and is not a take-home, bring-back or new character file. Take the character home again from the table", f.Manifest.AppVersion)
+	}
+	if want == KindNewCharacter && (f.Manifest.Token != "" || f.Manifest.CharacterID != 0) {
+		return nil, errors.New("a new-character file must not name a table character or take-out")
 	}
 	if has := f.find(mapsFile) != nil; has != (want == KindBringBack) {
 		if has {
-			return nil, errors.New("a take-home file must not hold " + mapsFile)
+			return nil, fmt.Errorf("a %s file must not hold %s", want, mapsFile)
 		}
 		return nil, errors.New("the file lacks " + mapsFile)
+	}
+	hasFallback := f.find(fallbackFile) != nil
+	if hasFallback && want != KindBringBack {
+		return nil, fmt.Errorf("a %s file must not hold %s", want, fallbackFile)
+	}
+	if hasFallback {
+		f.Fallback = &TakeHomeFallback{}
+		if err := f.readJSON(fallbackFile, maxJSONBytes, f.Fallback, true); err != nil {
+			return nil, err
+		}
 	}
 	if want == KindBringBack {
 		f.Maps = &HomeIDMaps{}

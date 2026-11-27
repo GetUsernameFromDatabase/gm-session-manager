@@ -282,4 +282,11 @@ func TestSheetPinsSource(t *testing.T) {
 			t.Errorf("%s: PinsSource = %v, want %v", tc.name, got, tc.want)
 		}
 	}
+	// The build leaves out spells and armor.
+	for _, tc := range cases {
+		want := tc.want && tc.name != "spell" && tc.name != "armor"
+		if got := tc.sheet.BuildPinsSource(key); got != want {
+			t.Errorf("%s: BuildPinsSource = %v, want %v", tc.name, got, want)
+		}
+	}
 }

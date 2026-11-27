@@ -7,6 +7,7 @@ import (
 	"gm-session-manager/internal/web/components/button"
 	"gm-session-manager/internal/web/components/dialog"
 	"gm-session-manager/internal/web/components/empty"
+	"gm-session-manager/internal/web/components/field"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
 	"strconv"
@@ -99,15 +100,23 @@ templ TakeHomeBody(v TakeHomeView) {
 }
 
 // HomePage lists the characters on this computer (the player app) and opens a file.
-templ HomePage(l Layout, copies []HomeCopyView, handoff HandoffView) {
+templ HomePage(l Layout, table, onlyHere []HomeCopyView, handoff HandoffView) {
 	@Page(l) {
 		<div class="mx-auto max-w-xl">
-			@PageHeader("Characters on this computer", "")
+			<div class="mb-6 flex items-start justify-between gap-3">
+				<h1 class="text-2xl font-semibold">Characters on this computer</h1>
+				if len(table) > 0 {
+					@button.Button(button.Props{Size: button.SizeSm, Attributes: dialog.TriggerFor(newCharacterID)}) {
+						@icon.Plus()
+						New character
+					}
+				}
+			</div>
 			<div id="handoff">
 				@HandoffPanel(handoff)
 			</div>
 			// While a received file waits, its panel above is the next step: "no characters" would contradict it.
-			if len(copies) == 0 && handoff.State != HandoffReceived {
+			if len(table)+len(onlyHere) == 0 && handoff.State != HandoffReceived {
 				@empty.Empty(empty.Props{Class: "border"}) {
 					@empty.Header() {
 						@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
@@ -121,62 +130,186 @@ templ HomePage(l Layout, copies []HomeCopyView, handoff HandoffView) {
 						}
 					}
 				}
-			} else if len(copies) > 0 {
-				<ul class="space-y-2">
-					for _, c := range copies {
-						<li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
-							<div class="min-w-0 grow basis-48">
-								<p class="truncate font-medium">
-									if c.Current {
-										<a class="underline-offset-2 hover:underline" href={ templ.SafeURL(route.Path(route.Character, c.CharacterID)) }>{ c.Name + " · " + c.Campaign }</a>
-									} else {
-										<button type="submit" form={ "play-" + strconv.FormatInt(c.CharacterID, 10) } class="max-w-full cursor-pointer truncate underline-offset-2 hover:underline">{ c.Name + " · " + c.Campaign }</button>
-									}
-								</p>
-								<p class="text-sm text-muted-foreground">
-									{ "Taken home " }
-									@localDate(c.TakenAt)
-								</p>
-							</div>
-							if c.Current {
-								@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
-									Playing
-								}
-							} else {
-								<form id={ "play-" + strconv.FormatInt(c.CharacterID, 10) } method="post" action={ templ.SafeURL(route.Path(route.AtHomePlay, c.CharacterID)) }>
-									@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-										@icon.Play()
-										Play
-									}
-								</form>
-							}
-							<div class="flex basis-full flex-wrap gap-2">
-								// Through htmx so a refusal shows here; success redirects to the download.
-								<form class="group/busy" data-busy hx-post={ route.Path(route.AtHomeBringBack, c.CharacterID) }>
-									@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
-										@icon.Download()
-										Save bring-back file
-									}
-									@busyIndicator("Saving…")
-								</form>
-								@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": route.Path(route.AtHomeSendPhone, c.CharacterID), "hx-target": "#handoff", "hx-swap": swapInner}}) {
-									@icon.Smartphone()
-									Send to phone
-								}
-								<p class="basis-full text-xs text-muted-foreground">This file holds your private notes. Bring it to the table yourself to keep them private.</p>
-							</div>
-						</li>
-					}
-				</ul>
+			} else if len(table)+len(onlyHere) > 0 {
+				if len(table) > 0 {
+					<h2 class="mb-2 text-sm font-semibold">From the table</h2>
+					<ul class="space-y-2">
+						for _, c := range table {
+							@homeCharacterRow(c)
+						}
+					</ul>
+				}
+				if len(onlyHere) > 0 {
+					<h2 class="mt-8 mb-1 text-sm font-semibold">Only on this computer</h2>
+					<p class="mb-2 text-xs text-muted-foreground">Copies and new characters. They never change a table character; save one as a new character file for your GM to add.</p>
+					<ul class="space-y-2">
+						for _, c := range onlyHere {
+							@homeCharacterRow(c)
+						}
+					</ul>
+				}
 				<h2 class="mt-8 mb-2 text-sm font-semibold">Open another take-home file</h2>
 			}
-			@homeImportForm(len(copies) == 0, false, "Open")
+			@homeImportForm(len(table)+len(onlyHere) == 0, false, "Open")
 			<p class="mt-3 text-sm text-muted-foreground">or</p>
 			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Class: "mt-2", Attributes: templ.Attributes{"hx-post": route.AtHomeReceive, "hx-target": "#handoff", "hx-swap": swapInner}}) {
 				@icon.Smartphone()
 				Receive from phone
 			}
 		</div>
+		if len(table) > 0 {
+			@newCharacterDialog(table)
+		}
+	}
+}
+
+// homePlayForm posts the switch to another character on this computer.
+templ homePlayForm(id int64, label string, icn templ.Component) {
+	<form id={ "play-" + strconv.FormatInt(id, 10) } method="post" action={ templ.SafeURL(route.Path(route.AtHomePlay, id)) }>
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+			@icn
+			{ label }
+		}
+	</form>
+}
+
+// homeCharacterRow is one character: a table character with its bring-back
+// file and fallback build, or one that only exists here with its new character file.
+templ homeCharacterRow(c HomeCopyView) {
+	<li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+		<div class="min-w-0 grow basis-48">
+			<p class="truncate font-medium">
+				if c.Current {
+					<a class="underline-offset-2 hover:underline" href={ templ.SafeURL(route.Path(route.Character, c.CharacterID)) }>{ c.label() }</a>
+				} else {
+					<button type="submit" form={ "play-" + strconv.FormatInt(c.CharacterID, 10) } class="max-w-full cursor-pointer truncate underline-offset-2 hover:underline">{ c.label() }</button>
+				}
+			</p>
+			if c.FromTable {
+				<p class="text-sm text-muted-foreground">
+					{ "Taken home " }
+					@localDate(c.TakenAt)
+				</p>
+			}
+		</div>
+		if c.Current {
+			@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+				Playing
+			}
+		} else {
+			@homePlayForm(c.CharacterID, "Play", icon.Play())
+		}
+		@moreMenu("home-menu-"+strconv.FormatInt(c.CharacterID, 10), "More actions") {
+			// Through htmx: success redirects to the copy, a refusal shows in the page's flash.
+			@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: templ.Attributes{"data-menu-item": "", "hx-post": route.Path(route.AtHomeMakeCopy, c.CharacterID)}}) {
+				@icon.Copy()
+				Make a copy
+			}
+		}
+		<div class="flex basis-full flex-wrap gap-2">
+			// Through htmx so a refusal shows here; success redirects to the download.
+			<form class="group/busy" data-busy hx-post={ route.Path(route.AtHomeBringBack, c.CharacterID) }>
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+					@icon.Download()
+					if c.FromTable {
+						Save bring-back file
+					} else {
+						Save as new character file
+					}
+				}
+				@busyIndicator("Saving…")
+			</form>
+			if c.FromTable {
+				@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": route.Path(route.AtHomeSendPhone, c.CharacterID), "hx-target": "#handoff", "hx-swap": swapInner}}) {
+					@icon.Smartphone()
+					Send to phone
+				}
+				<p class="basis-full text-xs text-muted-foreground">This file holds your private notes. Bring it to the table yourself to keep them private.</p>
+			}
+		</div>
+		if len(c.HomeSources) > 0 && c.Fallback == nil {
+			<div class="basis-full space-y-2">
+				@alert.Alert() {
+					@icon.TriangleAlert()
+					@alert.Description() {
+						{ c.fallbackWarning() }
+					}
+				}
+				<form hx-post={ route.Path(route.AtHomeFallback, c.CharacterID) }>
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+						@icon.Shield()
+						Prepare a fallback
+					}
+				</form>
+			</div>
+		}
+		if c.Fallback != nil {
+			<div class="ml-3 flex basis-full flex-wrap items-center justify-between gap-2 border-l-2 pl-3">
+				<div class="min-w-0 grow basis-48">
+					<p class="flex flex-wrap items-center gap-2 text-sm font-medium">
+						<span class="truncate">{ c.Fallback.Name }</span>
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							Fallback build
+						}
+					</p>
+					<p class="text-xs text-muted-foreground">{ "Goes back inside " + c.Name + "'s file, used only if a source added here is declined." }</p>
+				</div>
+				if c.Fallback.Current {
+					<a class="text-sm underline-offset-2 hover:underline" href={ templ.SafeURL(route.Path(route.Character, c.Fallback.CharacterID)) }>
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							Editing
+						}
+					</a>
+				} else {
+					@homePlayForm(c.Fallback.CharacterID, "Edit", icon.Pencil())
+				}
+			</div>
+		}
+	</li>
+}
+
+// newCharacterDialog asks for a name and which table character's campaign and
+// sources the new character starts with (hidden when there is only one).
+templ newCharacterDialog(table []HomeCopyView) {
+	@dialog.Dialog(dialog.Props{ID: newCharacterID}) {
+		@dialog.Content(dialog.ContentProps{Class: "sm:max-w-md"}) {
+			@dialog.Header() {
+				@dialog.Title() {
+					New character
+				}
+				@dialog.Description() {
+					Starts in the wizard and stays on this computer.
+				}
+			}
+			<form class="grid gap-4" hx-post={ route.AtHomeNew }>
+				@field.Group(field.GroupProps{Class: "gap-4"}) {
+					@field.Field() {
+						@field.Label(field.LabelProps{For: "new-character-name"}) {
+							Name
+						}
+						@input.Input(input.Props{ID: "new-character-name", Name: "name", Required: true, Attributes: templ.Attributes{"maxlength": "100", "autocomplete": "off"}})
+					}
+					if len(table) == 1 {
+						<input type="hidden" name="from" value={ strconv.FormatInt(table[0].CharacterID, 10) }/>
+					} else {
+						@field.Field() {
+							@field.Label(field.LabelProps{For: "new-character-from-trigger"}) {
+								Same campaign and sources as
+							}
+							@formSelect("new-character-from", "from", selectItems(table, HomeCopyView.idString, HomeCopyView.label), "", "w-full", "")
+						}
+					}
+				}
+				<div class="flex justify-end gap-2">
+					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.CloseFor(newCharacterID)}) {
+						Cancel
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit}) {
+						Create
+					}
+				</div>
+			</form>
+		}
 	}
 }
 

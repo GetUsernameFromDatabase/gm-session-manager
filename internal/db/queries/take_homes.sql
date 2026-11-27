@@ -187,3 +187,48 @@ SET priority = priority + 1 + (SELECT COALESCE(MAX(priority), 0) FROM compendium
 WHERE path <> 'take-home' AND source_key <> 'homebrew'
   AND (SELECT MIN(priority) FROM compendium_sources WHERE path <> 'take-home' AND source_key <> 'homebrew')
       <= (SELECT COALESCE(MAX(priority), 0) FROM compendium_sources WHERE path = 'take-home');
+
+-- name: SetHomeCopyFallback :exec
+UPDATE home_copies SET fallback_character_id = ?
+WHERE character_id = ?;
+
+-- The live character whose bring-back carries this character as its fallback.
+-- name: GetFallbackOwner :one
+SELECT ch.id, ch.name FROM home_copies AS h
+JOIN characters AS ch ON ch.id = h.character_id
+WHERE h.fallback_character_id = ? AND ch.deleted_at IS NULL;
+
+-- Every live character on this computer; manifest_json is '' for one with no
+-- home copy (a test copy, a new character or a fallback).
+-- name: ListHomeCharacters :many
+SELECT ch.id, ch.campaign_id, ch.name, c.name AS campaign_name, ch.sheet_json,
+       COALESCE(h.manifest_json, '') AS manifest_json, h.fallback_character_id
+FROM characters AS ch
+JOIN campaigns AS c ON c.id = ch.campaign_id
+LEFT JOIN home_copies AS h ON h.character_id = ch.id
+WHERE ch.deleted_at IS NULL
+ORDER BY ch.name COLLATE NOCASE, ch.id;
+
+-- name: GetHomeServerID :one
+SELECT server_id FROM home_copies LIMIT 1;
+
+-- name: CopyCampaignSources :exec
+INSERT INTO campaign_sources (campaign_id, source_key)
+SELECT sqlc.arg(to_campaign_id), s.source_key FROM campaign_sources AS s WHERE s.campaign_id = sqlc.arg(from_campaign_id);
+
+-- name: CopyCampaignEntryLinks :exec
+INSERT INTO compendium_campaigns (entry_id, campaign_id)
+SELECT l.entry_id, sqlc.arg(to_campaign_id) FROM compendium_campaigns AS l WHERE l.campaign_id = sqlc.arg(from_campaign_id);
+
+-- name: ListCampaignHomeHomebrew :many
+SELECT e.* FROM compendium_entries AS e
+JOIN compendium_campaigns AS l ON l.entry_id = e.id
+WHERE e.source_key = 'homebrew' AND e.owner_character_id IS NOT NULL AND l.campaign_id = ?
+ORDER BY e.id;
+
+-- A table character deleted at home takes its fallback build with it.
+-- name: SoftDeleteFallbackOf :many
+UPDATE characters SET deleted_at = CURRENT_TIMESTAMP
+WHERE deleted_at IS NULL
+  AND id = (SELECT fallback_character_id FROM home_copies WHERE character_id = ?)
+RETURNING id;

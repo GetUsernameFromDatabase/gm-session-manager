@@ -52,6 +52,11 @@ type SheetView struct {
 	// viewer may not know).
 	CanTakeHome bool
 	TakenHome   time.Time
+	// FallbackFor is the table character this character is the fallback build of
+	// (the player app only); FallbackHomeSources are the sources added at home
+	// its build still uses.
+	FallbackFor         string
+	FallbackHomeSources []string
 }
 
 // editableMod is whether modifier i is the sheet's own, not an effect's.

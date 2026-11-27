@@ -1,6 +1,7 @@
 package views
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,10 +56,47 @@ type HomeCopyView struct {
 	CharacterID int64
 	Name        string
 	Campaign    string
-	// TakenAt is when the table wrote the file.
+	// FromTable is true for a table character (it has a home copy); false for a copy or new character.
+	FromTable bool
+	// TakenAt is when the table wrote the file (zero when not FromTable).
 	TakenAt time.Time
 	// Current is the character this browser plays now.
 	Current bool
+	// Fallback is the prepared fallback build of a table character, nil for none.
+	Fallback *HomeFallbackView
+	// HomeSources are the sources added here that the build uses, for a table
+	// character with no fallback yet: a fallback is offered when there are any.
+	HomeSources []string
+}
+
+// newCharacterID is the New character dialog.
+const newCharacterID = "new-character-dialog"
+
+func (c HomeCopyView) label() string    { return c.Name + " · " + c.Campaign }
+func (c HomeCopyView) idString() string { return strconv.FormatInt(c.CharacterID, 10) }
+
+// fallbackWarning says why a fallback is worth preparing.
+func (c HomeCopyView) fallbackWarning() string {
+	it := "it"
+	if len(c.HomeSources) > 1 {
+		it = "them"
+	}
+	return c.Name + " uses " + sourceList(c.HomeSources) + ", added here. If the GM declines " + it + ", " + c.Name + " can't come back with this level."
+}
+
+// HomeFallbackView is a table character's fallback build.
+type HomeFallbackView struct {
+	CharacterID int64
+	Name        string
+	Current     bool
+}
+
+// sourceList names sources in a sentence: "A", "A and B", "A, B and C".
+func sourceList(keys []string) string {
+	if len(keys) < 2 {
+		return strings.Join(keys, "")
+	}
+	return strings.Join(keys[:len(keys)-1], ", ") + " and " + keys[len(keys)-1]
 }
 
 // HomeConfirmView is the question asked before a copy here is replaced.
@@ -68,6 +106,8 @@ type HomeConfirmView struct {
 	// Sources are those added here that the copy allows and the new file does
 	// not list: the new copy leaves them off.
 	Sources []string
+	// Fallback is the name of the copy's fallback build, which goes too ("" for none).
+	Fallback string
 }
 
 // message explains what replacing does, by which file is newer.
@@ -79,6 +119,9 @@ func (v HomeConfirmView) message() string {
 	}
 	if len(v.Sources) > 0 {
 		msg += " The new copy also leaves off the sources added here (" + strings.Join(v.Sources, ", ") + "): add them again from its compendium's Import tab."
+	}
+	if v.Fallback != "" {
+		msg += " Its fallback build (" + v.Fallback + ") goes too."
 	}
 	return msg
 }

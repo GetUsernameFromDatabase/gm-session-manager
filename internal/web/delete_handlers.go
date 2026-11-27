@@ -33,7 +33,7 @@ func (a *App) removeCharacter(c *gin.Context) error {
 		a.fail(c, http.StatusForbidden, "Only the player or the GM deletes a character.")
 		return nil
 	}
-	var encounters []int64
+	var encounters, fallbacks []int64
 	err := a.Store.InTx(c.Request.Context(), func(q *sqlc.Queries) error {
 		var err error
 		if encounters, err = q.ListEncounterIDsByCharacter(c.Request.Context(), nullID(ch.ID)); err != nil {
@@ -41,6 +41,15 @@ func (a *App) removeCharacter(c *gin.Context) error {
 		}
 		if err := q.SoftDeleteCharacter(c.Request.Context(), ch.ID); err != nil {
 			return err
+		}
+		// The player app: its fallback build goes too (no rows at the table).
+		if fallbacks, err = q.SoftDeleteFallbackOf(c.Request.Context(), ch.ID); err != nil {
+			return err
+		}
+		for _, fb := range fallbacks {
+			if err := q.DeleteCharacterSessions(c.Request.Context(), nullID(fb)); err != nil {
+				return err
+			}
 		}
 		// A removed caster stops concentrating, so what it held ends too.
 		if err := endConcentration(c.Request.Context(), q, condOwner{characterID: ch.ID}); err != nil {
@@ -59,7 +68,9 @@ func (a *App) removeCharacter(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.Hub.CloseCharacter(ch.ID)
+	for _, id := range append(fallbacks, ch.ID) {
+		a.Hub.CloseCharacter(id)
+	}
 	a.forgetGoneDevices(c.Request.Context())
 	topics := []hub.Topic{{Kind: hub.TopicCampaign, ID: ch.CampaignID}, {Kind: hub.TopicNotes, ID: ch.CampaignID}}
 	for _, e := range encounters {

@@ -745,7 +745,7 @@ func TestHomePlay(t *testing.T) {
 		t.Errorf("new session %+v, %v", s, err)
 	}
 
-	// A character that was not taken home cannot be played from here.
+	// Any character on this computer can be played, not only a taken-home one.
 	other, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
 	if err != nil {
 		t.Fatal(err)
@@ -754,8 +754,11 @@ func TestHomePlay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w := play(stray.ID, c3.Value); w.Code != http.StatusNotFound {
+	if w := play(stray.ID, c3.Value); w.Code != http.StatusSeeOther {
 		t.Errorf("playing a character with no home copy: status %d", w.Code)
+	}
+	if w := play(stray.ID+100, c3.Value); w.Code != http.StatusNotFound {
+		t.Errorf("playing a character that does not exist: status %d", w.Code)
 	}
 }
 
