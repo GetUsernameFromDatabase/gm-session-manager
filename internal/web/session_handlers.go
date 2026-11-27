@@ -328,7 +328,7 @@ func (a *App) startRequest(c *gin.Context, camp sqlc.Campaign, kind hub.PendingK
 	}
 	epoch, seq := a.Hub.Position()
 	l := views.Layout{Title: "Waiting", WS: &views.WS{URL: route.WS + "?pending=" + p.Secret, Epoch: epoch, Seq: seq}}
-	a.render(c, http.StatusOK, views.JoinWaiting(l, views.Waiting{Secret: p.Secret, Name: p.Name, State: "waiting"}))
+	a.render(c, http.StatusOK, views.JoinWaiting(l, views.Waiting{Secret: p.Secret, Name: p.Name, State: stateWaiting}))
 }
 
 // requestGone answers an approval whose character or campaign was deleted.
@@ -360,6 +360,7 @@ func (a *App) completeRequest(c *gin.Context) error {
 		id, err = a.createAndLogin(c, p.CampaignID, p.Name)
 		next = wizardPath(id, wizardSteps[0].Key)
 	} else {
+		// A claim, or a new character the GM added (CharacterID is its id).
 		ch, gerr := a.Store.GetCharacter(c.Request.Context(), p.CharacterID)
 		if errors.Is(gerr, sql.ErrNoRows) { // deleted while the request waited
 			a.fail(c, http.StatusNotFound, requestGone)

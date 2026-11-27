@@ -243,6 +243,10 @@ func takeHomeNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, th *
 		}
 		th.Notes = append(th.Notes, out)
 		base.Notes = append(base.Notes, n.ID)
+		if base.Titles == nil {
+			base.Titles = map[int64]string{}
+		}
+		base.Titles[n.ID] = n.Title
 	}
 	return nil
 }

@@ -16,6 +16,9 @@ const (
 	// PendingCreate asks to create a character in a campaign without
 	// open_join.
 	PendingCreate PendingKind = "create"
+	// PendingNewCharacter brings a character made at home, as a file waiting
+	// for the GM's review; only adding it approves the request.
+	PendingNewCharacter PendingKind = "new-character"
 )
 
 // PendingState is where a request stands.
@@ -48,8 +51,9 @@ type Pending struct {
 	// CampaignName is copied in so every GM page can name it without a query.
 	CampaignName string
 	Kind         PendingKind
-	CharacterID  int64  // PendingClaim
+	CharacterID  int64  // PendingClaim; PendingNewCharacter once added
 	Name         string // character name (claimed or to create)
+	FileID       string // PendingNewCharacter: the file waiting for review
 	// Player, Device (OS · browser), Phone and Host tell the GM who is asking.
 	Player  string
 	Device  string
@@ -149,7 +153,7 @@ func (h *Hub) Decide(campaignID int64, id string, approve bool) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	p, ok := h.pending[id]
-	if !ok || p.CampaignID != campaignID || p.State != Waiting {
+	if !ok || p.CampaignID != campaignID || p.State != Waiting || approve && p.Kind == PendingNewCharacter {
 		return false
 	}
 	if approve {
@@ -158,6 +162,50 @@ func (h *Hub) Decide(campaignID int64, id string, approve bool) bool {
 	} else {
 		p.State = Denied
 	}
+	h.publishLocked(campaignID, Topic{Kind: TopicPending, ID: campaignID})
+	return true
+}
+
+// waitingFileLocked is the waiting new-character request of a file.
+func (h *Hub) waitingFileLocked(campaignID int64, fileID string) *Pending {
+	for _, p := range h.pending {
+		if p.Kind == PendingNewCharacter && p.FileID == fileID && p.CampaignID == campaignID && p.State == Waiting {
+			return p
+		}
+	}
+	return nil
+}
+
+// FileRequestWaiting reports whether the request that brought a file still waits.
+func (h *Hub) FileRequestWaiting(campaignID int64, fileID string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.waitingFileLocked(campaignID, fileID) != nil
+}
+
+// ApproveNewCharacter approves the waiting request that brought a file, now
+// that the GM added its character. It reports false when the visitor is gone.
+func (h *Hub) ApproveNewCharacter(campaignID int64, fileID string, characterID int64) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	p := h.waitingFileLocked(campaignID, fileID)
+	if p == nil {
+		return false
+	}
+	p.State, p.CharacterID, p.decided = Approved, characterID, time.Now()
+	h.publishLocked(campaignID, Topic{Kind: TopicPending, ID: campaignID})
+	return true
+}
+
+// DenyFile denies the waiting request that brought a file; false when none waits.
+func (h *Hub) DenyFile(campaignID int64, fileID string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	p := h.waitingFileLocked(campaignID, fileID)
+	if p == nil {
+		return false
+	}
+	p.State = Denied
 	h.publishLocked(campaignID, Topic{Kind: TopicPending, ID: campaignID})
 	return true
 }

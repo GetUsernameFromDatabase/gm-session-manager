@@ -194,6 +194,20 @@ templ JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err stri
 					<p class="text-xs text-muted-foreground">The GM approves new characters in this campaign.</p>
 				}
 			</form>
+			@separator.Separator(separator.Props{Class: "my-6"})
+			<form method="post" enctype="multipart/form-data" action={ templ.SafeURL(route.Path(route.JoinNewCharacter, c.ID)) } class="space-y-2" data-player>
+				<input type="hidden" name="player"/>
+				@label.Label(label.Props{For: "new-file", Class: "text-base font-semibold"}) {
+					Bring a character made at home
+				}
+				<div class="flex gap-2">
+					@input.Input(input.Props{ID: "new-file", Name: "file", Type: "file", Required: true, Attributes: templ.Attributes{"accept": ".zip,application/zip"}})
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+						Send to the GM
+					}
+				</div>
+				<p class="text-xs text-muted-foreground">The GM reviews it before it joins.</p>
+			</form>
 			@adminLink()
 		}
 	}

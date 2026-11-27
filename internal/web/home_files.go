@@ -64,6 +64,8 @@ type homeFile struct {
 	added         time.Time
 	path          string
 	size          int64
+	// claimed is set while an Add runs, so a second Add of the file waits its turn.
+	claimed bool
 }
 
 // homeFiles holds the waiting files in memory, like csvImports; the zips are
@@ -74,7 +76,8 @@ type homeFiles struct {
 }
 
 // put stores f and returns its id. A file of the same kind for the same
-// character replaces the older one; beyond maxHomeFiles it is refused.
+// character replaces the older one (a new character's file has none, so it
+// never does); beyond maxHomeFiles it is refused.
 func (s *homeFiles) put(f homeFile) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -83,7 +86,7 @@ func (s *homeFiles) put(f homeFile) (string, error) {
 	}
 	var oldID string
 	for id, old := range s.m {
-		if old.characterID == f.characterID && old.kind == f.kind {
+		if f.characterID != 0 && old.characterID == f.characterID && old.kind == f.kind {
 			oldID = id
 		}
 	}
@@ -104,6 +107,29 @@ func (s *homeFiles) get(id string, campaignID int64) (homeFile, bool) {
 	defer s.mu.Unlock()
 	f, ok := s.m[id]
 	return f, ok && f.campaignID == campaignID
+}
+
+// claim marks a waiting file as being added; false when it is gone or already claimed.
+func (s *homeFiles) claim(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, ok := s.m[id]
+	if !ok || f.claimed {
+		return false
+	}
+	f.claimed = true
+	s.m[id] = f
+	return true
+}
+
+// release undoes claim (nothing once the file is dropped).
+func (s *homeFiles) release(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if f, ok := s.m[id]; ok {
+		f.claimed = false
+		s.m[id] = f
+	}
 }
 
 // drop forgets a file and deletes its zip.
@@ -210,23 +236,7 @@ func (a *App) bringBackUpload(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxTakeHomeBytes)
-	fh, err := c.FormFile(formFile)
-	if err != nil {
-		return userf("Choose a bring-back file (.zip).")
-	}
-	src, err := fh.Open()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = src.Close() }()
-
-	dir := filepath.Join(a.DataDir, HomeFilesDir)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	path := filepath.Join(dir, rand.Text()+".zip")
-	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // a random name inside our own folder
+	path, size, err := a.receiveHomeFile(c, "a bring-back file")
 	if err != nil {
 		return err
 	}
@@ -236,13 +246,6 @@ func (a *App) bringBackUpload(c *gin.Context) error {
 			_ = os.Remove(path)
 		}
 	}()
-	_, err = io.Copy(out, src)
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return err
-	}
 
 	ctx := c.Request.Context()
 	bb, err := a.loadBringBack(ctx, a.Store.Queries, path, ch.ID)
@@ -255,7 +258,7 @@ func (a *App) bringBackUpload(c *gin.Context) error {
 	}
 	f := homeFile{
 		kind: export.KindBringBack, campaignID: ch.CampaignID, campaignName: camp.Name, characterID: ch.ID,
-		characterName: ch.Name, byPlayer: !w.isGM(), savedAt: bb.file.Manifest.SavedAt, path: path, size: fh.Size,
+		characterName: ch.Name, byPlayer: !w.isGM(), savedAt: bb.file.Manifest.SavedAt, path: path, size: size,
 	}
 	id, err := a.homeFiles.put(f)
 	if err != nil {
@@ -269,6 +272,41 @@ func (a *App) bringBackUpload(c *gin.Context) error {
 	}
 	a.render(c, http.StatusOK, views.BringBackSent(ch.Name))
 	return nil
+}
+
+// receiveHomeFile saves the request's uploaded zip in HomeFilesDir and returns
+// its path and size; what names the file in the message when none was sent.
+// The caller removes the zip unless it keeps it.
+func (a *App) receiveHomeFile(c *gin.Context, what string) (string, int64, error) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxTakeHomeBytes)
+	fh, err := c.FormFile(formFile)
+	if err != nil {
+		return "", 0, userf("Choose %s (.zip).", what)
+	}
+	src, err := fh.Open()
+	if err != nil {
+		return "", 0, err
+	}
+	defer func() { _ = src.Close() }()
+
+	dir := filepath.Join(a.DataDir, HomeFilesDir)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return "", 0, err
+	}
+	path := filepath.Join(dir, rand.Text()+".zip")
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // a random name inside our own folder
+	if err != nil {
+		return "", 0, err
+	}
+	_, err = io.Copy(out, src)
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(path)
+		return "", 0, err
+	}
+	return path, fh.Size, nil
 }
 
 // homeFileAccess is the GM's access to one waiting file of the campaign.
@@ -295,12 +333,26 @@ func (a *App) homeFileAccess(c *gin.Context) (who, sqlc.Campaign, homeFile, bool
 
 // homeReview is a bring-back file read, checked and merged for one request.
 type homeReview struct {
-	bb       bringBack
+	// bb is set for a bring-back; a new character's file has only file and cf.
+	bb bringBack
+	// file is the file, whose home side sheets have the table's spell slugs.
+	file     *export.TakeHomeFile
+	cf       export.CharacterFile
 	plan     bringBackPlan
 	reviewed []export.TakeHomeSource
 	levelUps []sqlc.LevelUp
-	// was stamps the table character the plan was made against.
+	// x is the plan of looks, notes and homebrew.
+	x homeExtras
+	// was stamps the table the plan was made against.
 	was string
+}
+
+// reviewHomeFile reviews a waiting file of either kind.
+func (a *App) reviewHomeFile(ctx context.Context, q *sqlc.Queries, f homeFile, form func(string) string) (homeReview, error) {
+	if f.kind == export.KindNewCharacter {
+		return a.reviewNewCharacter(ctx, q, f, form)
+	}
+	return a.reviewBringBack(ctx, q, f, form)
 }
 
 // reviewBringBack re-reads the file and makes the plan for the picks form reads.
@@ -310,6 +362,7 @@ func (a *App) reviewBringBack(ctx context.Context, q *sqlc.Queries, f homeFile, 
 	if rv.bb, err = a.loadBringBack(ctx, q, f.path, f.characterID); err != nil {
 		return rv, err
 	}
+	rv.file, rv.cf = rv.bb.file, rv.bb.cf
 	var base export.TakeHomeBase
 	if err := json.Unmarshal([]byte(rv.bb.take.BaseJson), &base); err != nil {
 		return rv, err
@@ -321,17 +374,23 @@ func (a *App) reviewBringBack(ctx context.Context, q *sqlc.Queries, f homeFile, 
 	if rv.levelUps, err = q.ListLevelUps(ctx, rv.bb.ch.ID); err != nil {
 		return rv, err
 	}
-	ch, cf := rv.bb.ch, rv.bb.cf
+	if rv.x, err = planExtras(ctx, q, rv.bb.ch.CampaignID, rv.bb.ch.ID, rv.file, base, form); err != nil {
+		return rv, err
+	}
+	if err := applyRenames(rv.x.hb.Renames, &rv.cf, rv.file); err != nil {
+		return rv, err
+	}
+	ch, cf := rv.bb.ch, rv.cf
 	in := bringBackIn{
 		Base:  charState{Name: cmp.Or(base.Character.Name, ch.Name), HP: base.Character.HP, MaxHP: base.Character.MaxHP, TempHP: base.Character.TempHP, Sheet: string(base.Character.Sheet)},
 		Table: charState{Name: ch.Name, HP: ch.Hp, MaxHP: ch.MaxHp, TempHP: ch.TempHp, Sheet: ch.SheetJson},
 		Home:  charState{Name: cf.Name, HP: cf.HP, MaxHP: cf.MaxHP, TempHP: cf.TempHP, Sheet: string(cf.Sheet)},
 		Form:  form,
 	}
-	if fb := rv.bb.file.Fallback; fb != nil {
+	if fb := rv.file.Fallback; fb != nil {
 		in.Fallback = &charState{Name: cf.Name, MaxHP: fb.MaxHP, Sheet: string(fb.Sheet)}
 	}
-	for _, s := range rv.bb.file.Sources {
+	for _, s := range rv.file.Sources {
 		if !slices.Contains(allowed, s.SourceKey) {
 			rv.reviewed = append(rv.reviewed, s)
 			in.Sources = append(in.Sources, reviewSource{Key: s.SourceKey, Label: sourceLabel(s)})
@@ -340,11 +399,12 @@ func (a *App) reviewBringBack(ctx context.Context, q *sqlc.Queries, f homeFile, 
 	if rv.plan, err = planBringBack(in); err != nil {
 		return rv, err
 	}
+	rv.plan.Groups = append(rv.plan.Groups, rv.x.groups()...)
 	ids := make([]int64, len(rv.levelUps))
 	for i, l := range rv.levelUps {
 		ids[i] = l.ID
 	}
-	sum := sha256.Sum256(fmt.Appendf(nil, "%q|%d|%d|%d|%q|%v", ch.Name, ch.Hp, ch.MaxHp, ch.TempHp, ch.SheetJson, ids))
+	sum := sha256.Sum256(fmt.Appendf(nil, "%q|%d|%d|%d|%q|%v|%s", ch.Name, ch.Hp, ch.MaxHp, ch.TempHp, ch.SheetJson, ids, rv.x.table.stamp()))
 	rv.was = hex.EncodeToString(sum[:])
 	return rv, nil
 }
@@ -352,6 +412,12 @@ func (a *App) reviewBringBack(ctx context.Context, q *sqlc.Queries, f homeFile, 
 // view is the review as the page shows it.
 func (rv homeReview) view(f homeFile) views.HomeFileView {
 	p := rv.plan
+	if f.kind == export.KindNewCharacter {
+		return views.HomeFileView{
+			CampaignID: f.campaignID, FileID: f.id, Name: rv.cf.Name, NewCharacter: true, LevelTo: p.LevelTo, ByGM: !f.byPlayer,
+			Sources: p.Sources, Groups: p.Groups, Block: p.Block, Error: p.Error, Was: rv.was,
+		}
+	}
 	return views.HomeFileView{
 		CampaignID: f.campaignID, FileID: f.id, CharacterID: rv.bb.ch.ID, Name: rv.bb.ch.Name, TakenAt: rv.bb.take.CreatedAt,
 		LevelFrom: p.LevelFrom, LevelTo: p.LevelTo, ByGM: !f.byPlayer,
@@ -371,7 +437,7 @@ func (a *App) homeFilePage(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
-	rv, err := a.reviewBringBack(c.Request.Context(), a.Store.Queries, f, formField(c))
+	rv, err := a.reviewHomeFile(c.Request.Context(), a.Store.Queries, f, formField(c))
 	if err != nil {
 		return err
 	}
@@ -380,7 +446,7 @@ func (a *App) homeFilePage(c *gin.Context) error {
 		a.render(c, http.StatusOK, views.HomeFileReview(v))
 		return nil
 	}
-	a.render(c, http.StatusOK, views.HomeFilePage(a.layout(w, "Bring "+v.Name+" back", "", &camp, false), v))
+	a.render(c, http.StatusOK, views.HomeFilePage(a.layout(w, v.PageTitle(), "", &camp, false), v))
 	return nil
 }
 
@@ -391,12 +457,38 @@ func (a *App) homeFileAccept(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
+	if f.kind == export.KindNewCharacter {
+		return a.homeFileAdd(c, camp, f)
+	}
 	ctx := c.Request.Context()
+	form := formField(c)
+
+	// Files first, from the review the page saw: a row needs the file's size and
+	// type, and storeFile would open a second connection while the transaction
+	// holds the write lock. What the transaction does not use is removed again.
+	var saved []string
+	used, done := map[string]bool{}, false
+	defer a.removeUnusedFiles(&saved, used, &done)
+	var lookFiles []savedFile
+	var blockFiles map[int64][]savedFile
+	pre, err := a.reviewBringBack(ctx, a.Store.Queries, f, form)
+	if err != nil {
+		return err
+	}
+	preSaved := pre.was == c.PostForm(formWas) && pre.plan.Block == "" && pre.plan.Error == ""
+	if preSaved {
+		m := mapsOf(pre.file)
+		if lookFiles, blockFiles, err = a.saveZipFiles(f, pre.x.saveContent(pre.file, m.Attachments), &saved); err != nil {
+			return err
+		}
+	}
+
 	var rv homeReview
+	var res extrasResult
 	stale, allowedAny := false, false
-	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
+	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		var err error
-		if rv, err = a.reviewBringBack(ctx, q, f, formField(c)); err != nil {
+		if rv, err = a.reviewBringBack(ctx, q, f, form); err != nil {
 			return err
 		}
 		switch p := rv.plan; {
@@ -407,20 +499,26 @@ func (a *App) homeFileAccept(c *gin.Context) error {
 			return userError{errors.New(p.Block)}
 		case p.Error != "":
 			return userError{errors.New(p.Error)}
+		case !preSaved:
+			stale = true // the table changed between the two reviews
+			return nil
 		}
 		for i, s := range rv.reviewed {
 			if rv.plan.Sources[i].Choice != views.SourceAllow {
 				continue
 			}
 			allowedAny = true
-			if err := allowSource(ctx, q, camp.ID, s, rv.bb.file.Entries); err != nil {
+			if err := allowSource(ctx, q, camp.ID, s, rv.file.Entries); err != nil {
 				return err
 			}
 		}
 		if err := writeMerged(ctx, q, rv.bb.ch.ID, rv.plan.Merged); err != nil {
 			return err
 		}
-		if err := replaceLevelUps(ctx, q, rv.bb.ch.ID, rv.plan.BuildFrom, rv.bb.file); err != nil {
+		if err := replaceLevelUps(ctx, q, rv.bb.ch.ID, rv.plan.BuildFrom, rv.file); err != nil {
+			return err
+		}
+		if res, err = applyExtras(ctx, q, rv, lookFiles, blockFiles, used); err != nil {
 			return err
 		}
 		n, err := q.ReturnTakeHome(ctx, rv.bb.take.ID)
@@ -441,6 +539,7 @@ func (a *App) homeFileAccept(c *gin.Context) error {
 		a.render(c, http.StatusOK, views.HomeFileReview(v))
 		return nil
 	}
+	done = true
 
 	a.homeFiles.drop(f.id)
 	if _, err := UpgradeSheets(ctx, a.Store); err != nil {
@@ -451,9 +550,10 @@ func (a *App) homeFileAccept(c *gin.Context) error {
 		return err
 	}
 	topics = append(topics, hub.Topic{Kind: hub.TopicCampaign, ID: camp.ID}, hub.Topic{Kind: hub.TopicPending, ID: camp.ID})
-	if allowedAny {
+	if allowedAny || res.compendium {
 		topics = append(topics, hub.Topic{Kind: hub.TopicCompendium})
 	}
+	topics = append(topics, noteTopics(camp.ID, res.notes)...)
 	a.publish(c, camp.ID, topics...)
 	a.render(c, http.StatusOK, views.HomeFileDone(rv.bb.ch.Name, rv.bb.ch.ID))
 	return nil
@@ -514,18 +614,78 @@ func replaceLevelUps(ctx context.Context, q *sqlc.Queries, characterID int64, bu
 	return nil
 }
 
-// homeFileReject drops the file and leaves the take-out open.
+// saveZipFiles saves the attached files th names, read from the waiting zip f:
+// opened again, since the review that planned them has closed its reader.
+func (a *App) saveZipFiles(f homeFile, th export.TakeHome, saved *[]string) ([]savedFile, map[int64][]savedFile, error) {
+	zf, err := os.Open(f.path) //nolint:gosec // a random name inside our own folder
+	if err != nil {
+		return nil, nil, userf("The file is gone. Ask for it again.")
+	}
+	defer func() { _ = zf.Close() }()
+	st, err := zf.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	file, err := export.ReadTakeHome(zf, st.Size(), f.kind)
+	if err != nil {
+		return nil, nil, userError{err}
+	}
+	return a.saveHomeFiles(th, func(zipName string) ([]byte, error) {
+		body, err := file.OpenFile(zipName)
+		if err != nil {
+			return nil, userError{err}
+		}
+		return body, nil
+	}, saved)
+}
+
+// removeUnusedFiles deletes the files saved before a transaction that its rows
+// do not own: all of them unless it committed (done), then the unused ones.
+func (a *App) removeUnusedFiles(saved *[]string, used map[string]bool, done *bool) {
+	for _, p := range *saved {
+		if !*done || !used[p] {
+			_ = os.Remove(filepath.Join(a.attachmentsDir(), p))
+		}
+	}
+}
+
+// noteTopics are the topics of notes that changed in a campaign, and its list.
+func noteTopics(campaignID int64, noteIDs []int64) []hub.Topic {
+	if len(noteIDs) == 0 {
+		return nil
+	}
+	topics := []hub.Topic{{Kind: hub.TopicNotes, ID: campaignID}}
+	for _, id := range noteIDs {
+		topics = append(topics, hub.Topic{Kind: hub.TopicNote, ID: id})
+	}
+	return topics
+}
+
+// homeFileReject drops the file; a bring-back leaves the take-out open, a
+// visitor's new character is denied.
 func (a *App) homeFileReject(c *gin.Context) error {
 	_, camp, f, ok := a.homeFileAccess(c)
 	if !ok {
 		return nil
 	}
 	a.homeFiles.drop(f.id)
+	newChar := f.kind == export.KindNewCharacter
+	if newChar {
+		a.Hub.DenyFile(camp.ID, f.id)
+	}
 	a.publish(c, camp.ID, hub.Topic{Kind: hub.TopicPending, ID: camp.ID})
 	if c.PostForm(formPage) != "" {
-		redirect(c, route.Path(route.Character, f.characterID))
+		if newChar {
+			redirect(c, route.Path(route.Campaign, camp.ID))
+		} else {
+			redirect(c, route.Path(route.Character, f.characterID))
+		}
 		return nil
 	}
-	a.render(c, http.StatusOK, views.HomeFileRejected(a.pendingViews()))
+	note := "Rejected. The take-out stays open."
+	if newChar {
+		note = "Rejected."
+	}
+	a.render(c, http.StatusOK, views.HomeFileRejected(a.pendingViews(), note))
 	return nil
 }

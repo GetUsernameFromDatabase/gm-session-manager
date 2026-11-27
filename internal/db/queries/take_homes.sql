@@ -247,3 +247,23 @@ UPDATE characters SET deleted_at = CURRENT_TIMESTAMP
 WHERE deleted_at IS NULL
   AND id = (SELECT fallback_character_id FROM home_copies WHERE character_id = ?)
 RETURNING id;
+
+-- ReplaceBlockDoc puts a document brought back from home in place of the
+-- block's: a new collaborative version, so open editors refetch.
+-- name: ReplaceBlockDoc :exec
+UPDATE note_blocks
+SET doc_json = ?, text = ?, version = version + 1, doc_version = version + 1
+WHERE id = ?;
+
+-- name: DeleteBlockSteps :exec
+DELETE FROM block_steps
+WHERE block_id = ?;
+
+-- FindCampaignHomebrewByHash finds homebrew of a kind the campaign sees with
+-- the same content, so a bring-back reuses it instead of adding a copy.
+-- name: FindCampaignHomebrewByHash :one
+SELECT * FROM compendium_entries AS e
+WHERE e.source_key = 'homebrew' AND e.kind = sqlc.arg(kind) AND e.content_hash = sqlc.arg(content_hash)
+  AND (e.scoped = 0 OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = sqlc.arg(campaign_id)))
+ORDER BY e.id
+LIMIT 1;

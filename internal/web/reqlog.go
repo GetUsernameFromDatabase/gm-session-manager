@@ -136,7 +136,8 @@ func (a *App) recordRequest(c *gin.Context) {
 func keepsBody(path, pattern string) bool {
 	return path != route.AdminLogin && !strings.HasPrefix(pattern, route.Block+"/") &&
 		pattern != route.CampaignNotes && pattern != route.NoteRename && pattern != route.AtHome &&
-		pattern != route.CharacterBringBack && pattern != route.CampaignHomeFileAccept && pattern != route.CampaignHomeFileReject
+		pattern != route.CharacterBringBack && pattern != route.CampaignHomeFileAccept && pattern != route.CampaignHomeFileReject &&
+		pattern != route.JoinNewCharacter && pattern != route.CampaignNewCharacter
 }
 
 // Bounds on what is kept of a request body.

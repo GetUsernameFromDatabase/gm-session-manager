@@ -177,6 +177,16 @@ func (q *Queries) CreateTakeHomeBlock(ctx context.Context, arg CreateTakeHomeBlo
 	return id, err
 }
 
+const deleteBlockSteps = `-- name: DeleteBlockSteps :exec
+DELETE FROM block_steps
+WHERE block_id = ?
+`
+
+func (q *Queries) DeleteBlockSteps(ctx context.Context, blockID int64) error {
+	_, err := q.db.ExecContext(ctx, deleteBlockSteps, blockID)
+	return err
+}
+
 const deleteHomebrewByOwner = `-- name: DeleteHomebrewByOwner :exec
 DELETE FROM compendium_entries
 WHERE source_key = 'homebrew' AND owner_character_id = ?1
@@ -195,6 +205,42 @@ type DeleteHomebrewByOwnerParams struct {
 func (q *Queries) DeleteHomebrewByOwner(ctx context.Context, arg DeleteHomebrewByOwnerParams) error {
 	_, err := q.db.ExecContext(ctx, deleteHomebrewByOwner, arg.OwnerCharacterID, arg.CampaignID)
 	return err
+}
+
+const findCampaignHomebrewByHash = `-- name: FindCampaignHomebrewByHash :one
+SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries AS e
+WHERE e.source_key = 'homebrew' AND e.kind = ?1 AND e.content_hash = ?2
+  AND (e.scoped = 0 OR EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = e.id AND l.campaign_id = ?3))
+ORDER BY e.id
+LIMIT 1
+`
+
+type FindCampaignHomebrewByHashParams struct {
+	Kind        enum.CompendiumKind
+	ContentHash string
+	CampaignID  int64
+}
+
+// FindCampaignHomebrewByHash finds homebrew of a kind the campaign sees with
+// the same content, so a bring-back reuses it instead of adding a copy.
+func (q *Queries) FindCampaignHomebrewByHash(ctx context.Context, arg FindCampaignHomebrewByHashParams) (CompendiumEntry, error) {
+	row := q.db.QueryRowContext(ctx, findCampaignHomebrewByHash, arg.Kind, arg.ContentHash, arg.CampaignID)
+	var i CompendiumEntry
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Slug,
+		&i.Name,
+		&i.SourceKey,
+		&i.DataJson,
+		&i.BodyText,
+		&i.ImageUrl,
+		&i.ContentHash,
+		&i.ImportedAt,
+		&i.OwnerCharacterID,
+		&i.Scoped,
+	)
+	return i, err
 }
 
 const getFallbackOwner = `-- name: GetFallbackOwner :one
@@ -874,6 +920,25 @@ func (q *Queries) ListTakeHomeSources(ctx context.Context, campaignID int64) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const replaceBlockDoc = `-- name: ReplaceBlockDoc :exec
+UPDATE note_blocks
+SET doc_json = ?, text = ?, version = version + 1, doc_version = version + 1
+WHERE id = ?
+`
+
+type ReplaceBlockDocParams struct {
+	DocJson string
+	Text    string
+	ID      int64
+}
+
+// ReplaceBlockDoc puts a document brought back from home in place of the
+// block's: a new collaborative version, so open editors refetch.
+func (q *Queries) ReplaceBlockDoc(ctx context.Context, arg ReplaceBlockDocParams) error {
+	_, err := q.db.ExecContext(ctx, replaceBlockDoc, arg.DocJson, arg.Text, arg.ID)
+	return err
 }
 
 const returnOlderTakeHomes = `-- name: ReturnOlderTakeHomes :exec

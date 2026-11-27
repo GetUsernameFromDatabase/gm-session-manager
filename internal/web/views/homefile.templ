@@ -37,8 +37,10 @@ templ HomeFileReview(v HomeFileView) {
 		<div>
 			<h1 class="text-2xl font-semibold">{ v.Name }</h1>
 			<p class="text-sm text-muted-foreground">
-				{ "Taken home " }
-				@localDate(v.TakenAt)
+				if !v.NewCharacter {
+					{ "Taken home " }
+					@localDate(v.TakenAt)
+				}
 				{ v.meta() }
 			</p>
 		</div>
@@ -87,7 +89,7 @@ templ HomeFileReview(v HomeFileView) {
 				@button.Button(button.Props{Type: button.TypeButton, Disabled: v.Block != "" || v.Error != "", Attributes: templ.Attributes{
 					"hx-post": v.acceptURL(), "hx-vals": v.acceptVals(), "hx-target": "#" + homeFileReviewID, "hx-swap": "outerHTML", "hx-push-url": "false", "hx-trigger": "click",
 				}}) {
-					Accept bring-back
+					{ v.acceptLabel() }
 				}
 			</div>
 		</div>
@@ -168,10 +170,53 @@ templ HomeFileDone(name string, characterID int64) {
 	</div>
 }
 
+// HomeFileAdded replaces the review once a new character is added.
+templ HomeFileAdded(name string, characterID int64) {
+	<div id={ homeFileReviewID } class="space-y-4">
+		@Flash("Added.", false)
+		<h1 class="text-2xl font-semibold">{ name + " joined the campaign." }</h1>
+		@button.Button(button.Props{Href: route.Path(route.Character, characterID)}) {
+			Open sheet
+		}
+	</div>
+}
+
 // HomeFileRejected answers the popup's Reject: the popup without the card.
-templ HomeFileRejected(groups []PendingGroup) {
+templ HomeFileRejected(groups []PendingGroup, note string) {
 	@PendingRequests(groups)
-	@Flash("Rejected. The take-out stays open.", false)
+	@Flash(note, false)
+}
+
+// NewCharacterBody is what the take-home dialog loads on a campaign for the
+// GM's "Add from file…".
+templ NewCharacterBody(campaignID int64, campaignName string) {
+	@dialog.Header() {
+		@dialog.Title() {
+			Add a character made at home
+		}
+		@dialog.Description() {
+			{ "Choose the new-character file the player saved at home. You review it before it joins " + campaignName + "." }
+		}
+	}
+	<form
+		class="group/busy space-y-3"
+		data-busy
+		hx-post={ route.Path(route.CampaignNewCharacter, campaignID) }
+		hx-encoding="multipart/form-data"
+		hx-target={ takeHomeTarget }
+		hx-swap="innerHTML"
+	>
+		@input.Input(input.Props{Name: "file", Type: "file", Required: true, Attributes: templ.Attributes{"accept": ".zip,application/zip", "aria-label": "New character file"}})
+		<div class="flex justify-end gap-2">
+			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: dialog.CloseFor(takeHomeID)}) {
+				Close
+			}
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
+				Review
+			}
+		</div>
+		@busyIndicator("Checking the file…")
+	</form>
 }
 
 // BringBackBody is what the take-home dialog loads for a bring-back file.
@@ -231,11 +276,47 @@ templ BringBackSent(name string) {
 	}
 }
 
+// newCharacterCard is a visitor's new-character file in the GM's popup: it can
+// be reviewed or denied, never approved from here.
+templ newCharacterCard(g PendingGroup, n NewCharacterNotice) {
+	<div class="rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg" role="alertdialog">
+		<p class="font-medium">{ n.Player + " brings " + n.Name + ", made at home" }</p>
+		if len(g.Requests)+len(g.BringBacks)+len(g.NewCharacters) == 1 {
+			<p class="text-sm">
+				@campaignLink(g)
+			</p>
+		}
+		<p class="mb-3 flex items-center gap-1 text-xs text-muted-foreground">
+			if n.Phone {
+				@icon.Smartphone(icon.Props{Class: "size-3.5", Attributes: templ.Attributes{"role": "img", "aria-label": "phone"}})
+			} else {
+				@icon.Monitor(icon.Props{Class: "size-3.5", Attributes: templ.Attributes{"role": "img", "aria-label": "computer"}})
+			}
+			{ n.Device }
+			if n.Host != "" {
+				· { n.Host }
+			}
+		</p>
+		<div class="flex gap-2">
+			@button.Button(button.Props{Size: button.SizeSm, Href: route.Path(route.CampaignHomeFile, n.CampaignID, n.FileID)}) {
+				Review
+			}
+			@button.Button(button.Props{Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": RejectURL(n.CampaignID, n.FileID)}}) {
+				Deny
+			}
+		</div>
+	</div>
+}
+
 // bringBackCard is a player's bring-back file in the GM's popup.
 templ bringBackCard(g PendingGroup, n BringBackNotice) {
 	<div class="rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg" role="alertdialog">
-		<p class="font-medium">{ n.Name + " is back from home" }</p>
-		if len(g.Requests)+len(g.BringBacks) == 1 {
+		if n.MadeAtHome {
+			<p class="font-medium">{ n.Name + ", made at home" }</p>
+		} else {
+			<p class="font-medium">{ n.Name + " is back from home" }</p>
+		}
+		if len(g.Requests)+len(g.BringBacks)+len(g.NewCharacters) == 1 {
 			<p class="text-sm">
 				@campaignLink(g)
 			</p>

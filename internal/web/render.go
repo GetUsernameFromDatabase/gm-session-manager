@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
+	"gm-session-manager/internal/export"
 	"gm-session-manager/internal/hub"
 	"gm-session-manager/internal/perm"
 	"gm-session-manager/internal/route"
@@ -31,9 +33,15 @@ func (a *App) CanSubscribe(ctx context.Context, c *hub.Client, blockID int64) bo
 }
 
 func (a *App) waiting(p *hub.Pending) views.Waiting {
-	state := map[hub.PendingState]string{hub.Waiting: "waiting", hub.Approved: "approved", hub.Denied: "denied"}[a.Hub.PendingState(p)]
+	state := map[hub.PendingState]string{hub.Waiting: stateWaiting, hub.Approved: "approved", hub.Denied: "denied"}[a.Hub.PendingState(p)]
 	return views.Waiting{Secret: p.Secret, Name: p.Name, State: state}
 }
+
+// stateWaiting is the state a waiting join request shows its visitor.
+const stateWaiting = "waiting"
+
+// visitorFileGrace is how long a visitor's file may wait with no waiting request.
+const visitorFileGrace = 5 * time.Second
 
 // pendingViews groups every campaign's waiting requests and bring-back files,
 // campaigns in the order of their oldest request.
@@ -47,16 +55,35 @@ func (a *App) pendingViews() []views.PendingGroup {
 		}
 		return i
 	}
+	waitingFiles := map[string]bool{}
 	for _, p := range a.Hub.PendingList(0) {
 		i := group(p.CampaignID, p.CampaignName)
+		if p.Kind == hub.PendingNewCharacter {
+			// Kept out of Requests: the approve-all bar must never approve a file unreviewed.
+			waitingFiles[p.FileID] = true
+			out[i].NewCharacters = append(out[i].NewCharacters, views.NewCharacterNotice{
+				FileID: p.FileID, CampaignID: p.CampaignID, Name: p.Name, Player: p.Player, Device: p.Device, Phone: p.Phone, Host: p.Host,
+			})
+			continue
+		}
 		out[i].Requests = append(out[i].Requests, views.PendingView{ID: p.ID, CampaignID: p.CampaignID, Name: p.Name, Claim: p.Kind == hub.PendingClaim,
 			Player: p.Player, Device: p.Device, Phone: p.Phone, Host: p.Host,
 		})
 	}
 	// Files wait for review after the join requests; the GM's own too, so leaving its review page loses nothing.
 	for _, f := range a.homeFiles.list() {
+		if f.byPlayer && f.kind == export.KindNewCharacter {
+			// A visitor's file shows through its request; it dies with it (the grace covers
+			// the moment between the file waiting and its request being added).
+			if !waitingFiles[f.id] && time.Since(f.added) > visitorFileGrace {
+				a.homeFiles.drop(f.id)
+			}
+			continue
+		}
 		i := group(f.campaignID, f.campaignName)
-		out[i].BringBacks = append(out[i].BringBacks, views.BringBackNotice{ID: f.id, CampaignID: f.campaignID, Name: f.characterName, SavedAt: f.savedAt})
+		out[i].BringBacks = append(out[i].BringBacks, views.BringBackNotice{
+			ID: f.id, CampaignID: f.campaignID, Name: f.characterName, SavedAt: f.savedAt, MadeAtHome: f.kind == export.KindNewCharacter,
+		})
 	}
 	return out
 }

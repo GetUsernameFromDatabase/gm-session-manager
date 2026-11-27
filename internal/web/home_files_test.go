@@ -61,6 +61,13 @@ func homeSheet(t *testing.T, change func(*dnd5e.Sheet)) json.RawMessage {
 // as the player app writes it, changed by mutate.
 func (e testEnv) bringBackZip(t *testing.T, rec sqlc.TakeHome, mutate func(*export.TakeHome)) []byte {
 	t.Helper()
+	return e.bringBackZipFiles(t, rec, mutate, t.TempDir())
+}
+
+// bringBackZipFiles is bringBackZip with the files the looks and blocks name
+// read from dir.
+func (e testEnv) bringBackZipFiles(t *testing.T, rec sqlc.TakeHome, mutate func(*export.TakeHome), dir string) []byte {
+	t.Helper()
 	serverID, err := e.q().GetServerID(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +85,7 @@ func (e testEnv) bringBackZip(t *testing.T, rec sqlc.TakeHome, mutate func(*expo
 		mutate(&th)
 	}
 	var buf bytes.Buffer
-	if err := export.WriteTakeHome(&buf, th, t.TempDir()); err != nil {
+	if err := export.WriteTakeHome(&buf, th, dir); err != nil {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
@@ -253,6 +260,25 @@ func TestHomeFilesCap(t *testing.T) {
 	// A replacement does not count against the cap.
 	if _, err := s.put(homeFile{kind: export.KindBringBack, characterID: 1}); err != nil {
 		t.Errorf("replacing: %v", err)
+	}
+}
+
+// TestHomeFilesClaim: one Add at a time per file; a released file can be claimed again.
+func TestHomeFilesClaim(t *testing.T) {
+	var s homeFiles
+	id, err := s.put(homeFile{kind: export.KindNewCharacter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.claim(id) || s.claim(id) {
+		t.Fatal("a file must be claimed once")
+	}
+	s.release(id)
+	if !s.claim(id) {
+		t.Error("a released file cannot be claimed")
+	}
+	if s.claim("gone") {
+		t.Error("claimed a file that is not waiting")
 	}
 }
 

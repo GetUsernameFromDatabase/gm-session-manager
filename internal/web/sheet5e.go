@@ -532,14 +532,14 @@ func groupView(d dnd5e.GroupDiff) views.HomeFileGroup {
 	g := views.HomeFileGroup{Key: d.Group, Label: dnd5e.GroupLabel(d.Group)}
 	switch d.State {
 	case dnd5e.SideHome:
-		g.Badge, g.Lines = "Home", d.Home
+		g.Badge, g.Lines = titleHome, d.Home
 	case dnd5e.SideTable:
-		g.Badge, g.Lines = "Table", d.Table
+		g.Badge, g.Lines = titleTable, d.Table
 	case dnd5e.MergeConflict:
 		g.Badge = "Both"
 		g.Columns = []views.HomeFileColumn{
-			{Side: dnd5e.SideHome, Title: "Home", Lines: d.Home, Checked: d.Side == dnd5e.SideHome},
-			{Side: dnd5e.SideTable, Title: "Table", Lines: d.Table, Checked: d.Side == dnd5e.SideTable},
+			{Side: dnd5e.SideHome, Title: titleHome, Lines: d.Home, Checked: d.Side == dnd5e.SideHome},
+			{Side: dnd5e.SideTable, Title: titleTable, Lines: d.Table, Checked: d.Side == dnd5e.SideTable},
 		}
 	}
 	return g
@@ -562,6 +562,61 @@ func writeMerged(ctx context.Context, q *sqlc.Queries, id int64, m charState) er
 		*dc = c
 		return err
 	})
+}
+
+// renameSpells applies homebrew spell slug renames (old to new) to a stored sheet.
+func renameSpells(sheet string, renames map[string]string) (string, error) {
+	if len(renames) == 0 {
+		return sheet, nil
+	}
+	s, err := dnd5e.ParseSheet(sheet)
+	if err != nil {
+		return "", err
+	}
+	s.RenameSpells(renames)
+	return s.JSON()
+}
+
+// sheetLevel is the character level a stored sheet has.
+func sheetLevel(sheet string) (int, error) {
+	s, err := dnd5e.ParseSheet(sheet)
+	return s.Level(), err
+}
+
+// planNewSources shows the sources a new character's file brings that the
+// campaign lacks. There is no merge to fall back on, so one Decline blocks the
+// add, and so does a source not chosen yet.
+func planNewSources(sheet, name string, sources []reviewSource, form func(string) string) ([]views.HomeFileSource, string, error) {
+	s, err := dnd5e.ParseSheet(sheet)
+	if err != nil {
+		return nil, "", err
+	}
+	var out []views.HomeFileSource
+	declined, undecided := "", false
+	for _, rs := range sources {
+		choice := form(views.SourceParam(rs.Key))
+		if choice != views.SourceAllow && choice != views.SourceDecline {
+			choice = ""
+		}
+		sv := views.HomeFileSource{Key: rs.Key, Label: rs.Label, Choice: choice, Uses: "Not used", Effect: "Declining rejects " + name}
+		if uses := s.SourceUses(rs.Key); len(uses) > 0 {
+			sv.Uses = "Used: " + strings.Join(uses, ", ")
+		}
+		switch {
+		case choice == views.SourceDecline && declined == "":
+			declined = rs.Label
+		case choice == "":
+			undecided = true
+		}
+		out = append(out, sv)
+	}
+	switch {
+	case declined != "":
+		return out, fmt.Sprintf("Declining %s rejects %s.", declined, name), nil
+	case undecided:
+		return out, "Choose Allow or Decline for each source.", nil
+	}
+	return out, "", nil
 }
 
 // sourceLabel names a source for the GM.

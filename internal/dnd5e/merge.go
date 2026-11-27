@@ -386,6 +386,21 @@ func (s Sheet) SourceUses(key string) []string {
 	return out
 }
 
+// homebrewSource is the compendium source key of homebrew entries.
+const homebrewSource = "homebrew"
+
+// RenameSpells gives homebrew spells the slugs renames maps them to (old to
+// new), for a bring-back whose homebrew got other slugs at the table. One pass,
+// so a new slug that is another's old one is not renamed again. A spell pinned
+// to another source is not homebrew and stays.
+func (s *Sheet) RenameSpells(renames map[string]string) {
+	for i, sp := range s.Spells {
+		if renamed, ok := renames[sp.Slug]; ok && (sp.Source == "" || sp.Source == homebrewSource) {
+			s.Spells[i].Slug = renamed
+		}
+	}
+}
+
 // DropSource removes what a declined source supplied and the sheet can lose:
 // its spells and armor (carried and worn). The build cannot be dropped (see
 // BuildPinsSource). It returns what went, named as SourceUses does.

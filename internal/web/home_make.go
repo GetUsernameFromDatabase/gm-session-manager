@@ -92,7 +92,7 @@ func (a *App) homeMakeCopy(c *gin.Context) error {
 		cf.Name = homeName(cf.Name, copySuffix)
 		// th.Homebrew stays with the original; the cloned links already show it.
 		maps := newHomeIDMaps()
-		cp, err = createHomeCharacter(ctx, q, campaignID, cf, th, lookFiles, blockFiles, &maps)
+		cp, err = createHomeCharacter(ctx, q, campaignID, cf, th, lookFiles, blockFiles, &maps, nil)
 		return err
 	})
 	if err != nil {

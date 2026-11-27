@@ -197,6 +197,9 @@ type TakeHomeBase struct {
 	LevelUps  []int64               `json:"level_ups"`
 	Looks     []TakeHomeBaseLook    `json:"looks"`
 	Notes     []int64               `json:"notes"`
+	// Titles maps each note sent to its title; a take-out recorded before the
+	// bring-back needed it has none.
+	Titles map[int64]string `json:"titles,omitempty"`
 	// Blocks maps each block sent to its version.
 	Blocks map[int64]int64 `json:"blocks"`
 	// Homebrew maps each own entry sent to its content hash.

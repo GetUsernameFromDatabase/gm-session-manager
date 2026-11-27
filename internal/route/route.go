@@ -114,6 +114,7 @@ const (
 	Link               = "/link"
 	Links              = "/links"
 	Move               = "/move"
+	NewCharacter       = "/new-character"
 	Notes              = "/notes"
 	Npc                = "/npc"
 	OpenJoin           = "/open-join"
@@ -216,6 +217,7 @@ const (
 	CampaignImagesNew           = Campaign + ImagesNew
 	CampaignImportCharacter     = Campaign + ImportCharacter
 	CampaignLinks               = Campaign + Links
+	CampaignNewCharacter        = Campaign + NewCharacter
 	CampaignNotes               = Campaign + Notes
 	CampaignOpenJoin            = Campaign + OpenJoin
 	CampaignRename              = Campaign + Rename
@@ -273,8 +275,9 @@ const (
 	ImageFile   = Image + File
 	ImageNpc    = Image + Npc
 
-	JoinClaim  = JoinCampaign + Claim
-	JoinCreate = JoinCampaign + Create
+	JoinClaim        = JoinCampaign + Claim
+	JoinCreate       = JoinCampaign + Create
+	JoinNewCharacter = JoinCampaign + NewCharacter
 
 	NoteBlocks = Note + Blocks
 	NoteDelete = Note + Delete

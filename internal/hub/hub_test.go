@@ -175,6 +175,40 @@ func TestCloseSessionAndCharacter(t *testing.T) {
 	}
 }
 
+// TestPendingNewCharacter: a request that brings a file is never approved by
+// Decide, only by adding its character; denying works either way.
+func TestPendingNewCharacter(t *testing.T) {
+	h := New(fakeHandler{})
+	p, _ := h.AddPending(Pending{CampaignID: 1, Kind: PendingNewCharacter, Name: "Bryn", FileID: "f1"})
+	if h.Decide(1, p.ID, true) {
+		t.Error("Decide approved a new-character request")
+	}
+	if h.ApproveNewCharacter(2, "f1", 9) || h.ApproveNewCharacter(1, "other", 9) {
+		t.Error("approved another campaign's or file's request")
+	}
+	if !h.FileRequestWaiting(1, "f1") || h.FileRequestWaiting(2, "f1") || h.FileRequestWaiting(1, "other") {
+		t.Error("FileRequestWaiting does not find only the waiting request of the file")
+	}
+	if !h.ApproveNewCharacter(1, "f1", 9) {
+		t.Fatal("not approved")
+	}
+	if h.ApproveNewCharacter(1, "f1", 9) || h.FileRequestWaiting(1, "f1") {
+		t.Error("approved twice, or still waiting once approved")
+	}
+	got, ok := h.TakeApproved(p.Secret)
+	if !ok || got.CharacterID != 9 {
+		t.Errorf("redeemed %+v, %v", got, ok)
+	}
+
+	q, _ := h.AddPending(Pending{CampaignID: 1, Kind: PendingNewCharacter, FileID: "f2"})
+	if !h.DenyFile(1, "f2") || h.DenyFile(1, "f2") {
+		t.Error("deny by file must work once")
+	}
+	if _, ok := h.TakeApproved(q.Secret); ok {
+		t.Error("a denied request was redeemed")
+	}
+}
+
 func TestPendingFlow(t *testing.T) {
 	h := New(fakeHandler{})
 	p, _ := h.AddPending(Pending{CampaignID: 1, CampaignName: "Camp", Kind: PendingClaim, CharacterID: 5, Name: "Alice"})

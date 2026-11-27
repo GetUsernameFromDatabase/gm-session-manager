@@ -100,6 +100,9 @@ templ PendingRequests(groups []PendingGroup) {
 			for _, n := range g.BringBacks {
 				@bringBackCard(g, n)
 			}
+			for _, n := range g.NewCharacters {
+				@newCharacterCard(g, n)
+			}
 		}
 	</div>
 }
@@ -111,15 +114,20 @@ templ campaignLink(g PendingGroup) {
 
 templ CampaignRoster(r Roster) {
 	<section id="campaign-roster" hx-swap-oob="true" { live(LiveRoster, r.Campaign.ID)... }>
-		<div class="mb-3 flex items-center justify-between">
+		<div class="mb-3 flex items-center justify-between gap-2">
 			<h2 class="text-lg font-semibold">Characters</h2>
-			@button.Button(button.Props{
-				Variant:    utils.IfElse(r.Campaign.OpenJoin, button.VariantDefault, button.VariantOutline),
-				Size:       button.SizeXs,
-				Attributes: templ.Attributes{"hx-post": route.Path(route.CampaignOpenJoin, r.Campaign.ID), "title": "When open, new characters are created without your approval", "aria-pressed": fmt.Sprint(r.Campaign.OpenJoin)},
-			}) {
-				Open join: { utils.IfElse(r.Campaign.OpenJoin, "on", "off") }
-			}
+			<div class="flex flex-wrap justify-end gap-2">
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: newCharacterLoad(r.Campaign.ID)}) {
+					Add from file…
+				}
+				@button.Button(button.Props{
+					Variant:    utils.IfElse(r.Campaign.OpenJoin, button.VariantDefault, button.VariantOutline),
+					Size:       button.SizeXs,
+					Attributes: templ.Attributes{"hx-post": route.Path(route.CampaignOpenJoin, r.Campaign.ID), "title": "When open, new characters are created without your approval", "aria-pressed": fmt.Sprint(r.Campaign.OpenJoin)},
+				}) {
+					Open join: { utils.IfElse(r.Campaign.OpenJoin, "on", "off") }
+				}
+			</div>
 		</div>
 		<div class="space-y-3">
 			for _, rc := range r.Characters {

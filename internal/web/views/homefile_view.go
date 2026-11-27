@@ -79,6 +79,24 @@ type HomeFileView struct {
 	Error, Stale string
 	// Was stamps the table character the review was made against.
 	Was string
+	// NewCharacter marks a character made at home that Accept adds to the
+	// campaign (LevelTo is its level; there is no take-out).
+	NewCharacter bool
+}
+
+// PageTitle is the review page's title.
+func (v HomeFileView) PageTitle() string {
+	if v.NewCharacter {
+		return "Add " + v.Name
+	}
+	return "Bring " + v.Name + " back"
+}
+
+func (v HomeFileView) acceptLabel() string {
+	if v.NewCharacter {
+		return "Add to campaign"
+	}
+	return "Accept bring-back"
 }
 
 // URL is the review's own address, which carries the picks.
@@ -99,6 +117,13 @@ func (v HomeFileView) rejectURL() string { return RejectURL(v.CampaignID, v.File
 
 // meta is the muted line under the name.
 func (v HomeFileView) meta() string {
+	if v.NewCharacter {
+		s := "Made at home · level " + strconv.Itoa(v.LevelTo)
+		if v.ByGM {
+			return s + " · uploaded by the GM"
+		}
+		return s + " · sent from the player's device"
+	}
 	s := ""
 	if v.LevelFrom != v.LevelTo {
 		s += " · level " + strconv.Itoa(v.LevelFrom) + " → " + strconv.Itoa(v.LevelTo)
@@ -115,6 +140,28 @@ type BringBackNotice struct {
 	CampaignID int64
 	Name       string
 	SavedAt    time.Time
+	// MadeAtHome is a new character's file, not a bring-back.
+	MadeAtHome bool
+}
+
+// NewCharacterNotice is a visitor's new-character file in the GM's popup, with
+// who sent it; Review opens it, Deny drops it.
+type NewCharacterNotice struct {
+	FileID     string
+	CampaignID int64
+	Name       string
+	Player     string
+	Device     string
+	Phone      bool
+	Host       string
+}
+
+// newCharacterLoad turns a button into the trigger that loads the "add from
+// file" dialog body into the take-home dialog.
+func newCharacterLoad(campaignID int64) templ.Attributes {
+	return with(dialog.TriggerFor(takeHomeID), templ.Attributes{
+		attrHxGet: route.Path(route.CampaignNewCharacter, campaignID), attrHxTarget: takeHomeTarget, attrHxSwap: swapInner,
+	})
 }
 
 // BringBackView is the dialog that takes a bring-back file.

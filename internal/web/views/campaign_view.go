@@ -66,4 +66,7 @@ type PendingGroup struct {
 	Requests     []PendingView
 	// BringBacks are files players sent, waiting for the GM to review.
 	BringBacks []BringBackNotice
+	// NewCharacters are characters made at home that visitors sent; they are
+	// never in Requests, so no approve-all bar can approve one unreviewed.
+	NewCharacters []NewCharacterNotice
 }

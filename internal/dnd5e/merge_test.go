@@ -223,3 +223,31 @@ func TestSourceUsesAndDrop(t *testing.T) {
 		t.Errorf("second DropSource removed %q", got)
 	}
 }
+
+func TestRenameSpells(t *testing.T) {
+	tests := []struct {
+		name   string
+		spells []Spell
+		want   []string
+	}{
+		{"unpinned", []Spell{{Slug: "old"}}, []string{"new"}},
+		{"homebrew pinned", []Spell{{Slug: "old", Source: "homebrew"}}, []string{"new"}},
+		{"another source", []Spell{{Slug: "old", Source: "book"}}, []string{"old"}},
+		{"another slug", []Spell{{Slug: "other"}, {Slug: "old"}}, []string{"other", "new"}},
+		// "new" is renamed too: the spell that was "old" must not follow it.
+		{"chain", []Spell{{Slug: "old"}, {Slug: "new"}}, []string{"new", "new-2"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := Sheet{Spells: tt.spells}
+			s.RenameSpells(map[string]string{"old": "new", "new": "new-2"})
+			var got []string
+			for _, sp := range s.Spells {
+				got = append(got, sp.Slug)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("slugs %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

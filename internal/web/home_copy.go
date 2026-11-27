@@ -3,9 +3,6 @@ package web
 // The player app's side of taking a character home: list the characters on
 // this computer, open a take-home zip and log the browser in as its character.
 //
-// shortcut: [[note:…]] and mention tokens in imported notes keep the table's
-// ids and do not resolve at home; resolve them through the id maps when the
-// bring-back needs them.
 // shortcut: 'listed' blocks lose their audience at home (the character becomes
 // the only one); keep it when a second character plays at home together.
 // shortcut: conditions, effect presets and devices are not taken home.
@@ -260,8 +257,8 @@ func fileSheets(file *export.TakeHomeFile) []json.RawMessage {
 
 // checkFileSources checks the compendium part of a take-home or bring-back
 // file: sources with a real key, and entries of a listed source (or homebrew,
-// which a bring-back never lists among its entries: its homebrew is separate).
-// Phase 4 calls it for bring-back files at the table.
+// which a bring-back or new character's file never lists among its entries: its
+// homebrew is separate). The table calls it for both.
 func checkFileSources(file *export.TakeHomeFile) error {
 	known := map[string]bool{}
 	for _, s := range file.Sources {
@@ -271,7 +268,7 @@ func checkFileSources(file *export.TakeHomeFile) error {
 		known[s.SourceKey] = true
 	}
 	for _, e := range file.Entries {
-		if e.SourceKey == homebrewSource && file.Manifest.Kind == export.KindBringBack {
+		if e.SourceKey == homebrewSource && file.Manifest.Kind != export.KindTakeHome {
 			return userError{errors.New("the file lists homebrew among the compendium entries")}
 		}
 		if e.SourceKey != homebrewSource && !known[e.SourceKey] {
@@ -553,7 +550,7 @@ func importTakeHome(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeF
 	}
 
 	maps := newHomeIDMaps()
-	ch, err := createHomeCharacter(ctx, q, camp.ID, cf, file.TakeHome, lookFiles, blockFiles, &maps)
+	ch, err := createHomeCharacter(ctx, q, camp.ID, cf, file.TakeHome, lookFiles, blockFiles, &maps, homeMentions)
 	if err != nil {
 		return 0, err
 	}
@@ -611,8 +608,9 @@ func newHomeIDMaps() export.HomeIDMaps {
 
 // createHomeCharacter writes cf as a character of the campaign with th's
 // level-ups, looks and notes (their files already saved), recording the home
-// ids in maps.
-func createHomeCharacter(ctx context.Context, q *sqlc.Queries, campaignID int64, cf export.CharacterFile, th export.TakeHome, lookFiles []savedFile, blockFiles map[int64][]savedFile, maps *export.HomeIDMaps) (sqlc.Character, error) {
+// ids in maps. mentions (nil: none) rewrites the notes' mention ids once every
+// note exists.
+func createHomeCharacter(ctx context.Context, q *sqlc.Queries, campaignID int64, cf export.CharacterFile, th export.TakeHome, lookFiles []savedFile, blockFiles map[int64][]savedFile, maps *export.HomeIDMaps, mentions mentionMaker) (sqlc.Character, error) {
 	ch, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{
 		CampaignID: campaignID, Name: cf.Name, System: cf.System, Hp: cf.HP, MaxHp: cf.MaxHP, TempHp: cf.TempHP, SheetJson: string(cf.Sheet),
 	})
@@ -629,7 +627,7 @@ func createHomeCharacter(ctx context.Context, q *sqlc.Queries, campaignID int64,
 	if err := importLooks(ctx, q, th.Looks, lookFiles, ch, campaignID, maps); err != nil {
 		return ch, err
 	}
-	return ch, importNotes(ctx, q, th.Notes, blockFiles, ch, campaignID, maps)
+	return ch, importNotes(ctx, q, th.Notes, blockFiles, ch, campaignID, maps, mentions)
 }
 
 // cloneHomeCampaign makes a home campaign with the same sources and homebrew
@@ -709,7 +707,8 @@ func importLooks(ctx context.Context, q *sqlc.Queries, looks []export.TakeHomeLo
 // collaborative state (version 0), their files attached and each picture in a
 // document pointed at its new file. A block may show another block's picture
 // (copied between notes), so every block is rewritten with the map of all files.
-func importNotes(ctx context.Context, q *sqlc.Queries, notes []export.TakeHomeNote, files map[int64][]savedFile, ch sqlc.Character, campaignID int64, maps *export.HomeIDMaps) error {
+// mentions (nil: none) rewrites note and image mentions once every note exists.
+func importNotes(ctx context.Context, q *sqlc.Queries, notes []export.TakeHomeNote, files map[int64][]savedFile, ch sqlc.Character, campaignID int64, maps *export.HomeIDMaps, mentions mentionMaker) error {
 	byTable := map[int64]int64{}
 	docs := map[int64]json.RawMessage{} // home block id → the document as the table had it
 	for _, n := range notes {
@@ -750,13 +749,22 @@ func importNotes(ctx context.Context, q *sqlc.Queries, notes []export.TakeHomeNo
 			}
 		}
 	}
-	if len(byTable) == 0 {
+	if len(byTable) == 0 && mentions == nil {
 		return nil
+	}
+	var mention mentionIDs
+	if mentions != nil {
+		mention = mentions(maps)
 	}
 	for blockID, d := range docs {
 		doc, err := rewriteDocAttachments(d, byTable)
 		if err != nil {
 			return err
+		}
+		if mention != nil {
+			if doc, err = rewriteDocMentions(doc, mention); err != nil {
+				return err
+			}
 		}
 		if err := q.SetTakeHomeBlockDoc(ctx, sqlc.SetTakeHomeBlockDocParams{DocJson: string(doc), ID: blockID}); err != nil {
 			return err
