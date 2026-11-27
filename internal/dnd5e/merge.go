@@ -342,48 +342,52 @@ func wornName(s Sheet) string {
 // classes, species, background, feats, spells and armor.
 func (s Sheet) SourceUses(key string) []string {
 	var out []string
-	add := func(kind, name string) {
-		if u := kind + " " + name; !slices.Contains(out, u) {
+	s.eachPin(func(k, kind, name string) {
+		if u := kind + " " + name; k == key && !slices.Contains(out, u) {
 			out = append(out, u)
 		}
-	}
+	})
+	return out
+}
+
+// SourceKeys is every book the sheet pins (homebrew is not one).
+func (s Sheet) SourceKeys() []string {
+	var out []string
+	s.eachPin(func(k, _, _ string) {
+		if k != "" && k != homebrewSource && !slices.Contains(out, k) {
+			out = append(out, k)
+		}
+	})
+	return out
+}
+
+// eachPin calls fn for every source pin on the sheet (key "" when unpinned),
+// with what it pins.
+func (s Sheet) eachPin(fn func(key, kind, name string)) {
 	for _, c := range s.Classes {
-		if c.Source == key {
-			add("class", c.Name)
-		}
-		if c.SubclassSource == key {
-			add("subclass", c.Subclass)
-		}
+		fn(c.Source, "class", c.Name)
+		fn(c.SubclassSource, "subclass", c.Subclass)
 	}
-	if s.SpeciesSource == key {
-		add("species", s.Species)
-	}
-	if s.BackgroundSource == key {
-		add("background", s.Background)
-	}
+	fn(s.SpeciesSource, "species", s.Species)
+	fn(s.BackgroundSource, "background", s.Background)
 	for _, slug := range slices.Sorted(maps.Keys(s.FeatSources)) {
-		if s.FeatSources[slug] == key {
-			name := slug // a pin whose feat left the list keeps its slug
-			if i := slices.IndexFunc(s.Feats, func(n string) bool { return sameSlug(n, slug) }); i >= 0 {
-				name = s.Feats[i]
-			}
-			add("feat", name)
+		name := slug // a pin whose feat left the list keeps its slug
+		if i := slices.IndexFunc(s.Feats, func(n string) bool { return sameSlug(n, slug) }); i >= 0 {
+			name = s.Feats[i]
 		}
+		fn(s.FeatSources[slug], "feat", name)
 	}
 	for _, sp := range s.Spells {
-		if sp.Source == key {
-			add("spell", sp.Name)
-		}
+		fn(sp.Source, "spell", sp.Name)
 	}
 	for _, it := range s.Inventory {
-		if it.Armor != nil && it.Armor.Source == key {
-			add("armor", it.Name)
+		if it.Armor != nil {
+			fn(it.Armor.Source, "armor", it.Name)
 		}
 	}
-	if s.Armor != nil && s.Armor.Source == key {
-		add("armor", s.Armor.Name)
+	if s.Armor != nil {
+		fn(s.Armor.Source, "armor", s.Armor.Name)
 	}
-	return out
 }
 
 // homebrewSource is the compendium source key of homebrew entries.

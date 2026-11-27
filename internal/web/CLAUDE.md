@@ -25,6 +25,8 @@ The htmx websocket extension retries forever on an abnormal close (1006, which i
 
 Each note block is its own collaborative document (TipTap, `assets/js/notes.js`) with its own audience; the server is the authority (stale steps get a 409 and rebase). Trusting client snapshots, text and links is accepted on a LAN of friends, except link schemes: raw steps skip TipTap's link check, so `submitSteps` and `blockSnapshot` refuse an `href` outside `safeSchemes` and `linkClick` follows only those. NPC fields reuse TipTap (`fields.js`); both share `wikilink.js` for `[[kind:id|label]]` tokens (parsed in `views/wikilinks.go`).
 
+Take-home zips carry note blocks as TipTap JSON, and the version check reads sheets only: a change to the node or mark types notes can hold (a new extension in `notes.js`) must raise `export.TakeHomeFormat`, or an older app opening the file drops that content for good.
+
 ## UI conventions
 
 - shadcn-templ (shadcn-templ.com, github.com/axadrn/shadcn-templ), not templUI. Use its components for every control, never native `<select>`/`<dialog>`/hand-styled inputs; add missing ones with `go tool shadcn-templ add <name>`. Its Select and popovers portal to `<body>`, so they fail inside a native `<dialog>`: use the shadcn Dialog.

@@ -46,7 +46,7 @@ templ HomeFileReview(v HomeFileView) {
 		</div>
 		if len(v.Sources) > 0 {
 			<section class="space-y-2">
-				<h2 class="text-lg font-semibold">Sources added at home</h2>
+				<h2 class="text-lg font-semibold">Sources the campaign does not allow</h2>
 				<ul class="divide-y rounded-lg border">
 					for _, s := range v.Sources {
 						@homeFileSource(s)

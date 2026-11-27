@@ -193,7 +193,7 @@ func HomeFileReview(v HomeFileView) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if len(v.Sources) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<section class=\"space-y-2\"><h2 class=\"text-lg font-semibold\">Sources added at home</h2><ul class=\"divide-y rounded-lg border\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<section class=\"space-y-2\"><h2 class=\"text-lg font-semibold\">Sources the campaign does not allow</h2><ul class=\"divide-y rounded-lg border\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -96,6 +96,7 @@ func (a *App) takeHome(c *gin.Context) error {
 	c.Header("Content-Disposition", `attachment; filename="`+export.ZipFileName(export.KindTakeHome, ch.Name, rec.CreatedAt)+`"`)
 	if err := export.WriteTakeHome(c.Writer, th, a.attachmentsDir()); err != nil {
 		// Headers are gone; the truncated zip tells the browser it failed.
+		// shortcut: the take-out stays recorded (the sheet says taken home); record it after the stream if that ever confuses.
 		a.serverError(c, err)
 	}
 	return nil

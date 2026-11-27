@@ -248,6 +248,12 @@ templ rosterCard(r Roster, rc RosterCharacter) {
 					@icon.House()
 					Take home…
 				}
+				if !rc.TakenHome.IsZero() {
+					@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantOutline, Attributes: bringBackLoad(rc.Character.ID)}) {
+						@icon.Undo2()
+						Bring back…
+					}
+				}
 				@button.Button(button.Props{Size: button.SizeXs, Variant: button.VariantDestructive, Attributes: templ.Attributes{
 					"hx-post": route.Path(route.CharacterRemove, rc.Character.ID), "hx-confirm": "Delete " + rc.Character.Name + " and log out its devices? You can restore it afterwards.",
 				}}) {

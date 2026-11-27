@@ -47,7 +47,8 @@ type HomeFileGroup struct {
 	Columns []HomeFileColumn
 }
 
-// HomeFileSource is a source added at home that the campaign does not allow.
+// HomeFileSource is a source the file uses that the campaign does not allow:
+// added at home, or (a new character) one of the table's.
 type HomeFileSource struct {
 	Key, Label string
 	// Uses is "Used: …" or "Not used".

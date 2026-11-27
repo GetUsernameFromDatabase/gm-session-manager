@@ -583,6 +583,12 @@ func sheetLevel(sheet string) (int, error) {
 	return s.Level(), err
 }
 
+// sheetSourceKeys is every book a sheet pins (not homebrew).
+func sheetSourceKeys(sheet string) ([]string, error) {
+	s, err := dnd5e.ParseSheet(sheet)
+	return s.SourceKeys(), err
+}
+
 // planNewSources shows the sources a new character's file brings that the
 // campaign lacks. There is no merge to fall back on, so one Decline blocks the
 // add, and so does a source not chosen yet.

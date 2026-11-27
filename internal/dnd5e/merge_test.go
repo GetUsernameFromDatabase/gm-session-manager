@@ -194,6 +194,18 @@ func TestTakeBuild(t *testing.T) {
 	}
 }
 
+// SourceKeys lists each book once and skips unpinned and homebrew entries.
+func TestSourceKeys(t *testing.T) {
+	s := Sheet{
+		Classes:       []ClassLevel{{Name: "Wizard", Source: "phb", Subclass: "Bladesinging", SubclassSource: "tce"}},
+		SpeciesSource: "",
+		Spells:        []Spell{{Name: "Glow", Source: homebrewSource}, {Name: "Zap", Source: "phb"}, {Name: "Light"}},
+	}
+	if got := s.SourceKeys(); !slices.Equal(got, []string{"phb", "tce"}) {
+		t.Errorf("SourceKeys() = %v, want [phb tce]", got)
+	}
+}
+
 func TestSourceUsesAndDrop(t *testing.T) {
 	s := mergeChar(t, nil).Sheet
 	s.Classes[0].SubclassSource, s.Classes[0].Subclass = "book", "Bladesinging"

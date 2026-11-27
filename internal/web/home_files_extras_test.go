@@ -11,11 +11,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"gm-session-manager/internal/db/sqlc"
+	"gm-session-manager/internal/dnd5e"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/export"
 	"gm-session-manager/internal/hub"
@@ -494,6 +496,92 @@ func TestNewCharacterFromGM(t *testing.T) {
 	}
 	if len(e.app.homeFiles.list()) != 1 {
 		t.Error("the added file was kept")
+	}
+}
+
+// A new character may pin books of this table that the file does not list:
+// the review offers those the campaign lacks, and Allow turns them on.
+func TestNewCharacterTableSources(t *testing.T) {
+	tests := []struct {
+		name     string
+		known    bool // the table has the book
+		allowed  bool // the campaign allows it
+		pinned   bool // the sheet uses it
+		listed   bool // the file lists it (added at home)
+		wantCode int
+		wantRow  bool
+	}{
+		{name: "used, listed, known", known: true, pinned: true, listed: true, wantCode: http.StatusSeeOther, wantRow: true},
+		{name: "used, listed, unknown to the table", pinned: true, listed: true, wantCode: http.StatusSeeOther, wantRow: true},
+		{name: "used, not allowed", known: true, pinned: true, wantCode: http.StatusSeeOther, wantRow: true},
+		{name: "used, allowed", known: true, allowed: true, pinned: true, wantCode: http.StatusSeeOther},
+		{name: "not used", known: true, wantCode: http.StatusSeeOther},
+		{name: "used, unknown to the table", pinned: true, wantCode: http.StatusUnprocessableEntity},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEnv(t)
+			ctx := t.Context()
+			q := e.q()
+			gm := e.token(t, enum.RoleAdmin)
+			if tt.known {
+				if err := q.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: "tbook", Path: "books", Edition: "2024"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.allowed {
+				if _, err := q.AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: e.campaignID, SourceKey: "tbook"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			body := e.newCharacterZip(t, func(th *export.TakeHome) {
+				if tt.pinned {
+					th.Character.Sheet = homeSheet(t, func(s *dnd5e.Sheet) {
+						s.Spells = []dnd5e.Spell{{Slug: "zap", Name: "Zap", Source: "tbook"}}
+					})
+				}
+				if tt.listed {
+					th.Sources = []export.TakeHomeSource{{SourceKey: "tbook", Edition: "2024"}}
+					th.Entries = []export.TakeHomeEntry{{Kind: enum.KindSpell, Slug: "zap", Name: "Zap", SourceKey: "tbook", Data: json.RawMessage(`{}`), ContentHash: "z"}}
+				}
+			})
+			w := e.doFile(t, route.Path(route.CampaignNewCharacter, e.campaignID), gm, nil, formFile, "x.zip", string(body))
+			if w.Code != tt.wantCode {
+				t.Fatalf("upload: %d, want %d: %s", w.Code, tt.wantCode, w.Body)
+			}
+			if w.Code != http.StatusSeeOther {
+				if !strings.Contains(w.Body.String(), "this table does not have") || len(e.app.homeFiles.list()) != 0 {
+					t.Errorf("refusal %q, %d files kept", w.Body, len(e.app.homeFiles.list()))
+				}
+				return
+			}
+			f := e.app.homeFiles.list()[0]
+			form := url.Values{}
+			rv, err := e.app.reviewHomeFile(ctx, q, f, form.Get)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := len(rv.plan.Sources) == 1 && rv.plan.Sources[0].Key == "tbook"; got != tt.wantRow {
+				t.Fatalf("sources %+v, want a tbook row: %v", rv.plan.Sources, tt.wantRow)
+			}
+			if !tt.wantRow {
+				return
+			}
+			if rv.plan.Block == "" {
+				t.Error("Add is not blocked before the source is chosen")
+			}
+			form.Set(views.SourceParam("tbook"), views.SourceAllow)
+			if rv, err = e.app.reviewHomeFile(ctx, q, f, form.Get); err != nil || rv.plan.Block != "" {
+				t.Fatalf("allowed: block %q, %v", rv.plan.Block, err)
+			}
+			form.Set(formWas, rv.was)
+			if w := e.do(t, http.MethodPost, route.Path(route.CampaignHomeFile, e.campaignID, f.id)+route.Accept, gm, form, true); w.Code != http.StatusOK {
+				t.Fatalf("add: %d %s", w.Code, w.Body)
+			}
+			if got, _ := q.ListCampaignSources(ctx, e.campaignID); !slices.Contains(got, "tbook") {
+				t.Errorf("campaign sources %v lack tbook", got)
+			}
+		})
 	}
 }
 

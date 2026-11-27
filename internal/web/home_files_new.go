@@ -10,6 +10,7 @@ package web
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -35,6 +36,8 @@ import (
 type newCharacter struct {
 	file *export.TakeHomeFile
 	cf   export.CharacterFile
+	// tableSources are the books of this table the sheet pins that the file does not list.
+	tableSources []export.TakeHomeSource
 }
 
 // loadNewCharacter reads the zip at path and checks it against the table: its
@@ -73,6 +76,26 @@ func (a *App) loadNewCharacter(ctx context.Context, q *sqlc.Queries, path string
 	}
 	if err := checkFileEntries(file); err != nil {
 		return nc, err
+	}
+	// The file lists only books added at home: the table's own ones it pins
+	// come from here, so the review can offer those the campaign lacks.
+	// shortcut: only the current sheet is read, not level-up history, and bring-backs
+	// skip this (a book the GM switched off since the take-out slips through); reuse this loop if that bites.
+	keys, err := sheetSourceKeys(string(nc.cf.Sheet))
+	if err != nil {
+		return nc, err
+	}
+	for _, k := range keys {
+		if slices.ContainsFunc(file.Sources, func(s export.TakeHomeSource) bool { return s.SourceKey == k }) {
+			continue
+		}
+		src, err := q.GetCompendiumSource(ctx, k)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nc, userf("%s uses the source %s, which this table does not have.", nc.cf.Name, k)
+		} else if err != nil {
+			return nc, err
+		}
+		nc.tableSources = append(nc.tableSources, export.TakeHomeSource{SourceKey: k, Edition: src.Edition})
 	}
 	nc.file = file
 	return nc, nil
@@ -198,7 +221,7 @@ func (a *App) reviewNewCharacter(ctx context.Context, q *sqlc.Queries, f homeFil
 		return rv, err
 	}
 	var sources []reviewSource
-	for _, s := range rv.file.Sources {
+	for _, s := range slices.Concat(rv.file.Sources, nc.tableSources) {
 		if !slices.Contains(allowed, s.SourceKey) {
 			rv.reviewed = append(rv.reviewed, s)
 			sources = append(sources, reviewSource{Key: s.SourceKey, Label: sourceLabel(s)})
