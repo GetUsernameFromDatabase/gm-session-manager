@@ -2,7 +2,7 @@
 
 A LAN-hosted helper for tabletop RPG game masters and their players. The GM's PC runs a single Go binary; players on the same network join by address or QR code. All data lives on the host in SQLite; app-wide settings live in `DATA_DIR/settings.json` (no migration for a switch).
 
-Out of scope: accounts or email, hosting on the internet, S3 or Docker, remote play, in-app dice rolling (physical dice only; the one exception is the GM's initiative roll in combat), maps beyond image attachments, device blocklists, offline mode (taking a character home is a file round trip, not offline mode or remote play). Ask before adding any of these.
+Out of scope: accounts or email, hosting on the internet, S3, Docker (allowed only as the server install in `deploy/`), remote play, in-app dice rolling (physical dice only; the one exception is the GM's initiative roll in combat), maps beyond image attachments, device blocklists, offline mode (taking a character home is a file round trip, not offline mode or remote play). Ask before adding any of these.
 
 ## Stack
 
@@ -55,7 +55,7 @@ D&D 5e (2024) is the only system, fenced in rather than abstracted:
 Dev commands are tasks in `Taskfile.yml` ([Task](https://taskfile.dev), installed with `go install github.com/go-task/task/v3/cmd/task@latest`; `task --list`). The player-app launchers (`Player app.bat`, `player-app.sh`) are written by `task build:release` into each archive. After cloning: `task setup` (`go run ./cmd/vendorjs`, `go tool shadcn-templ bundle` (both outputs gitignored) and `git config core.hooksPath .githooks`; pre-commit runs `task lint`, and git then ignores `.git/hooks`). After changing sources:
 
 | Change | Command |
-|---|---|
+| --- | --- |
 | migrations, queries | `go generate ./internal/db` (sqlc on PATH) |
 | `*.templ`, Tailwind classes, shadcn-templ components (`go tool shadcn-templ add <name>`) | `go generate ./internal/web` |
 | Go formatting | `golangci-lint fmt` |

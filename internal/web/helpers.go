@@ -324,6 +324,12 @@ func (a *App) layout(w who, title, active string, camp *sqlc.Campaign, live bool
 		}
 		l.WS = &views.WS{URL: url, Epoch: epoch, Seq: seq}
 	}
+	if w.isGM() {
+		l.Version, l.UpdateStatus = a.Version, a.updateStatus()
+		if l.Version == UnstampedVersion {
+			l.Version = appBuild()
+		}
+	}
 	// While an import runs, it is downloading them already.
 	if w.isGM() && !a.fiveTools.get().Running {
 		var st settings

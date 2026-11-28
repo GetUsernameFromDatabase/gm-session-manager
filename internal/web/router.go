@@ -16,6 +16,9 @@ import (
 	"gm-session-manager/internal/route"
 )
 
+// UnstampedVersion is main.version in a plain go build (task run); the GM footer shows the commit Go recorded instead.
+const UnstampedVersion = "dev"
+
 // Deps is what the web layer needs from main.
 type Deps struct {
 	Auth  *auth.Manager

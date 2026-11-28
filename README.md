@@ -48,6 +48,8 @@ once per certificate: choose "Advanced" and continue. The GM page shows the
 certificate's SHA-256 fingerprint if you want to compare it with what the
 browser shows.
 
+To run on an always-on Debian server in Docker instead, see [deploy/README.md](deploy/README.md).
+
 ### Windows firewall
 
 The first time the host listens, Windows asks whether to allow
@@ -176,6 +178,7 @@ old server). A changed migration pauses reloading until `touch build/restart`;
 cmd/gm-session-manager/   main: config, DB, hub, HTTPS server
 cmd/vendorjs/             downloads pinned browser JS into internal/web/assets/vendor
 Taskfile.yml              dev, lint, build and release tasks (task --list); the run modes are env there
+deploy/                   the Debian server install: Docker, backup and update scripts, systemd timer (deploy/README.md)
 scripts/                  the longer tasks (run loop, lint, build, release tag), run in Task's shell
 internal/                 every package below; not importable outside this module
   config/                 .env loading and fail-fast validation

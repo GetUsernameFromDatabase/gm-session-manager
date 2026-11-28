@@ -1,0 +1,13 @@
+[Unit]
+Description=GM Session Manager: back up, then update from origin/main
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# The checkout: deploy/systemd-units.sh install fills it in.
+WorkingDirectory=@REPO@
+# update.sh takes the nightly backup first, so a failed one reaches the footer; without --nightly it is a manual one.
+# bash on the script, so the file mode in git does not matter.
+ExecStart=/usr/bin/bash deploy/update.sh --nightly

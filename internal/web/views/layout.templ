@@ -58,6 +58,12 @@ templ page(l Layout) {
 				}
 				{ children... }
 			</main>
+			// Home only: on other pages its height makes screen-fitted views scroll.
+			if l.Active == NavHome {
+				<footer class="mx-auto max-w-5xl px-4 pb-6">
+					@versionLine(l)
+				</footer>
+			}
 			@toast.Toaster()
 			if l.IsGM && l.WS != nil {
 				@PendingRequests(l.Requests)
@@ -97,7 +103,7 @@ templ navbar(l Layout) {
 				}
 			}
 			if l.HasSession || l.IsGM {
-				@feedbackDialog()
+				@feedbackDialog(l)
 			}
 			@button.Button(button.Props{
 				Variant:    button.VariantGhost,
@@ -128,6 +134,18 @@ templ navbar(l Layout) {
 			}
 		</nav>
 	</header>
+}
+
+// versionLine is the GM's version and server update line (empty for others).
+templ versionLine(l Layout) {
+	if l.Version != "" {
+		<p class="text-xs text-muted-foreground">
+			<span>Version { l.Version }</span>
+			if l.UpdateStatus != "" {
+				<span class="ml-3">{ l.UpdateStatus }</span>
+			}
+		</p>
+	}
 }
 
 templ logoutButton(class string) {

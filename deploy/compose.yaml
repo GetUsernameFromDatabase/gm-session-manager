@@ -1,0 +1,29 @@
+# Run through deploy/update.sh, which builds the image (there is no build: here) and exports ENV_FILE and DATA_DIR
+# as full paths (common.sh). The other host values come from that .env (--env-file); the app also reads it as its
+# environment. By hand, export both first (README.md, Rollback).
+name: gm-session-manager
+
+# The data folder's path inside the container, written once: the mount and the app's DATA_DIR cannot differ.
+x-data: &data /data
+
+services:
+  app:
+    # The image's one name: update.sh reads it from here (compose config --images) for its :new and :prev tags.
+    image: gm-session-manager:current
+    # The app finds its LAN addresses for the QR code and the certificate; a bridge network would show 172.17.x.
+    network_mode: host
+    # The owner of DATA_DIR. 65532 is the image's own non-root user, so no account is needed on the server.
+    user: "${GSM_UID:-65532}:${GSM_GID:-65532}"
+    env_file: ${ENV_FILE:?run through deploy/update.sh}
+    environment:
+      DATA_DIR: *data # overrides the host value from env_file
+    volumes:
+      # Long syntax: a missing host folder is an error, not a new empty folder (also a relative DATA_DIR that was
+      # not exported, which Compose would read from deploy/).
+      - type: bind
+        source: ${DATA_DIR:?set DATA_DIR in the .env file}
+        target: *data
+    restart: unless-stopped
+    # Docker's default json-file log never rotates; local rotates at 20 MB, keeps 5 files, and still serves docker logs.
+    logging:
+      driver: local

@@ -1,0 +1,9 @@
+# Only gitignored paths: the build needs every committed file and .git.
+/data/
+/build/
+/dist/
+/.task/
+*.exe
+/internal/web/assets/vendor/
+/internal/web/assets/js/shadcn-templ-*.js
+.env

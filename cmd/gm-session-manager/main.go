@@ -28,7 +28,6 @@ import (
 
 const (
 	envFile         = ".env"
-	databaseFile    = "gm-session-manager.db"
 	tlsDir          = "tls"
 	compendiumDir   = "compendium"
 	shutdownTimeout = 5 * time.Second
@@ -37,7 +36,7 @@ const (
 )
 
 // version is set at build time by scripts/build.sh (-X main.version=…).
-var version = "dev"
+var version = web.UnstampedVersion
 
 func main() {
 	if err := run(); err != nil {
@@ -110,7 +109,7 @@ func run() error {
 	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
-	conn, err := db.Open(ctx, filepath.Join(cfg.DataDir, databaseFile))
+	conn, err := db.Open(ctx, filepath.Join(cfg.DataDir, config.DatabaseFile))
 	if err != nil {
 		return err
 	}

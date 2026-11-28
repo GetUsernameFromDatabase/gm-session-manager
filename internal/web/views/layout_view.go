@@ -85,6 +85,8 @@ type Layout struct {
 	// AutoRedownload is the banner's switch.
 	StaleBooks     []compendium.Book
 	AutoRedownload bool
+	// Version and UpdateStatus fill the GM's home footer and feedback dialog; the status is the server's update line (empty off the server).
+	Version, UpdateStatus string
 }
 
 // CampaignSwitch opens the same page in another campaign, or in all of them.

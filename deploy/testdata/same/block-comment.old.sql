@@ -1,0 +1,2 @@
+/* why */
+CREATE TABLE t (id INTEGER PRIMARY KEY);

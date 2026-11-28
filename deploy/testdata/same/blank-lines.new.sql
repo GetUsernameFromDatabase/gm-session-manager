@@ -1,0 +1,7 @@
+
+
+CREATE TABLE a (id INTEGER);
+
+
+CREATE TABLE b (id INTEGER);
+

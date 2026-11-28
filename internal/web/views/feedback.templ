@@ -13,7 +13,7 @@ import (
 )
 
 // feedbackDialog is the navbar's button and form for a bug report or an idea.
-templ feedbackDialog() {
+templ feedbackDialog(l Layout) {
 	@dialog.Dialog(dialog.Props{ID: "feedback"}) {
 		@button.Button(button.Props{
 			Variant:    button.VariantGhost,
@@ -32,6 +32,7 @@ templ feedbackDialog() {
 				}
 			}
 			@feedbackForm()
+			@versionLine(l)
 		}
 	}
 }

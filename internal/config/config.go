@@ -23,6 +23,9 @@ const (
 	EnvDataDir       = "DATA_DIR"
 )
 
+// DatabaseFile is the SQLite file in DATA_DIR (deploy/common.sh backs it up by this name).
+const DatabaseFile = "gm-session-manager.db"
+
 // Defaults for optional settings.
 const (
 	DefaultPort    = 8080

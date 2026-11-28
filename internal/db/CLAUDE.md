@@ -8,3 +8,4 @@
 - A new CHECK enum needs its type in `internal/enum` plus a column override in `sqlc.yaml`.
 - A multi-statement `ExecContext` binds each statement's `?` from the first argument again: one statement per bound value.
 - sqlc column `overrides` ignore nullability: an overridden column read through a LEFT JOIN needs `COALESCE(col, '')`, or a NULL fails to scan.
+- Never edit a migration once it is deployed (comment-only edits are fine). The server update gate (`deploy/update.sh`) compares each migration with the deployed one after stripping comments and whitespace, and stops on any other change; the server never re-runs a migration. No more schema resets: a change is a new numbered file.
