@@ -199,6 +199,13 @@ type HomeCopy struct {
 	FallbackCharacterID sql.NullInt64
 }
 
+type HomeStarter struct {
+	CampaignID      int64
+	ServerID        string
+	TableCampaignID int64
+	SavedAt         time.Time
+}
+
 type Image struct {
 	ID           int64
 	CampaignID   int64
@@ -227,6 +234,11 @@ type LevelUp struct {
 type MonsterHabitat struct {
 	EntryID int64
 	Habitat enum.Habitat
+}
+
+type NewCharacterToken struct {
+	CharacterID int64
+	Token       string
 }
 
 type Note struct {

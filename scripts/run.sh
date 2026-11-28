@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The dev server loop behind task run, run:player, run:browser and run:before (the modes are their env: in
+# The dev server loop behind task run, run:player, run:test, run:test-player and run:before (the modes are their env: in
 # Taskfile.yml; task --list describes them). Task runs it in its own shell (source), so it also works from
 # PowerShell: no find, sort or bash-only set flags.
 # Watching modes rebuild and restart when sources change, keeping the old server if the build fails; a changed
@@ -9,8 +9,13 @@
 # and run.pid live there) are required; MODE (names the change-detection state); WATCH (rebuild when sources
 # change); NOREBUILD (BIN is prebuilt); SERVER_ARGS; RESTART_ARGS (added to SERVER_ARGS after the first
 # start); PREPARE (a task to run once the old server is stopped).
+# Ctrl+C: Task keeps the first two interrupts from this in-process loop, and msys sleep exits 0 on one, so the
+# server tells it: it exits 0 only on an interrupt (a crash is 1 or 2, a kill by stop_server non-zero), and then
+# writes the stop marker.
+# shortcut: a Ctrl+C before the first server starts (the first build) is lost; press it three times (Task's
+# forced exit) until a server is up.
 set +e # Task's shell starts with errexit; the loop checks its own statuses
-[ -n "${BIN:-}" ] && [ -n "${MARKERS:-}" ] || { echo "run: BIN and MARKERS are required; use task run, run:player, run:browser or run:before"; exit 1; }
+[ -n "${BIN:-}" ] && [ -n "${MARKERS:-}" ] || { echo "run: BIN and MARKERS are required; use task run, run:player, run:test, run:test-player or run:before"; exit 1; }
 [ -z "${NOREBUILD:-}" ] || [ -f "$BIN" ] || { echo "run: no $BIN; run task before first"; exit 1; }
 
 mkdir -p build "$MARKERS"
@@ -35,7 +40,8 @@ if [ -n "${WINDIR:-}" ]; then
 	}
 else
 	alive() { kill -0 "$1" 2>/dev/null; }
-	stop_server() { pkill -f -- "$BIN" 2>/dev/null; started=; }
+	# KILL: on TERM the server exits 0, which reads as Ctrl+C and would end the loop.
+	stop_server() { pkill -KILL -f -- "$BIN" 2>/dev/null; started=; }
 fi
 
 # One generate-and-build at a time across loops (task run and task run:player in two terminals share the
@@ -90,7 +96,8 @@ start_server() {
 	if [ -z "${NOREBUILD:-}" ]; then
 		mv "$new" "$BIN" || echo "run: could not replace $BIN; the old build runs. touch $MARKERS/restart to retry"
 	fi
-	"$BIN" $args &
+	# Exit 0 is an interrupt (see the header): quit the loop at its next tick.
+	{ "$BIN" $args && touch "$MARKERS/stop"; } &
 	started=1
 	args="$args $restart_args" restart_args=
 }

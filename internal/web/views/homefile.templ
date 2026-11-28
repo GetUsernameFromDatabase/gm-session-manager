@@ -192,10 +192,10 @@ templ HomeFileRejected(groups []PendingGroup, note string) {
 templ NewCharacterBody(campaignID int64, campaignName string) {
 	@dialog.Header() {
 		@dialog.Title() {
-			Add a character made at home
+			Add a character from a file
 		}
 		@dialog.Description() {
-			{ "Choose the new-character file the player saved at home. You review it before it joins " + campaignName + "." }
+			{ "A new-character file (.zip) a player saved at home: you review it before it joins " + campaignName + ". A character file (.json) from Download or a campaign export joins at once." }
 		}
 	}
 	<form
@@ -206,13 +206,13 @@ templ NewCharacterBody(campaignID int64, campaignName string) {
 		hx-target={ takeHomeTarget }
 		hx-swap="innerHTML"
 	>
-		@input.Input(input.Props{Name: "file", Type: "file", Required: true, Attributes: templ.Attributes{"accept": ".zip,application/zip", "aria-label": "New character file"}})
+		@input.Input(input.Props{Name: "file", Type: "file", Required: true, Attributes: templ.Attributes{"accept": ".zip,application/zip,.json,application/json", "aria-label": "Character file"}})
 		<div class="flex justify-end gap-2">
 			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: dialog.CloseFor(takeHomeID)}) {
 				Close
 			}
 			@button.Button(button.Props{Type: button.TypeSubmit}) {
-				Review
+				Add
 			}
 		</div>
 		@busyIndicator("Checking the file…")

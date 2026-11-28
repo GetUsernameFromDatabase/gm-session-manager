@@ -27,7 +27,7 @@ import (
 
 func (e testEnv) source(t testing.TB, key, edition string) {
 	t.Helper()
-	if err := e.q().UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: key, Edition: edition, License: "test", Attribution: key + " attribution"}); err != nil {
+	if err := e.q().UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: key, Edition: edition, License: "test", Attribution: key + " attribution", Priority: compendium.DefaultRank(key, edition)}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -80,6 +80,7 @@ func TestFiveToolsGMOnly(t *testing.T) {
 		{http.MethodPost, route.Compendium + route.CompendiumOpen5e},
 		{http.MethodPost, route.Compendium + route.CompendiumSourceDelete},
 		{http.MethodPost, views.SourceOrderPath},
+		{http.MethodPost, route.Compendium + route.CompendiumSourceSort},
 	}
 	for _, tt := range tests {
 		// The same under the whole compendium and the player's campaign's.
@@ -139,6 +140,31 @@ func TestSourceOrder(t *testing.T) {
 				t.Errorf("order %s, want %s", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestSourceSort: the sort button orders by the default rule and homebrew keeps its place.
+func TestSourceSort(t *testing.T) {
+	e := newTestEnv(t)
+	gm := e.token(t, enum.RoleAdmin)
+	e.source(t, "book-a", "2014")
+	e.source(t, "book-b", "2024")
+	if w := e.do(t, http.MethodPost, views.SourceOrderPath, gm, url.Values{views.SourceKeyField: {"book-a", "homebrew", "book-b"}}, true); w.Code != http.StatusOK {
+		t.Fatalf("order: %d", w.Code)
+	}
+	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceSort, gm, nil, true); w.Code != http.StatusOK {
+		t.Fatalf("sort: %d %s", w.Code, w.Body)
+	}
+	rows, err := e.q().ListCompendiumSources(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for _, r := range rows {
+		keys = append(keys, r.SourceKey)
+	}
+	if got, want := strings.Join(keys, ","), "book-b,homebrew,book-a"; got != want {
+		t.Errorf("order %s, want %s", got, want)
 	}
 }
 

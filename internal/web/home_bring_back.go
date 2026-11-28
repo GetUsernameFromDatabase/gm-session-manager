@@ -5,6 +5,7 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -115,6 +116,8 @@ func (a *App) bringBack(ctx context.Context, homeCharacterID int64) (export.Take
 	}
 	now := time.Now().UTC()
 	th.Manifest = m.TakeHomeManifest
+	// The token did its job when this copy replaced the original; a bring-back must not carry it.
+	th.Manifest.MadeAtHome = ""
 	th.Manifest.Kind = export.KindBringBack
 	th.Manifest.Format = export.TakeHomeFormat
 	th.Manifest.AppVersion = a.Version
@@ -161,7 +164,13 @@ func (a *App) newCharacterFile(ctx context.Context, id int64) (export.TakeHome, 
 			return err
 		}
 		th.Homebrew = homeHomebrew(rows)
-		return nil
+		// The token ties this character to its table copy; the same one goes in every save.
+		th.Manifest.MadeAtHome, err = q.GetNewCharacterToken(ctx, ch.ID)
+		if errors.Is(err, sql.ErrNoRows) {
+			th.Manifest.MadeAtHome = rand.Text()
+			err = q.CreateNewCharacterToken(ctx, sqlc.CreateNewCharacterTokenParams{CharacterID: ch.ID, Token: th.Manifest.MadeAtHome})
+		}
+		return err
 	})
 	if err != nil {
 		return th, "", err

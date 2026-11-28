@@ -357,6 +357,19 @@ func (a *App) sourceOrder(c *gin.Context) error {
 	return nil
 }
 
+// sourceSort re-sorts every source by the default rule and answers with the card.
+func (a *App) sourceSort(c *gin.Context) error {
+	ctx := c.Request.Context()
+	if err := compendium.SortSources(ctx, a.Store); err != nil {
+		return err
+	}
+	if err := a.sinkHomeSources(ctx, a.Store.Queries); err != nil {
+		return err
+	}
+	a.sourcesChanged(c)
+	return nil
+}
+
 // sourcesChanged tells every page and answers with the priority card.
 func (a *App) sourcesChanged(c *gin.Context) {
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})

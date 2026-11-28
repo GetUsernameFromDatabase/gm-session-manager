@@ -75,3 +75,33 @@ func TestEntryCountClass(t *testing.T) {
 		}
 	}
 }
+
+func TestLostDot(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		total, visible int64
+		pct            int
+		lost           bool
+		class          string
+	}{
+		{"nothing lost", 100, 100, 0, false, ""},
+		{"empty", 0, 0, 0, false, ""},
+		{"one of 400", 400, 399, minLostPercent, true, countAmber},
+		{"sixty shown", 100, 60, 40, true, countAmber},
+		{"forty-five shown", 100, 45, 55, true, countAmber},
+		{"thirty shown", 100, 30, 70, true, countOrange},
+		{"ten shown", 100, 10, 90, true, countRed},
+		{"none shown", 100, 0, 100, true, countNoneShown},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := sqlc.CountEntriesBySourceRow{Total: tt.total, Visible: tt.visible}
+			pct, lost := lostPercent(c)
+			if pct != tt.pct || lost != tt.lost {
+				t.Errorf("lostPercent %d, %v; want %d, %v", pct, lost, tt.pct, tt.lost)
+			}
+			if lost && lostDotClass(c) != tt.class {
+				t.Errorf("class %q, want %q", lostDotClass(c), tt.class)
+			}
+		})
+	}
+}

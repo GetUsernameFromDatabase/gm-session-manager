@@ -82,6 +82,7 @@ func (a *App) compendiumRoutes(g *gin.RouterGroup, gm gin.HandlerFunc) {
 	g.POST(route.CompendiumOpen5e, src, a.h(a.open5eImport))
 	g.POST(route.CompendiumSourceDelete, src, a.h(a.sourceDelete))
 	g.POST(route.CompendiumSourceOrder, src, a.h(a.sourceOrder))
+	g.POST(route.CompendiumSourceSort, src, a.h(a.sourceSort))
 	g.POST(route.CompendiumPagePreview, src, a.h(a.compendiumPagePreview))
 	g.POST(route.CompendiumPage, src, a.h(a.compendiumPageSave))
 }

@@ -12,7 +12,7 @@ import (
 func addCopy(t *testing.T, store *db.Store, key, edition, slug string) {
 	t.Helper()
 	ctx := t.Context()
-	if err := store.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: key, Path: key, Hash: "h", Edition: edition}); err != nil {
+	if err := store.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: key, Path: key, Hash: "h", Edition: edition, Priority: DefaultRank(key, edition)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{
@@ -237,5 +237,109 @@ func TestScopedHomebrewNeverShadows(t *testing.T) {
 	rows, err := store.ListCompendiumByKind(ctx, sqlc.ListCompendiumByKindParams{Kind: "spell", PageSize: 50})
 	if err != nil || len(rows) != 1 || rows[0].SourceKey != "phb-2014" {
 		t.Errorf("browse: %+v %v", rows, err)
+	}
+}
+
+func sourceKeysInOrder(t *testing.T, store *db.Store) []string {
+	t.Helper()
+	sources, err := store.ListCompendiumSources(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := make([]string, len(sources))
+	for i, s := range sources {
+		keys[i] = s.SourceKey
+	}
+	return keys
+}
+
+// importRun stores sources the way one Import run does: the base is read once.
+func importRun(t *testing.T, store *db.Store, srcs ...Source) {
+	t.Helper()
+	base, err := store.MaxSourcePriority(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range srcs {
+		if _, err := storeSource(t.Context(), store, base, s, "p", "h", nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestDefaultRank(t *testing.T) {
+	for _, tt := range []struct {
+		key, edition string
+		want         int64
+	}{
+		{"homebrew", "", 0},
+		{"srd-2024", "2024", 200},
+		{"srd52", "", 200},
+		{"xphb", "2024", 100},
+		{"phb", "2014", 300},
+		{"odd", "", 300},
+	} {
+		if got := DefaultRank(tt.key, tt.edition); got != tt.want {
+			t.Errorf("%s/%s: got %d, want %d", tt.key, tt.edition, got, tt.want)
+		}
+	}
+}
+
+func TestNewSourcesAppendBelowTheGMsOrder(t *testing.T) {
+	store := newStore(t)
+	ctx := t.Context()
+	// A fresh database gives the plain group ranks.
+	importRun(t, store, Source{Key: "srd-2024", Edition: "2024"}, Source{Key: "xphb", Edition: "2024"})
+	for _, tt := range []struct {
+		key  string
+		want int64
+	}{{"srd-2024", 200}, {"xphb", 100}} {
+		got, err := store.GetCompendiumSource(ctx, tt.key)
+		if err != nil || got.Priority != tt.want {
+			t.Fatalf("%s: priority %d (%v), want %d", tt.key, got.Priority, err, tt.want)
+		}
+	}
+	if err := SetSourceOrder(ctx, store, []string{"homebrew", "srd-2024", "xphb"}); err != nil {
+		t.Fatal(err)
+	}
+	importRun(t, store,
+		Source{Key: "old", Edition: "2014", Published: "2014-01-01"},
+		Source{Key: "new2024", Edition: "2024"},
+		Source{Key: "newer", Edition: "2014", Published: "2020-01-01"},
+	)
+	want := []string{"homebrew", "srd-2024", "xphb", "new2024", "newer", "old"}
+	if got := sourceKeysInOrder(t, store); !slices.Equal(got, want) {
+		t.Errorf("order %v, want %v", got, want)
+	}
+	// A re-import keeps the dragged priority.
+	if err := SetSourceOrder(ctx, store, []string{"homebrew", "old", "srd-2024", "xphb", "new2024", "newer"}); err != nil {
+		t.Fatal(err)
+	}
+	importRun(t, store, Source{Key: "xphb", Edition: "2024"})
+	if got := sourceKeysInOrder(t, store); got[2] != "srd-2024" || got[1] != "old" {
+		t.Errorf("re-import moved a source: %v", got)
+	}
+}
+
+func TestSortSources(t *testing.T) {
+	store := newStore(t)
+	ctx := t.Context()
+	importRun(t, store,
+		Source{Key: "undated", Edition: "2014"},
+		Source{Key: "a-old", Edition: "2014", Published: "2014-01-01"},
+		Source{Key: "b-new", Edition: "2014", Published: "2020-01-01"},
+		Source{Key: "xphb", Edition: "2024", Published: "2024-09-17"},
+		Source{Key: "srd52", Edition: "2024"},
+	)
+	// Homebrew sits at index 2 and keeps it.
+	if err := SetSourceOrder(ctx, store, []string{"undated", "a-old", "homebrew", "b-new", "srd52", "xphb"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SortSources(ctx, store); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"xphb", "srd52", "homebrew", "b-new", "a-old", "undated"}
+	if got := sourceKeysInOrder(t, store); !slices.Equal(got, want) {
+		t.Errorf("order %v, want %v", got, want)
 	}
 }

@@ -563,8 +563,13 @@ func (a *App) homeFileAccept(c *gin.Context) error {
 // is first created from the file, with its entries.
 func allowSource(ctx context.Context, q *sqlc.Queries, campaignID int64, s export.TakeHomeSource, entries []export.TakeHomeEntry) error {
 	if _, err := q.GetCompendiumSource(ctx, s.SourceKey); errors.Is(err, sql.ErrNoRows) {
+		prio, err := appendedSourcePriority(ctx, q, s.SourceKey, s.Edition)
+		if err != nil {
+			return err
+		}
 		if err := q.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{
 			SourceKey: s.SourceKey, Path: bringBackSourcePath, Edition: s.Edition, License: s.License, Attribution: s.Attribution, Published: s.Published,
+			Priority: prio,
 		}); err != nil {
 			return err
 		}

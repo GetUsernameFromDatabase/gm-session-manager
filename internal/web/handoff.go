@@ -312,9 +312,20 @@ func (a *App) handoffUpload(w http.ResponseWriter, r *http.Request, h *handoff) 
 	if err != nil {
 		return "The file could not be received."
 	}
-	file, err := export.ReadTakeHome(tmp, size, export.KindTakeHome)
+	kind, err := export.ManifestKind(tmp, size)
 	if err != nil {
 		return "That is not a take-home file: " + err.Error()
+	}
+	if kind != export.KindStarter {
+		kind = export.KindTakeHome
+	}
+	file, err := export.ReadTakeHome(tmp, size, kind)
+	if err != nil {
+		return "That is not a take-home file: " + err.Error()
+	}
+	name := file.Character.Name
+	if kind == export.KindStarter {
+		name = file.Manifest.Campaign.Name
 	}
 	a.handoffMu.Lock()
 	defer a.handoffMu.Unlock()
@@ -324,7 +335,7 @@ func (a *App) handoffUpload(w http.ResponseWriter, r *http.Request, h *handoff) 
 	if h.timer != nil {
 		h.timer.Stop()
 	}
-	h.state, h.file, h.name, h.takenAt, keep = views.HandoffReceived, tmp.Name(), file.Character.Name, file.Manifest.CreatedAt, true
+	h.state, h.file, h.name, h.takenAt, keep = views.HandoffReceived, tmp.Name(), name, file.Manifest.CreatedAt, true
 	return ""
 }
 

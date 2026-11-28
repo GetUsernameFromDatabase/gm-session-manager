@@ -21,7 +21,7 @@ You are the only agent using the browser and the test instances. Any tab, browse
 
 ## The test instance
 
-- Start it once, as a background Bash job: `task run:browser`. It builds `build/gm-session-manager-test.exe`, serves `https://localhost:8443` from `data/test/` (never `data/dev`), and keeps `data/test/playwright` (MCP logs and snapshots) between runs; `task run:browser -- --clean-playwright` empties it on start. Wait for the `listening` line in the job output. A second start takes over from a running one (it stops the old loop and server), and stopping the job ends its server too.
+- Start it once, as a background Bash job: `task run:test`. It builds `build/gm-session-manager-test.exe`, serves `https://localhost:8443` from `data/test/` (never `data/dev`), and keeps `data/test/playwright` (MCP logs and snapshots) between runs; `task run:test -- --clean-playwright` empties it on start. Wait for the `listening` line in the job output. A second start takes over from a running one (it stops the old loop and server), and stopping the job ends its server too.
 - After changing sources: run the generate step the change needs (`go generate ./internal/web` for templates and classes), then `touch data/test/restart`. The run loop (`scripts/run.sh`) rebuilds and restarts; wait for the next `listening` line. A failed build prints `run: build failed`; fix it and touch `restart` again.
 - Stop it when done: `touch data/test/stop`. Fallback if a server outlives its loop anyway: `taskkill //IM gm-session-manager-test.exe //F`. Never kill `gm-session-manager-dev.exe` or `gm-session-manager.exe`: those are the user's real instance.
 - The binary reads `.env` from the folder it starts in: start every instance from the repo root. Never read, print, source or copy `.env`. For the SRD, copy `data/dev/compendium` into `data/test/`.
@@ -32,6 +32,19 @@ You are the only agent using the browser and the test instances. Any tab, browse
 - Player: `https://<host LAN IP>:8443` in another tab (the IP is in the startup log line `lan=[...]`). The two hosts keep separate cookies, so both roles work in one browser. Log in from a saved state (below) when one fits; otherwise join yourself:
   1. Open `https://<LAN IP>:8443/join/1`, fill `#player-name`.
   2. An existing character: click the button in `form[action="/join/1/claim/<id>"]`, then approve the device from the GM tab on `/campaigns/1`. A new character: "New character", then Create (no approval).
+- Player app (`as player-app`): start `task run:test-player` as a second background job (`build/gm-session-manager-test-player.exe`, `http://localhost:8045` over plain HTTP, data in `data/test/player`; stop with `touch data/test/player/stop`). It has no login and no GM. It starts empty: get files in from the test table (8443, must be running too) in one script, then reload `/at-home`:
+
+  ```js
+  async (page) => {
+    const r = await page.request.get('https://localhost:8443/campaigns/1/starter'); // or a take-home: POST /characters/<id>/take-home from the GM tab
+    await page.goto('http://localhost:8045/at-home');
+    // Choosing the file opens it at once (no submit button).
+    await page.setInputFiles('input[name=file]', { name: 'starter.zip', mimeType: 'application/zip', buffer: await r.body() });
+    await page.waitForLoadState('networkidle');
+  }
+  ```
+
+  The answer may ask to confirm (`[data-confirm]`): click its button. Re-opening the same starter refreshes it in place. To reset the player app: stop it, then delete `data/test/player`.
 
 ## Saved states
 
@@ -54,6 +67,7 @@ You are the only agent using the browser and the test instances. Any tab, browse
 - New state: when you set a scene up by hand that a later run will need again, save it as a new file with `about`, `ready` and the `steps` you posted. `player-<id>.json` is login only (no `ready`, no `steps`).
 - Commands and level-ups can be posted from the player tab with `fetch` and header `HX-Request: true`: `/characters/<id>/cmd`, `/characters/<id>/levelup`, `.../levelup/revert`. Select the level-up form by `input[name=class]`, not `form[method=post]` (the feedback form comes first).
 - `sqlite3 -readonly data/test/gm-session-manager.db` reads sheets directly.
+- Books on a sheet ("Books used"): join with a new character, then pin books by hand (test DB only, while the server runs; reload the sheet after): `sqlite3 data/test/gm-session-manager.db "update characters set sheet_json = json_set(sheet_json, '$.species', 'Elf', '$.species_source', '5etools-xphb', '$.background', 'Acolyte', '$.background_source', '5etools-xge') where id = <id>"`. For the warning on a book the campaign lacks, turn it off as GM before pinning it (a book a character uses is refused with 422): post `/campaigns/1/sources` with `key=5etools-xge&on=false`. Turning it back on (`on=true`) works with the pin in place.
 
 ## What to check
 

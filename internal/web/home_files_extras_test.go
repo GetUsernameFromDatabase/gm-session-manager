@@ -399,7 +399,7 @@ func TestNewCharacterFromGM(t *testing.T) {
 	player := e.token(t, enum.RolePlayer)
 	add := route.Path(route.CampaignNewCharacter, e.campaignID)
 
-	if w := e.do(t, http.MethodGet, add, gm, nil, true); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Add a character made at home") {
+	if w := e.do(t, http.MethodGet, add, gm, nil, true); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Add a character from a file") {
 		t.Errorf("dialog: %d %s", w.Code, w.Body)
 	}
 	if w := e.doFile(t, add, player, nil, formFile, "x.zip", string(e.newCharacterZip(t, nil))); w.Code != http.StatusForbidden {

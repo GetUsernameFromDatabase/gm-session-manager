@@ -10,6 +10,7 @@ import (
 	"gm-session-manager/internal/web/components/field"
 	"gm-session-manager/internal/web/components/icon"
 	"gm-session-manager/internal/web/components/input"
+	"gm-session-manager/internal/web/components/popover"
 	"strconv"
 	"time"
 )
@@ -100,12 +101,12 @@ templ TakeHomeBody(v TakeHomeView) {
 }
 
 // HomePage lists the characters on this computer (the player app) and opens a file.
-templ HomePage(l Layout, table, onlyHere []HomeCopyView, handoff HandoffView) {
+templ HomePage(l Layout, table, onlyHere []HomeCopyView, starters []HomeStarterView, handoff HandoffView) {
 	@Page(l) {
 		<div class="mx-auto max-w-xl">
 			<div class="mb-6 flex items-start justify-between gap-3">
 				<h1 class="text-2xl font-semibold">Characters on this computer</h1>
-				if len(table) > 0 {
+				if len(newCharacterOptions(table, starters)) > 0 {
 					@button.Button(button.Props{Size: button.SizeSm, Attributes: dialog.TriggerFor(newCharacterID)}) {
 						@icon.Plus()
 						New character
@@ -115,6 +116,14 @@ templ HomePage(l Layout, table, onlyHere []HomeCopyView, handoff HandoffView) {
 			<div id="handoff">
 				@HandoffPanel(handoff)
 			</div>
+			if len(starters) > 0 {
+				<h2 class="mb-2 text-sm font-semibold">Campaigns from your GM</h2>
+				<ul class="mb-8 space-y-2">
+					for _, s := range starters {
+						@homeStarterRow(s)
+					}
+				</ul>
+			}
 			// While a received file waits, its panel above is the next step: "no characters" would contradict it.
 			if len(table)+len(onlyHere) == 0 && handoff.State != HandoffReceived {
 				@empty.Empty(empty.Props{Class: "border"}) {
@@ -129,8 +138,11 @@ templ HomePage(l Layout, table, onlyHere []HomeCopyView, handoff HandoffView) {
 							At the table, open your character and choose Take home in its menu. Then open the file here.
 						}
 					}
+					@empty.Content() {
+						@homeImportForm(true, false, "")
+					}
 				}
-			} else if len(table)+len(onlyHere) > 0 {
+			} else {
 				if len(table) > 0 {
 					<h2 class="mb-2 text-sm font-semibold">From the table</h2>
 					<ul class="space-y-2">
@@ -148,19 +160,61 @@ templ HomePage(l Layout, table, onlyHere []HomeCopyView, handoff HandoffView) {
 						}
 					</ul>
 				}
-				<h2 class="mt-8 mb-2 text-sm font-semibold">Open another take-home file</h2>
-			}
-			@homeImportForm(len(table)+len(onlyHere) == 0, false, "Open")
-			<p class="mt-3 text-sm text-muted-foreground">or</p>
-			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Class: "mt-2", Attributes: templ.Attributes{"hx-post": route.AtHomeReceive, "hx-target": "#handoff", "hx-swap": swapInner}}) {
-				@icon.Smartphone()
-				Receive from phone
+				// Empty here only while a received file waits in its panel above.
+				if len(table)+len(onlyHere) > 0 {
+					<h2 class="mt-8 mb-2 text-sm font-semibold">Open another take-home or starter file</h2>
+				}
+				@homeImportForm(false, false, "")
 			}
 		</div>
-		if len(table) > 0 {
-			@newCharacterDialog(table)
+		if opts := newCharacterOptions(table, starters); len(opts) > 0 {
+			@newCharacterDialog(newCharacterID, opts)
+		}
+		for _, s := range starters {
+			@newCharacterDialog(s.dialogID(), s.options())
 		}
 	}
+}
+
+// homeStarterRow is one campaign starter: its books, when it was saved, and
+// the ways to use or remove it.
+templ homeStarterRow(s HomeStarterView) {
+	<li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+		<div class="min-w-0 grow basis-48">
+			<p class="truncate font-medium">{ s.Name }</p>
+			if len(s.Books) == 0 {
+				<p class="text-sm text-muted-foreground">No books</p>
+			} else {
+				// The whole list is long on a phone: the count, and the list on request.
+				@popover.Popover(popover.Props{ID: s.dialogID() + "-books"}) {
+					@button.Button(button.Props{Variant: button.VariantGhost, Class: "-mx-1 h-auto px-1 py-0 font-normal text-muted-foreground", Attributes: popover.Trigger(ctx)}) {
+						{ Plural(len(s.Books), "book") }
+						@icon.ChevronDown()
+					}
+					@popover.Content(popover.ContentProps{Class: "w-72 text-sm"}) {
+						<ul class={ "space-y-1 pr-1", scrollBox }>
+							for _, b := range s.Books {
+								<li>{ b }</li>
+							}
+						</ul>
+					}
+				}
+			}
+			<p class="text-xs text-muted-foreground">
+				{ "Saved " }
+				@localTime(s.SavedAt)
+			</p>
+		</div>
+		<div class="flex flex-wrap gap-2">
+			@button.Button(button.Props{Size: button.SizeSm, Attributes: dialog.TriggerFor(s.dialogID())}) {
+				@icon.Plus()
+				New character…
+			}
+			@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"hx-post": route.Path(route.AtHomeStarterRemove, s.CampaignID), "hx-confirm": s.removeConfirm()}}) {
+				Remove
+			}
+		</div>
+	</li>
 }
 
 // homePlayForm posts the switch to another character on this computer.
@@ -268,10 +322,10 @@ templ homeCharacterRow(c HomeCopyView) {
 	</li>
 }
 
-// newCharacterDialog asks for a name and which table character's campaign and
-// sources the new character starts with (hidden when there is only one).
-templ newCharacterDialog(table []HomeCopyView) {
-	@dialog.Dialog(dialog.Props{ID: newCharacterID}) {
+// newCharacterDialog asks for a name and which campaign (a table character's
+// or a starter) the new character starts with (hidden when there is only one).
+templ newCharacterDialog(id string, options []homeNewOption) {
+	@dialog.Dialog(dialog.Props{ID: id}) {
 		@dialog.Content(dialog.ContentProps{Class: "sm:max-w-md"}) {
 			@dialog.Header() {
 				@dialog.Title() {
@@ -284,24 +338,24 @@ templ newCharacterDialog(table []HomeCopyView) {
 			<form class="grid gap-4" hx-post={ route.AtHomeNew }>
 				@field.Group(field.GroupProps{Class: "gap-4"}) {
 					@field.Field() {
-						@field.Label(field.LabelProps{For: "new-character-name"}) {
+						@field.Label(field.LabelProps{For: id + "-name"}) {
 							Name
 						}
-						@input.Input(input.Props{ID: "new-character-name", Name: "name", Required: true, Attributes: templ.Attributes{"maxlength": "100", "autocomplete": "off"}})
+						@input.Input(input.Props{ID: id + "-name", Name: "name", Required: true, Attributes: templ.Attributes{"maxlength": "100", "autocomplete": "off"}})
 					}
-					if len(table) == 1 {
-						<input type="hidden" name="from" value={ strconv.FormatInt(table[0].CharacterID, 10) }/>
+					if len(options) == 1 {
+						<input type="hidden" name="from" value={ options[0].value() }/>
 					} else {
 						@field.Field() {
-							@field.Label(field.LabelProps{For: "new-character-from-trigger"}) {
+							@field.Label(field.LabelProps{For: id + "-from-trigger"}) {
 								Same campaign and sources as
 							}
-							@formSelect("new-character-from", "from", selectItems(table, HomeCopyView.idString, HomeCopyView.label), "", "w-full", "")
+							@formSelect(id+"-from", "from", selectItems(options, homeNewOption.value, homeNewOption.label), "", "w-full", "")
 						}
 					}
 				}
 				<div class="flex justify-end gap-2">
-					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.CloseFor(newCharacterID)}) {
+					@button.Button(button.Props{Variant: button.VariantOutline, Attributes: dialog.CloseFor(id)}) {
 						Cancel
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
@@ -317,24 +371,36 @@ templ newCharacterDialog(table []HomeCopyView) {
 // here is answered with a question in #home-import-confirm, inside the form so
 // the chosen file is still there when Replace submits it. With fromPhone it
 // holds a hidden handoff=1 instead of the file input, and its question goes in
-// its own container (the page may hold both forms).
-templ homeImportForm(first, fromPhone bool, label string) {
+// its own container (the page may hold both forms). Without fromPhone, choosing
+// a file opens it at once, and Receive from phone sits beside it; centered
+// when it sits in the empty state.
+templ homeImportForm(centered, fromPhone bool, label string) {
 	<form
-		class={ "group/busy space-y-3", templ.KV("mt-4", first) }
+		class="group/busy w-full space-y-3"
 		data-busy
 		hx-post={ route.AtHome }
 		hx-encoding="multipart/form-data"
 		hx-target={ "#" + importConfirmID(fromPhone) }
 		hx-swap="innerHTML"
 	>
-		<div class="flex flex-wrap items-center gap-2">
+		<div class={ "flex flex-wrap items-center gap-2", templ.KV("justify-center", centered) }>
 			if fromPhone {
 				<input type="hidden" name="handoff" value="1"/>
+				@button.Button(button.Props{Type: button.TypeSubmit}) {
+					{ label }
+				}
 			} else {
-				@input.Input(input.Props{Name: "file", Type: "file", Required: true, Class: "w-auto", Attributes: templ.Attributes{"accept": ".zip,application/zip", "aria-label": "Take-home file"}})
-			}
-			@button.Button(button.Props{Type: button.TypeSubmit}) {
-				{ label }
+				// A label styled as a button opens the picker: no "No file chosen" box, and the input keeps keyboard focus.
+				<label class={ button.Variants(button.Props{Class: "relative cursor-pointer has-focus-visible:border-ring has-focus-visible:ring-3 has-focus-visible:ring-ring/50 group-aria-busy/busy:pointer-events-none group-aria-busy/busy:opacity-50"}) }>
+					@icon.FileUp()
+					Open file…
+					@input.Input(input.Props{Name: "file", Type: "file", Class: "sr-only", Attributes: templ.Attributes{"accept": ".zip,application/zip", "hx-post": route.AtHome, "hx-trigger": "change"}})
+				</label>
+				// hx-params: inside the form, htmx would also send the chosen file; data-not-busy: no "Opening…" while it runs.
+				@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"hx-post": route.AtHomeReceive, "hx-params": "none", "hx-target": "#handoff", "hx-swap": swapInner, "data-not-busy": true}}) {
+					@icon.Smartphone()
+					Receive from phone
+				}
 			}
 		</div>
 		<div id={ importConfirmID(fromPhone) } data-confirm></div>
@@ -348,18 +414,18 @@ templ HomeReplaceConfirm(v HomeConfirmView) {
 	@alert.Alert() {
 		@icon.TriangleAlert()
 		@alert.Title() {
-			{ v.Name + " is already on this computer" }
+			{ v.title() }
 		}
 		@alert.Description() {
 			{ v.message() }
 		}
 	}
 	<div class="mt-3 flex justify-end gap-2">
-		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"onclick": templ.JSUnsafeFuncCall("this.closest('[data-confirm]').replaceChildren()")}}) {
+		@button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{"onclick": templ.JSUnsafeFuncCall("this.form.reset();this.closest('[data-confirm]').replaceChildren()")}}) {
 			Cancel
 		}
 		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantDestructive, Attributes: templ.Attributes{"name": "replace", "value": "1"}}) {
-			{ "Replace " + v.Name }
+			{ v.buttonLabel() }
 		}
 	</div>
 }

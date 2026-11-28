@@ -31,9 +31,12 @@ import (
 //	compendium/sources.json  the campaign's sources with their priority
 //	compendium/entries.json  their entries (no monsters), and the homebrew the campaign sees
 //	files/<name>             files of looks and note blocks
+//
+// A campaign-starter file holds only manifest.json and the two compendium parts.
 const (
-	// TakeHomeFormat is the zip's layout version; a reader refuses any other.
-	TakeHomeFormat = 1
+	// TakeHomeFormat is the zip's layout version; a reader accepts 1 up to this and refuses a newer one.
+	// 2 added the campaign starter kind, TakeHomeCampaign.ID and TakeHomeManifest.MadeAtHome.
+	TakeHomeFormat = 2
 
 	manifestFile  = "manifest.json"
 	mapsFile      = "maps.json"
@@ -65,6 +68,8 @@ const (
 	KindBringBack Kind = "bring-back"
 	// KindNewCharacter is a character made at home: the bring-back format without a take-out token, maps or fallback.
 	KindNewCharacter Kind = "new-character"
+	// KindStarter is a campaign's books and entries with no character, for a player to start characters at home.
+	KindStarter Kind = "campaign-starter"
 )
 
 // TakeHomeManifest says what the file is and where it came from.
@@ -79,10 +84,14 @@ type TakeHomeManifest struct {
 	Campaign    TakeHomeCampaign `json:"campaign"`
 	CharacterID int64            `json:"character_id"`
 	CreatedAt   time.Time        `json:"created_at"`
+	// MadeAtHome ties a character made at home to its copy at the table; only new-character and take-home files hold it.
+	MadeAtHome string `json:"made_at_home,omitempty"`
 }
 
 // TakeHomeCampaign is the campaign the character plays in.
 type TakeHomeCampaign struct {
+	// ID is the table's campaign id; a starter file needs it, the others leave it out.
+	ID      int64  `json:"id,omitempty"`
 	Name    string `json:"name"`
 	System  string `json:"system"`
 	Edition string `json:"edition"`
@@ -234,17 +243,24 @@ func WriteTakeHome(w io.Writer, t TakeHome, attachmentsDir string) error {
 	zw := zip.NewWriter(w)
 	missing := DropMissing(&t, attachmentsDir)
 
-	char, err := t.Character.JSON()
-	if err != nil {
-		return err
-	}
 	parts := []struct {
 		name string
 		v    any
 	}{
-		{manifestFile, t.Manifest}, {levelUpsFile, nonNil(t.LevelUps)}, {looksFile, nonNil(t.Looks)},
-		{notesFile, nonNil(t.Notes)}, {homebrewFile, nonNil(t.Homebrew)},
-		{sourcesFile, nonNil(t.Sources)}, {entriesFile, nonNil(t.Entries)},
+		{manifestFile, t.Manifest}, {sourcesFile, nonNil(t.Sources)}, {entriesFile, nonNil(t.Entries)},
+	}
+	if t.Manifest.Kind != KindStarter {
+		char, err := t.Character.JSON()
+		if err != nil {
+			return err
+		}
+		if err := writeFile(zw, characterFile, char); err != nil {
+			return err
+		}
+		parts = append(parts, []struct {
+			name string
+			v    any
+		}{{levelUpsFile, nonNil(t.LevelUps)}, {looksFile, nonNil(t.Looks)}, {notesFile, nonNil(t.Notes)}, {homebrewFile, nonNil(t.Homebrew)}}...)
 	}
 	if t.Maps != nil {
 		parts = append(parts, struct {
@@ -258,9 +274,6 @@ func WriteTakeHome(w io.Writer, t TakeHome, attachmentsDir string) error {
 			name string
 			v    any
 		}{fallbackFile, t.Fallback})
-	}
-	if err := writeFile(zw, characterFile, char); err != nil {
-		return err
 	}
 	for _, p := range parts {
 		body, err := json.MarshalIndent(p.v, "", "  ")
@@ -384,14 +397,20 @@ func ReadTakeHome(r io.ReaderAt, size int64, want Kind) (*TakeHomeFile, error) {
 	if err := f.readJSON(manifestFile, maxJSONBytes, &head, false); err != nil {
 		return nil, err
 	}
-	if head.Format != TakeHomeFormat {
-		return nil, fmt.Errorf("this take-home file (from app %s) has format %d; this app reads format %d", head.AppVersion, head.Format, TakeHomeFormat)
+	if head.Format < 1 || head.Format > TakeHomeFormat {
+		return nil, fmt.Errorf("this take-home file (from app %s) has format %d; this app reads formats 1 to %d", head.AppVersion, head.Format, TakeHomeFormat)
 	}
 	if err := f.readJSON(manifestFile, maxJSONBytes, &f.Manifest, true); err != nil {
 		return nil, err
 	}
 	if k := f.Manifest.Kind; k != want {
 		switch {
+		case k == KindStarter && want == KindTakeHome:
+			return nil, errors.New("this is a campaign starter file: open it in the player app")
+		case k == KindStarter:
+			return nil, errors.New("this is a campaign starter file: open it in the player app, not at the table")
+		case want == KindStarter:
+			return nil, fmt.Errorf("this is a %s file, not a campaign starter file", k)
 		case want == KindTakeHome && k == KindBringBack:
 			return nil, errors.New("this is a bring-back file: bring it to the table")
 		case want == KindTakeHome && k == KindNewCharacter:
@@ -406,6 +425,12 @@ func ReadTakeHome(r io.ReaderAt, size int64, want Kind) (*TakeHomeFile, error) {
 	}
 	if want == KindNewCharacter && (f.Manifest.Token != "" || f.Manifest.CharacterID != 0) {
 		return nil, errors.New("a new-character file must not name a table character or take-out")
+	}
+	if f.Manifest.MadeAtHome != "" && want != KindNewCharacter && want != KindTakeHome {
+		return nil, fmt.Errorf("a %s file must not name a character made at home", want)
+	}
+	if want == KindStarter {
+		return f.readStarter()
 	}
 	if has := f.find(mapsFile) != nil; has != (want == KindBringBack) {
 		if has {
@@ -444,6 +469,42 @@ func ReadTakeHome(r io.ReaderAt, size int64, want Kind) (*TakeHomeFile, error) {
 		}
 	}
 	return f, f.check()
+}
+
+// readStarter reads the rest of a starter: the compendium parts, and nothing else.
+func (f *TakeHomeFile) readStarter() (*TakeHomeFile, error) {
+	m := f.Manifest
+	if m.Campaign.ID == 0 || m.ServerID == "" || m.Token != "" || m.CharacterID != 0 {
+		return nil, errors.New("a campaign starter file must name its table and campaign, and no character")
+	}
+	for _, zf := range f.zr.File {
+		if zf.Name != manifestFile && zf.Name != sourcesFile && zf.Name != entriesFile {
+			return nil, fmt.Errorf("a campaign starter file must not hold %s", zf.Name)
+		}
+	}
+	if err := f.readJSON(sourcesFile, maxJSONBytes, &f.Sources, true); err != nil {
+		return nil, err
+	}
+	if err := f.readJSON(entriesFile, maxEntriesBytes, &f.Entries, true); err != nil {
+		return nil, err
+	}
+	return f, f.check()
+}
+
+// ManifestKind reads only the manifest's kind, so a caller can pick the kind to read.
+func ManifestKind(r io.ReaderAt, size int64) (Kind, error) {
+	zr, err := zip.NewReader(r, size)
+	if err != nil {
+		return "", fmt.Errorf("it is not a zip file (%w)", err)
+	}
+	f := &TakeHomeFile{zr: zr}
+	var head struct {
+		Kind Kind `json:"kind"`
+	}
+	if err := f.readJSON(manifestFile, maxJSONBytes, &head, false); err != nil {
+		return "", err
+	}
+	return head.Kind, nil
 }
 
 // check refuses values the database would refuse and files the zip lacks.

@@ -107,6 +107,7 @@ func (a *App) Router() *gin.Engine {
 	r.POST(route.AtHomeMakeCopy, a.onlyPlayerApp, a.h(a.homeMakeCopy))
 	r.POST(route.AtHomeFallback, a.onlyPlayerApp, a.h(a.homeFallback))
 	r.POST(route.AtHomeNew, a.onlyPlayerApp, a.h(a.homeNew))
+	r.POST(route.AtHomeStarterRemove, a.onlyPlayerApp, a.h(a.homeStarterRemove))
 	r.POST(route.AtHomeBringBack, a.onlyPlayerApp, a.h(a.homeBringBackCheck))
 	r.GET(route.AtHomeBringBack, a.onlyPlayerApp, a.h(a.homeBringBack))
 	r.POST(route.AtHomeSendPhone, a.onlyPlayerApp, a.h(a.handoffSend))
@@ -120,6 +121,7 @@ func (a *App) Router() *gin.Engine {
 	r.POST(route.JoinClaim, a.notPlayerApp, a.h(a.joinClaim))
 	r.POST(route.JoinCreate, a.notPlayerApp, a.h(a.joinCreate))
 	r.POST(route.JoinNewCharacter, a.notPlayerApp, a.h(a.joinNewCharacter))
+	r.GET(route.JoinStarter, a.notPlayerApp, a.h(a.joinStarter))
 	r.GET(route.Live, a.h(a.liveHTML))
 	r.POST(route.Logout, a.h(a.logout))
 	r.POST(route.RequestsComplete, a.h(a.completeRequest))
@@ -128,7 +130,6 @@ func (a *App) Router() *gin.Engine {
 	// Campaigns.
 	r.POST(route.Campaigns, gm, a.h(a.createCampaign))
 	camp.GET("", gm, a.h(a.campaignOverview))
-	camp.POST(route.ImportCharacter, gm, a.h(a.importCharacter))
 	camp.POST(route.Delete, gm, a.h(a.deleteCampaign))
 	camp.GET(route.HomeFile, gm, a.h(a.homeFilePage))
 	camp.GET(route.NewCharacter, gm, a.h(a.newCharacterDialog))
@@ -143,6 +144,7 @@ func (a *App) Router() *gin.Engine {
 	camp.POST(route.RequestDecision, gm, a.decideRequest)
 	camp.POST(route.RequestsDecision, gm, a.decideAll)
 	camp.POST(route.Sources, a.sourcesAdmin(gm), a.h(a.campaignSourcesSet))
+	camp.GET(route.Starter, gm, a.h(a.campaignStarter))
 	camp.GET(route.Switcher, a.h(a.switcher))
 	r.POST(route.SessionKick, gm, a.h(a.kick))
 

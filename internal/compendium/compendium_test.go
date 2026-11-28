@@ -31,7 +31,7 @@ func TestStoreSourceRollsBackOnAfterSave(t *testing.T) {
 	src := Source{Key: "5etools-test", Edition: "2024", License: "x", Attribution: "x"}
 	entries := []Entry{{Kind: enum.KindMonster, Slug: "ogre", Name: "Ogre", Data: MonsterData{Desc: "Big."}}}
 	fail := func(*sqlc.Queries) error { return errors.New("bind failed") }
-	if _, err := storeSource(ctx, store, src, "p", "h", entries, fail); err == nil {
+	if _, err := storeSource(ctx, store, 0, src, "p", "h", entries, fail); err == nil {
 		t.Fatal("expected the failure")
 	}
 	if _, err := store.GetCompendiumSource(ctx, src.Key); !errors.Is(err, sql.ErrNoRows) {

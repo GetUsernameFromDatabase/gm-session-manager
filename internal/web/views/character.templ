@@ -81,6 +81,11 @@ templ CharacterSheet(s SheetView) {
 						{ " · Level " + fmt.Sprint(s.C.Sheet.Level()) }
 					}
 				</p>
+				if len(s.BooksUsed) > 0 {
+					@button.Button(button.Props{Variant: button.VariantLink, Size: button.SizeXs, Class: "h-auto px-0 text-muted-foreground", Attributes: dialog.TriggerFor(booksDialogID)}) {
+						{ s.booksLine() }
+					}
+				}
 			</div>
 			if s.CanSheet {
 				<div class="flex items-center gap-3">
@@ -117,6 +122,12 @@ templ CharacterSheet(s SheetView) {
 										Change subclass
 									}
 								}
+							}
+						}
+						if len(s.BooksUsed) > 0 {
+							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Class: "w-full justify-start", Attributes: with(dialog.TriggerFor(booksDialogID), templ.Attributes{"data-menu-item": ""})}) {
+								@icon.BookOpen()
+								Books used…
 							}
 						}
 						if s.CanTakeHome {
@@ -180,6 +191,9 @@ templ CharacterSheet(s SheetView) {
 		@characterLooks(s)
 		if s.CanSources && len(s.SourceIssues) > 0 {
 			@sourcesAlert(s)
+		}
+		if len(s.BooksUsed) > 0 {
+			@booksDialog(s)
 		}
 	</div>
 }

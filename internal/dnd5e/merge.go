@@ -350,14 +350,29 @@ func (s Sheet) SourceUses(key string) []string {
 	return out
 }
 
+// Pin is one thing on the sheet taken from a book.
+type Pin struct{ Source, Kind, Name string }
+
+// Pins is what the sheet takes from books, in sheet order (unpinned and
+// homebrew left out).
+func (s Sheet) Pins() []Pin {
+	var out []Pin
+	s.eachPin(func(k, kind, name string) {
+		if k != "" && k != homebrewSource {
+			out = append(out, Pin{k, kind, name})
+		}
+	})
+	return out
+}
+
 // SourceKeys is every book the sheet pins (homebrew is not one).
 func (s Sheet) SourceKeys() []string {
 	var out []string
-	s.eachPin(func(k, _, _ string) {
-		if k != "" && k != homebrewSource && !slices.Contains(out, k) {
-			out = append(out, k)
+	for _, p := range s.Pins() {
+		if !slices.Contains(out, p.Source) {
+			out = append(out, p.Source)
 		}
-	})
+	}
 	return out
 }
 

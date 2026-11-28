@@ -937,7 +937,7 @@ func NewCharacterBody(campaignID int64, campaignName string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "Add a character made at home")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "Add a character from a file")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -960,9 +960,9 @@ func NewCharacterBody(campaignID int64, campaignName string) templ.Component {
 				}
 				ctx = templ.InitializeContext(ctx)
 				var templ_7745c5c3_Var45 string
-				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs("Choose the new-character file the player saved at home. You review it before it joins " + campaignName + ".")
+				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs("A new-character file (.zip) a player saved at home: you review it before it joins " + campaignName + ". A character file (.json) from Download or a campaign export joins at once.")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/homefile.templ`, Line: 198, Col: 114}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/homefile.templ`, Line: 198, Col: 185}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 				if templ_7745c5c3_Err != nil {
@@ -1010,7 +1010,7 @@ func NewCharacterBody(campaignID int64, campaignName string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = input.Input(input.Props{Name: "file", Type: "file", Required: true, Attributes: templ.Attributes{"accept": ".zip,application/zip", "aria-label": "New character file"}}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = input.Input(input.Props{Name: "file", Type: "file", Required: true, Attributes: templ.Attributes{"accept": ".zip,application/zip,.json,application/json", "aria-label": "Character file"}}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1052,7 +1052,7 @@ func NewCharacterBody(campaignID int64, campaignName string) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "Review")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "Add")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

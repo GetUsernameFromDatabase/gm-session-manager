@@ -326,6 +326,17 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 						}
 					}
 				</div>
+				if sortableSources(sources) {
+					<span hx-target={ "#" + SourcesID } hx-swap="outerHTML">
+						@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "w-full", Attributes: templ.Attributes{
+							"hx-post":    CompendiumPath(ctx, route.CompendiumSourceSort),
+							"hx-confirm": "Sort every source by edition and date? This replaces your order; homebrew keeps its place.",
+						}}) {
+							@icon.ArrowDownUp(icon.Props{Size: 16})
+							Sort automatically
+						}
+					</span>
+				}
 				{{ empty := emptySourceKeys(ctx, sources, counts) }}
 				if len(empty) > 0 {
 					<span hx-target={ "#" + SourcesID } hx-swap="outerHTML">
@@ -384,7 +395,10 @@ templ SourcePriority(sources []sqlc.CompendiumSource, shared map[string]sqlc.Cou
 								} else if count.Total > 0 {
 									@sourceCountLink(count, sharedOnlyHref(ctx, s.SourceKey), entryCountTitle(count, sh, false), "Browse the entries only this source holds.")
 								} else {
-									<span class={ "tabular-nums", entryCountClass(count) } title={ entryCountTitle(count, sh, false) }>{ entryCountText(count) }</span>
+									<span class={ "inline-flex items-center gap-1 tabular-nums", entryCountClass(count) } title={ entryCountTitle(count, sh, false) }>
+										@lostDot(count)
+										{ entryCountText(count) }
+									</span>
 								}
 							</div>
 						</li>
@@ -415,9 +429,21 @@ templ sourceCountLink(count sqlc.CountEntriesBySourceRow, href templ.SafeURL, ti
 		title={ title }
 		aria-label={ title + " " + action }
 	>
+		@lostDot(count)
 		{ entryCountText(count) }
 		@icon.ArrowUpRight(icon.Props{Size: 12})
 	</a>
+}
+
+// lostDot is a pie of the entries lists do not show; the title already says the counts.
+templ lostDot(count sqlc.CountEntriesBySourceRow) {
+	if pct, lost := lostPercent(count); lost {
+		<span
+			class={ "size-2 shrink-0 rounded-full ring-1 ring-inset ring-current bg-[conic-gradient(currentColor_var(--lost),transparent_0)]", lostDotClass(count) }
+			style={ lostDotStyle(pct) }
+			aria-hidden="true"
+		></span>
+	}
 }
 
 // sourceDeleteButton posts the key in the body, not the path (page sources

@@ -208,6 +208,16 @@ templ JoinCharacters(l Layout, c sqlc.Campaign, chars []sqlc.Character, err stri
 				</div>
 				<p class="text-xs text-muted-foreground">The GM reviews it before it joins.</p>
 			</form>
+			if c.OpenJoin {
+				@separator.Separator(separator.Props{Class: "my-6"})
+				<div class="space-y-2">
+					<h2 class="text-base font-semibold">Build your character at home</h2>
+					@button.Button(button.Props{Href: route.Path(route.JoinStarter, c.ID), Variant: button.VariantOutline}) {
+						Starter file
+					}
+					<p class="text-xs text-muted-foreground">Open it in the player app to build a character with this campaign's books.</p>
+				</div>
+			}
 			@adminLink()
 		}
 	}

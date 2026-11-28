@@ -151,17 +151,27 @@ tasks:
     cmds:
       - source ./scripts/run.sh
 
-  run:browser:
-    desc: "Test instance for browser checks (data/test, port 8443); task run:browser -- --clean-playwright"
+  run:test:
+    desc: "Test instance for browser checks (data/test, port 8443); task run:test -- --clean-playwright"
     env:
       DATA_DIR: data/test
       PORT: "8443"
       BIN: build/gm-session-manager-test{{.EXE}}
       MARKERS: data/test
-      MODE: browser
+      MODE: test
     cmds:
       - |
         if [ "{{.CLI_ARGS}}" = --clean-playwright ]; then rm -rf data/test/playwright; fi # else kept between runs
+      - source ./scripts/run.sh
+
+  run:test-player:
+    desc: Test player app for browser checks (data/test/player, http://localhost:8045)
+    env:
+      BIN: build/gm-session-manager-test-player{{.EXE}}
+      MARKERS: data/test/player
+      MODE: test-player
+      SERVER_ARGS: --player --data data/test/player --port 8045 --no-browser
+    cmds:
       - source ./scripts/run.sh
 
   before:

@@ -1790,6 +1790,19 @@ func (q *Queries) ListSubracesOf(ctx context.Context, arg ListSubracesOfParams) 
 	return items, nil
 }
 
+const maxSourcePriority = `-- name: MaxSourcePriority :one
+SELECT CAST(COALESCE(MAX(priority), 0) AS INTEGER) FROM compendium_sources
+WHERE source_key <> 'homebrew'
+`
+
+// MaxSourcePriority is the lowest-ranked source's priority; homebrew is left out.
+func (q *Queries) MaxSourcePriority(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, maxSourcePriority)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const randomCompendiumEntry = `-- name: RandomCompendiumEntry :one
 SELECT e.id FROM compendium_entries AS e
 WHERE e.id IN (SELECT id FROM campaign_top WHERE campaign_id = CAST(?1 AS INTEGER))
@@ -2077,11 +2090,7 @@ func (q *Queries) UpsertCompendiumEntry(ctx context.Context, arg UpsertCompendiu
 
 const upsertCompendiumSource = `-- name: UpsertCompendiumSource :exec
 INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution, published, priority)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
-    CASE WHEN ?1 = 'homebrew' THEN 0
-         WHEN ?1 LIKE 'srd%' THEN 200
-         WHEN ?4 = '2024' THEN 100
-         ELSE 300 END)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
 ON CONFLICT (source_key) DO UPDATE
 SET path = excluded.path, hash = excluded.hash, edition = excluded.edition,
     license = excluded.license, attribution = excluded.attribution,
@@ -2096,10 +2105,11 @@ type UpsertCompendiumSourceParams struct {
 	License     string
 	Attribution string
 	Published   string
+	Priority    int64
 }
 
-// A new source gets a default priority by group (lower wins); a re-import
-// keeps the GM's order but refreshes the date.
+// A new source gets the caller's priority (compendium.DefaultRank below the
+// current maximum); a re-import keeps the GM's order but refreshes the date.
 func (q *Queries) UpsertCompendiumSource(ctx context.Context, arg UpsertCompendiumSourceParams) error {
 	_, err := q.db.ExecContext(ctx, upsertCompendiumSource,
 		arg.SourceKey,
@@ -2109,6 +2119,7 @@ func (q *Queries) UpsertCompendiumSource(ctx context.Context, arg UpsertCompendi
 		arg.License,
 		arg.Attribution,
 		arg.Published,
+		arg.Priority,
 	)
 	return err
 }

@@ -13,6 +13,28 @@ import (
 	"gm-session-manager/internal/enum"
 )
 
+const clearCampaignEntryLinks = `-- name: ClearCampaignEntryLinks :exec
+DELETE FROM compendium_campaigns
+WHERE campaign_id = ?
+`
+
+func (q *Queries) ClearCampaignEntryLinks(ctx context.Context, campaignID int64) error {
+	_, err := q.db.ExecContext(ctx, clearCampaignEntryLinks, campaignID)
+	return err
+}
+
+const clearCampaignSources = `-- name: ClearCampaignSources :exec
+DELETE FROM campaign_sources
+WHERE campaign_id = ?
+`
+
+// A refreshed starter takes exactly the file's books and homebrew: clear both,
+// then the import ticks and links what the file lists.
+func (q *Queries) ClearCampaignSources(ctx context.Context, campaignID int64) error {
+	_, err := q.db.ExecContext(ctx, clearCampaignSources, campaignID)
+	return err
+}
+
 const copyCampaignEntryLinks = `-- name: CopyCampaignEntryLinks :exec
 INSERT INTO compendium_campaigns (entry_id, campaign_id)
 SELECT l.entry_id, ?1 FROM compendium_campaigns AS l WHERE l.campaign_id = ?2
@@ -65,6 +87,28 @@ func (q *Queries) CreateHomeCopy(ctx context.Context, arg CreateHomeCopyParams) 
 	return err
 }
 
+const createHomeStarter = `-- name: CreateHomeStarter :exec
+INSERT INTO home_starters (campaign_id, server_id, table_campaign_id, saved_at)
+VALUES (?, ?, ?, ?)
+`
+
+type CreateHomeStarterParams struct {
+	CampaignID      int64
+	ServerID        string
+	TableCampaignID int64
+	SavedAt         time.Time
+}
+
+func (q *Queries) CreateHomeStarter(ctx context.Context, arg CreateHomeStarterParams) error {
+	_, err := q.db.ExecContext(ctx, createHomeStarter,
+		arg.CampaignID,
+		arg.ServerID,
+		arg.TableCampaignID,
+		arg.SavedAt,
+	)
+	return err
+}
+
 const createLevelUpAt = `-- name: CreateLevelUpAt :one
 INSERT INTO level_ups (character_id, max_hp, sheet_json, created_at)
 VALUES (?, ?, ?, ?)
@@ -88,6 +132,21 @@ func (q *Queries) CreateLevelUpAt(ctx context.Context, arg CreateLevelUpAtParams
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const createNewCharacterToken = `-- name: CreateNewCharacterToken :exec
+INSERT INTO new_character_tokens (character_id, token)
+VALUES (?, ?)
+`
+
+type CreateNewCharacterTokenParams struct {
+	CharacterID int64
+	Token       string
+}
+
+func (q *Queries) CreateNewCharacterToken(ctx context.Context, arg CreateNewCharacterTokenParams) error {
+	_, err := q.db.ExecContext(ctx, createNewCharacterToken, arg.CharacterID, arg.Token)
+	return err
 }
 
 const createNoteAt = `-- name: CreateNoteAt :one
@@ -207,6 +266,29 @@ func (q *Queries) DeleteHomebrewByOwner(ctx context.Context, arg DeleteHomebrewB
 	return err
 }
 
+const deleteNewCharacterToken = `-- name: DeleteNewCharacterToken :exec
+DELETE FROM new_character_tokens
+WHERE token = ?
+`
+
+func (q *Queries) DeleteNewCharacterToken(ctx context.Context, token string) error {
+	_, err := q.db.ExecContext(ctx, deleteNewCharacterToken, token)
+	return err
+}
+
+const deleteUnlinkedSharedHomebrew = `-- name: DeleteUnlinkedSharedHomebrew :exec
+DELETE FROM compendium_entries
+WHERE source_key = 'homebrew' AND owner_character_id IS NULL AND scoped = 1
+  AND NOT EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = compendium_entries.id)
+`
+
+// Shared homebrew (no owner) that no campaign links any more, left by a removed
+// or refreshed starter.
+func (q *Queries) DeleteUnlinkedSharedHomebrew(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteUnlinkedSharedHomebrew)
+	return err
+}
+
 const findCampaignHomebrewByHash = `-- name: FindCampaignHomebrewByHash :one
 SELECT id, kind, slug, name, source_key, data_json, body_text, image_url, content_hash, imported_at, owner_character_id, scoped FROM compendium_entries AS e
 WHERE e.source_key = 'homebrew' AND e.kind = ?1 AND e.content_hash = ?2
@@ -304,7 +386,10 @@ func (q *Queries) GetHomeCopyByTable(ctx context.Context, arg GetHomeCopyByTable
 }
 
 const getHomeServerID = `-- name: GetHomeServerID :one
-SELECT server_id FROM home_copies LIMIT 1
+SELECT server_id FROM home_copies
+UNION
+SELECT server_id FROM home_starters
+LIMIT 1
 `
 
 func (q *Queries) GetHomeServerID(ctx context.Context) (string, error) {
@@ -312,6 +397,78 @@ func (q *Queries) GetHomeServerID(ctx context.Context) (string, error) {
 	var server_id string
 	err := row.Scan(&server_id)
 	return server_id, err
+}
+
+const getHomeStarter = `-- name: GetHomeStarter :one
+SELECT campaign_id, server_id, table_campaign_id, saved_at FROM home_starters
+WHERE campaign_id = ?
+`
+
+func (q *Queries) GetHomeStarter(ctx context.Context, campaignID int64) (HomeStarter, error) {
+	row := q.db.QueryRowContext(ctx, getHomeStarter, campaignID)
+	var i HomeStarter
+	err := row.Scan(
+		&i.CampaignID,
+		&i.ServerID,
+		&i.TableCampaignID,
+		&i.SavedAt,
+	)
+	return i, err
+}
+
+const getHomeStarterByTable = `-- name: GetHomeStarterByTable :one
+SELECT campaign_id, server_id, table_campaign_id, saved_at FROM home_starters
+WHERE server_id = ? AND table_campaign_id = ?
+`
+
+type GetHomeStarterByTableParams struct {
+	ServerID        string
+	TableCampaignID int64
+}
+
+func (q *Queries) GetHomeStarterByTable(ctx context.Context, arg GetHomeStarterByTableParams) (HomeStarter, error) {
+	row := q.db.QueryRowContext(ctx, getHomeStarterByTable, arg.ServerID, arg.TableCampaignID)
+	var i HomeStarter
+	err := row.Scan(
+		&i.CampaignID,
+		&i.ServerID,
+		&i.TableCampaignID,
+		&i.SavedAt,
+	)
+	return i, err
+}
+
+const getNewCharacterByToken = `-- name: GetNewCharacterByToken :one
+SELECT t.character_id, ch.name, ch.deleted_at
+FROM new_character_tokens AS t
+JOIN characters AS ch ON ch.id = t.character_id
+WHERE t.token = ?
+`
+
+type GetNewCharacterByTokenRow struct {
+	CharacterID int64
+	Name        string
+	DeletedAt   sql.NullTime
+}
+
+// The character holding a made-at-home token, deleted or not.
+func (q *Queries) GetNewCharacterByToken(ctx context.Context, token string) (GetNewCharacterByTokenRow, error) {
+	row := q.db.QueryRowContext(ctx, getNewCharacterByToken, token)
+	var i GetNewCharacterByTokenRow
+	err := row.Scan(&i.CharacterID, &i.Name, &i.DeletedAt)
+	return i, err
+}
+
+const getNewCharacterToken = `-- name: GetNewCharacterToken :one
+SELECT token FROM new_character_tokens
+WHERE character_id = ?
+`
+
+func (q *Queries) GetNewCharacterToken(ctx context.Context, characterID int64) (string, error) {
+	row := q.db.QueryRowContext(ctx, getNewCharacterToken, characterID)
+	var token string
+	err := row.Scan(&token)
+	return token, err
 }
 
 const getServerID = `-- name: GetServerID :one
@@ -346,14 +503,30 @@ func (q *Queries) GetTakeHomeByToken(ctx context.Context, token string) (TakeHom
 }
 
 const hasOtherServerHomeCopy = `-- name: HasOtherServerHomeCopy :one
-SELECT EXISTS (SELECT 1 FROM home_copies WHERE server_id <> ?)
+SELECT CAST(EXISTS (SELECT 1 FROM home_copies AS c WHERE c.server_id <> CAST(?1 AS TEXT))
+    OR EXISTS (SELECT 1 FROM home_starters AS s WHERE s.server_id <> CAST(?1 AS TEXT)) AS BOOLEAN) AS other
 `
 
 func (q *Queries) HasOtherServerHomeCopy(ctx context.Context, serverID string) (bool, error) {
 	row := q.db.QueryRowContext(ctx, hasOtherServerHomeCopy, serverID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
+	var other bool
+	err := row.Scan(&other)
+	return other, err
+}
+
+const isHomeCopyCampaign = `-- name: IsHomeCopyCampaign :one
+SELECT CAST(EXISTS (
+    SELECT 1 FROM home_copies AS h
+    JOIN characters AS ch ON ch.id = h.character_id
+    WHERE ch.campaign_id = ? AND ch.deleted_at IS NULL
+) AS BOOLEAN) AS is_copy
+`
+
+func (q *Queries) IsHomeCopyCampaign(ctx context.Context, campaignID int64) (bool, error) {
+	row := q.db.QueryRowContext(ctx, isHomeCopyCampaign, campaignID)
+	var is_copy bool
+	err := row.Scan(&is_copy)
+	return is_copy, err
 }
 
 const latestOpenTakeHome = `-- name: LatestOpenTakeHome :one
@@ -539,6 +712,42 @@ func (q *Queries) ListHomeSourceKeys(ctx context.Context) ([]string, error) {
 			return nil, err
 		}
 		items = append(items, source_key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHomeStarters = `-- name: ListHomeStarters :many
+SELECT h.campaign_id, c.name, h.saved_at
+FROM home_starters AS h
+JOIN campaigns AS c ON c.id = h.campaign_id
+ORDER BY c.name COLLATE NOCASE, h.campaign_id
+`
+
+type ListHomeStartersRow struct {
+	CampaignID int64
+	Name       string
+	SavedAt    time.Time
+}
+
+func (q *Queries) ListHomeStarters(ctx context.Context) ([]ListHomeStartersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listHomeStarters)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHomeStartersRow{}
+	for rows.Next() {
+		var i ListHomeStartersRow
+		if err := rows.Scan(&i.CampaignID, &i.Name, &i.SavedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -1009,6 +1218,21 @@ type SetHomeCopyFallbackParams struct {
 
 func (q *Queries) SetHomeCopyFallback(ctx context.Context, arg SetHomeCopyFallbackParams) error {
 	_, err := q.db.ExecContext(ctx, setHomeCopyFallback, arg.FallbackCharacterID, arg.CharacterID)
+	return err
+}
+
+const setHomeStarterSavedAt = `-- name: SetHomeStarterSavedAt :exec
+UPDATE home_starters SET saved_at = ?
+WHERE campaign_id = ?
+`
+
+type SetHomeStarterSavedAtParams struct {
+	SavedAt    time.Time
+	CampaignID int64
+}
+
+func (q *Queries) SetHomeStarterSavedAt(ctx context.Context, arg SetHomeStarterSavedAtParams) error {
+	_, err := q.db.ExecContext(ctx, setHomeStarterSavedAt, arg.SavedAt, arg.CampaignID)
 	return err
 }
 

@@ -120,6 +120,9 @@ templ CampaignRoster(r Roster) {
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeXs, Attributes: newCharacterLoad(r.Campaign.ID)}) {
 					Add from file…
 				}
+				@button.Button(button.Props{Href: route.Path(route.CampaignStarter, r.Campaign.ID), Variant: button.VariantOutline, Size: button.SizeXs, Attributes: templ.Attributes{"title": "The campaign's books, for a player to build a character at home"}}) {
+					Starter file for players
+				}
 				@button.Button(button.Props{
 					Variant:    utils.IfElse(r.Campaign.OpenJoin, button.VariantDefault, button.VariantOutline),
 					Size:       button.SizeXs,
@@ -161,20 +164,6 @@ templ CampaignRoster(r Roster) {
 				}
 			</ul>
 		}
-		<form
-			class="group/busy mt-6 flex flex-wrap items-center gap-2 text-sm"
-			data-busy
-			hx-post={ route.Path(route.CampaignImportCharacter, r.Campaign.ID) }
-			hx-encoding="multipart/form-data"
-			hx-on::after-request="if (event.detail.successful) this.reset()"
-		>
-			<label for="character-file" class="text-muted-foreground">Import a character file</label>
-			@input.Input(input.Props{ID: "character-file", Name: "file", Type: "file", Required: true, Class: "w-auto", Attributes: templ.Attributes{"accept": ".json,application/json"}})
-			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeXs, Variant: button.VariantOutline}) {
-				Import
-			}
-			@busyIndicator("Importing…")
-		</form>
 	</section>
 }
 

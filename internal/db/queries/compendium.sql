@@ -2,15 +2,11 @@
 SELECT * FROM compendium_sources
 WHERE source_key = ?;
 
--- A new source gets a default priority by group (lower wins); a re-import
--- keeps the GM's order but refreshes the date.
+-- A new source gets the caller's priority (compendium.DefaultRank below the
+-- current maximum); a re-import keeps the GM's order but refreshes the date.
 -- name: UpsertCompendiumSource :exec
 INSERT INTO compendium_sources (source_key, path, hash, edition, license, attribution, published, priority)
-VALUES (sqlc.arg(source_key), sqlc.arg(path), sqlc.arg(hash), sqlc.arg(edition), sqlc.arg(license), sqlc.arg(attribution), sqlc.arg(published),
-    CASE WHEN sqlc.arg(source_key) = 'homebrew' THEN 0
-         WHEN sqlc.arg(source_key) LIKE 'srd%' THEN 200
-         WHEN sqlc.arg(edition) = '2024' THEN 100
-         ELSE 300 END)
+VALUES (sqlc.arg(source_key), sqlc.arg(path), sqlc.arg(hash), sqlc.arg(edition), sqlc.arg(license), sqlc.arg(attribution), sqlc.arg(published), sqlc.arg(priority))
 ON CONFLICT (source_key) DO UPDATE
 SET path = excluded.path, hash = excluded.hash, edition = excluded.edition,
     license = excluded.license, attribution = excluded.attribution,
@@ -189,6 +185,11 @@ ORDER BY e.kind, e.slug, s.priority, s.published DESC, o.id;
 -- name: ListCompendiumSources :many
 SELECT * FROM compendium_sources
 ORDER BY priority, published DESC, source_key;
+
+-- MaxSourcePriority is the lowest-ranked source's priority; homebrew is left out.
+-- name: MaxSourcePriority :one
+SELECT CAST(COALESCE(MAX(priority), 0) AS INTEGER) FROM compendium_sources
+WHERE source_key <> 'homebrew';
 
 -- name: SetCompendiumSourcePriority :exec
 UPDATE compendium_sources SET priority = ?

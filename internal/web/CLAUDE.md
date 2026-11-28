@@ -25,7 +25,7 @@ The htmx websocket extension retries forever on an abnormal close (1006, which i
 
 Each note block is its own collaborative document (TipTap, `assets/js/notes.js`) with its own audience; the server is the authority (stale steps get a 409 and rebase). Trusting client snapshots, text and links is accepted on a LAN of friends, except link schemes: raw steps skip TipTap's link check, so `submitSteps` and `blockSnapshot` refuse an `href` outside `safeSchemes` and `linkClick` follows only those. NPC fields reuse TipTap (`fields.js`); both share `wikilink.js` for `[[kind:id|label]]` tokens (parsed in `views/wikilinks.go`).
 
-Take-home zips carry note blocks as TipTap JSON, and the version check reads sheets only: a change to the node or mark types notes can hold (a new extension in `notes.js`) must raise `export.TakeHomeFormat`, or an older app opening the file drops that content for good.
+Take-home zips carry note blocks as TipTap JSON, and the version check reads sheets only: a change to the node or mark types notes can hold (a new extension in `notes.js`) must raise `export.TakeHomeFormat`, or an older app opening the file drops that content for good. A reader accepts format 1 up to `TakeHomeFormat` and refuses a newer one, so a raise needs no migration of files already out. The manifest is decoded strictly: a new manifest field is a raise too.
 
 ## UI conventions
 
@@ -37,7 +37,7 @@ Take-home zips carry note blocks as TipTap JSON, and the version check reads she
 - Toggled states: `aria-pressed:` or `data-[…]:` variants, so a live update flips one attribute.
 - Capped checkbox groups: `data-max-checked="N"` on the element holding the boxes (count 1 is a radio group instead). app.js counts its named, enabled, ticked boxes (known ones have no name, taught ones a disabled input) and at N greys the unticked out via the checkbox root's `aria-disabled`, never the input's `disabled`, which `data-hide-for` owns. Give it an `id` and `#<id>-count` shows the live count. Browser help only: the server check stays.
 - Command boxes (one `cmd` input sending delta commands): `form[data-command=url]` with an `id`, no `hx-post`/`reset()`. app.js empties the box on send, sends in order, ignores an empty Enter and restores a refused command. A success `reset()` would wipe the next command typed meanwhile.
-- Slow forms: `data-busy` + class `group/busy` + `@busyIndicator("…")` inside; app.js sets `aria-busy` and disables submit buttons.
+- Slow forms: `data-busy` + class `group/busy` + `@busyIndicator("…")` inside; app.js sets `aria-busy` and disables submit buttons. A side action inside such a form that should not show it gets `data-not-busy`.
 - Previews fetch nothing while hidden: check `checkVisibility()` first; image lists use `loading="lazy"`.
 - Long lists and notices (books, sources, import summaries) scroll inside a capped box (`scrollBox` in `views/import_view.go`), so the controls around them stay close together.
 - Narrow screens: a grid column needs `min-w-0` before a child's `max-w-full` or truncation works; in a `flex-wrap` row of icon + text + button, give the text `min-w-0 grow basis-48`.

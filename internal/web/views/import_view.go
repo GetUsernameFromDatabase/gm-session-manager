@@ -1,9 +1,11 @@
 package views
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -162,6 +164,33 @@ func entryCountClass(c sqlc.CountEntriesBySourceRow) string {
 		return countAmber
 	}
 	return ""
+}
+
+// sortableSources is true with two or more sources besides homebrew.
+func sortableSources(sources []sqlc.CompendiumSource) bool {
+	return len(slices.DeleteFunc(slices.Clone(sources), func(s sqlc.CompendiumSource) bool { return s.SourceKey == compendium.HomebrewSource })) >= 2
+}
+
+// minLostPercent keeps a tiny loss (1 of 400) visible as a sliver of the pie.
+const minLostPercent = 8
+
+// lostPercent is the share of a source's entries lists do not show, as a pie
+// fill; false when none are lost.
+func lostPercent(c sqlc.CountEntriesBySourceRow) (int, bool) {
+	if c.Total <= 0 || c.Visible >= c.Total {
+		return 0, false
+	}
+	return max(minLostPercent, int(100*(c.Total-c.Visible)/c.Total)), true
+}
+
+// lostDotClass colours the pie: the count's tier colour, amber from the first lost entry.
+func lostDotClass(c sqlc.CountEntriesBySourceRow) string {
+	return cmp.Or(entryCountClass(c), countAmber)
+}
+
+// lostDotStyle sets the pie's fill (--lost, read by the dot's gradient).
+func lostDotStyle(pct int) templ.SafeCSS {
+	return templ.SafeCSS(fmt.Sprintf("--lost:%d%%;", pct))
 }
 
 // FiveToolsView is the book picker: books by group, with the import date of

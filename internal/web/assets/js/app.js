@@ -535,8 +535,9 @@ import {
 
   // Forms marked data-busy show their busy indicator (aria-busy) while they
   // submit or while one of their htmx requests runs. A submitting form also
-  // disables its submit buttons, so a second click cannot submit twice.
-  const busyForm = (el) => el && el.closest && el.closest("form[data-busy]");
+  // disables its submit buttons, so a second click cannot submit twice. A
+  // request from inside [data-not-busy] (a side action in the form) is skipped.
+  const busyForm = (el) => el && el.closest && !el.closest("[data-not-busy]") && el.closest("form[data-busy]");
   document.addEventListener("submit", (e) => {
     const form = busyForm(e.target);
     if (!form || e.defaultPrevented) return;

@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -77,6 +78,9 @@ func (a *App) loadNewCharacter(ctx context.Context, q *sqlc.Queries, path string
 	if err := checkFileEntries(file); err != nil {
 		return nc, err
 	}
+	if _, err := checkMadeAtHome(ctx, q, m.MadeAtHome); err != nil {
+		return nc, err
+	}
 	// The file lists only books added at home: the table's own ones it pins
 	// come from here, so the review can offer those the campaign lacks.
 	// shortcut: only the current sheet is read, not level-up history, and bring-backs
@@ -99,6 +103,39 @@ func (a *App) loadNewCharacter(ctx context.Context, q *sqlc.Queries, path string
 	}
 	nc.file = file
 	return nc, nil
+}
+
+// checkMadeAtHome refuses a file whose made-at-home token a live character
+// already holds. takeover says a deleted one holds it: its row goes when the
+// new character claims the token.
+func checkMadeAtHome(ctx context.Context, q *sqlc.Queries, token string) (takeover bool, err error) {
+	if token == "" {
+		return false, nil
+	}
+	holder, err := q.GetNewCharacterByToken(ctx, token)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, err
+	case !holder.DeletedAt.Valid:
+		return false, userf("%s was already added from this file.", holder.Name)
+	}
+	return true, nil
+}
+
+// claimMadeAtHome stores the file's token for the character just added.
+func claimMadeAtHome(ctx context.Context, q *sqlc.Queries, token string, characterID int64) error {
+	takeover, err := checkMadeAtHome(ctx, q, token)
+	if err != nil || token == "" {
+		return err
+	}
+	if takeover {
+		if err := q.DeleteNewCharacterToken(ctx, token); err != nil {
+			return err
+		}
+	}
+	return q.CreateNewCharacterToken(ctx, sqlc.CreateNewCharacterTokenParams{CharacterID: characterID, Token: token})
 }
 
 // newCharacterDialog is the dialog body that asks the GM for the file.
@@ -140,7 +177,8 @@ func (a *App) storeHomeFile(c *gin.Context, camp sqlc.Campaign, byPlayer bool) (
 	return id, err
 }
 
-// newCharacterUpload takes the GM's new-character file straight to its review.
+// newCharacterUpload takes the GM's new-character file straight to its review;
+// a character file (.json, a download or an export) is added at once.
 func (a *App) newCharacterUpload(c *gin.Context) error {
 	id, ok := a.idParam(c, "campaign")
 	if !ok {
@@ -149,6 +187,18 @@ func (a *App) newCharacterUpload(c *gin.Context) error {
 	camp, err := a.Store.GetCampaign(c.Request.Context(), id)
 	if err != nil {
 		return err
+	}
+	// The cap comes before the first read of the form.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxTakeHomeBytes)
+	fh, err := c.FormFile(formFile)
+	if err != nil {
+		return userf("Choose a character file (.zip or .json).")
+	}
+	if strings.EqualFold(filepath.Ext(fh.Filename), ".json") {
+		if fh.Size > maxCharacterFileBytes {
+			return userf("This character file is too large.")
+		}
+		return a.importCharacter(c, camp, fh)
 	}
 	fileID, err := a.storeHomeFile(c, camp, false)
 	if err != nil {
@@ -340,6 +390,9 @@ func (a *App) homeFileAdd(c *gin.Context, camp sqlc.Campaign, f homeFile) error 
 			return err
 		}
 		if err := rebuildLinks(ctx, q, ch); err != nil {
+			return err
+		}
+		if err := claimMadeAtHome(ctx, q, rv.file.Manifest.MadeAtHome, ch.ID); err != nil {
 			return err
 		}
 		if f.byPlayer && !a.Hub.FileRequestWaiting(camp.ID, f.id) {

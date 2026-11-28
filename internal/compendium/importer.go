@@ -55,12 +55,17 @@ func ImportProgress(ctx context.Context, store *db.Store, dir string, progress f
 	}
 	// Dot folders are caches and downloads in progress (.5etools).
 	dirs := slices.DeleteFunc(all, func(d fs.DirEntry) bool { return !d.IsDir() || strings.HasPrefix(d.Name(), ".") })
+	// Read once: this run's new sources go below everything ordered so far, by group rank.
+	base, err := store.MaxSourcePriority(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("compendium: %w", err)
+	}
 	var reports []Report
 	for i, d := range dirs {
 		if progress != nil {
 			progress(i, len(dirs), d.Name())
 		}
-		r := importSource(ctx, store, d.Name(), filepath.Join(dir, d.Name()))
+		r := importSource(ctx, store, base, d.Name(), filepath.Join(dir, d.Name()))
 		reports = append(reports, r)
 		if finished != nil {
 			finished(r)
@@ -99,7 +104,7 @@ func formatOf(key string) sourceFormat {
 	return open5eFormat
 }
 
-func importSource(ctx context.Context, store *db.Store, key, path string) Report {
+func importSource(ctx context.Context, store *db.Store, base int64, key, path string) Report {
 	r := Report{Source: key}
 	if key == HomebrewSource {
 		r.Err = fmt.Errorf("%q is reserved for homebrew entries", key)
@@ -130,7 +135,7 @@ func importSource(ctx context.Context, store *db.Store, key, path string) Report
 	if f.afterSave != nil {
 		after = func(q *sqlc.Queries) error { return f.afterSave(ctx, q, key, files) }
 	}
-	r.Removed, r.Err = storeSource(ctx, store, src, path, hash, entries, after)
+	r.Removed, r.Err = storeSource(ctx, store, base, src, path, hash, entries, after)
 	if r.Err == nil {
 		r.Entries = len(entries)
 	}
@@ -149,15 +154,16 @@ func bindFiveToolsImages(ctx context.Context, q *sqlc.Queries, key string, files
 // storeSource records the source, writes its entries and removes those it
 // no longer has; it returns how many were removed. afterSave (may be nil)
 // runs in the same transaction, so a failure rolls back the stored hash too
-// and leaves the source to be imported again.
-func storeSource(ctx context.Context, store *db.Store, src Source, path, hash string, entries []Entry, afterSave func(q *sqlc.Queries) error) (int, error) {
+// and leaves the source to be imported again. A new source gets base plus its
+// default rank as priority; an existing one keeps its priority.
+func storeSource(ctx context.Context, store *db.Store, base int64, src Source, path, hash string, entries []Entry, afterSave func(q *sqlc.Queries) error) (int, error) {
 	removed := 0
 	err := store.InTx(ctx, func(q *sqlc.Queries) error {
 		// First: entries reference their source row.
 		if err := q.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{
 			SourceKey: src.Key, Path: path, Hash: hash,
 			Edition: src.Edition, License: src.License, Attribution: src.Attribution,
-			Published: src.Published,
+			Published: src.Published, Priority: base + DefaultRank(src.Key, src.Edition),
 		}); err != nil {
 			return err
 		}

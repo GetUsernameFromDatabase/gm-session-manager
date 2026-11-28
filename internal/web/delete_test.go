@@ -81,12 +81,15 @@ func TestDeleteRestoreImport(t *testing.T) {
 	if file.Code != http.StatusOK || !strings.Contains(file.Body.String(), `"name": "Alice"`) {
 		t.Fatalf("download: %d %s", file.Code, file.Body)
 	}
-	importPath := route.Path(route.CampaignImportCharacter, e.campaignID)
+	importPath := route.Path(route.CampaignNewCharacter, e.campaignID)
 	if w := e.doFile(t, importPath, gm, nil, "file", "alice.json", file.Body.String()); w.Code != http.StatusSeeOther {
 		t.Fatalf("import: %d %s", w.Code, w.Body)
 	}
 	if w := e.doFile(t, importPath, gm, nil, "file", "bad.json", `{"name":"X","system":"dnd5e","sheet":{"abilities":{"str":99}}}`); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("invalid sheet imported: %d", w.Code)
+	}
+	if w := e.doFile(t, importPath, gm, nil, "file", "big.json", strings.Repeat(" ", maxCharacterFileBytes+1)); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "too large") {
+		t.Errorf("oversize file: %d %s", w.Code, w.Body)
 	}
 	chars, _ := e.q().ListCharactersByCampaign(ctx, e.campaignID)
 	if len(chars) != 3 {
@@ -101,7 +104,7 @@ func TestImportCatchesUpOldSheet(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
 	file := `{"name":"Knight","system":"dnd5e","sheet":{"effects_version":4,"other_profs":["Heavy armor"]}}`
-	if w := e.doFile(t, route.Path(route.CampaignImportCharacter, e.campaignID), gm, nil, "file", "knight.json", file); w.Code != http.StatusSeeOther {
+	if w := e.doFile(t, route.Path(route.CampaignNewCharacter, e.campaignID), gm, nil, "file", "knight.json", file); w.Code != http.StatusSeeOther {
 		t.Fatalf("import: %d %s", w.Code, w.Body)
 	}
 	chars, err := e.q().ListCharactersByCampaign(t.Context(), e.campaignID)

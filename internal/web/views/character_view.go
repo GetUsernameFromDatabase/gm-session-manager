@@ -38,6 +38,10 @@ type SheetView struct {
 	// computed then.
 	CanSources   bool
 	SourceIssues []SourceIssue
+	// BooksUsed and CampaignBooks (labels, in priority order) are only filled
+	// for a viewer with CanSources.
+	BooksUsed     []BookUse
+	CampaignBooks []string
 	// MasteryLimit is how many weapon kinds the classes let the character
 	// master (dnd5e.Sheet.MasteryLimit).
 	MasteryLimit int
@@ -57,6 +61,29 @@ type SheetView struct {
 	// its build still uses.
 	FallbackFor         string
 	FallbackHomeSources []string
+}
+
+// BookUse is one book a sheet takes from, what it takes, and why to check it.
+type BookUse struct {
+	Key, Label string
+	Uses       []string
+	// NotAllowed: the campaign does not use the book. AtHome: added in the player app.
+	NotAllowed, AtHome bool
+}
+
+// booksDialogID is the "Books used" dialog (the line and the menu item open it).
+const booksDialogID = "books-used"
+
+// booksLine is the short "Books: XPHB · TCE ⚠" text of the line.
+func (s SheetView) booksLine() string {
+	labels := make([]string, len(s.BooksUsed))
+	for i, b := range s.BooksUsed {
+		labels[i] = b.Key
+		if b.NotAllowed || b.AtHome {
+			labels[i] += " ⚠"
+		}
+	}
+	return "Books: " + strings.Join(labels, " · ")
 }
 
 // editableMod is whether modifier i is the sheet's own, not an effect's.

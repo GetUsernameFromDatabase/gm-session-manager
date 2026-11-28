@@ -104,10 +104,16 @@ func TestReadTakeHomeRefusals(t *testing.T) {
 	}{
 		{"newer format", func(n string, d []byte) []byte {
 			if n == manifestFile {
-				return []byte(`{"format": 2, "new_field": 1}`)
+				return []byte(`{"format": 3, "new_field": 1}`)
 			}
 			return d
-		}, "format 2"},
+		}, "format 3"},
+		{"format zero", func(n string, d []byte) []byte {
+			if n == manifestFile {
+				return []byte(`{"format": 0}`)
+			}
+			return d
+		}, "format 0"},
 		{"unknown key", func(n string, d []byte) []byte {
 			if n == levelUpsFile {
 				return []byte(`[{"id":1,"surprise":true}]`)
@@ -298,5 +304,120 @@ func TestDropMissing(t *testing.T) {
 	}
 	if len(th.Notes[0].Blocks[0].Files) != 0 || len(missing) != 3 {
 		t.Errorf("block files %+v, missing %v", th.Notes[0].Blocks[0].Files, missing)
+	}
+}
+
+// plainTakeHome has no looks or notes, so no files.
+func plainTakeHome() TakeHome {
+	th := sampleTakeHome("")
+	th.Looks, th.Notes = nil, nil
+	return th
+}
+
+func sampleStarter() TakeHome {
+	return TakeHome{
+		Manifest: TakeHomeManifest{
+			Format: TakeHomeFormat, Kind: KindStarter, AppVersion: "v1", ServerID: "srv",
+			Campaign: TakeHomeCampaign{ID: 4, Name: "Mist"}, CreatedAt: time.Unix(1700000000, 0).UTC(),
+		},
+		Sources: []TakeHomeSource{{SourceKey: "xphb", Priority: 1}},
+		Entries: []TakeHomeEntry{{Kind: enum.KindSpell, Slug: "light", Name: "Light", SourceKey: "xphb", Data: json.RawMessage(`{}`)}},
+	}
+}
+
+func TestStarterRoundTrip(t *testing.T) {
+	body := writeZip(t, sampleStarter(), t.TempDir())
+	f, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), KindStarter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Manifest.Campaign.ID != 4 || len(f.Sources) != 1 || len(f.Entries) != 1 {
+		t.Errorf("round trip lost data: %+v", f.TakeHome)
+	}
+	if k, err := ManifestKind(bytes.NewReader(body), int64(len(body))); err != nil || k != KindStarter {
+		t.Errorf("ManifestKind = %q, %v", k, err)
+	}
+	zr, _ := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if len(zr.File) != 3 {
+		t.Errorf("a starter holds %d parts, want 3", len(zr.File))
+	}
+}
+
+// A format 1 file (before the starter) still reads.
+func TestReadTakeHomeFormatOne(t *testing.T) {
+	body := rewriteZip(t, writeZip(t, plainTakeHome(), t.TempDir()), func(n string, d []byte) []byte {
+		if n == manifestFile {
+			return []byte(strings.Replace(string(d), `"format": 2`, `"format": 1`, 1))
+		}
+		return d
+	})
+	if _, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), KindTakeHome); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestReadStarterRefusals(t *testing.T) {
+	dir := t.TempDir()
+	good := writeZip(t, sampleStarter(), dir)
+	withPart := func(name string) []byte {
+		out := bytes.Buffer{}
+		zw := zip.NewWriter(&out)
+		zr, _ := zip.NewReader(bytes.NewReader(good), int64(len(good)))
+		for _, zf := range zr.File {
+			rc, _ := zf.Open()
+			var b bytes.Buffer
+			_, _ = b.ReadFrom(rc)
+			_ = rc.Close()
+			_ = writeFile(zw, zf.Name, b.Bytes())
+		}
+		_ = writeFile(zw, name, []byte("{}"))
+		_ = zw.Close()
+		return out.Bytes()
+	}
+	edited := func(edit func(*TakeHome)) []byte {
+		th := sampleStarter()
+		edit(&th)
+		return writeZip(t, th, dir)
+	}
+	tests := []struct {
+		name string
+		body []byte
+		want Kind
+		err  string
+	}{
+		{"character in a starter", withPart(characterFile), KindStarter, "must not hold character.json"},
+		{"maps in a starter", withPart(mapsFile), KindStarter, "must not hold maps.json"},
+		{"file in a starter", withPart(filesPrefix + "x"), KindStarter, "must not hold files/x"},
+		{"starter without a campaign id", edited(func(th *TakeHome) { th.Manifest.Campaign.ID = 0 }), KindStarter, "must name its table and campaign"},
+		{"starter naming a character", edited(func(th *TakeHome) { th.Manifest.CharacterID = 3 }), KindStarter, "no character"},
+		{"made-at-home in a starter", edited(func(th *TakeHome) { th.Manifest.MadeAtHome = "x" }), KindStarter, "made at home"},
+		{"made-at-home in a bring-back", func() []byte {
+			th := sampleBringBack()
+			th.Manifest.MadeAtHome = "x"
+			return writeZip(t, th, dir)
+		}(), KindBringBack, "made at home"},
+		{"starter where take-home wanted", good, KindTakeHome, "campaign starter file: open it in the player app"},
+		{"starter where bring-back wanted", good, KindBringBack, "campaign starter file"},
+		{"take-home where starter wanted", writeZip(t, sampleTakeHome(""), dir), KindStarter, "not a campaign starter"},
+		{"entry of a bad kind", edited(func(th *TakeHome) { th.Entries[0].Kind = "monster" }), KindStarter, "not valid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ReadTakeHome(bytes.NewReader(tt.body), int64(len(tt.body)), tt.want)
+			if err == nil || !strings.Contains(err.Error(), tt.err) {
+				t.Errorf("err = %v, want it to contain %q", err, tt.err)
+			}
+		})
+	}
+}
+
+func TestMadeAtHomeAllowedKinds(t *testing.T) {
+	for _, th := range []TakeHome{sampleNewCharacter(), plainTakeHome()} {
+		th.Manifest.MadeAtHome = "tok"
+		body := writeZip(t, th, t.TempDir())
+		f, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), th.Manifest.Kind)
+		if err != nil || f.Manifest.MadeAtHome != "tok" {
+			t.Errorf("%s: %v, %q", th.Manifest.Kind, err, f.Manifest.MadeAtHome)
+		}
 	}
 }

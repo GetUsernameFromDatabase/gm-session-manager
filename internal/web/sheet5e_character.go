@@ -71,8 +71,13 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 	canSheet := perm.CanCharacter(v, row.ID, perm.ScopeSheet)
 	canSources := perm.CanCharacter(v, row.ID, perm.ScopeSources)
 	var issues []views.SourceIssue
+	var books []views.BookUse
+	var campaignBooks []string
 	if canSources {
 		if issues, err = a.sourceIssues(ctx, sheet, row.CampaignID); err != nil {
+			return views.SheetView{}, err
+		}
+		if books, campaignBooks, err = a.sheetBooks(ctx, sheet, row.CampaignID); err != nil {
 			return views.SheetView{}, err
 		}
 	}
@@ -114,6 +119,8 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 		CanRevert:     canSheet && levelUps > 0,
 		CanSources:    canSources,
 		SourceIssues:  issues,
+		BooksUsed:     books,
+		CampaignBooks: campaignBooks,
 		MasteryLimit:  masteries,
 	}, nil
 }

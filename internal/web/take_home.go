@@ -3,7 +3,9 @@ package web
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 
@@ -89,6 +91,12 @@ func (a *App) takeHome(c *gin.Context) error {
 		Format: export.TakeHomeFormat, Kind: export.KindTakeHome, AppVersion: a.Version, Token: rec.Token, ServerID: serverID,
 		Campaign:    export.TakeHomeCampaign{Name: camp.Name, System: camp.System, Edition: camp.Edition},
 		CharacterID: ch.ID, CreatedAt: rec.CreatedAt.UTC(),
+	}
+	// A character added from a made-at-home file carries its token, so the player app can replace the original.
+	if tok, err := a.Store.GetNewCharacterToken(ctx, ch.ID); err == nil {
+		th.Manifest.MadeAtHome = tok
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
 	}
 
 	a.publish(c, ch.CampaignID, hub.Topic{Kind: hub.TopicCharacter, ID: ch.ID}, hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID})

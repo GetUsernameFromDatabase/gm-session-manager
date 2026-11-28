@@ -4,6 +4,7 @@ package web
 // copy, a fallback build of a table character, a new character.
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"os"
@@ -24,8 +25,8 @@ const (
 	fallbackSuffix = " (fallback)"
 )
 
-// homeNewForm is the "New character" dialog: a name, and the table character
-// whose campaign and sources the new one starts with.
+// homeNewForm is the "New character" dialog: a name, and the home campaign
+// (a table character's, or a campaign starter) whose books the new one starts with.
 type homeNewForm struct {
 	Name string `form:"name" validate:"required,max=100"`
 	From int64  `form:"from" validate:"required,min=1"`
@@ -160,22 +161,18 @@ func (a *App) homeFallback(c *gin.Context) error {
 }
 
 // homeNew makes a blank character that starts in the wizard, in a campaign
-// cloned from a table character's.
+// cloned from a table character's campaign or a campaign starter.
 func (a *App) homeNew(c *gin.Context) error {
 	var form homeNewForm
 	if err := c.ShouldBind(&form); err != nil {
-		return userf("Give the character a name (up to 100 characters) and choose a table character.")
+		return userf("Give the character a name (up to 100 characters) and choose a campaign.")
 	}
 	name := strings.TrimSpace(form.Name)
 	if name == "" {
-		return userf("Give the character a name (up to 100 characters) and choose a table character.")
+		return userf("Give the character a name (up to 100 characters) and choose a campaign.")
 	}
 	ctx := c.Request.Context()
-	if _, err := a.Store.GetHomeCopy(ctx, form.From); err != nil {
-		return err
-	}
-	from, err := a.Store.GetCharacter(ctx, form.From)
-	if err != nil {
+	if err := a.checkNewFrom(ctx, form.From); err != nil {
 		return err
 	}
 	sheet, err := newSheetJSON()
@@ -184,7 +181,7 @@ func (a *App) homeNew(c *gin.Context) error {
 	}
 	var ch sqlc.Character
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		campaignID, err := cloneHomeCampaign(ctx, q, from.CampaignID)
+		campaignID, err := cloneHomeCampaign(ctx, q, form.From)
 		if err != nil {
 			return err
 		}
@@ -198,5 +195,23 @@ func (a *App) homeNew(c *gin.Context) error {
 		return err
 	}
 	redirect(c, wizardPath(ch.ID, wizardSteps[0].Key))
+	return nil
+}
+
+// checkNewFrom refuses a campaign a new character may not start from: only a
+// table character's home campaign or a campaign starter is offered.
+func (a *App) checkNewFrom(ctx context.Context, campaignID int64) error {
+	if _, err := a.Store.GetHomeStarter(ctx, campaignID); err == nil {
+		return nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	ok, err := a.Store.IsHomeCopyCampaign(ctx, campaignID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return userf("Choose a campaign from the list.")
+	}
 	return nil
 }

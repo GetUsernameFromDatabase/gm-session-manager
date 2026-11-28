@@ -15,7 +15,7 @@ Out of scope: accounts or email, hosting on the internet, S3, Docker (allowed on
 
 ## Rules that must not be broken
 
-- **Visibility is enforced on the server.** Never send hidden data to a browser and hide it client-side. Unrevealed entity fields are stripped entirely (keys included). GM and admin queries never return `owner` note blocks; the one exception is the take-home zip the GM downloads for a player (it holds what the player would take home, and the dialog asks the GM to pass it on unopened). Permission tables: `internal/perm/CLAUDE.md`.
+- **Visibility is enforced on the server.** Never send hidden data to a browser and hide it client-side. Unrevealed entity fields are stripped entirely (keys included). GM and admin queries never return `owner` note blocks; the one exception is the take-home zip the GM downloads for a player (it holds what the player would take home, and the dialog asks the GM to pass it on unopened). The campaign starter file holds only what any player of the campaign sees (its books and entries, no monsters, no player's own homebrew) and is offered to a visitor only while the campaign's open join is on. Permission tables: `internal/perm/CLAUDE.md`.
 - **Websocket data is as small as possible:** changed values as JSON, never HTML; wholesale changes send a refetch order (`internal/web/CLAUDE.md`).
 - **Commands, not saved sheets.** Clients send small delta commands (`hp -5`, `toggle prone`, one NPC field), never whole-object overwrites: several devices may hold one character or NPC. The server applies each in a transaction and publishes topics. A whole-page editor (images) posts the values it opened with (`was_*`); the server changes only what differs and refuses a value another device changed since. The one exception is accepting a bring-back: the GM reviews a three-way merge of the whole character (`internal/web/home_files.go`).
 - **Session tokens:** 32 random bytes; store only the SHA-256 hash; cookie is `HttpOnly`, `SameSite=Lax`, `Secure` (the player app's cookie is `gsm_home`, not Secure: loopback HTTP).
@@ -61,7 +61,7 @@ Dev commands are tasks in `Taskfile.yml` ([Task](https://taskfile.dev), installe
 | Go formatting | `golangci-lint fmt` |
 | browser JS versions | `go run ./cmd/vendorjs -check`, edit `cmd/vendorjs/main.go`, `go run ./cmd/vendorjs -update`, commit `cmd/vendorjs/vendor.sum` (a plain run refuses changed files) |
 
-Then `go build ./...`, `go test ./...`, `task lint`, `graphify update .`. Full build: `task build`; release archives: `task build:release` (Linux); release tag: `task release -- <version>`; run: `task run` (`run:player`, `run:browser`, `before`, `run:before`; the watcher loop is `scripts/run.sh`, the modes are the env of those tasks in `Taskfile.yml`).
+Then `go build ./...`, `go test ./...`, `task lint`, `graphify update .`. Full build: `task build`; release archives: `task build:release` (Linux); release tag: `task release -- <version>`; run: `task run` (`run:player`, `run:test`, `run:test-player`, `before`, `run:before`; the watcher loop is `scripts/run.sh`, the modes are the env of those tasks in `Taskfile.yml`).
 
 ## graphify
 

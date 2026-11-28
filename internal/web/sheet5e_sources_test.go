@@ -148,6 +148,9 @@ func TestSourceWarningAfterImport(t *testing.T) {
 		if s.CanSources != (v.IsGM || v.CharacterID == e.characterID) {
 			t.Errorf("CanSources %v for %+v", s.CanSources, v)
 		}
+		if (len(s.BooksUsed) > 0) != s.CanSources {
+			t.Errorf("BooksUsed %+v for %+v", s.BooksUsed, v)
+		}
 		return len(s.SourceIssues)
 	}
 	owner := perm.Player(e.characterID)

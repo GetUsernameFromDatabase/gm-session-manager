@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"gm-session-manager/internal/auth"
+	"gm-session-manager/internal/compendium"
 	"gm-session-manager/internal/db/sqlc"
 	"gm-session-manager/internal/enum"
 	"gm-session-manager/internal/export"
@@ -46,7 +47,7 @@ func homeEnv(t *testing.T) (e testEnv, cookie string, campaign int64) {
 // homeBook adds a source the way a download at home does (not the take-home's path).
 func (e testEnv) homeBook(t *testing.T, key, edition string) {
 	t.Helper()
-	if err := e.q().UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: key, Path: "downloads/" + key, Hash: "h-" + key, Edition: edition}); err != nil {
+	if err := e.q().UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: key, Path: "downloads/" + key, Hash: "h-" + key, Edition: edition, Priority: compendium.DefaultRank(key, edition)}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -94,6 +95,7 @@ var sourceRoutes = []struct{ method, path string }{
 	{http.MethodPost, route.CompendiumOpen5e},
 	{http.MethodPost, route.CompendiumSourceDelete},
 	{http.MethodPost, route.CompendiumSourceOrder},
+	{http.MethodPost, route.CompendiumSourceSort},
 	{http.MethodPost, route.CompendiumPagePreview},
 	{http.MethodPost, route.CompendiumPage},
 }

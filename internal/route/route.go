@@ -107,7 +107,6 @@ const (
 	ImagesImport       = "/images/import"
 	ImagesImportReview = "/images/import/:token" // not named Token: gosec G101
 	ImagesNew          = "/images/new"
-	ImportCharacter    = "/characters/import"
 	Kick               = "/kick"
 	Levelup            = "/levelup"
 	LevelupRevert      = "/levelup/revert"
@@ -129,6 +128,7 @@ const (
 	Reveal             = "/reveal"
 	Snapshot           = "/snapshot"
 	Sources            = "/sources"
+	Starter            = "/starter"
 	SourcesPreview     = "/sources/preview"
 	Steps              = "/steps"
 	Subclass           = "/subclass"
@@ -168,6 +168,7 @@ const (
 	// The source key travels in the form: page sources hold "/" (5etools:mtf/howler).
 	CompendiumSourceDelete = "/sources/delete"
 	CompendiumSourceOrder  = "/sources/order"
+	CompendiumSourceSort   = "/sources/sort"
 	CompendiumPagePreview  = "/page/preview"
 	CompendiumPage         = "/page"
 )
@@ -180,14 +181,15 @@ const (
 	AtHomePlay = AtHomeCopy + Play
 
 	// The player app's bring-back file and the phone handoff.
-	AtHomeBringBack   = AtHomeCopy + BringBack
-	AtHomeSendPhone   = AtHomeCopy + "/send-to-phone"
-	AtHomeMakeCopy    = AtHomeCopy + Copy
-	AtHomeFallback    = AtHomeCopy + "/fallback"
-	AtHomeNew         = AtHome + "/new"
-	AtHomeReceive     = AtHome + "/receive"
-	AtHomeHandoff     = AtHome + "/handoff"
-	AtHomeHandoffStop = AtHomeHandoff + "/stop"
+	AtHomeBringBack     = AtHomeCopy + BringBack
+	AtHomeSendPhone     = AtHomeCopy + "/send-to-phone"
+	AtHomeMakeCopy      = AtHomeCopy + Copy
+	AtHomeFallback      = AtHomeCopy + "/fallback"
+	AtHomeNew           = AtHome + "/new"
+	AtHomeStarterRemove = AtHome + "/starters/:campaign" + Remove
+	AtHomeReceive       = AtHome + "/receive"
+	AtHomeHandoff       = AtHome + "/handoff"
+	AtHomeHandoffStop   = AtHomeHandoff + "/stop"
 
 	AttachmentToImage = Attachment + ToImage
 
@@ -215,7 +217,6 @@ const (
 	CampaignImagesImport        = Campaign + ImagesImport
 	CampaignImagesImportReview  = Campaign + ImagesImportReview
 	CampaignImagesNew           = Campaign + ImagesNew
-	CampaignImportCharacter     = Campaign + ImportCharacter
 	CampaignLinks               = Campaign + Links
 	CampaignNewCharacter        = Campaign + NewCharacter
 	CampaignNotes               = Campaign + Notes
@@ -224,6 +225,7 @@ const (
 	CampaignRequestDecision     = Campaign + RequestDecision
 	CampaignRequestsDecision    = Campaign + RequestsDecision
 	CampaignSources             = Campaign + Sources
+	CampaignStarter             = Campaign + Starter
 	CampaignSwitcher            = Campaign + Switcher
 
 	CharacterBringBack      = Character + BringBack
@@ -278,6 +280,7 @@ const (
 	JoinClaim        = JoinCampaign + Claim
 	JoinCreate       = JoinCampaign + Create
 	JoinNewCharacter = JoinCampaign + NewCharacter
+	JoinStarter      = JoinCampaign + Starter
 
 	NoteBlocks = Note + Blocks
 	NoteDelete = Note + Delete

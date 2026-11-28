@@ -30,6 +30,12 @@ const (
 	gameEdition = dnd5e.Edition
 )
 
+// appendedSourcePriority is a new source's priority: below every ordered source, by group rank.
+func appendedSourcePriority(ctx context.Context, q *sqlc.Queries, key, edition string) (int64, error) {
+	base, err := q.MaxSourcePriority(ctx)
+	return base + compendium.DefaultRank(key, edition), err
+}
+
 // newSheetJSON is a new character's empty sheet.
 func newSheetJSON() (string, error) {
 	s := dnd5e.NewSheet()

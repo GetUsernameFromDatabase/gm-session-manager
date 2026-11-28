@@ -132,7 +132,7 @@ func (a *App) homePage(c *gin.Context) error {
 		if isFallback[r.ID] {
 			continue // listed under its character
 		}
-		v := views.HomeCopyView{CharacterID: r.ID, Name: r.Name, Campaign: r.CampaignName, Current: w.character != nil && w.character.ID == r.ID}
+		v := views.HomeCopyView{CharacterID: r.ID, CampaignID: r.CampaignID, Name: r.Name, Campaign: r.CampaignName, Current: w.character != nil && w.character.ID == r.ID}
 		if r.ManifestJson == "" {
 			onlyHere = append(onlyHere, v)
 			continue
@@ -149,7 +149,11 @@ func (a *App) homePage(c *gin.Context) error {
 		}
 		table = append(table, v)
 	}
-	a.render(c, http.StatusOK, views.HomePage(a.layout(w, "Characters", views.NavAtHome, nil, false), table, onlyHere, a.handoffView()))
+	starters, err := a.homeStarters(ctx)
+	if err != nil {
+		return err
+	}
+	a.render(c, http.StatusOK, views.HomePage(a.layout(w, "Characters", views.NavAtHome, nil, false), table, onlyHere, starters, a.handoffView()))
 	return nil
 }
 
@@ -268,7 +272,7 @@ func checkFileSources(file *export.TakeHomeFile) error {
 		known[s.SourceKey] = true
 	}
 	for _, e := range file.Entries {
-		if e.SourceKey == homebrewSource && file.Manifest.Kind != export.KindTakeHome {
+		if k := file.Manifest.Kind; e.SourceKey == homebrewSource && k != export.KindTakeHome && k != export.KindStarter {
 			return userError{errors.New("the file lists homebrew among the compendium entries")}
 		}
 		if e.SourceKey != homebrewSource && !known[e.SourceKey] {
@@ -317,6 +321,13 @@ func (a *App) homeImport(c *gin.Context) error {
 		size = fh.Size
 	}
 	defer func() { _ = f.Close() }()
+	kind, err := export.ManifestKind(f, size)
+	if err != nil {
+		return userf("That is not a take-home file: %w", err)
+	}
+	if kind == export.KindStarter {
+		return a.homeStarterImport(c, f, size, fromPhone)
+	}
 	file, err := export.ReadTakeHome(f, size, export.KindTakeHome)
 	if err != nil {
 		return userf("That is not a take-home file: %w", err)
@@ -334,25 +345,42 @@ func (a *App) homeImport(c *gin.Context) error {
 		return err
 	}
 	replace := c.PostForm(formReplace) == "1"
-	if old, err := a.Store.GetHomeCopyByTable(ctx, sqlc.GetHomeCopyByTableParams{ServerID: m.ServerID, TableCharacterID: m.CharacterID}); err == nil && !replace {
-		var om export.HomeManifest
-		if err := json.Unmarshal([]byte(old.ManifestJson), &om); err != nil {
-			return err
-		}
-		lost, err := lostHomeSources(ctx, a.Store.Queries, old.CharacterID, file.Sources)
-		if err != nil {
-			return err
-		}
-		var fallback string
-		if old.FallbackCharacterID.Valid {
-			if fb, err := a.Store.GetCharacter(ctx, old.FallbackCharacterID.Int64); err == nil {
-				fallback = fb.Name
+	old, err := a.Store.GetHomeCopyByTable(ctx, sqlc.GetHomeCopyByTableParams{ServerID: m.ServerID, TableCharacterID: m.CharacterID})
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	copyHere := err == nil
+	original, err := liveMadeAtHome(ctx, a.Store.Queries, m.MadeAtHome)
+	if err != nil {
+		return err
+	}
+	if (copyHere || original != nil) && !replace {
+		v := views.HomeConfirmView{Name: cf.Name, New: m.CreatedAt}
+		if copyHere {
+			var om export.HomeManifest
+			if err := json.Unmarshal([]byte(old.ManifestJson), &om); err != nil {
+				return err
+			}
+			v.CopyHere, v.Old = true, om.CreatedAt
+			if v.Sources, err = lostHomeSources(ctx, a.Store.Queries, old.CharacterID, file.Sources); err != nil {
+				return err
+			}
+			if old.FallbackCharacterID.Valid {
+				if fb, err := a.Store.GetCharacter(ctx, old.FallbackCharacterID.Int64); err == nil {
+					v.Fallback = fb.Name
+				}
 			}
 		}
-		a.render(c, http.StatusOK, views.HomeReplaceConfirm(views.HomeConfirmView{Name: cf.Name, Old: om.CreatedAt, New: m.CreatedAt, Sources: lost, Fallback: fallback}))
+		if original != nil {
+			v.MadeAtHome = original.Name
+			lost, err := lostHomeSources(ctx, a.Store.Queries, original.CharacterID, file.Sources)
+			if err != nil {
+				return err
+			}
+			v.Sources = slices.Compact(slices.Sorted(slices.Values(slices.Concat(v.Sources, lost))))
+		}
+		a.render(c, http.StatusOK, views.HomeReplaceConfirm(v))
 		return nil
-	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
 	}
 
 	// Files first: a row needs the file's size and type, and storeFile would
@@ -486,8 +514,9 @@ func oneTable(ctx context.Context, q *sqlc.Queries, serverID string) error {
 
 // importTakeHome writes one take-home file as a home campaign with its
 // character, in one transaction, and returns the new character's id. With
-// replace, the copy of the same table character is deleted first, with its own
-// homebrew (a character's deletion only unowns it).
+// replace, the copy of the same table character and the made-at-home character
+// the file stands in for are deleted first, with their own homebrew (a
+// character's deletion only unowns it).
 func importTakeHome(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeFile, cf export.CharacterFile, lookFiles []savedFile, blockFiles map[int64][]savedFile, replace bool) (int64, error) {
 	m := file.Manifest
 	if err := oneTable(ctx, q, m.ServerID); err != nil {
@@ -497,45 +526,26 @@ func importTakeHome(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeF
 		if !replace {
 			return 0, userError{errors.New("this character was opened on this computer meanwhile, try again")}
 		}
-		oldChar, err := q.GetCharacterAny(ctx, old.CharacterID)
-		if err != nil {
-			return 0, err
-		}
-		if err := q.DeleteHomebrewByOwner(ctx, sqlc.DeleteHomebrewByOwnerParams{OwnerCharacterID: nullID(old.CharacterID), CampaignID: oldChar.CampaignID}); err != nil {
-			return 0, err
-		}
-		if old.FallbackCharacterID.Valid {
-			if err := q.DeleteHomebrewByOwner(ctx, sqlc.DeleteHomebrewByOwnerParams{OwnerCharacterID: old.FallbackCharacterID, CampaignID: oldChar.CampaignID}); err != nil {
-				return 0, err
-			}
-		}
-		if err := q.DeleteCampaign(ctx, oldChar.CampaignID); err != nil {
+		if err := deleteHomeCharacter(ctx, q, old.CharacterID, old.FallbackCharacterID); err != nil {
 			return 0, err
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
 	}
-
-	// The compendium, shared by every home copy.
-	for _, s := range file.Sources {
-		if err := q.UpsertTakeHomeSource(ctx, sqlc.UpsertTakeHomeSourceParams{
-			SourceKey: s.SourceKey, Edition: s.Edition, License: s.License, Attribution: s.Attribution, Published: s.Published, Priority: s.Priority,
-		}); err != nil {
-			return 0, err
-		}
-	}
-	// Sources added at home keep their place below the table's.
-	if err := q.SinkHomeSources(ctx); err != nil {
-		return 0, err
-	}
-	homeKeys, err := q.ListHomeSourceKeys(ctx)
+	// The made-at-home original this file stands in for goes the same way.
+	original, err := liveMadeAtHome(ctx, q, m.MadeAtHome)
 	if err != nil {
 		return 0, err
 	}
-	atHome := make(map[string]bool, len(homeKeys))
-	for _, k := range homeKeys {
-		atHome[k] = true
+	if original != nil {
+		if !replace {
+			return 0, userError{errors.New("this character was made at home, confirm the replacement and try again")}
+		}
+		if err := deleteHomeCharacter(ctx, q, original.CharacterID, sql.NullInt64{}); err != nil {
+			return 0, err
+		}
 	}
+
 	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: m.Campaign.Name, System: m.Campaign.System, Edition: m.Campaign.Edition})
 	if err != nil {
 		return 0, err
@@ -543,40 +553,14 @@ func importTakeHome(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeF
 	if err := q.SetCampaignOpenJoin(ctx, sqlc.SetCampaignOpenJoinParams{OpenJoin: false, ID: camp.ID}); err != nil {
 		return 0, err
 	}
-	for _, s := range file.Sources {
-		if _, err := q.AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: camp.ID, SourceKey: s.SourceKey}); err != nil {
-			return 0, err
-		}
+	if err := importHomeCompendium(ctx, q, file, camp.ID); err != nil {
+		return 0, err
 	}
 
 	maps := newHomeIDMaps()
 	ch, err := createHomeCharacter(ctx, q, camp.ID, cf, file.TakeHome, lookFiles, blockFiles, &maps, homeMentions)
 	if err != nil {
 		return 0, err
-	}
-
-	// Entries: other sources' as they are; homebrew scoped to this campaign.
-	for _, e := range file.Entries {
-		if atHome[e.SourceKey] {
-			continue // the home download is that source's copy
-		}
-		if e.SourceKey != homebrewSource {
-			if err := q.UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{
-				Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: e.SourceKey, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash,
-			}); err != nil {
-				return 0, err
-			}
-			continue
-		}
-		id, err := q.UpsertSharedHomebrew(ctx, sqlc.UpsertSharedHomebrewParams{
-			Kind: e.Kind, Slug: e.Slug, Name: e.Name, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash,
-		})
-		if err != nil {
-			return 0, err
-		}
-		if err := q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: id, CampaignID: camp.ID}); err != nil {
-			return 0, err
-		}
 	}
 	for _, e := range file.Homebrew {
 		id, err := q.UpsertHomeHomebrew(ctx, sqlc.UpsertHomeHomebrewParams{
@@ -813,3 +797,86 @@ func rewriteDocAttachments(doc json.RawMessage, ids map[int64]int64) (json.RawMe
 
 // attachmentMention starts the id of a picture mention node.
 const attachmentMention = "attachment:"
+
+// deleteHomeCharacter removes a character here with its own homebrew (and its
+// fallback's) and the home campaign it lives in; a character's deletion alone
+// would only unown the homebrew.
+func deleteHomeCharacter(ctx context.Context, q *sqlc.Queries, characterID int64, fallbackID sql.NullInt64) error {
+	ch, err := q.GetCharacterAny(ctx, characterID)
+	if err != nil {
+		return err
+	}
+	if err := q.DeleteHomebrewByOwner(ctx, sqlc.DeleteHomebrewByOwnerParams{OwnerCharacterID: nullID(characterID), CampaignID: ch.CampaignID}); err != nil {
+		return err
+	}
+	if fallbackID.Valid {
+		if err := q.DeleteHomebrewByOwner(ctx, sqlc.DeleteHomebrewByOwnerParams{OwnerCharacterID: fallbackID, CampaignID: ch.CampaignID}); err != nil {
+			return err
+		}
+	}
+	return q.DeleteCampaign(ctx, ch.CampaignID)
+}
+
+// liveMadeAtHome is the character on this computer that a file's made-at-home
+// token names, nil for none (or a deleted one).
+func liveMadeAtHome(ctx context.Context, q *sqlc.Queries, token string) (*sqlc.GetNewCharacterByTokenRow, error) {
+	if token == "" {
+		return nil, nil //nolint:nilnil // nil means no such character
+	}
+	h, err := q.GetNewCharacterByToken(ctx, token)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && h.DeletedAt.Valid {
+		return nil, nil //nolint:nilnil // nil means no such character
+	}
+	return &h, err
+}
+
+// importHomeCompendium writes the compendium part of a take-home or starter
+// file for the home campaign: its sources (ticked for the campaign) and
+// entries, homebrew linked to the campaign only. The compendium is shared by
+// every home campaign.
+func importHomeCompendium(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeFile, campaignID int64) error {
+	for _, s := range file.Sources {
+		if err := q.UpsertTakeHomeSource(ctx, sqlc.UpsertTakeHomeSourceParams{
+			SourceKey: s.SourceKey, Edition: s.Edition, License: s.License, Attribution: s.Attribution, Published: s.Published, Priority: s.Priority,
+		}); err != nil {
+			return err
+		}
+	}
+	// Sources added at home keep their place below the table's.
+	if err := q.SinkHomeSources(ctx); err != nil {
+		return err
+	}
+	homeKeys, err := q.ListHomeSourceKeys(ctx)
+	if err != nil {
+		return err
+	}
+	for _, s := range file.Sources {
+		if _, err := q.AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: campaignID, SourceKey: s.SourceKey}); err != nil {
+			return err
+		}
+	}
+	// Entries: other sources' as they are; homebrew scoped to this campaign.
+	for _, e := range file.Entries {
+		if slices.Contains(homeKeys, e.SourceKey) {
+			continue // the home download is that source's copy
+		}
+		if e.SourceKey != homebrewSource {
+			if err := q.UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{
+				Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: e.SourceKey, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash,
+			}); err != nil {
+				return err
+			}
+			continue
+		}
+		id, err := q.UpsertSharedHomebrew(ctx, sqlc.UpsertSharedHomebrewParams{
+			Kind: e.Kind, Slug: e.Slug, Name: e.Name, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash,
+		})
+		if err != nil {
+			return err
+		}
+		if err := q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: id, CampaignID: campaignID}); err != nil {
+			return err
+		}
+	}
+	return nil
+}

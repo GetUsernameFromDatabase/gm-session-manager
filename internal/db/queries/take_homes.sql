@@ -155,7 +155,8 @@ SELECT * FROM home_copies
 WHERE server_id = ? AND table_character_id = ?;
 
 -- name: HasOtherServerHomeCopy :one
-SELECT EXISTS (SELECT 1 FROM home_copies WHERE server_id <> ?);
+SELECT CAST(EXISTS (SELECT 1 FROM home_copies AS c WHERE c.server_id <> CAST(sqlc.arg(server_id) AS TEXT))
+    OR EXISTS (SELECT 1 FROM home_starters AS s WHERE s.server_id <> CAST(sqlc.arg(server_id) AS TEXT)) AS BOOLEAN) AS other;
 
 -- name: ListHomeCopies :many
 SELECT h.character_id, ch.campaign_id, ch.name AS character_name, c.name AS campaign_name, h.manifest_json
@@ -225,7 +226,75 @@ WHERE ch.deleted_at IS NULL
 ORDER BY ch.name COLLATE NOCASE, ch.id;
 
 -- name: GetHomeServerID :one
-SELECT server_id FROM home_copies LIMIT 1;
+SELECT server_id FROM home_copies
+UNION
+SELECT server_id FROM home_starters
+LIMIT 1;
+
+-- name: CreateHomeStarter :exec
+INSERT INTO home_starters (campaign_id, server_id, table_campaign_id, saved_at)
+VALUES (?, ?, ?, ?);
+
+-- name: IsHomeCopyCampaign :one
+SELECT CAST(EXISTS (
+    SELECT 1 FROM home_copies AS h
+    JOIN characters AS ch ON ch.id = h.character_id
+    WHERE ch.campaign_id = ? AND ch.deleted_at IS NULL
+) AS BOOLEAN) AS is_copy;
+
+-- name: GetHomeStarterByTable :one
+SELECT * FROM home_starters
+WHERE server_id = ? AND table_campaign_id = ?;
+
+-- name: GetHomeStarter :one
+SELECT * FROM home_starters
+WHERE campaign_id = ?;
+
+-- name: SetHomeStarterSavedAt :exec
+UPDATE home_starters SET saved_at = ?
+WHERE campaign_id = ?;
+
+-- name: ListHomeStarters :many
+SELECT h.campaign_id, c.name, h.saved_at
+FROM home_starters AS h
+JOIN campaigns AS c ON c.id = h.campaign_id
+ORDER BY c.name COLLATE NOCASE, h.campaign_id;
+
+-- A refreshed starter takes exactly the file's books and homebrew: clear both,
+-- then the import ticks and links what the file lists.
+-- name: ClearCampaignSources :exec
+DELETE FROM campaign_sources
+WHERE campaign_id = ?;
+
+-- name: ClearCampaignEntryLinks :exec
+DELETE FROM compendium_campaigns
+WHERE campaign_id = ?;
+
+-- Shared homebrew (no owner) that no campaign links any more, left by a removed
+-- or refreshed starter.
+-- name: DeleteUnlinkedSharedHomebrew :exec
+DELETE FROM compendium_entries
+WHERE source_key = 'homebrew' AND owner_character_id IS NULL AND scoped = 1
+  AND NOT EXISTS (SELECT 1 FROM compendium_campaigns AS l WHERE l.entry_id = compendium_entries.id);
+
+-- name: GetNewCharacterToken :one
+SELECT token FROM new_character_tokens
+WHERE character_id = ?;
+
+-- name: CreateNewCharacterToken :exec
+INSERT INTO new_character_tokens (character_id, token)
+VALUES (?, ?);
+
+-- The character holding a made-at-home token, deleted or not.
+-- name: GetNewCharacterByToken :one
+SELECT t.character_id, ch.name, ch.deleted_at
+FROM new_character_tokens AS t
+JOIN characters AS ch ON ch.id = t.character_id
+WHERE t.token = ?;
+
+-- name: DeleteNewCharacterToken :exec
+DELETE FROM new_character_tokens
+WHERE token = ?;
 
 -- name: CopyCampaignSources :exec
 INSERT INTO campaign_sources (campaign_id, source_key)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"path"
 
@@ -122,23 +123,9 @@ func (a *App) downloadCharacter(c *gin.Context) error {
 	return nil
 }
 
-// importCharacter adds a character from a downloaded or exported file to
-// the campaign, as a new character with no devices.
-func (a *App) importCharacter(c *gin.Context) error {
-	id, ok := a.idParam(c, "campaign")
-	if !ok {
-		return nil
-	}
-	camp, err := a.Store.GetCampaign(c.Request.Context(), id)
-	if err != nil {
-		return err
-	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxCharacterFileBytes+1<<20)
-	fh, err := c.FormFile("file")
-	if err != nil {
-		a.fail(c, http.StatusUnprocessableEntity, "Choose a character file (.json).")
-		return nil
-	}
+// importCharacter adds a character from a downloaded or exported file (Add
+// from file… on the campaign) as a new character with no devices.
+func (a *App) importCharacter(c *gin.Context, camp sqlc.Campaign, fh *multipart.FileHeader) error {
 	f, err := fh.Open()
 	if err != nil {
 		return err
@@ -150,8 +137,7 @@ func (a *App) importCharacter(c *gin.Context) error {
 	}
 	cf, err := parseCharacterFile(body)
 	if err != nil {
-		a.fail(c, http.StatusUnprocessableEntity, "That is not a character file: "+err.Error())
-		return nil
+		return userf("That is not a character file: %v", err)
 	}
 	if _, err := a.Store.CreateCharacterWithSheet(c.Request.Context(), sqlc.CreateCharacterWithSheetParams{
 		CampaignID: camp.ID, Name: cf.Name, System: cf.System, Hp: cf.HP, MaxHp: cf.MaxHP, TempHp: cf.TempHP, SheetJson: string(cf.Sheet),
@@ -163,7 +149,9 @@ func (a *App) importCharacter(c *gin.Context) error {
 	if _, err := UpgradeSheets(c.Request.Context(), a.Store); err != nil {
 		slog.Warn("sheet upgrade after import", "err", err)
 	}
-	a.changed(c, camp.ID, hub.Topic{Kind: hub.TopicCampaign, ID: camp.ID})
+	a.publish(c, camp.ID, hub.Topic{Kind: hub.TopicCampaign, ID: camp.ID})
+	// The page reloads, which also closes the dialog the file came from.
+	redirect(c, route.Path(route.Campaign, camp.ID))
 	return nil
 }
 

@@ -268,12 +268,12 @@ func TestHomeNewCharacter(t *testing.T) {
 	form := func(name string, from int64) url.Values {
 		return url.Values{"name": {name}, "from": {strconv.FormatInt(from, 10)}}
 	}
-	for _, bad := range []url.Values{form("   ", id), form("Nia", 0), form(strings.Repeat("x", 101), id)} {
+	for _, bad := range []url.Values{form("   ", orig.CampaignID), form("Nia", 0), form("Nia", 999), form(strings.Repeat("x", 101), orig.CampaignID)} {
 		if w := e.postPlayer(t, route.AtHomeNew, bad); w.Code != http.StatusUnprocessableEntity {
 			t.Errorf("%v: status %d, want 422", bad, w.Code)
 		}
 	}
-	w := e.postPlayer(t, route.AtHomeNew, form("  Nia ", id))
+	w := e.postPlayer(t, route.AtHomeNew, form("  Nia ", orig.CampaignID))
 	nia := e.homeCharacterByName(t, "Nia")
 	if w.Code != http.StatusNoContent || w.Header().Get("HX-Redirect") != wizardPath(nia.ID, wizardSteps[0].Key) {
 		t.Fatalf("new: status %d, redirect %q: %s", w.Code, w.Header().Get("HX-Redirect"), w.Body)
@@ -287,9 +287,9 @@ func TestHomeNewCharacter(t *testing.T) {
 	if _, err := q.GetHomeCopy(ctx, nia.ID); !errors.Is(err, sql.ErrNoRows) {
 		t.Errorf("the new character has a home copy row: %v", err)
 	}
-	// Only a table character can be the model.
-	if w := e.postPlayer(t, route.AtHomeNew, form("Zed", nia.ID)); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "Not found") {
-		t.Errorf("model that is not a table character: status %d: %s", w.Code, w.Body)
+	// Only a table character's campaign (or a starter's) can be the model.
+	if w := e.postPlayer(t, route.AtHomeNew, form("Zed", nia.CampaignID)); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "Choose a campaign") {
+		t.Errorf("model that is not a table character's campaign: status %d: %s", w.Code, w.Body)
 	}
 	if rows, _ := q.ListHomeCharacters(ctx); len(rows) != 2 {
 		t.Errorf("%d characters, want the original and Nia only", len(rows))
@@ -300,7 +300,7 @@ func TestHomeNewCharacter(t *testing.T) {
 	if f == nil {
 		t.Fatalf("file: status %d: %s", w.Code, w.Body)
 	}
-	if m := f.Manifest; m.Token != "" || m.CharacterID != 0 || m.ServerID != "srv" || m.Campaign.Name != "Table" || m.SavedAt.IsZero() {
+	if m := f.Manifest; m.Token != "" || m.CharacterID != 0 || m.MadeAtHome == "" || m.ServerID != "srv" || m.Campaign.Name != "Table" || m.SavedAt.IsZero() {
 		t.Errorf("manifest %+v", m)
 	}
 	if f.Maps != nil || f.Fallback != nil || !strings.Contains(w.Header().Get("Content-Disposition"), "-new-character-") {

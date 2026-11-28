@@ -145,7 +145,7 @@ the migration go through on real data. The server is not touched. On the PC, wit
    ```sh
    rm -f data/test/gm-session-manager.db*
    tar -xzf "build/${backup##*/}" -C data/test gm-session-manager.db
-   task run:browser
+   task run:test
    ```
 
 > The new version migrates the copy; check that the pages open. `data/test` is the browser-check instance, so its

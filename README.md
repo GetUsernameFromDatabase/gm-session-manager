@@ -170,7 +170,7 @@ task run                # or: go run ./cmd/gm-session-manager
 `task run` rebuilds and restarts when sources change (a failed build keeps the
 old server). A changed migration pauses reloading until `touch build/restart`;
 `touch build/stop` quits. `task --list` lists the other tasks (`run:player`,
-`run:browser`, `before`, `run:before`, `lint`, `build`, `release`).
+`run:test`, `before`, `run:before`, `lint`, `build`, `release`).
 
 ### Project layout
 

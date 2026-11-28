@@ -418,7 +418,7 @@ func TestHabitatCopies(t *testing.T) {
 	player := e.token(t, enum.RolePlayer)
 	srd, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
 	// A lower-ranked copy, made first so that ordering by id alone would pick it.
-	if err := e.q().UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: "old-book", Edition: "2014"}); err != nil {
+	if err := e.q().UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: "old-book", Edition: "2014", Priority: 300}); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "goblin-warrior", Name: "Goblin Warrior", SourceKey: "old-book", DataJson: "{}", ContentHash: "x"}); err != nil {

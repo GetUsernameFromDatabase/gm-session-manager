@@ -1,4 +1,5 @@
--- Taking a character home (a zip played in the player app, brought back later).
+-- Playing at home: taking a character home (a zip played in the player app,
+-- brought back later), campaign starter files and characters made at home.
 
 -- This database's random identity, written into take-home files so a player app
 -- tells tables apart. In the database, not settings.json: it qualifies the
@@ -34,4 +35,22 @@ CREATE TABLE home_copies (
     fallback_character_id INTEGER REFERENCES characters (id) ON DELETE SET NULL,
     UNIQUE (server_id, table_character_id),
     UNIQUE (fallback_character_id)
+);
+
+-- Player app: a campaign opened from a starter file. The campaign is the
+-- player's own copy of the table's books; a second opening of the same table
+-- campaign refreshes it in place.
+CREATE TABLE home_starters (
+    campaign_id         INTEGER  PRIMARY KEY REFERENCES campaigns (id) ON DELETE CASCADE,
+    server_id           TEXT     NOT NULL CHECK (server_id <> ''),
+    table_campaign_id   INTEGER  NOT NULL,
+    saved_at            DATETIME NOT NULL,
+    UNIQUE (server_id, table_campaign_id)
+);
+
+-- Both apps: at home the character made here, at the table the character added
+-- from that file, so a later take-home can replace the made-at-home original.
+CREATE TABLE new_character_tokens (
+    character_id        INTEGER  PRIMARY KEY REFERENCES characters (id) ON DELETE CASCADE,
+    token               TEXT     NOT NULL UNIQUE CHECK (token <> '')
 );
