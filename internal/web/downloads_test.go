@@ -20,7 +20,11 @@ func TestAppDownload(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "app.zip"), []byte("zipdata"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(e.app.DataDir, "secret.txt"), []byte("no"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(e.app.DataDir, "secret.txt"),
+		[]byte("no"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -39,15 +43,27 @@ func TestAppDownload(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			w := e.do(t, http.MethodGet, strings.Replace(route.AppDownload, ":file", tt.file, 1), tt.cookie, nil, false)
+			w := e.do(
+				t,
+				http.MethodGet,
+				strings.Replace(route.AppDownload, ":file", tt.file, 1),
+				tt.cookie,
+				nil,
+				false,
+			)
 			if w.Code != tt.want {
 				t.Fatalf("status %d, want %d", w.Code, tt.want)
 			}
 			if tt.want != http.StatusOK {
 				return
 			}
-			if w.Body.String() != "zipdata" || !strings.HasPrefix(w.Header().Get("Content-Disposition"), "attachment") {
-				t.Errorf("body %q, disposition %q", w.Body.String(), w.Header().Get("Content-Disposition"))
+			if w.Body.String() != "zipdata" ||
+				!strings.HasPrefix(w.Header().Get("Content-Disposition"), "attachment") {
+				t.Errorf(
+					"body %q, disposition %q",
+					w.Body.String(),
+					w.Header().Get("Content-Disposition"),
+				)
 			}
 		})
 	}

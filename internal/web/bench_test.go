@@ -24,8 +24,23 @@ const (
 
 func (e testEnv) spell(tb testing.TB, source, slug string, level int) {
 	tb.Helper()
-	data := fmt.Sprintf(`{"level":%d,"school":"evocation","classes":["wizard"],"desc":"%s from %s"}`, level, slug, source)
-	if err := e.upsertEntry(tb.Context(), sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: slug, Name: slug, SourceKey: source, DataJson: data, ContentHash: source + slug}); err != nil {
+	data := fmt.Sprintf(
+		`{"level":%d,"school":"evocation","classes":["wizard"],"desc":"%s from %s"}`,
+		level,
+		slug,
+		source,
+	)
+	if err := e.upsertEntry(
+		tb.Context(),
+		sqlc.UpsertCompendiumEntryParams{
+			Kind:        enum.KindSpell,
+			Slug:        slug,
+			Name:        slug,
+			SourceKey:   source,
+			DataJson:    data,
+			ContentHash: source + slug,
+		},
+	); err != nil {
 		tb.Fatal(err)
 	}
 }
@@ -39,7 +54,11 @@ func BenchmarkSheetState(b *testing.B) {
 	}
 	f.source(b, oldSrc, "2014")
 	f.source(b, newSrc, "2024")
-	sheet := dnd5e.Sheet{Classes: []dnd5e.ClassLevel{{Slug: "wizard", Name: "Wizard", Level: 5, HitDie: 6, Caster: dnd5e.CasterFull}}}
+	sheet := dnd5e.Sheet{
+		Classes: []dnd5e.ClassLevel{
+			{Slug: "wizard", Name: "Wizard", Level: 5, HitDie: 6, Caster: dnd5e.CasterFull},
+		},
+	}
 	for i := range benchSpells {
 		slug, level := fmt.Sprintf("bench-spell-%d", i), i%4
 		f.spell(b, newSrc, slug, level)
@@ -68,16 +87,19 @@ func BenchmarkEncounterState(b *testing.B) {
 	f := newLiveFixture(b) // Alice and the Ogre are already in the fight
 	ctx := b.Context()
 	for i := range 3 {
-		ch, err := f.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: f.campaignID, Name: fmt.Sprintf("PC %d", i), System: "dnd5e", SheetJson: "{}"})
+		ch, err := f.q().
+			CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: f.campaignID, Name: fmt.Sprintf("PC %d", i), System: "dnd5e", SheetJson: "{}"})
 		if err != nil {
 			b.Fatal(err)
 		}
-		if _, err := f.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: f.encounter, CharacterID: nullID(ch.ID), Name: ch.Name}); err != nil {
+		if _, err := f.q().
+			CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: f.encounter, CharacterID: nullID(ch.ID), Name: ch.Name}); err != nil {
 			b.Fatal(err)
 		}
 	}
 	for i := range 7 {
-		if _, err := f.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: f.encounter, Name: fmt.Sprintf("Goblin %d", i), Hp: 7, MaxHp: 7, Ac: 15}); err != nil {
+		if _, err := f.q().
+			CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: f.encounter, Name: fmt.Sprintf("Goblin %d", i), Hp: 7, MaxHp: 7, Ac: 15}); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -138,19 +160,35 @@ func BenchmarkImportReview(b *testing.B) {
 			}
 			for c := range 10 {
 				cat := fmt.Sprintf("Category %d", c)
-				v.Cats = append(v.Cats, views.ImportCategory{Source: cat, Count: n / 10, Target: cat})
+				v.Cats = append(
+					v.Cats,
+					views.ImportCategory{Source: cat, Count: n / 10, Target: cat},
+				)
 			}
 			for i := range n {
 				cat := fmt.Sprintf("Category %d", i%10)
 				v.Rows = append(v.Rows, views.ImportRow{
-					Index: i, Name: fmt.Sprintf("Image number %09d", i),
-					Link:     fmt.Sprintf("https://images.example.com/gallery/%09d/picture-file-name.png?size=large", i),
+					Index: i,
+					Name:  fmt.Sprintf("Image number %09d", i),
+					Link: fmt.Sprintf(
+						"https://images.example.com/gallery/%09d/picture-file-name.png?size=large",
+						i,
+					),
 					Host:     "images.example.com",
-					Category: cat, Target: cat, Ticked: true,
+					Category: cat,
+					Target:   cat,
+					Ticked:   true,
 				})
 			}
 			for _, h := range v.Header {
-				v.Columns = append(v.Columns, views.ImportColumn{Header: h, Distinct: 10, Samples: []string{"one", "two", "three"}})
+				v.Columns = append(
+					v.Columns,
+					views.ImportColumn{
+						Header:   h,
+						Distinct: 10,
+						Samples:  []string{"one", "two", "three"},
+					},
+				)
 			}
 			var size int
 			b.ReportAllocs()

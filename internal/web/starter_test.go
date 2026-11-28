@@ -29,14 +29,44 @@ func (e testEnv) seedStarterContent(t *testing.T) {
 		kind enum.CompendiumKind
 		slug string
 	}{{enum.KindSpell, "bolt"}, {enum.KindMonster, "orc"}} {
-		if err := q.UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: en.kind, Slug: en.slug, Name: en.slug, SourceKey: "bk", DataJson: "{}", ContentHash: "h-" + en.slug}); err != nil {
+		if err := q.UpsertCompendiumEntry(
+			ctx,
+			sqlc.UpsertCompendiumEntryParams{
+				Kind:        en.kind,
+				Slug:        en.slug,
+				Name:        en.slug,
+				SourceKey:   "bk",
+				DataJson:    "{}",
+				ContentHash: "h-" + en.slug,
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := q.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: enum.KindFeat, Slug: "gm-feat", Name: "Table feat", DataJson: "{}", ContentHash: "h-gm"}); err != nil {
+	if _, err := q.CreateHomebrew(
+		ctx,
+		sqlc.CreateHomebrewParams{
+			Kind:        enum.KindFeat,
+			Slug:        "gm-feat",
+			Name:        "Table feat",
+			DataJson:    "{}",
+			ContentHash: "h-gm",
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: enum.KindSpell, Slug: "zap", Name: "Zap", DataJson: "{}", ContentHash: "h-zap", OwnerCharacterID: nullID(e.characterID), Scoped: true}); err != nil {
+	if _, err := q.CreateHomebrew(
+		ctx,
+		sqlc.CreateHomebrewParams{
+			Kind:             enum.KindSpell,
+			Slug:             "zap",
+			Name:             "Zap",
+			DataJson:         "{}",
+			ContentHash:      "h-zap",
+			OwnerCharacterID: nullID(e.characterID),
+			Scoped:           true,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	e.allowEntrySources(t)
@@ -60,7 +90,8 @@ func TestStarterDownloadRoutes(t *testing.T) {
 	joinPath := route.Path(route.JoinStarter, e.campaignID)
 	setOpenJoin := func(on bool) {
 		t.Helper()
-		if err := e.q().SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{OpenJoin: on, ID: e.campaignID}); err != nil {
+		if err := e.q().
+			SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{OpenJoin: on, ID: e.campaignID}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -70,25 +101,64 @@ func TestStarterDownloadRoutes(t *testing.T) {
 	if w := e.do(t, http.MethodGet, joinPath, "", nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("join route with open join off: %d, want 404", w.Code)
 	}
-	if w := e.do(t, http.MethodGet, route.Path(route.JoinCampaign, e.campaignID), "", nil, false); strings.Contains(w.Body.String(), joinPath) {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.JoinCampaign, e.campaignID),
+		"",
+		nil,
+		false,
+	); strings.Contains(
+		w.Body.String(),
+		joinPath,
+	) {
 		t.Error("the join page offers the starter with open join off")
 	}
 	setOpenJoin(true)
 	w := e.do(t, http.MethodGet, joinPath, "", nil, false)
-	if w.Code != http.StatusOK || !strings.Contains(w.Header().Get("Content-Disposition"), "attachment") {
-		t.Fatalf("join route with open join on: %d %q", w.Code, w.Header().Get("Content-Disposition"))
+	if w.Code != http.StatusOK ||
+		!strings.Contains(w.Header().Get("Content-Disposition"), "attachment") {
+		t.Fatalf(
+			"join route with open join on: %d %q",
+			w.Code,
+			w.Header().Get("Content-Disposition"),
+		)
 	}
-	if w := e.do(t, http.MethodGet, route.Path(route.JoinCampaign, e.campaignID), "", nil, false); !strings.Contains(w.Body.String(), joinPath) {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.JoinCampaign, e.campaignID),
+		"",
+		nil,
+		false,
+	); !strings.Contains(
+		w.Body.String(),
+		joinPath,
+	) {
 		t.Error("the join page lacks the starter link with open join on")
 	}
-	if w := e.do(t, http.MethodGet, route.Path(route.JoinStarter, 999), "", nil, false); w.Code != http.StatusNotFound {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.JoinStarter, 999),
+		"",
+		nil,
+		false,
+	); w.Code != http.StatusNotFound {
 		t.Errorf("join route of a missing campaign: %d", w.Code)
 	}
 
 	// The GM route is GM-only, whatever open join says.
 	setOpenJoin(false)
 	for name, cookie := range map[string]string{"visitor": "", "player": player} {
-		if w := e.do(t, http.MethodGet, gmPath, cookie, nil, false); w.Code < http.StatusBadRequest {
+		if w := e.do(
+			t,
+			http.MethodGet,
+			gmPath,
+			cookie,
+			nil,
+			false,
+		); w.Code < http.StatusBadRequest {
 			t.Errorf("%s got the GM starter route: %d", name, w.Code)
 		}
 	}
@@ -108,7 +178,11 @@ func TestStarterContent(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	f := readStarter(t, w.Body.Bytes())
-	if m := f.Manifest; m.Kind != export.KindStarter || m.Campaign.ID != e.campaignID || m.Campaign.Name != "Test" || m.ServerID == "" || m.Token != "" || m.CharacterID != 0 {
+	if m := f.Manifest; m.Kind != export.KindStarter || m.Campaign.ID != e.campaignID ||
+		m.Campaign.Name != "Test" ||
+		m.ServerID == "" ||
+		m.Token != "" ||
+		m.CharacterID != 0 {
 		t.Errorf("manifest %+v", m)
 	}
 	if len(f.Sources) != 1 || f.Sources[0].SourceKey != "bk" {
@@ -118,7 +192,10 @@ func TestStarterContent(t *testing.T) {
 		slug string
 		want bool
 	}{{"bolt", true}, {"gm-feat", true}, {"orc", false}, {"zap", false}} {
-		if got := slices.ContainsFunc(f.Entries, func(en export.TakeHomeEntry) bool { return en.Slug == tt.slug }); got != tt.want {
+		if got := slices.ContainsFunc(
+			f.Entries,
+			func(en export.TakeHomeEntry) bool { return en.Slug == tt.slug },
+		); got != tt.want {
 			t.Errorf("entry %q in the file: %v, want %v", tt.slug, got, tt.want)
 		}
 	}
@@ -126,7 +203,11 @@ func TestStarterContent(t *testing.T) {
 
 // addNewCharacterFile uploads a new-character file as the GM and, when it is
 // accepted for review, adds it. It returns the status and body of the last answer.
-func (e testEnv) addNewCharacterFile(t *testing.T, gm string, body []byte) *httptest.ResponseRecorder {
+func (e testEnv) addNewCharacterFile(
+	t *testing.T,
+	gm string,
+	body []byte,
+) *httptest.ResponseRecorder {
 	t.Helper()
 	add := route.Path(route.CampaignNewCharacter, e.campaignID)
 	up := e.doFile(t, add, gm, nil, formFile, "x.zip", string(body))
@@ -139,7 +220,14 @@ func (e testEnv) addNewCharacterFile(t *testing.T, gm string, body []byte) *http
 	if err != nil {
 		t.Fatal(err)
 	}
-	return e.do(t, http.MethodPost, route.Path(route.CampaignHomeFile, e.campaignID, f.id)+route.Accept, gm, url.Values{formWas: {rv.was}}, true)
+	return e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignHomeFile, e.campaignID, f.id)+route.Accept,
+		gm,
+		url.Values{formWas: {rv.was}},
+		true,
+	)
 }
 
 func TestMadeAtHomeTokenAtTable(t *testing.T) {
@@ -161,7 +249,8 @@ func TestMadeAtHomeTokenAtTable(t *testing.T) {
 
 	// The same file again is refused, at upload.
 	w = e.addNewCharacterFile(t, gm, withToken("tok-1"))
-	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "Bryn was already added from this file") {
+	if w.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(w.Body.String(), "Bryn was already added from this file") {
 		t.Fatalf("duplicate: %d %s", w.Code, w.Body)
 	}
 	if n := e.count(t, `SELECT count(*) FROM characters WHERE name = 'Bryn'`); n != 1 {
@@ -202,7 +291,8 @@ func TestTakeHomeCarriesMadeAtHomeToken(t *testing.T) {
 	if got := read().Manifest.MadeAtHome; got != "" {
 		t.Errorf("a table character's take-home carries %q", got)
 	}
-	if err := e.q().CreateNewCharacterToken(t.Context(), sqlc.CreateNewCharacterTokenParams{CharacterID: e.characterID, Token: "tok-9"}); err != nil {
+	if err := e.q().
+		CreateNewCharacterToken(t.Context(), sqlc.CreateNewCharacterTokenParams{CharacterID: e.characterID, Token: "tok-9"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := read().Manifest.MadeAtHome; got != "tok-9" {
@@ -215,14 +305,39 @@ func starterZip(t *testing.T, mutate func(*export.TakeHome)) []byte {
 	t.Helper()
 	th := export.TakeHome{
 		Manifest: export.TakeHomeManifest{
-			Format: export.TakeHomeFormat, Kind: export.KindStarter, AppVersion: "v-table", ServerID: "srv",
-			CreatedAt: time.Date(2026, 11, 24, 18, 0, 0, 0, time.UTC),
-			Campaign:  export.TakeHomeCampaign{ID: 3, Name: "Table", System: "dnd5e", Edition: "2024"},
+			Format:     export.TakeHomeFormat,
+			Kind:       export.KindStarter,
+			AppVersion: "v-table",
+			ServerID:   "srv",
+			CreatedAt:  time.Date(2026, 11, 24, 18, 0, 0, 0, time.UTC),
+			Campaign: export.TakeHomeCampaign{
+				ID:      3,
+				Name:    "Table",
+				System:  "dnd5e",
+				Edition: "2024",
+			},
 		},
-		Sources: []export.TakeHomeSource{{SourceKey: "src1", Edition: "2024", Priority: 150}, {SourceKey: "src0", Edition: "2024", Priority: 100}},
+		Sources: []export.TakeHomeSource{
+			{SourceKey: "src1", Edition: "2024", Priority: 150},
+			{SourceKey: "src0", Edition: "2024", Priority: 100},
+		},
 		Entries: []export.TakeHomeEntry{
-			{Kind: enum.KindSpell, Slug: "bolt", Name: "Bolt", SourceKey: "src1", Data: json.RawMessage(`{}`), ContentHash: "h2"},
-			{Kind: enum.KindFeat, Slug: "gm-feat", Name: "Table feat", SourceKey: homebrewSource, Data: json.RawMessage(`{}`), ContentHash: "h3"},
+			{
+				Kind:        enum.KindSpell,
+				Slug:        "bolt",
+				Name:        "Bolt",
+				SourceKey:   "src1",
+				Data:        json.RawMessage(`{}`),
+				ContentHash: "h2",
+			},
+			{
+				Kind:        enum.KindFeat,
+				Slug:        "gm-feat",
+				Name:        "Table feat",
+				SourceKey:   homebrewSource,
+				Data:        json.RawMessage(`{}`),
+				ContentHash: "h3",
+			},
 		},
 	}
 	if mutate != nil {
@@ -237,7 +352,13 @@ func starterZip(t *testing.T, mutate func(*export.TakeHome)) []byte {
 
 func (e testEnv) importStarterFile(t *testing.T, mutate func(*export.TakeHome)) {
 	t.Helper()
-	if w := e.importRequest(t, starterZip(t, mutate), "", nil); w.Code != http.StatusNoContent || w.Header().Get("HX-Redirect") != route.AtHome {
+	if w := e.importRequest(
+		t,
+		starterZip(t, mutate),
+		"",
+		nil,
+	); w.Code != http.StatusNoContent ||
+		w.Header().Get("HX-Redirect") != route.AtHome {
 		t.Fatalf("starter import: %d %q: %s", w.Code, w.Header().Get("HX-Redirect"), w.Body)
 	}
 }
@@ -257,7 +378,13 @@ func TestStarterRefreshInPlace(t *testing.T) {
 	q := e.q()
 	e.importStarterFile(t, nil)
 	first := e.starterCampaign(t)
-	if got, _ := q.ListCampaignSources(ctx, first.CampaignID); !slices.Equal(slices.Sorted(slices.Values(got)), []string{"src0", "src1"}) {
+	if got, _ := q.ListCampaignSources(
+		ctx,
+		first.CampaignID,
+	); !slices.Equal(
+		slices.Sorted(slices.Values(got)),
+		[]string{"src0", "src1"},
+	) {
 		t.Errorf("sources %v", got)
 	}
 	if id, err := e.app.Store.GetHomeServerID(ctx); err != nil || id != "srv" {
@@ -277,8 +404,22 @@ func TestStarterRefreshInPlace(t *testing.T) {
 		th.Manifest.Campaign.Name = "Table 2"
 		th.Sources = []export.TakeHomeSource{{SourceKey: "src2", Edition: "2024", Priority: 120}}
 		th.Entries = []export.TakeHomeEntry{
-			{Kind: enum.KindSpell, Slug: "bolt2", Name: "Bolt 2", SourceKey: "src2", Data: json.RawMessage(`{}`), ContentHash: "h5"},
-			{Kind: enum.KindFeat, Slug: "gm-feat", Name: "Table feat v2", SourceKey: homebrewSource, Data: json.RawMessage(`{}`), ContentHash: "h4"},
+			{
+				Kind:        enum.KindSpell,
+				Slug:        "bolt2",
+				Name:        "Bolt 2",
+				SourceKey:   "src2",
+				Data:        json.RawMessage(`{}`),
+				ContentHash: "h5",
+			},
+			{
+				Kind:        enum.KindFeat,
+				Slug:        "gm-feat",
+				Name:        "Table feat v2",
+				SourceKey:   homebrewSource,
+				Data:        json.RawMessage(`{}`),
+				ContentHash: "h4",
+			},
 		}
 	})
 	second := e.starterCampaign(t)
@@ -288,13 +429,22 @@ func TestStarterRefreshInPlace(t *testing.T) {
 	if n := e.count(t, `SELECT count(*) FROM campaigns`); n != 1 {
 		t.Errorf("%d campaigns, want the one starter", n)
 	}
-	if got, _ := q.ListCampaignSources(ctx, first.CampaignID); !slices.Equal(got, []string{"src2"}) {
+	if got, _ := q.ListCampaignSources(
+		ctx,
+		first.CampaignID,
+	); !slices.Equal(
+		got,
+		[]string{"src2"},
+	) {
 		t.Errorf("sources after the refresh %v, want exactly src2", got)
 	}
 	if n := e.count(t, `SELECT count(*) FROM compendium_entries WHERE slug = 'gm-feat'`); n != 1 {
 		t.Errorf("%d copies of the homebrew, want 1", n)
 	}
-	if n := e.count(t, `SELECT count(*) FROM compendium_entries WHERE slug = 'gm-feat' AND name = 'Table feat v2'`); n != 1 {
+	if n := e.count(
+		t,
+		`SELECT count(*) FROM compendium_entries WHERE slug = 'gm-feat' AND name = 'Table feat v2'`,
+	); n != 1 {
 		t.Error("the homebrew was not updated in place")
 	}
 	if n := e.count(t, `SELECT count(*) FROM compendium_campaigns`); n != 1 {
@@ -303,7 +453,10 @@ func TestStarterRefreshInPlace(t *testing.T) {
 
 	// The homebrew leaves the file: none left over.
 	e.importStarterFile(t, func(th *export.TakeHome) { th.Entries = th.Entries[:1] })
-	if n := e.count(t, `SELECT count(*) FROM compendium_entries WHERE source_key = 'homebrew'`); n != 0 {
+	if n := e.count(
+		t,
+		`SELECT count(*) FROM compendium_entries WHERE source_key = 'homebrew'`,
+	); n != 0 {
 		t.Errorf("%d orphaned homebrew entries", n)
 	}
 }
@@ -311,8 +464,14 @@ func TestStarterRefreshInPlace(t *testing.T) {
 func TestStarterOfAnotherTableRefused(t *testing.T) {
 	e := newPlayerEnv(t)
 	e.importStarterFile(t, nil)
-	w := e.importRequest(t, starterZip(t, func(th *export.TakeHome) { th.Manifest.ServerID = "elsewhere" }), "", nil)
-	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "another GM") {
+	w := e.importRequest(
+		t,
+		starterZip(t, func(th *export.TakeHome) { th.Manifest.ServerID = "elsewhere" }),
+		"",
+		nil,
+	)
+	if w.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(w.Body.String(), "another GM") {
 		t.Errorf("another table's starter: %d %s", w.Code, w.Body)
 	}
 	if n := e.count(t, `SELECT count(*) FROM home_starters`); n != 1 {
@@ -321,7 +480,13 @@ func TestStarterOfAnotherTableRefused(t *testing.T) {
 	// A take-home of this table is refused next to another table's starter.
 	e2 := newPlayerEnv(t)
 	e2.importStarterFile(t, func(th *export.TakeHome) { th.Manifest.ServerID = "elsewhere" })
-	if w := e2.importRequest(t, sampleTakeHome(t, nil), "", nil); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "another GM") {
+	if w := e2.importRequest(
+		t,
+		sampleTakeHome(t, nil),
+		"",
+		nil,
+	); w.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(w.Body.String(), "another GM") {
 		t.Errorf("take-home next to another table's starter: %d %s", w.Code, w.Body)
 	}
 }
@@ -337,7 +502,8 @@ func TestHomeNewFromStarter(t *testing.T) {
 	}
 	w := e.postPlayer(t, route.AtHomeNew, form(s.CampaignID))
 	nia := e.homeCharacterByName(t, "Nia")
-	if w.Code != http.StatusNoContent || w.Header().Get("HX-Redirect") != wizardPath(nia.ID, wizardSteps[0].Key) {
+	if w.Code != http.StatusNoContent ||
+		w.Header().Get("HX-Redirect") != wizardPath(nia.ID, wizardSteps[0].Key) {
 		t.Fatalf("new from a starter: %d %q: %s", w.Code, w.Header().Get("HX-Redirect"), w.Body)
 	}
 	if nia.CampaignID == s.CampaignID {
@@ -346,11 +512,19 @@ func TestHomeNewFromStarter(t *testing.T) {
 	if got, _ := q.ListCampaignSources(ctx, nia.CampaignID); len(got) != 2 {
 		t.Errorf("sources %v", got)
 	}
-	if n := e.count(t, `SELECT count(*) FROM compendium_campaigns WHERE campaign_id = ?`, nia.CampaignID); n != 1 {
+	if n := e.count(
+		t,
+		`SELECT count(*) FROM compendium_campaigns WHERE campaign_id = ?`,
+		nia.CampaignID,
+	); n != 1 {
 		t.Errorf("%d homebrew links, want the starter's one", n)
 	}
 	// A character's own campaign is neither a starter nor a table copy's.
-	if w := e.postPlayer(t, route.AtHomeNew, form(nia.CampaignID)); w.Code != http.StatusUnprocessableEntity {
+	if w := e.postPlayer(
+		t,
+		route.AtHomeNew,
+		form(nia.CampaignID),
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("model that is no starter or table copy: %d", w.Code)
 	}
 
@@ -360,8 +534,14 @@ func TestHomeNewFromStarter(t *testing.T) {
 	if f1 == nil || f2 == nil {
 		t.Fatal("no new-character file")
 	}
-	if f1.Manifest.ServerID != "srv" || f1.Manifest.MadeAtHome == "" || f1.Manifest.MadeAtHome != f2.Manifest.MadeAtHome {
-		t.Errorf("tokens %q and %q, server %q", f1.Manifest.MadeAtHome, f2.Manifest.MadeAtHome, f1.Manifest.ServerID)
+	if f1.Manifest.ServerID != "srv" || f1.Manifest.MadeAtHome == "" ||
+		f1.Manifest.MadeAtHome != f2.Manifest.MadeAtHome {
+		t.Errorf(
+			"tokens %q and %q, server %q",
+			f1.Manifest.MadeAtHome,
+			f2.Manifest.MadeAtHome,
+			f1.Manifest.ServerID,
+		)
 	}
 }
 
@@ -370,15 +550,27 @@ func TestStarterRemoveKeepsCharacters(t *testing.T) {
 	ctx := t.Context()
 	e.importStarterFile(t, nil)
 	s := e.starterCampaign(t)
-	e.postPlayer(t, route.AtHomeNew, url.Values{"name": {"Nia"}, "from": {strconv.FormatInt(s.CampaignID, 10)}})
+	e.postPlayer(
+		t,
+		route.AtHomeNew,
+		url.Values{"name": {"Nia"}, "from": {strconv.FormatInt(s.CampaignID, 10)}},
+	)
 	nia := e.homeCharacterByName(t, "Nia")
 
 	for _, id := range []int64{999, nia.CampaignID} {
-		if w := e.postPlayer(t, route.Path(route.AtHomeStarterRemove, id), nil); w.Code != http.StatusUnprocessableEntity {
+		if w := e.postPlayer(
+			t,
+			route.Path(route.AtHomeStarterRemove, id),
+			nil,
+		); w.Code != http.StatusUnprocessableEntity {
 			t.Errorf("remove %d, which is no starter: %d", id, w.Code)
 		}
 	}
-	if w := e.postPlayer(t, route.Path(route.AtHomeStarterRemove, s.CampaignID), nil); w.Code != http.StatusNoContent {
+	if w := e.postPlayer(
+		t,
+		route.Path(route.AtHomeStarterRemove, s.CampaignID),
+		nil,
+	); w.Code != http.StatusNoContent {
 		t.Fatalf("remove: %d %s", w.Code, w.Body)
 	}
 	if rows, _ := e.q().ListHomeStarters(ctx); len(rows) != 0 {
@@ -391,10 +583,17 @@ func TestStarterRemoveKeepsCharacters(t *testing.T) {
 	if got, _ := e.q().ListCampaignSources(ctx, again.CampaignID); len(got) != 2 {
 		t.Errorf("Nia's sources after the removal: %v", got)
 	}
-	if n := e.count(t, `SELECT count(*) FROM compendium_campaigns WHERE campaign_id = ?`, again.CampaignID); n != 1 {
+	if n := e.count(
+		t,
+		`SELECT count(*) FROM compendium_campaigns WHERE campaign_id = ?`,
+		again.CampaignID,
+	); n != 1 {
 		t.Errorf("Nia lost the homebrew link: %d", n)
 	}
-	if n := e.count(t, `SELECT count(*) FROM compendium_entries WHERE source_key = 'homebrew'`); n != 1 {
+	if n := e.count(
+		t,
+		`SELECT count(*) FROM compendium_entries WHERE source_key = 'homebrew'`,
+	); n != 1 {
 		t.Errorf("%d homebrew rows after the removal, want the one Nia still links", n)
 	}
 }
@@ -406,7 +605,11 @@ func TestTakeHomeReplacesMadeAtHome(t *testing.T) {
 	e.importStarterFile(t, nil)
 	s := e.starterCampaign(t)
 	tokenOf := func(name string) string {
-		e.postPlayer(t, route.AtHomeNew, url.Values{"name": {name}, "from": {strconv.FormatInt(s.CampaignID, 10)}})
+		e.postPlayer(
+			t,
+			route.AtHomeNew,
+			url.Values{"name": {name}, "from": {strconv.FormatInt(s.CampaignID, 10)}},
+		)
 		f, _ := e.homeFileOf(t, e.homeCharacterByName(t, name).ID, export.KindNewCharacter)
 		return f.Manifest.MadeAtHome
 	}
@@ -442,18 +645,31 @@ func TestTakeHomeReplacesMadeAtHome(t *testing.T) {
 
 	// A match asks first and changes nothing.
 	w := e.importRequest(t, takeHome(niaToken, 8), "", nil)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Replaces Nia, made at home. Changes made at home since you sent them are lost.") || !strings.Contains(w.Body.String(), `name="replace"`) {
+	if w.Code != http.StatusOK ||
+		!strings.Contains(
+			w.Body.String(),
+			"Replaces Nia, made at home. Changes made at home since you sent them are lost.",
+		) ||
+		!strings.Contains(w.Body.String(), `name="replace"`) {
 		t.Fatalf("confirm: %d %s", w.Code, w.Body)
 	}
 	if got := names(); !slices.Equal(got, []string{"Aria", "Nia", "Zed"}) {
 		t.Fatalf("the confirm changed things: %v", got)
 	}
 	// Confirmed: exactly Nia and her campaign go.
-	if w := e.importRequest(t, takeHome(niaToken, 8), "", map[string]string{formReplace: "1"}); w.Code != http.StatusNoContent {
+	if w := e.importRequest(
+		t,
+		takeHome(niaToken, 8),
+		"",
+		map[string]string{formReplace: "1"},
+	); w.Code != http.StatusNoContent {
 		t.Fatalf("replace: %d %s", w.Code, w.Body)
 	}
 	if got := names(); !slices.Equal(got, []string{"Aria", "Aria", "Zed"}) {
-		t.Errorf("characters after the replace: %v, want Nia gone and the two Arias and Zed kept", got)
+		t.Errorf(
+			"characters after the replace: %v, want Nia gone and the two Arias and Zed kept",
+			got,
+		)
 	}
 	if _, err := e.q().GetCampaign(t.Context(), nia.CampaignID); err == nil {
 		t.Error("Nia's campaign survived")
@@ -464,7 +680,8 @@ func TestTakeHomeReplacesMadeAtHome(t *testing.T) {
 		}
 	}
 	// The copy that replaced Nia goes back to the table without the token (the table refuses one).
-	cp, err := e.q().GetHomeCopyByTable(t.Context(), sqlc.GetHomeCopyByTableParams{ServerID: "srv", TableCharacterID: 8})
+	cp, err := e.q().
+		GetHomeCopyByTable(t.Context(), sqlc.GetHomeCopyByTableParams{ServerID: "srv", TableCharacterID: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +696,8 @@ func TestTakeHomeReplacesMadeAtHome(t *testing.T) {
 	}()
 	w = e.importRequest(t, takeHome(zedToken, 7), "", nil)
 	body := w.Body.String()
-	if w.Code != http.StatusOK || !strings.Contains(body, "already on this computer") || !strings.Contains(body, "Replaces Zed, made at home") {
+	if w.Code != http.StatusOK || !strings.Contains(body, "already on this computer") ||
+		!strings.Contains(body, "Replaces Zed, made at home") {
 		t.Errorf("combined confirm: %d %s", w.Code, body)
 	}
 }

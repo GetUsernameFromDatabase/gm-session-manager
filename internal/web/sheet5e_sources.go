@@ -22,28 +22,47 @@ import (
 
 // refCompendiumKind is the compendium kind each sheet ref kind names.
 var refCompendiumKind = map[string]enum.CompendiumKind{
-	dnd5e.RefClass: enum.KindClass, dnd5e.RefSubclass: enum.KindSubclass, dnd5e.RefSpell: enum.KindSpell,
-	dnd5e.RefSpecies: enum.KindSpecies, dnd5e.RefBackground: enum.KindBackground,
-	dnd5e.RefFeat: enum.KindFeat, dnd5e.RefArmor: enum.KindItem,
+	dnd5e.RefClass:      enum.KindClass,
+	dnd5e.RefSubclass:   enum.KindSubclass,
+	dnd5e.RefSpell:      enum.KindSpell,
+	dnd5e.RefSpecies:    enum.KindSpecies,
+	dnd5e.RefBackground: enum.KindBackground,
+	dnd5e.RefFeat:       enum.KindFeat,
+	dnd5e.RefArmor:      enum.KindItem,
 }
 
 // entryFor is the copy of kind/slug a sheet ref pinned to pin uses: the
 // pinned copy while it exists, else the priority copy, with missing set when
 // a pin was passed over. sql.ErrNoRows when neither exists. It takes q, not
 // the App, so upgrades can run it inside their transaction.
-func entryFor(ctx context.Context, q *sqlc.Queries, kind enum.CompendiumKind, slug, pin string) (row sqlc.CompendiumEntry, missing bool, err error) {
+func entryFor(
+	ctx context.Context,
+	q *sqlc.Queries,
+	kind enum.CompendiumKind,
+	slug, pin string,
+) (row sqlc.CompendiumEntry, missing bool, err error) {
 	if pin != "" {
-		row, err = q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: kind, Slug: slug, SourceKey: pin})
+		row, err = q.GetCompendiumEntryBySlugSource(
+			ctx,
+			sqlc.GetCompendiumEntryBySlugSourceParams{Kind: kind, Slug: slug, SourceKey: pin},
+		)
 		if !errors.Is(err, sql.ErrNoRows) {
 			return row, false, err
 		}
 	}
-	row, err = q.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug})
+	row, err = q.GetCompendiumEntryBySlug(
+		ctx,
+		sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug},
+	)
 	return row, pin != "", err
 }
 
 // classEntry is entryFor for a class, as a ClassInfo.
-func classEntry(ctx context.Context, q *sqlc.Queries, slug, pin string) (dnd5e.ClassInfo, bool, error) {
+func classEntry(
+	ctx context.Context,
+	q *sqlc.Queries,
+	slug, pin string,
+) (dnd5e.ClassInfo, bool, error) {
 	row, missing, err := entryFor(ctx, q, enum.KindClass, slug, pin)
 	if err != nil {
 		return dnd5e.ClassInfo{}, missing, err
@@ -55,7 +74,10 @@ func classEntry(ctx context.Context, q *sqlc.Queries, slug, pin string) (dnd5e.C
 // classPin is the source the sheet pins its class slug to; "" for an
 // unpinned or new class.
 func classPin(s dnd5e.Sheet, slug string) string {
-	if i := slices.IndexFunc(s.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == slug }); i >= 0 {
+	if i := slices.IndexFunc(
+		s.Classes,
+		func(cl dnd5e.ClassLevel) bool { return cl.Slug == slug },
+	); i >= 0 {
 		return s.Classes[i].Source
 	}
 	return ""
@@ -95,7 +117,11 @@ func pinnedRefs(s dnd5e.Sheet) map[string][]sheetRef {
 
 // sourceIssues are the sheet's pinned refs whose copy is gone or outranked,
 // with one query per ref kind.
-func (a *App) sourceIssues(ctx context.Context, s dnd5e.Sheet, campaignID int64) ([]views.SourceIssue, error) {
+func (a *App) sourceIssues(
+	ctx context.Context,
+	s dnd5e.Sheet,
+	campaignID int64,
+) ([]views.SourceIssue, error) {
 	refs := pinnedRefs(s)
 	var out []views.SourceIssue
 	for _, kind := range dnd5e.RefKinds {
@@ -107,13 +133,26 @@ func (a *App) sourceIssues(ctx context.Context, s dnd5e.Sheet, campaignID int64)
 		for i, r := range list {
 			slugs[i] = r.slug
 		}
-		rows, err := a.Store.ListEntrySourcesBySlugs(ctx, sqlc.ListEntrySourcesBySlugsParams{Kind: refCompendiumKind[kind], Slugs: slugs, CampaignID: campaignID})
+		rows, err := a.Store.ListEntrySourcesBySlugs(
+			ctx,
+			sqlc.ListEntrySourcesBySlugsParams{
+				Kind:       refCompendiumKind[kind],
+				Slugs:      slugs,
+				CampaignID: campaignID,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
 		copies := map[string][]views.SourceCopy{}
 		for _, r := range rows {
-			copies[r.Slug] = append(copies[r.Slug], views.SourceCopy{Key: r.SourceKey, Label: views.SourceLabel(r.SourceKey, r.Edition)})
+			copies[r.Slug] = append(
+				copies[r.Slug],
+				views.SourceCopy{
+					Key:   r.SourceKey,
+					Label: views.SourceLabel(r.SourceKey, r.Edition),
+				},
+			)
 		}
 		seen := map[string]bool{}
 		for _, r := range list {
@@ -136,14 +175,23 @@ func sourceIssue(kind string, r sheetRef, copies []views.SourceCopy) (views.Sour
 	if len(copies) > 0 {
 		is.Best = copies[0].Key
 	}
-	is.Missing = !slices.ContainsFunc(copies, func(c views.SourceCopy) bool { return c.Key == r.pin })
+	is.Missing = !slices.ContainsFunc(
+		copies,
+		func(c views.SourceCopy) bool { return c.Key == r.pin },
+	)
 	return is, is.Missing || is.Best != r.pin
 }
 
 // sourceEnv resolves what the source command for ref needs: the copy at
 // ref.Source and, for a class or subclass, the pinned copy it replaces; name
 // is that copy's name.
-func (a *App) sourceEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, ref dnd5e.SourceRef, campaignID int64) (env dnd5e.Env, name string, err error) {
+func (a *App) sourceEnv(
+	ctx context.Context,
+	q *sqlc.Queries,
+	sheet dnd5e.Sheet,
+	ref dnd5e.SourceRef,
+	campaignID int64,
+) (env dnd5e.Env, name string, err error) {
 	row, err := a.visibleCopy(ctx, q, ref, campaignID)
 	if err != nil {
 		return env, "", err
@@ -161,15 +209,33 @@ func (a *App) sourceEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet,
 
 // visibleCopy is ref's entry at ref.Source when campaignID may see it and
 // allows the source; a userError otherwise.
-func (a *App) visibleCopy(ctx context.Context, q *sqlc.Queries, ref dnd5e.SourceRef, campaignID int64) (sqlc.CompendiumEntry, error) {
-	row, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: refCompendiumKind[ref.Kind], Slug: ref.Slug, SourceKey: ref.Source})
+func (a *App) visibleCopy(
+	ctx context.Context,
+	q *sqlc.Queries,
+	ref dnd5e.SourceRef,
+	campaignID int64,
+) (sqlc.CompendiumEntry, error) {
+	row, err := q.GetCompendiumEntryBySlugSource(
+		ctx,
+		sqlc.GetCompendiumEntryBySlugSourceParams{
+			Kind:      refCompendiumKind[ref.Kind],
+			Slug:      ref.Slug,
+			SourceKey: ref.Source,
+		},
+	)
 	if err == nil {
 		var visible, allowed bool
 		if visible, err = a.entryVisible(ctx, row, campaignID); err == nil && !visible {
 			err = sql.ErrNoRows
 		}
 		if err == nil {
-			if allowed, err = sourceAllowed(ctx, q, campaignID, ref.Source); err == nil && !allowed {
+			if allowed, err = sourceAllowed(
+				ctx,
+				q,
+				campaignID,
+				ref.Source,
+			); err == nil &&
+				!allowed {
 				err = sql.ErrNoRows
 			}
 		}
@@ -182,7 +248,12 @@ func (a *App) visibleCopy(ctx context.Context, q *sqlc.Queries, ref dnd5e.Source
 
 // sourceAllowed reports whether campaignID (0: any) allows the source key;
 // homebrew is always allowed.
-func sourceAllowed(ctx context.Context, q *sqlc.Queries, campaignID int64, key string) (bool, error) {
+func sourceAllowed(
+	ctx context.Context,
+	q *sqlc.Queries,
+	campaignID int64,
+	key string,
+) (bool, error) {
 	if campaignID == 0 || key == compendium.HomebrewSource {
 		return true, nil
 	}
@@ -193,12 +264,26 @@ func sourceAllowed(ctx context.Context, q *sqlc.Queries, campaignID int64, key s
 // subclassChangeEnv is the sheet's class ref.Class with its current
 // subclass (nil when that copy is gone) and with ref's, which must be a
 // subclass of that class the campaign sees.
-func (a *App) subclassChangeEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, ref dnd5e.SubclassRef, campaignID int64) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
-	i := slices.IndexFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == ref.Class })
+func (a *App) subclassChangeEnv(
+	ctx context.Context,
+	q *sqlc.Queries,
+	sheet dnd5e.Sheet,
+	ref dnd5e.SubclassRef,
+	campaignID int64,
+) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
+	i := slices.IndexFunc(
+		sheet.Classes,
+		func(cl dnd5e.ClassLevel) bool { return cl.Slug == ref.Class },
+	)
 	if i < 0 {
 		return nil, dnd5e.ClassInfo{}, nil // ChangeSubclass refuses it
 	}
-	row, err := a.visibleCopy(ctx, q, dnd5e.SourceRef{Kind: dnd5e.RefSubclass, Slug: ref.Slug, Source: ref.Source}, campaignID)
+	row, err := a.visibleCopy(
+		ctx,
+		q,
+		dnd5e.SourceRef{Kind: dnd5e.RefSubclass, Slug: ref.Slug, Source: ref.Source},
+		campaignID,
+	)
 	if err != nil {
 		return nil, dnd5e.ClassInfo{}, err
 	}
@@ -207,7 +292,9 @@ func (a *App) subclassChangeEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5
 		return nil, dnd5e.ClassInfo{}, err
 	}
 	if d.SubclassOf != ref.Class {
-		return nil, dnd5e.ClassInfo{}, userError{fmt.Errorf("%s is not a %s subclass", row.Name, sheet.Classes[i].Name)}
+		return nil, dnd5e.ClassInfo{}, userError{
+			fmt.Errorf("%s is not a %s subclass", row.Name, sheet.Classes[i].Name),
+		}
 	}
 	cl := sheet.Classes[i]
 	oldSlug, oldPin, err := subclassRef(ctx, q, cl.Slug, cl, cl.Subclass, 0)
@@ -220,9 +307,17 @@ func (a *App) subclassChangeEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5
 // classSwitch is the sheet's pinned copy of row's class (nil when gone) and
 // row's copy, each with the subclass: the new one from row's source when it
 // has it, else the old one's.
-func (a *App) classSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, row sqlc.CompendiumEntry) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
+func (a *App) classSwitch(
+	ctx context.Context,
+	q *sqlc.Queries,
+	sheet dnd5e.Sheet,
+	row sqlc.CompendiumEntry,
+) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
 	next, err := classInfo(row)
-	i := slices.IndexFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == row.Slug })
+	i := slices.IndexFunc(
+		sheet.Classes,
+		func(cl dnd5e.ClassLevel) bool { return cl.Slug == row.Slug },
+	)
 	if err != nil || i < 0 {
 		return nil, next, err // SwitchSource refuses a class the sheet lacks
 	}
@@ -245,14 +340,22 @@ func (a *App) classSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Shee
 	if err != nil || subSlug == "" {
 		return old, next, err
 	}
-	sub, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSubclass, Slug: subSlug, SourceKey: row.SourceKey})
+	sub, err := q.GetCompendiumEntryBySlugSource(
+		ctx,
+		sqlc.GetCompendiumEntryBySlugSourceParams{
+			Kind:      enum.KindSubclass,
+			Slug:      subSlug,
+			SourceKey: row.SourceKey,
+		},
+	)
 	switch {
 	case err == nil:
 		err = setSubclass(&next, sub)
 	case errors.Is(err, sql.ErrNoRows):
 		err = nil
 		if old != nil {
-			next.SubclassFeatures, next.SubclassSlug, next.SubclassSource = old.SubclassFeatures, old.SubclassSlug, old.SubclassSource
+			next.SubclassFeatures = old.SubclassFeatures
+			next.SubclassSlug, next.SubclassSource = old.SubclassSlug, old.SubclassSource
 		}
 	}
 	return old, next, err
@@ -260,9 +363,16 @@ func (a *App) classSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Shee
 
 // subclassSwitch is the sheet's class with its pinned copy of row's
 // subclass (nil when gone) and with row's.
-func subclassSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, row sqlc.CompendiumEntry) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
+func subclassSwitch(
+	ctx context.Context,
+	q *sqlc.Queries,
+	sheet dnd5e.Sheet,
+	row sqlc.CompendiumEntry,
+) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
 	i := slices.IndexFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool {
-		return cl.SubclassSlug == row.Slug || cl.SubclassSlug == "" && cl.Subclass != "" && compendium.Slugify(cl.Subclass) == row.Slug
+		return cl.SubclassSlug == row.Slug ||
+			cl.SubclassSlug == "" && cl.Subclass != "" &&
+				compendium.Slugify(cl.Subclass) == row.Slug
 	})
 	if i < 0 {
 		return nil, dnd5e.ClassInfo{}, nil // SwitchSource refuses it
@@ -272,7 +382,13 @@ func subclassSwitch(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, row
 
 // subclassPair is cl's class with the subclass oldSlug at oldPin (nil when
 // that copy is gone or oldSlug is "") and with row's.
-func subclassPair(ctx context.Context, q *sqlc.Queries, cl dnd5e.ClassLevel, oldSlug, oldPin string, row sqlc.CompendiumEntry) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
+func subclassPair(
+	ctx context.Context,
+	q *sqlc.Queries,
+	cl dnd5e.ClassLevel,
+	oldSlug, oldPin string,
+	row sqlc.CompendiumEntry,
+) (*dnd5e.ClassInfo, dnd5e.ClassInfo, error) {
 	base, _, err := classEntry(ctx, q, cl.Slug, cl.Source)
 	if errors.Is(err, sql.ErrNoRows) {
 		base, err = dnd5e.ClassInfo{Slug: cl.Slug, Name: cl.Name}, nil
@@ -355,7 +471,12 @@ func (a *App) sourcePreview(c *gin.Context) error {
 // the entities and combatants linked to one of its entries: in campaignID
 // (the untick rule) or everywhere for 0 (the delete rule). Keys nobody uses
 // are left out.
-func sourceUsers(ctx context.Context, q *sqlc.Queries, campaignID int64, keys ...string) (map[string][]string, error) {
+func sourceUsers(
+	ctx context.Context,
+	q *sqlc.Queries,
+	campaignID int64,
+	keys ...string,
+) (map[string][]string, error) {
 	rows, err := q.ListCharacterSheetsNamed(ctx, campaignID)
 	if err != nil {
 		return nil, err
@@ -415,8 +536,16 @@ func (a *App) sourceDelete(c *gin.Context) error {
 	if a.Player {
 		// The table's sources stay at home; a missing row behaves as before.
 		for _, key := range f.Keys {
-			if row, err := a.Store.GetCompendiumSource(ctx, key); err == nil && row.Path == takeHomeSourcePath {
-				a.fail(c, http.StatusConflict, "This source came from your GM's table, so it stays.")
+			if row, err := a.Store.GetCompendiumSource(
+				ctx,
+				key,
+			); err == nil &&
+				row.Path == takeHomeSourcePath {
+				a.fail(
+					c,
+					http.StatusConflict,
+					"This source came from your GM's table, so it stays.",
+				)
 				return nil
 			}
 		}
@@ -447,7 +576,8 @@ func (a *App) sourceDelete(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	// Every folder is tried: one locked folder must not leave the rest to come back on the next import.
+	// Every folder is tried:
+	// one locked folder must not leave the rest to come back on the next import.
 	var errs []error
 	for _, key := range f.Keys {
 		errs = append(errs, compendium.RemoveSourceDir(a.compendiumDir(), key))
@@ -461,7 +591,10 @@ func (a *App) sourceDelete(c *gin.Context) error {
 
 // campaignSourcesView is the campaign's Sources card: every imported source
 // but homebrew, ticked or not, with who in the campaign uses it.
-func (a *App) campaignSourcesView(ctx context.Context, campaignID int64) (views.CampaignSourcesView, error) {
+func (a *App) campaignSourcesView(
+	ctx context.Context,
+	campaignID int64,
+) (views.CampaignSourcesView, error) {
 	v := views.CampaignSourcesView{CampaignID: campaignID, Job: a.fiveTools.get()}
 	all, err := a.Store.ListCompendiumSources(ctx)
 	if err != nil {
@@ -533,9 +666,15 @@ func (a *App) campaignSourcesSet(c *gin.Context) error {
 		for _, k := range f.Keys {
 			var err error
 			if f.On {
-				_, err = q.AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: id, SourceKey: k})
+				_, err = q.AllowCampaignSource(
+					ctx,
+					sqlc.AllowCampaignSourceParams{CampaignID: id, SourceKey: k},
+				)
 			} else {
-				err = q.DisallowCampaignSource(ctx, sqlc.DisallowCampaignSourceParams{CampaignID: id, SourceKey: k})
+				err = q.DisallowCampaignSource(
+					ctx,
+					sqlc.DisallowCampaignSourceParams{CampaignID: id, SourceKey: k},
+				)
 			}
 			if err != nil {
 				return err

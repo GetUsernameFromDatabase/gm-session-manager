@@ -22,7 +22,12 @@ import (
 )
 
 // sendFeedback posts a report as a device, with files as name → content.
-func (e testEnv) sendFeedback(t *testing.T, cookie string, fields url.Values, files map[string]string) *httptest.ResponseRecorder {
+func (e testEnv) sendFeedback(
+	t *testing.T,
+	cookie string,
+	fields url.Values,
+	files map[string]string,
+) *httptest.ResponseRecorder {
 	t.Helper()
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
@@ -73,8 +78,19 @@ func (e testEnv) reports(t *testing.T) map[string]string {
 
 func bugForm(title string) url.Values {
 	return url.Values{
-		"kind": {"bug"}, "title": {title}, "body": {"The sheet went blank."}, "steps": {"Open sheet\nTap HP"},
-		"expected": {"HP changes"}, "player": {"Sam"}, "page": {route.Path(route.Character, 1)}, "viewport": {"390×844"}, "dark": {"true"},
+		"kind": {
+			"bug",
+		},
+		"title": {title},
+		"body":  {"The sheet went blank."},
+		"steps": {"Open sheet\nTap HP"},
+		"expected": {
+			"HP changes",
+		},
+		"player":   {"Sam"},
+		"page":     {route.Path(route.Character, 1)},
+		"viewport": {"390×844"},
+		"dark":     {"true"},
 	}
 }
 
@@ -96,7 +112,9 @@ func TestFeedbackAccess(t *testing.T) {
 			if w.Code != tt.want {
 				t.Fatalf("status %d, want %d: %s", w.Code, tt.want, w.Body)
 			}
-			if added := len(e.reports(t)) - before; added != map[bool]int{true: 1, false: 0}[tt.want == http.StatusOK] {
+			if added := len(
+				e.reports(t),
+			) - before; added != map[bool]int{true: 1, false: 0}[tt.want == http.StatusOK] {
 				t.Errorf("added %d reports", added)
 			}
 		})
@@ -150,7 +168,12 @@ func TestBugReport(t *testing.T) {
 		{"at":"2026-10-26T15:29:57.000Z","level":"uncaught","msg":"TypeError: x is null\n    at hp (app.js:12:3)","page":"`+page+`"},
 		{"at":"2026-10-26T15:29:58.000Z","level":"warn","msg":"a | b","page":"`+page+`"}
 	]`)
-	w := e.sendFeedback(t, player, f, map[string]string{"shot.png": pngHead, "notes.txt": "not a picture"})
+	w := e.sendFeedback(
+		t,
+		player,
+		f,
+		map[string]string{"shot.png": pngHead, "notes.txt": "not a picture"},
+	)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
 	}
@@ -209,7 +232,8 @@ func TestIdeaHasNoRequests(t *testing.T) {
 		t.Errorf("toast does not name an idea: %s", w.Body)
 	}
 	for _, md := range e.reports(t) {
-		if !strings.Contains(md, "| From | GM (Sam) |") || !strings.Contains(md, "## Idea\n\nThe sheet went blank.") {
+		if !strings.Contains(md, "| From | GM (Sam) |") ||
+			!strings.Contains(md, "## Idea\n\nThe sheet went blank.") {
 			t.Errorf("unexpected report:\n%s", md)
 		}
 		if strings.Contains(md, "requests") || strings.Contains(md, "Steps") {
@@ -229,7 +253,8 @@ func TestFolderName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.title, func(t *testing.T) {
 			name := folderName(time.Time{}, "bug", tt.title)
-			if !strings.HasPrefix(name, "0001-01-01_000000_bug_"+tt.slug+"_") || len(name) != len("0001-01-01_000000_bug_"+tt.slug+"_abcd") {
+			if !strings.HasPrefix(name, "0001-01-01_000000_bug_"+tt.slug+"_") ||
+				len(name) != len("0001-01-01_000000_bug_"+tt.slug+"_abcd") {
 				t.Errorf("got %q, want slug %q", name, tt.slug)
 			}
 			if filepath.Base(name) != name {
@@ -248,7 +273,10 @@ func TestMarkdownCell(t *testing.T) {
 // TestBadConsole: a console the server cannot use is left out, and the
 // report is still saved.
 func TestBadConsole(t *testing.T) {
-	tooMany := "[" + strings.Repeat(`{"at":"x","level":"log","msg":"m","page":"/"},`, consoleSize) + `{"at":"x","level":"log","msg":"m","page":"/"}]`
+	tooMany := "[" + strings.Repeat(
+		`{"at":"x","level":"log","msg":"m","page":"/"},`,
+		consoleSize,
+	) + `{"at":"x","level":"log","msg":"m","page":"/"}]`
 	tests := []struct{ name, console string }{
 		{"not JSON", "{oops"},
 		{"unknown level", `[{"at":"x","level":"debug","msg":"m","page":"/"}]`},
@@ -259,7 +287,12 @@ func TestBadConsole(t *testing.T) {
 			e := newTestEnv(t)
 			f := bugForm("x")
 			f.Set("console", tt.console)
-			if w := e.sendFeedback(t, e.token(t, enum.RolePlayer), f, nil); w.Code != http.StatusOK {
+			if w := e.sendFeedback(
+				t,
+				e.token(t, enum.RolePlayer),
+				f,
+				nil,
+			); w.Code != http.StatusOK {
 				t.Fatalf("status %d", w.Code)
 			}
 			for _, md := range e.reports(t) {
@@ -290,7 +323,11 @@ func TestFeedbackIndex(t *testing.T) {
 	if err := os.MkdirAll(old, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(old, "bug-first-one.md"), []byte("# Bug: First [one]\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(old, "bug-first-one.md"),
+		[]byte("# Bug: First [one]\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	idea := bugForm("Second")
@@ -301,7 +338,8 @@ func TestFeedbackIndex(t *testing.T) {
 	if !strings.HasPrefix(got, "# Feedback not read: 2\n") {
 		t.Errorf("index heading:\n%s", got)
 	}
-	second, first := strings.Index(got, "Idea: [Second]"), strings.Index(got, `2020-01-01 00:00 UTC · Bug: [First \[one\]]`)
+	second := strings.Index(got, "Idea: [Second]")
+	first := strings.Index(got, `2020-01-01 00:00 UTC · Bug: [First \[one\]]`)
 	if second < 0 || first < 0 || second > first {
 		t.Errorf("want both reports, newest first:\n%s", got)
 	}
@@ -327,7 +365,12 @@ func TestFeedbackIndex(t *testing.T) {
 func TestFeedbackTooBig(t *testing.T) {
 	e := newTestEnv(t)
 	big := strings.Repeat("x", views.MaxScreenshots*maxAttachmentBytes+2<<20)
-	w := e.sendFeedback(t, e.token(t, enum.RolePlayer), bugForm("Big"), map[string]string{"big.png": big})
+	w := e.sendFeedback(
+		t,
+		e.token(t, enum.RolePlayer),
+		bugForm("Big"),
+		map[string]string{"big.png": big},
+	)
 	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "too big") {
 		t.Errorf("status %d: %s", w.Code, w.Body)
 	}
@@ -363,7 +406,11 @@ func TestAutoReport(t *testing.T) {
 			}
 		}
 		if n := strings.Count(md, "| GET /boom |  | 500 | disk full |"); n != 1 {
-			t.Errorf("failed table lists the error %d times, want 1 (the second came after):\n%s", n, md)
+			t.Errorf(
+				"failed table lists the error %d times, want 1 (the second came after):\n%s",
+				n,
+				md,
+			)
 		}
 	}
 	index, _ := os.ReadFile(filepath.Join(e.app.DataDir, FeedbackIndexName))

@@ -24,7 +24,12 @@ func TestHandlerErrors(t *testing.T) {
 	}{
 		{"nil", nil, http.StatusOK, ""},
 		{"user", userError{errors.New("pick one")}, http.StatusUnprocessableEntity, "pick one"},
-		{"field", fieldError{userError{errors.New("too long")}, "name"}, http.StatusUnprocessableEntity, "too long"},
+		{
+			"field",
+			fieldError{userError{errors.New("too long")}, "name"},
+			http.StatusUnprocessableEntity,
+			"too long",
+		},
 		{"no rows", fmt.Errorf("load: %w", sql.ErrNoRows), http.StatusNotFound, "Not found."},
 		{"other", errors.New("disk full"), http.StatusInternalServerError, "Something went wrong"},
 	}
@@ -43,7 +48,15 @@ func TestHandlerErrors(t *testing.T) {
 				want = http.StatusUnprocessableEntity
 			}
 			if w.Code != want || !strings.Contains(w.Body.String(), tt.body) {
-				t.Errorf("%s (htmx %v): %d %q, want %d containing %q", tt.name, htmx, w.Code, w.Body.String(), want, tt.body)
+				t.Errorf(
+					"%s (htmx %v): %d %q, want %d containing %q",
+					tt.name,
+					htmx,
+					w.Code,
+					w.Body.String(),
+					want,
+					tt.body,
+				)
 			}
 			if tt.err == nil && w.Body.Len() != 0 {
 				t.Errorf("%s (htmx %v): wrote %q", tt.name, htmx, w.Body.String())
@@ -57,11 +70,36 @@ func TestUserAgent(t *testing.T) {
 		ua, summary, browser string
 		phone                bool
 	}{
-		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0", "Windows · Edge", "Edge 130 on Windows", false},
-		{"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.58 Mobile Safari/537.36", "Android · Chrome", "Chrome 130 on Android", true},
-		{"Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1", "iOS · Safari", "Safari 17 on iOS", true},
-		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:131.0) Gecko/20100101 Firefox/131.0", "macOS · Firefox", "Firefox 131 on macOS", false},
-		{"Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1", "iOS · Safari", "Safari 17 on iOS", false},
+		{
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
+			"Windows · Edge",
+			"Edge 130 on Windows",
+			false,
+		},
+		{
+			"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.58 Mobile Safari/537.36",
+			"Android · Chrome",
+			"Chrome 130 on Android",
+			true,
+		},
+		{
+			"Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+			"iOS · Safari",
+			"Safari 17 on iOS",
+			true,
+		},
+		{
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:131.0) Gecko/20100101 Firefox/131.0",
+			"macOS · Firefox",
+			"Firefox 131 on macOS",
+			false,
+		},
+		{
+			"Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+			"iOS · Safari",
+			"Safari 17 on iOS",
+			false,
+		},
 		{"curl/8.0", "curl", "curl 8", false},
 		{"", "Unknown device", "", false},
 	}
@@ -94,7 +132,12 @@ func TestBrowsePageSize(t *testing.T) {
 		{"999999", 20 * compendiumBatch},
 	} {
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x?"+views.RowsKey+"="+tt.rows, nil)
+		c.Request = httptest.NewRequestWithContext(
+			t.Context(),
+			http.MethodGet,
+			"/x?"+views.RowsKey+"="+tt.rows,
+			nil,
+		)
 		if got := browsePageSize(c); got != tt.want {
 			t.Errorf("rows=%q: %d, want %d", tt.rows, got, tt.want)
 		}

@@ -6,7 +6,8 @@ import (
 )
 
 func TestText(t *testing.T) {
-	if got := SplitList("Insight and Religion"); !reflect.DeepEqual(got, []string{"Insight", "Religion"}) {
+	got := SplitList("Insight and Religion")
+	if !reflect.DeepEqual(got, []string{"Insight", "Religion"}) {
 		t.Errorf("SplitList: %q", got)
 	}
 	if Squash("In sight") != "insight" {

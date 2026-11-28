@@ -10,7 +10,10 @@ import (
 )
 
 func TestHomeSourceMarks(t *testing.T) {
-	spells := []Option{{Slug: "a", Name: "Alpha", Source: "homebook"}, {Slug: "b", Name: "Beta", Source: "tablebook"}}
+	spells := []Option{
+		{Slug: "a", Name: "Alpha", Source: "homebook"},
+		{Slug: "b", Name: "Beta", Source: "tablebook"},
+	}
 	render := func(ctx context.Context) string {
 		var buf bytes.Buffer
 		if err := spellBoxes("spells", -1, spells, url.Values{}).Render(ctx, &buf); err != nil {

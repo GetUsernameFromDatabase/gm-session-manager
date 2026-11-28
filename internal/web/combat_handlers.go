@@ -75,12 +75,18 @@ func (a *App) createEncounter(c *gin.Context) error {
 	if _, err := a.Store.GetCampaign(c.Request.Context(), id); err != nil {
 		return err
 	}
-	enc, err := a.Store.CreateEncounter(c.Request.Context(), sqlc.CreateEncounterParams{CampaignID: id, Name: strings.TrimSpace(form.Name)})
+	enc, err := a.Store.CreateEncounter(
+		c.Request.Context(),
+		sqlc.CreateEncounterParams{CampaignID: id, Name: strings.TrimSpace(form.Name)},
+	)
 	if err != nil {
 		return err
 	}
 	a.Hub.Publish(id, hub.Topic{Kind: hub.TopicEncounter, ID: enc.ID})
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, id), enc.ID))
+	c.Redirect(
+		http.StatusSeeOther,
+		fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, id), enc.ID),
+	)
 	return nil
 }
 
@@ -98,7 +104,11 @@ func (a *App) encounterChanged(c *gin.Context, enc sqlc.Encounter, extra ...hub.
 }
 
 func (a *App) encounterNotice(c *gin.Context, enc sqlc.Encounter, msg string, extra ...hub.Topic) {
-	a.changedNotice(c, enc.CampaignID, msg, append([]hub.Topic{{Kind: hub.TopicEncounter, ID: enc.ID}}, extra...)...)
+	a.changedNotice(
+		c,
+		enc.CampaignID,
+		msg,
+		append([]hub.Topic{{Kind: hub.TopicEncounter, ID: enc.ID}}, extra...)...)
 }
 
 // addCombatantForm is the add form's options; count applies to monsters.
@@ -191,7 +201,12 @@ func (a *App) sameCampaign(c *gin.Context, got, want int64) bool {
 }
 
 // uniqueName numbers repeated monsters: Goblin, Goblin 2, Goblin 3.
-func uniqueName(ctx context.Context, q *sqlc.Queries, encounterID int64, name string) (string, error) {
+func uniqueName(
+	ctx context.Context,
+	q *sqlc.Queries,
+	encounterID int64,
+	name string,
+) (string, error) {
 	rows, err := q.ListCombatants(ctx, encounterID)
 	if err != nil {
 		return "", err
@@ -213,7 +228,13 @@ func uniqueName(ctx context.Context, q *sqlc.Queries, encounterID int64, name st
 // of the fight and those gone matches (nil for none), wrapping into the next
 // or previous round. It returns the new index and round and the names it
 // skipped. From i = -1 it finds the first turn of a fight.
-func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int, gone func(sqlc.ListCombatantsRow) bool) (int, int64, []string, error) {
+func stepTurn(
+	rows []sqlc.ListCombatantsRow,
+	i int,
+	round int64,
+	dir int,
+	gone func(sqlc.ListCombatantsRow) bool,
+) (int, int64, []string, error) {
 	var skipped []string
 	for range rows {
 		i += dir
@@ -239,7 +260,12 @@ func stepTurn(rows []sqlc.ListCombatantsRow, i int, round int64, dir int, gone f
 // deleted, so removing the active one neither restarts the order (the foreign
 // key would null it) nor skips anyone still in the fight. Passing the last one's turn starts the
 // next round, as Next does; with nobody left in the fight, nobody is active.
-func passTurn(ctx context.Context, q *sqlc.Queries, encounterID int64, gone func(sqlc.ListCombatantsRow) bool) error {
+func passTurn(
+	ctx context.Context,
+	q *sqlc.Queries,
+	encounterID int64,
+	gone func(sqlc.ListCombatantsRow) bool,
+) error {
 	enc, err := q.GetEncounter(ctx, encounterID)
 	if err != nil || enc.Status != enum.EncounterActive || !enc.ActiveCombatantID.Valid {
 		return err
@@ -248,7 +274,10 @@ func passTurn(ctx context.Context, q *sqlc.Queries, encounterID int64, gone func
 	if err != nil {
 		return err
 	}
-	i := slices.IndexFunc(rows, func(r sqlc.ListCombatantsRow) bool { return r.ID == enc.ActiveCombatantID.Int64 })
+	i := slices.IndexFunc(
+		rows,
+		func(r sqlc.ListCombatantsRow) bool { return r.ID == enc.ActiveCombatantID.Int64 },
+	)
 	if i < 0 || !gone(rows[i]) {
 		return nil
 	}
@@ -274,7 +303,10 @@ func (a *App) encounterAction(c *gin.Context) error {
 				return err
 			}
 			// Only the combatants' own rows go with it; a PC's are its character's.
-			own := slices.DeleteFunc(conds, func(c sqlc.Condition) bool { return !c.CombatantID.Valid })
+			own := slices.DeleteFunc(
+				conds,
+				func(c sqlc.Condition) bool { return !c.CombatantID.Valid },
+			)
 			if err := noteHeld(ctx, q, concentrationIDs(own)...); err != nil {
 				return err
 			}
@@ -298,9 +330,17 @@ func (a *App) encounterAction(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		next := sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: enc.Status, Round: enc.Round, ActiveCombatantID: enc.ActiveCombatantID}
+		next := sqlc.UpdateEncounterStateParams{
+			ID:                enc.ID,
+			Status:            enc.Status,
+			Round:             enc.Round,
+			ActiveCombatantID: enc.ActiveCombatantID,
+		}
 		needInitiative := func() error {
-			if slices.ContainsFunc(rows, func(r sqlc.ListCombatantsRow) bool { return !r.Initiative.Valid }) {
+			if slices.ContainsFunc(
+				rows,
+				func(r sqlc.ListCombatantsRow) bool { return !r.Initiative.Valid },
+			) {
 				return userError{errors.New("set everyone's initiative first")}
 			}
 			return nil
@@ -321,14 +361,19 @@ func (a *App) encounterAction(c *gin.Context) error {
 			if err != nil {
 				return err
 			}
-			next.Status, next.Round, next.ActiveCombatantID = enum.EncounterActive, 1, nullID(rows[first].ID)
+			next.Status = enum.EncounterActive
+			next.Round = 1
+			next.ActiveCombatantID = nullID(rows[first].ID)
 		case "roll":
 			// Monsters and NPCs only: players say their own rolls.
 			for _, r := range rows {
 				if r.CharacterID.Valid || r.Initiative.Valid {
 					continue
 				}
-				if err := q.SetCombatantInitiative(ctx, sqlc.SetCombatantInitiativeParams{ID: r.ID, Initiative: rollFor(r, nil)}); err != nil {
+				if err := q.SetCombatantInitiative(
+					ctx,
+					sqlc.SetCombatantInitiativeParams{ID: r.ID, Initiative: rollFor(r, nil)},
+				); err != nil {
 					return err
 				}
 			}
@@ -342,10 +387,14 @@ func (a *App) encounterAction(c *gin.Context) error {
 			// The tracker names the turn it showed; a repeated or stale press must not skip one.
 			seenActive, hasActive := formInt(c, views.TurnActiveField)
 			seenRound, hasRound := formInt(c, views.TurnRoundField)
-			if hasActive && seenActive != enc.ActiveCombatantID.Int64 || hasRound && seenRound != enc.Round {
+			if hasActive && seenActive != enc.ActiveCombatantID.Int64 ||
+				hasRound && seenRound != enc.Round {
 				return userError{errors.New("the turn already moved on")}
 			}
-			i := slices.IndexFunc(rows, func(r sqlc.ListCombatantsRow) bool { return r.ID == enc.ActiveCombatantID.Int64 })
+			i := slices.IndexFunc(
+				rows,
+				func(r sqlc.ListCombatantsRow) bool { return r.ID == enc.ActiveCombatantID.Int64 },
+			)
 			dir := 1
 			if action == "prev" {
 				dir = -1
@@ -358,9 +407,15 @@ func (a *App) encounterAction(c *gin.Context) error {
 			// Timed effects end at the start of their creature's turn; going back
 			// does not restore them.
 			if action == "next" {
-				expire := sqlc.ExpireTurnConditionsParams{Round: sql.NullInt64{Int64: next.Round, Valid: true}, CombatantID: nullID(rows[i].ID)}
+				expire := sqlc.ExpireTurnConditionsParams{
+					Round:       sql.NullInt64{Int64: next.Round, Valid: true},
+					CombatantID: nullID(rows[i].ID),
+				}
 				// A concentration that runs out takes its held effects with it.
-				ending, err := q.ListExpiringConditions(ctx, sqlc.ListExpiringConditionsParams(expire))
+				ending, err := q.ListExpiringConditions(
+					ctx,
+					sqlc.ListExpiringConditionsParams(expire),
+				)
 				if err != nil {
 					return err
 				}
@@ -381,7 +436,10 @@ func (a *App) encounterAction(c *gin.Context) error {
 			if err != nil {
 				return err
 			}
-			timed := slices.DeleteFunc(conds, func(c sqlc.Condition) bool { return !c.ExpiresRound.Valid })
+			timed := slices.DeleteFunc(
+				conds,
+				func(c sqlc.Condition) bool { return !c.ExpiresRound.Valid },
+			)
 			if err := noteHeld(ctx, q, concentrationIDs(timed)...); err != nil {
 				return err
 			}
@@ -445,7 +503,10 @@ func (a *App) combatantAction(c *gin.Context) error {
 			init = sql.NullInt64{Int64: n, Valid: true}
 		}
 		if err == nil {
-			err = a.Store.SetCombatantInitiative(ctx, sqlc.SetCombatantInitiativeParams{ID: id, Initiative: init})
+			err = a.Store.SetCombatantInitiative(
+				ctx,
+				sqlc.SetCombatantInitiativeParams{ID: id, Initiative: init},
+			)
 		}
 	case "hp":
 		err = a.combatantHP(c, cb)
@@ -462,7 +523,12 @@ func (a *App) combatantAction(c *gin.Context) error {
 		err = a.combatantCondition(c, cb, enc)
 	case "delete":
 		err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-			if err := passTurn(ctx, q, enc.ID, func(r sqlc.ListCombatantsRow) bool { return r.ID == id }); err != nil {
+			if err := passTurn(
+				ctx,
+				q,
+				enc.ID,
+				func(r sqlc.ListCombatantsRow) bool { return r.ID == id },
+			); err != nil {
 				return err
 			}
 			own, err := q.ListCombatantConditions(ctx, nullID(id))
@@ -501,11 +567,17 @@ func (a *App) rollInitiative(ctx context.Context, cb sqlc.Combatant) (sql.NullIn
 // rollFor is d20 plus the row's initiative bonus, with its effects: conds
 // are the fight's conditions (a PC's from its character).
 func rollFor(r sqlc.ListCombatantsRow, conds []sqlc.Condition) sql.NullInt64 {
-	return sql.NullInt64{Int64: int64(rand.IntN(20) + 1 + initiativeMod(r, pcSheetWith(r, rowConditions(r, conds)))), Valid: true} //nolint:gosec // a game die, not a secret
+	roll := rand.IntN(20) + 1 //nolint:gosec // a game die, not a secret
+	mod := initiativeMod(r, pcSheetWith(r, rowConditions(r, conds)))
+	return sql.NullInt64{Int64: int64(roll + mod), Valid: true}
 }
 
 // combatantRow is cb with its character's or statblock's data.
-func combatantRow(ctx context.Context, q *sqlc.Queries, cb sqlc.Combatant) (sqlc.ListCombatantsRow, error) {
+func combatantRow(
+	ctx context.Context,
+	q *sqlc.Queries,
+	cb sqlc.Combatant,
+) (sqlc.ListCombatantsRow, error) {
 	rows, err := q.ListCombatants(ctx, cb.EncounterID)
 	if err != nil {
 		return sqlc.ListCombatantsRow{}, err
@@ -539,7 +611,15 @@ func (a *App) combatantHP(c *gin.Context, cb sqlc.Combatant) error {
 		if heal {
 			line = fmt.Sprintf("hp +%d", n)
 		}
-		return a.runLine(ctx, ch, line, damageArgs(!heal, kind, c.PostForm("crit") == "true")...) // the player's rules, Petrified included
+		return a.runLine(
+			ctx,
+			ch,
+			line,
+			damageArgs(
+				!heal,
+				kind,
+				c.PostForm("crit") == "true",
+			)...) // the player's rules, Petrified included
 	}
 	if heal {
 		return a.updateMonster(ctx, cb.ID, healHP(int(n)))
@@ -554,7 +634,10 @@ func (a *App) combatantHP(c *gin.Context, cb sqlc.Combatant) error {
 		if err != nil {
 			return err
 		}
-		conds = slices.DeleteFunc(conds, func(c sqlc.Condition) bool { return c.CombatantID.Int64 != cb.ID })
+		conds = slices.DeleteFunc(
+			conds,
+			func(c sqlc.Condition) bool { return c.CombatantID.Int64 != cb.ID },
+		)
 		d := combatantDefenses(r, pcSheet(r), conds)
 		kind, when, err := damageChoice(kind, d)
 		if err != nil {
@@ -577,7 +660,14 @@ func (a *App) combatantSetHP(c *gin.Context, cb sqlc.Combatant) error {
 		}
 		n, ok := formInt(c, f.name)
 		if !ok || n < int64(f.lo) || n > views.MaxHPInput {
-			return userError{fmt.Errorf("%s must be a whole number from %d to %d", f.label, f.lo, views.MaxHPInput)}
+			return userError{
+				fmt.Errorf(
+					"%s must be a whole number from %d to %d",
+					f.label,
+					f.lo,
+					views.MaxHPInput,
+				),
+			}
 		}
 		v := int(n)
 		vals[i] = &v

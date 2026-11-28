@@ -118,7 +118,10 @@ func (p *ftBook) add(kind enum.CompendiumKind, name string, data any, text strin
 		return nil
 	}
 	p.seen[string(kind)+"/"+slug] = true
-	p.out = append(p.out, Entry{Kind: kind, Slug: slug, Name: name, Data: data, Text: plainText(text)})
+	p.out = append(
+		p.out,
+		Entry{Kind: kind, Slug: slug, Name: name, Data: data, Text: plainText(text)},
+	)
 	return &p.out[len(p.out)-1]
 }
 
@@ -237,7 +240,11 @@ func (p *ftBook) spells() error {
 		}
 		d.HigherLevel = strings.Join(hl, "\n\n")
 		if len(s.Time) > 0 {
-			d.CastingTime = ftCastingTime(s.Time[0].Number, s.Time[0].Unit, plainTags(s.Time[0].Condition))
+			d.CastingTime = ftCastingTime(
+				s.Time[0].Number,
+				s.Time[0].Unit,
+				plainTags(s.Time[0].Condition),
+			)
 		}
 		d.Range = ftRange(s.Range.Type, s.Range.Distance)
 		var comps []string
@@ -246,7 +253,10 @@ func (p *ftBook) spells() error {
 				comps = append(comps, c)
 			}
 		}
-		slices.SortFunc(comps, func(a, b string) int { return strings.Index("VSM", a) - strings.Index("VSM", b) })
+		slices.SortFunc(
+			comps,
+			func(a, b string) int { return strings.Index("VSM", a) - strings.Index("VSM", b) },
+		)
 		d.Components = strings.Join(comps, ", ")
 		var m struct {
 			Text string `json:"text"`
@@ -337,10 +347,16 @@ func ftDuration(typ string, d ftDistance, conc bool, ends []string) string {
 	case durationPermanent:
 		var until []string
 		for _, e := range ends {
-			until = append(until, map[string]string{endsDispel: "dispelled", endsTrigger: "triggered", endsDischarge: "discharged"}[e])
+			until = append(
+				until,
+				map[string]string{endsDispel: "dispelled", endsTrigger: "triggered", endsDischarge: "discharged"}[e],
+			)
 		}
 		if len(until) > 0 {
-			return "Until " + strings.Join(slices.DeleteFunc(until, func(s string) bool { return s == "" }), " or ")
+			return "Until " + strings.Join(
+				slices.DeleteFunc(until, func(s string) bool { return s == "" }),
+				" or ",
+			)
 		}
 		return "Permanent"
 	}
@@ -370,7 +386,11 @@ type ftItem struct {
 }
 
 // ftArmorWeights names the armor type codes a variant may require.
-var ftArmorWeights = map[string]string{"LA": "light armor", "MA": "medium armor", "HA": "heavy armor"}
+var ftArmorWeights = map[string]string{
+	"LA": "light armor",
+	"MA": "medium armor",
+	"HA": "heavy armor",
+}
 
 // ftRequires is what a magic variant applies to, in words: each requirement
 // ({"type":"HA|XPHB"}, {"name":"Longsword","source":"XPHB"}, {"weapon":true},
@@ -434,22 +454,70 @@ const (
 
 // ftItemTypes maps 5etools item type codes to our categories (Open5e's).
 var ftItemTypes = map[string]string{
-	"M": itemWeapon, "R": itemWeapon, "LA": itemArmor, "MA": itemArmor, "HA": itemArmor, "S": itemShield,
-	"A": itemAmmunition, "AF": itemAmmunition, "AT": itemTools, "T": itemTools, "INS": itemTools, "GS": itemTools,
-	"G": itemAdventuring, "TAH": itemAdventuring, "FD": itemAdventuring, "SCF": itemSpellFocus,
-	"P": itemPotion, "RG": itemRing, "RD": itemRod, "SC": itemScroll, "WD": itemWand, "EXP": itemExplosive,
-	"MNT": itemMount, "VEH": itemVehicle, "SHP": itemVehicle, "AIR": itemVehicle, "SPC": itemVehicle,
-	"TG": itemTradeGood, "$": itemTreasure, "$A": itemTreasure, "$C": itemTreasure, "$G": itemTreasure,
+	"M":   itemWeapon,
+	"R":   itemWeapon,
+	"LA":  itemArmor,
+	"MA":  itemArmor,
+	"HA":  itemArmor,
+	"S":   itemShield,
+	"A":   itemAmmunition,
+	"AF":  itemAmmunition,
+	"AT":  itemTools,
+	"T":   itemTools,
+	"INS": itemTools,
+	"GS":  itemTools,
+	"G":   itemAdventuring,
+	"TAH": itemAdventuring,
+	"FD":  itemAdventuring,
+	"SCF": itemSpellFocus,
+	"P":   itemPotion,
+	"RG":  itemRing,
+	"RD":  itemRod,
+	"SC":  itemScroll,
+	"WD":  itemWand,
+	"EXP": itemExplosive,
+	"MNT": itemMount,
+	"VEH": itemVehicle,
+	"SHP": itemVehicle,
+	"AIR": itemVehicle,
+	"SPC": itemVehicle,
+	"TG":  itemTradeGood,
+	"$":   itemTreasure,
+	"$A":  itemTreasure,
+	"$C":  itemTreasure,
+	"$G":  itemTreasure,
 }
 
 var ftDamageTypes = map[string]string{
-	"A": "acid", "B": "bludgeoning", "C": "cold", "F": "fire", "O": "force", "L": "lightning",
-	"N": "necrotic", "P": "piercing", "I": "poison", "Y": "psychic", "R": "radiant", "S": "slashing", "T": "thunder",
+	"A": "acid",
+	"B": "bludgeoning",
+	"C": "cold",
+	"F": "fire",
+	"O": "force",
+	"L": "lightning",
+	"N": "necrotic",
+	"P": "piercing",
+	"I": "poison",
+	"Y": "psychic",
+	"R": "radiant",
+	"S": "slashing",
+	"T": "thunder",
 }
 
 var ftProperties = map[string]string{
-	"A": "Ammunition", "AF": "Ammunition", "BF": "Burst Fire", "F": "Finesse", "H": "Heavy", "L": "Light",
-	"LD": "Loading", "R": "Reach", "RLD": "Reload", "S": "Special", "T": "Thrown", "2H": "Two-Handed", "V": "Versatile",
+	"A":   "Ammunition",
+	"AF":  "Ammunition",
+	"BF":  "Burst Fire",
+	"F":   "Finesse",
+	"H":   "Heavy",
+	"L":   "Light",
+	"LD":  "Loading",
+	"R":   "Reach",
+	"RLD": "Reload",
+	"S":   "Special",
+	"T":   "Thrown",
+	"2H":  "Two-Handed",
+	"V":   "Versatile",
 }
 
 // ftBaseKeys are the fields a magic item takes from its base item.
@@ -518,7 +586,8 @@ var ftPlaceholder = regexp.MustCompile(`\{=(\w+)\}`)
 
 // magicVariants adds one item per generic variant ("+1 Weapon"), after the
 // book's own items so a real item of the same name wins.
-// shortcut: no per-base expansion ("+1 Longsword"), upgrade when players need the variant as a concrete base item.
+// shortcut: no per-base expansion ("+1 Longsword"), upgrade when players need the variant as a
+// concrete base item.
 func (p *ftBook) magicVariants() error {
 	return each(p, "magicvariants.json", keyMagicVariant, func(v struct {
 		ftNamed
@@ -560,9 +629,13 @@ func ftCode(s string) string {
 func ftItemData(it ftItem) ItemData {
 	typ := ftCode(it.Type)
 	d := ItemData{
-		Category: ftItemTypes[typ], Rarity: label(it.Rarity), Range: it.Range,
-		Martial: it.WeaponCategory == keyMartial, Desc: ftEntries(it.Entries),
-		Attunement: it.ReqAttune != nil && string(it.ReqAttune) != "false" && string(it.ReqAttune) != "null",
+		Category: ftItemTypes[typ],
+		Rarity:   label(it.Rarity),
+		Range:    it.Range,
+		Martial:  it.WeaponCategory == keyMartial,
+		Desc:     ftEntries(it.Entries),
+		Attunement: it.ReqAttune != nil && string(it.ReqAttune) != "false" &&
+			string(it.ReqAttune) != "null",
 	}
 	switch {
 	case it.Staff:
@@ -664,7 +737,8 @@ func (p *ftBook) species() error {
 	// A subrace without fluff of its own ("Elf (Drow)") shows its race's.
 	norm := func(r ftRace, name string, parts []NameDesc, desc, fluffKey string, link TextData) {
 		const asi = "Ability Score Increase"
-		if inc := ftRaceAbility(r.Ability); inc != "" && !strings.Contains(joinText(desc, partsText(parts)), asi) {
+		inc := ftRaceAbility(r.Ability)
+		if inc != "" && !strings.Contains(joinText(desc, partsText(parts)), asi) {
 			parts = append([]NameDesc{{Name: asi, Desc: inc}}, parts...)
 		}
 		var sizes []string
@@ -673,7 +747,10 @@ func (p *ftBook) species() error {
 		}
 		var typed []NameDesc
 		if len(sizes) > 0 {
-			typed = append(typed, NameDesc{Name: LabelSize, Desc: strings.Join(sizes, " or "), Type: PartSize})
+			typed = append(
+				typed,
+				NameDesc{Name: LabelSize, Desc: strings.Join(sizes, " or "), Type: PartSize},
+			)
 		}
 		var walk int
 		var speeds struct {
@@ -681,15 +758,23 @@ func (p *ftBook) species() error {
 		}
 		if json.Unmarshal(r.Speed, &walk) == nil || json.Unmarshal(r.Speed, &speeds) == nil {
 			if walk = max(walk, speeds.Walk); walk > 0 {
-				typed = append(typed, NameDesc{Name: LabelSpeed, Desc: fmt.Sprintf("%d feet", walk), Type: PartSpeed})
+				typed = append(
+					typed,
+					NameDesc{Name: LabelSpeed, Desc: fmt.Sprintf("%d feet", walk), Type: PartSpeed},
+				)
 			}
 		}
 		// 2014 races also tell their size in a trait; the typed fact says it.
 		if len(sizes) > 0 {
-			parts = slices.DeleteFunc(parts, func(p NameDesc) bool { return p.Name == LabelSize && p.Type == "" })
+			parts = slices.DeleteFunc(
+				parts,
+				func(p NameDesc) bool { return p.Name == LabelSize && p.Type == "" },
+			)
 		}
 		d := link
-		d.Desc, d.Parts = joinNonEmpty("\n\n", desc, cmp.Or(fluff[strings.ToLower(name+"|"+r.Source)], fluff[fluffKey])), append(typed, parts...)
+		fluffText := cmp.Or(fluff[strings.ToLower(name+"|"+r.Source)], fluff[fluffKey])
+		d.Desc = joinNonEmpty("\n\n", desc, fluffText)
+		d.Parts = append(typed, parts...)
 		p.add(enum.KindSpecies, name, d, joinText(d.Desc, partsText(d.Parts)))
 	}
 	recs, err := p.records("races.json", keyRace)
@@ -775,7 +860,14 @@ func (p *ftBook) species() error {
 		desc, parts := ftParts(ftOverwrite(parent.Entries, s.Entries))
 		// "Elf (High)", not "Elf (2014) (High)"; the link names the bundled base.
 		base := cmp.Or(names[parent.key()], s.RaceName)
-		norm(s, s.RaceName+" ("+strings.TrimPrefix(s.Name, "Variant; ")+")", parts, desc, parent.key(), TextData{SubraceOf: Slugify(base)})
+		norm(
+			s,
+			s.RaceName+" ("+strings.TrimPrefix(s.Name, "Variant; ")+")",
+			parts,
+			desc,
+			parent.key(),
+			TextData{SubraceOf: Slugify(base)},
+		)
 	}
 	return nil
 }
@@ -879,10 +971,20 @@ func ftRaceAbility(opts []map[string]json.RawMessage) string {
 				for _, w := range c.Weighted.Weights {
 					ws = append(ws, fmt.Sprintf("%+d", w))
 				}
-				parts = append(parts, fmt.Sprintf("%s to different scores among %s", strings.Join(ws, " and "), names(c.Weighted.From)))
+				parts = append(
+					parts,
+					fmt.Sprintf(
+						"%s to different scores among %s",
+						strings.Join(ws, " and "),
+						names(c.Weighted.From),
+					),
+				)
 			case len(c.From) > 0:
 				n := cmp.Or(c.Count, 1)
-				parts = append(parts, fmt.Sprintf("%+d to %d of %s", cmp.Or(c.Amount, 1), n, names(c.From)))
+				parts = append(
+					parts,
+					fmt.Sprintf("%+d to %d of %s", cmp.Or(c.Amount, 1), n, names(c.From)),
+				)
 			}
 		}
 		if len(parts) > 0 {
@@ -920,10 +1022,19 @@ func (p *ftBook) feats() error {
 	return each(p, "feats.json", keyFeat, func(f ftFeat) {
 		desc, parts := ftParts(f.Entries)
 		const asi = "Ability Score Increase"
-		if inc := ftFeatIncrease(f.Ability, f.Category); inc != "" && !strings.Contains(joinText(desc, partsText(parts)), asi) {
+		if inc := ftFeatIncrease(
+			f.Ability,
+			f.Category,
+		); inc != "" &&
+			!strings.Contains(joinText(desc, partsText(parts)), asi) {
 			parts = append(parts, NameDesc{Name: asi, Desc: inc})
 		}
-		d := TextData{Desc: desc, Parts: parts, Prerequisite: ftPrerequisite(f.Prerequisite), Category: cmp.Or(ftFeatCategories[f.Category], f.Category)}
+		d := TextData{
+			Desc:         desc,
+			Parts:        parts,
+			Prerequisite: ftPrerequisite(f.Prerequisite),
+			Category:     cmp.Or(ftFeatCategories[f.Category], f.Category),
+		}
 		p.add(enum.KindFeat, f.Name, d, joinText(d.Desc, partsText(d.Parts)))
 	})
 }
@@ -960,11 +1071,18 @@ func ftFeatIncrease(abilities []map[string]json.RawMessage, category string) str
 					who = "your " + strings.Join(names[:n-1], ", ") + " or " + names[n-1] + " score"
 				}
 			}
-			s := fmt.Sprintf("Increase %s by %d, to a maximum of %d.", who, cmp.Or(choose.Amount, 1), limit)
-			// The book's own limit (Resilient: an ability without save proficiency) follows the sentence the wizard reads.
+			s := fmt.Sprintf(
+				"Increase %s by %d, to a maximum of %d.",
+				who,
+				cmp.Or(choose.Amount, 1),
+				limit,
+			)
+			// The book's own limit (Resilient: an ability without save proficiency) follows the
+			// sentence the wizard reads.
 			if choose.Entry != nil {
-				if before, _, _ := strings.Cut(ftEntry1(choose.Entry), "Increase"); strings.TrimSpace(before) != "" {
-					s += " " + strings.TrimSpace(before)
+				before, _, _ := strings.Cut(ftEntry1(choose.Entry), "Increase")
+				if before = strings.TrimSpace(before); before != "" {
+					s += " " + before
 				}
 			}
 			return s
@@ -972,7 +1090,12 @@ func ftFeatIncrease(abilities []map[string]json.RawMessage, category string) str
 		for _, k := range slices.Sorted(maps.Keys(a)) {
 			var by int
 			if name, ok := ftAbilityNames[k]; ok && json.Unmarshal(a[k], &by) == nil {
-				return fmt.Sprintf("Increase your %s score by %d, to a maximum of %d.", name, by, limit)
+				return fmt.Sprintf(
+					"Increase your %s score by %d, to a maximum of %d.",
+					name,
+					by,
+					limit,
+				)
 			}
 		}
 	}
@@ -993,7 +1116,10 @@ func ftPrerequisite(opts []map[string]json.RawMessage) string {
 		if json.Unmarshal(o[keyLevel], &level) == nil && level > 0 {
 			parts = append(parts, fmt.Sprintf("Level %d+", level))
 		} else if json.Unmarshal(o[keyLevel], &lv) == nil && lv.Level > 0 {
-			parts = append(parts, strings.TrimSpace(fmt.Sprintf("Level %d+ %s", lv.Level, lv.Class.Name)))
+			parts = append(
+				parts,
+				strings.TrimSpace(fmt.Sprintf("Level %d+ %s", lv.Level, lv.Class.Name)),
+			)
 		}
 		var abilities []map[string]int
 		_ = json.Unmarshal(o[keyAbility], &abilities)
@@ -1063,7 +1189,13 @@ func (p *ftBook) conditions() error {
 	return nil
 }
 
-var ftRuleTypes = map[string]string{"C": "Core", "O": "Optional", "V": "Variant", "VO": "Variant optional", "VV": "Variant variant"}
+var ftRuleTypes = map[string]string{
+	"C":  "Core",
+	"O":  "Optional",
+	"V":  "Variant",
+	"VO": "Variant optional",
+	"VV": "Variant variant",
+}
 
 func (p *ftBook) rules() error {
 	if err := each(p, "variantrules.json", keyVariantRule, func(r struct {
@@ -1086,8 +1218,13 @@ func (p *ftBook) rules() error {
 
 // ftPartTypes are list item names the character wizard reads as typed parts.
 var ftPartTypes = map[string]string{
-	LabelAbilityScores: PartAbilities, LabelFeat: PartFeat, LabelSkillProficiency: PartSkills,
-	LabelToolProficiency: PartTools, LabelToolProficiencies: PartTools, LabelLanguages: PartLanguages, LabelEquipment: PartEquipment,
+	LabelAbilityScores:     PartAbilities,
+	LabelFeat:              PartFeat,
+	LabelSkillProficiency:  PartSkills,
+	LabelToolProficiency:   PartTools,
+	LabelToolProficiencies: PartTools,
+	LabelLanguages:         PartLanguages,
+	LabelEquipment:         PartEquipment,
 }
 
 // ftParts splits entries into a description and named parts: named
@@ -1178,9 +1315,12 @@ func ftCell(raw json.RawMessage) string {
 		return fmt.Sprintf("%d–%d", c.Roll.Min, c.Roll.Max)
 	}
 	// A "|" would end the cell; our tokens keep theirs.
-	s := reToken.ReplaceAllStringFunc(strings.ReplaceAll(ftEntry1(raw), "\n", " "), func(t string) string {
-		return strings.Replace(t, "|", tokenSep, 1)
-	})
+	s := reToken.ReplaceAllStringFunc(
+		strings.ReplaceAll(ftEntry1(raw), "\n", " "),
+		func(t string) string {
+			return strings.Replace(t, "|", tokenSep, 1)
+		},
+	)
 	return strings.ReplaceAll(strings.ReplaceAll(s, "|", "/"), tokenSep, "|")
 }
 

@@ -45,26 +45,67 @@ func (e testEnv) seedTakeHome(t *testing.T) takeHomeSeed {
 	}
 	char := nullID(e.characterID)
 
-	if err := q.CreateLevelUp(ctx, sqlc.CreateLevelUpParams{CharacterID: e.characterID, MaxHp: 5, SheetJson: "{}"}); err != nil {
+	if err := q.CreateLevelUp(
+		ctx,
+		sqlc.CreateLevelUpParams{CharacterID: e.characterID, MaxHp: 5, SheetJson: "{}"},
+	); err != nil {
 		t.Fatal(err)
 	}
 	file("lookfile")
-	att, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{CampaignID: e.campaignID, Path: "lookfile", Name: "look.png", Mime: "image/png", Size: 13})
+	att, err := q.CreateAttachment(
+		ctx,
+		sqlc.CreateAttachmentParams{
+			CampaignID: e.campaignID,
+			Path:       "lookfile",
+			Name:       "look.png",
+			Mime:       "image/png",
+			Size:       13,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	img, err := q.CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "Hood", AttachmentID: nullID(att.ID)})
+	img, err := q.CreateImage(
+		ctx,
+		sqlc.CreateImageParams{
+			CampaignID:   e.campaignID,
+			Name:         "Hood",
+			AttachmentID: nullID(att.ID),
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := q.LinkCharacterImage(ctx, sqlc.LinkCharacterImageParams{CharacterID: e.characterID, ImageID: img.ID}); err != nil {
+	if err := q.LinkCharacterImage(
+		ctx,
+		sqlc.LinkCharacterImageParams{CharacterID: e.characterID, ImageID: img.ID},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: enum.KindSpell, Slug: "zap", Name: "Zap", DataJson: "{}", ContentHash: "h1", OwnerCharacterID: char, Scoped: true}); err != nil {
+	if _, err := q.CreateHomebrew(
+		ctx,
+		sqlc.CreateHomebrewParams{
+			Kind:             enum.KindSpell,
+			Slug:             "zap",
+			Name:             "Zap",
+			DataJson:         "{}",
+			ContentHash:      "h1",
+			OwnerCharacterID: char,
+			Scoped:           true,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 
-	note, err := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Diary", OwnerCharacterID: char})
+	note, err := q.CreateNote(
+		ctx,
+		sqlc.CreateNoteParams{
+			CampaignID:       e.campaignID,
+			Kind:             enum.NoteGeneric,
+			Title:            "Diary",
+			OwnerCharacterID: char,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,18 +115,35 @@ func (e testEnv) seedTakeHome(t *testing.T) takeHomeSeed {
 		path string
 		out  *int64
 	}{{enum.VisOwner, "ownfile", &s.ownerBlock}, {enum.VisPlayers, "pubfile", &s.playersBlock}} {
-		blk, err := q.CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: b.vis, AuthorCharacterID: char})
+		blk, err := q.CreateBlock(
+			ctx,
+			sqlc.CreateBlockParams{NoteID: note.ID, Visibility: b.vis, AuthorCharacterID: char},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		*b.out = blk.ID
 		file(b.path)
-		if _, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{CampaignID: e.campaignID, BlockID: nullID(blk.ID), Path: b.path, Name: b.path + ".png", Mime: "image/png", Size: 10}); err != nil {
+		if _, err := q.CreateAttachment(
+			ctx,
+			sqlc.CreateAttachmentParams{
+				CampaignID: e.campaignID,
+				BlockID:    nullID(blk.ID),
+				Path:       b.path,
+				Name:       b.path + ".png",
+				Mime:       "image/png",
+				Size:       10,
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// Steps past the last snapshot: the file holds the snapshot, not them.
-	if _, err := e.conn.ExecContext(ctx, `UPDATE note_blocks SET version = 3 WHERE id = ?`, s.playersBlock); err != nil {
+	if _, err := e.conn.ExecContext(
+		ctx,
+		`UPDATE note_blocks SET version = 3 WHERE id = ?`,
+		s.playersBlock,
+	); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -94,7 +152,8 @@ func (e testEnv) seedTakeHome(t *testing.T) takeHomeSeed {
 // otherPlayer is a second character with a session.
 func (e testEnv) otherPlayer(t *testing.T) string {
 	t.Helper()
-	ch, err := e.q().CreateCharacterWithSheet(t.Context(), sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
+	ch, err := e.q().
+		CreateCharacterWithSheet(t.Context(), sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,9 +164,17 @@ func (e testEnv) otherPlayer(t *testing.T) string {
 	return tok
 }
 
-func (e testEnv) takeHomeRequest(t *testing.T, method, remoteAddr, cookie string) *httptest.ResponseRecorder {
+func (e testEnv) takeHomeRequest(
+	t *testing.T,
+	method, remoteAddr, cookie string,
+) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequestWithContext(t.Context(), method, route.Path(route.CharacterTakeHome, e.characterID), nil)
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		method,
+		route.Path(route.CharacterTakeHome, e.characterID),
+		nil,
+	)
 	req.RemoteAddr = remoteAddr
 	if cookie != "" {
 		req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: cookie})
@@ -172,12 +239,19 @@ func TestTakeHomeDownload(t *testing.T) {
 				}
 				return
 			}
-			if ct := w.Header().Get("Content-Type"); ct != "application/zip" || !strings.Contains(w.Header().Get("Content-Disposition"), "alice-take-home-") {
+			if ct := w.Header().
+				Get("Content-Type"); ct != "application/zip" ||
+				!strings.Contains(w.Header().Get("Content-Disposition"), "alice-take-home-") {
 				t.Errorf("headers: %v", w.Header())
 			}
 			f := readZip(t, w.Body.Bytes())
 			if hasBlock(f, seed.ownerBlock) != tt.wantOwner || !hasBlock(f, seed.playersBlock) {
-				t.Errorf("blocks owner=%v players=%v, want owner=%v players=true", hasBlock(f, seed.ownerBlock), hasBlock(f, seed.playersBlock), tt.wantOwner)
+				t.Errorf(
+					"blocks owner=%v players=%v, want owner=%v players=true",
+					hasBlock(f, seed.ownerBlock),
+					hasBlock(f, seed.playersBlock),
+					tt.wantOwner,
+				)
 			}
 			sent := map[string]bool{}
 			for _, n := range f.Notes {
@@ -194,7 +268,12 @@ func TestTakeHomeDownload(t *testing.T) {
 				t.Errorf("files sent: %v", sent)
 			}
 			if len(f.Looks) != 1 || len(f.LevelUps) != 1 || len(f.Homebrew) != 1 {
-				t.Errorf("looks %d, level-ups %d, homebrew %d", len(f.Looks), len(f.LevelUps), len(f.Homebrew))
+				t.Errorf(
+					"looks %d, level-ups %d, homebrew %d",
+					len(f.Looks),
+					len(f.LevelUps),
+					len(f.Homebrew),
+				)
 			}
 
 			if len(rows) != 1 {
@@ -211,10 +290,20 @@ func TestTakeHomeDownload(t *testing.T) {
 			if _, ok := base.Blocks[seed.ownerBlock]; ok != tt.wantOwner {
 				t.Errorf("base lists the private block = %v, want %v", ok, tt.wantOwner)
 			}
-			if v, ok := base.Blocks[seed.playersBlock]; !ok || v != 0 || rec.Token != f.Manifest.Token || f.Manifest.ServerID == "" {
-				t.Errorf("base %v (want the snapshot's version 0), token %q vs %q, server %q", base.Blocks, rec.Token, f.Manifest.Token, f.Manifest.ServerID)
+			if v, ok := base.Blocks[seed.playersBlock]; !ok || v != 0 ||
+				rec.Token != f.Manifest.Token ||
+				f.Manifest.ServerID == "" {
+				t.Errorf(
+					"base %v (want the snapshot's version 0), token %q vs %q, server %q",
+					base.Blocks,
+					rec.Token,
+					f.Manifest.Token,
+					f.Manifest.ServerID,
+				)
 			}
-			if serverID, err := e.q().GetServerID(t.Context()); err != nil || f.Manifest.ServerID != serverID {
+			if serverID, err := e.q().
+				GetServerID(t.Context()); err != nil ||
+				f.Manifest.ServerID != serverID {
 				t.Errorf("manifest server %q, database %q (%v)", f.Manifest.ServerID, serverID, err)
 			}
 		})
@@ -229,8 +318,20 @@ func TestTakeHomeDialog(t *testing.T) {
 		wantStatus int
 		wantText   string
 	}{
-		{"owner sees the app files", lanAddr, "owner", http.StatusOK, route.Path(route.AppDownload, "player-app.zip")},
-		{"gm sees the app files and the private notes line", loopbackAddr, "gm", http.StatusOK, "private notes"},
+		{
+			"owner sees the app files",
+			lanAddr,
+			"owner",
+			http.StatusOK,
+			route.Path(route.AppDownload, "player-app.zip"),
+		},
+		{
+			"gm sees the app files and the private notes line",
+			loopbackAddr,
+			"gm",
+			http.StatusOK,
+			"private notes",
+		},
 		{"other player", lanAddr, "other", http.StatusForbidden, ""},
 	}
 	for _, tt := range tests {
@@ -240,13 +341,23 @@ func TestTakeHomeDialog(t *testing.T) {
 			if err := os.MkdirAll(dir, 0o750); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(dir, "player-app.zip"), []byte("x"), 0o600); err != nil {
+			if err := os.WriteFile(
+				filepath.Join(dir, "player-app.zip"),
+				[]byte("x"),
+				0o600,
+			); err != nil {
 				t.Fatal(err)
 			}
 			cookie := map[string]string{"owner": e.token(t, enum.RolePlayer), "other": e.otherPlayer(t)}[tt.who]
 			w := e.takeHomeRequest(t, http.MethodGet, tt.remoteAddr, cookie)
 			if w.Code != tt.wantStatus || !strings.Contains(w.Body.String(), tt.wantText) {
-				t.Errorf("status %d, body %q; want %d containing %q", w.Code, w.Body, tt.wantStatus, tt.wantText)
+				t.Errorf(
+					"status %d, body %q; want %d containing %q",
+					w.Code,
+					w.Body,
+					tt.wantStatus,
+					tt.wantText,
+				)
 			}
 		})
 	}
@@ -304,7 +415,16 @@ func newPlayerEnv(t testing.TB) testEnv {
 	t.Cleanup(func() { _ = conn.Close() })
 	q := db.NewStore(conn)
 	mgr := auth.NewPlayerManager(q)
-	app := New(Deps{Auth: mgr, Store: q, DataDir: t.TempDir(), Port: 8042, Player: true, Version: "v-home"})
+	app := New(
+		Deps{
+			Auth:    mgr,
+			Store:   q,
+			DataDir: t.TempDir(),
+			Port:    8042,
+			Player:  true,
+			Version: "v-home",
+		},
+	)
 	t.Cleanup(app.Close)
 	return testEnv{router: app.Router(), mgr: mgr, app: app, conn: conn}
 }
@@ -312,7 +432,12 @@ func newPlayerEnv(t testing.TB) testEnv {
 func TestTakeHomeRefusedInPlayerApp(t *testing.T) {
 	e := newPlayerEnv(t)
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		req := httptest.NewRequestWithContext(t.Context(), method, route.Path(route.CharacterTakeHome, 1), nil)
+		req := httptest.NewRequestWithContext(
+			t.Context(),
+			method,
+			route.Path(route.CharacterTakeHome, 1),
+			nil,
+		)
 		req.RemoteAddr = loopbackAddr
 		w := httptest.NewRecorder()
 		e.router.ServeHTTP(w, req)
@@ -345,25 +470,102 @@ func sampleTakeHome(t *testing.T, mutate func(*export.TakeHome)) []byte {
 		t.Fatal(err)
 	}
 	const tableAttachment = 50
-	doc := `{"type":"doc","content":[{"type":"image","attrs":{"src":"` + route.Path(route.Attachment, tableAttachment) + `"}},{"type":"paragraph","content":[{"type":"text","text":"` + route.Path(route.Attachment, tableAttachment) + `"}]}]}`
+	doc := `{"type":"doc","content":[{"type":"image","attrs":{"src":"` + route.Path(
+		route.Attachment,
+		tableAttachment,
+	) + `"}},{"type":"paragraph","content":[{"type":"text","text":"` + route.Path(
+		route.Attachment,
+		tableAttachment,
+	) + `"}]}]}`
 	made := time.Date(2026, 11, 24, 18, 0, 0, 0, time.UTC)
 	th := export.TakeHome{
 		Manifest: export.TakeHomeManifest{
-			Format: export.TakeHomeFormat, Kind: export.KindTakeHome, AppVersion: "v-table", Token: "tok", ServerID: "srv", CharacterID: 7, CreatedAt: made,
-			Campaign: export.TakeHomeCampaign{Name: "Table", System: "dnd5e", Edition: "2024"},
+			Format:      export.TakeHomeFormat,
+			Kind:        export.KindTakeHome,
+			AppVersion:  "v-table",
+			Token:       "tok",
+			ServerID:    "srv",
+			CharacterID: 7,
+			CreatedAt:   made,
+			Campaign:    export.TakeHomeCampaign{Name: "Table", System: "dnd5e", Edition: "2024"},
 		},
-		Character: export.CharacterFile{ID: 7, Name: "Aria", System: "dnd5e", HP: 0, MaxHP: 0, Sheet: json.RawMessage(sheet)},
-		LevelUps:  []export.TakeHomeLevelUp{{ID: 3, MaxHP: 4, Sheet: json.RawMessage(sheet), CreatedAt: made}},
-		Looks:     []export.TakeHomeLook{{ImageID: 9, AttachmentID: 8, Name: "Hood", File: export.ZipFile("tablelook"), IsRevealed: true, IsCurrent: true}},
-		Notes: []export.TakeHomeNote{{ID: 4, Kind: enum.NoteGeneric, Title: "Diary", CreatedAt: made, UpdatedAt: made, Blocks: []export.TakeHomeBlock{{
-			ID: 5, Position: 1, Visibility: enum.VisOwner, Doc: json.RawMessage(doc), Version: 12, ByCharacter: true,
-			Files: []export.TakeHomeBlockFile{{AttachmentID: tableAttachment, Name: "map.png", File: export.ZipFile("tablenote")}},
-		}}}},
-		Homebrew: []export.TakeHomeEntry{{ID: 20, Kind: enum.KindSpell, Slug: "zap", Name: "Zap", SourceKey: "homebrew", Data: json.RawMessage(`{}`), ContentHash: "h1", Scoped: true}},
-		Sources:  []export.TakeHomeSource{{SourceKey: "src1", Edition: "2024", Priority: 150}},
+		Character: export.CharacterFile{
+			ID:     7,
+			Name:   "Aria",
+			System: "dnd5e",
+			HP:     0,
+			MaxHP:  0,
+			Sheet:  json.RawMessage(sheet),
+		},
+		LevelUps: []export.TakeHomeLevelUp{
+			{ID: 3, MaxHP: 4, Sheet: json.RawMessage(sheet), CreatedAt: made},
+		},
+		Looks: []export.TakeHomeLook{
+			{
+				ImageID:      9,
+				AttachmentID: 8,
+				Name:         "Hood",
+				File:         export.ZipFile("tablelook"),
+				IsRevealed:   true,
+				IsCurrent:    true,
+			},
+		},
+		Notes: []export.TakeHomeNote{
+			{
+				ID:        4,
+				Kind:      enum.NoteGeneric,
+				Title:     "Diary",
+				CreatedAt: made,
+				UpdatedAt: made,
+				Blocks: []export.TakeHomeBlock{
+					{
+						ID:          5,
+						Position:    1,
+						Visibility:  enum.VisOwner,
+						Doc:         json.RawMessage(doc),
+						Version:     12,
+						ByCharacter: true,
+						Files: []export.TakeHomeBlockFile{
+							{
+								AttachmentID: tableAttachment,
+								Name:         "map.png",
+								File:         export.ZipFile("tablenote"),
+							},
+						},
+					},
+				},
+			},
+		},
+		Homebrew: []export.TakeHomeEntry{
+			{
+				ID:          20,
+				Kind:        enum.KindSpell,
+				Slug:        "zap",
+				Name:        "Zap",
+				SourceKey:   "homebrew",
+				Data:        json.RawMessage(`{}`),
+				ContentHash: "h1",
+				Scoped:      true,
+			},
+		},
+		Sources: []export.TakeHomeSource{{SourceKey: "src1", Edition: "2024", Priority: 150}},
 		Entries: []export.TakeHomeEntry{
-			{Kind: enum.KindSpell, Slug: "bolt", Name: "Bolt", SourceKey: "src1", Data: json.RawMessage(`{}`), ContentHash: "h2"},
-			{Kind: enum.KindFeat, Slug: "gm-feat", Name: "Table feat", SourceKey: "homebrew", Data: json.RawMessage(`{}`), ContentHash: "h3"},
+			{
+				Kind:        enum.KindSpell,
+				Slug:        "bolt",
+				Name:        "Bolt",
+				SourceKey:   "src1",
+				Data:        json.RawMessage(`{}`),
+				ContentHash: "h2",
+			},
+			{
+				Kind:        enum.KindFeat,
+				Slug:        "gm-feat",
+				Name:        "Table feat",
+				SourceKey:   "homebrew",
+				Data:        json.RawMessage(`{}`),
+				ContentHash: "h3",
+			},
 		},
 	}
 	if mutate != nil {
@@ -377,7 +579,12 @@ func sampleTakeHome(t *testing.T, mutate func(*export.TakeHome)) []byte {
 }
 
 // importRequest posts a take-home file to the player app, as htmx does.
-func (e testEnv) importRequest(t *testing.T, zipBody []byte, cookie string, fields map[string]string) *httptest.ResponseRecorder {
+func (e testEnv) importRequest(
+	t *testing.T,
+	zipBody []byte,
+	cookie string,
+	fields map[string]string,
+) *httptest.ResponseRecorder {
 	t.Helper()
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
@@ -432,7 +639,8 @@ func TestHomeImportOneTable(t *testing.T) {
 	}
 	other := sampleTakeHome(t, func(th *export.TakeHome) { th.Manifest.ServerID = "other-table" })
 	w := e.importRequest(t, other, "", nil)
-	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "second folder") {
+	if w.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(w.Body.String(), "second folder") {
 		t.Errorf("other table: status %d: %s", w.Code, w.Body)
 	}
 	if copies, err := e.q().ListHomeCopies(t.Context()); err != nil || len(copies) != 1 {
@@ -444,10 +652,29 @@ func TestHomeImportOneTable(t *testing.T) {
 // the first block's file; at home it must point at that file's new id too.
 func TestHomeImportSharedPicture(t *testing.T) {
 	e := newPlayerEnv(t)
-	copied := `{"type":"doc","content":[{"type":"image","attrs":{"src":"` + route.Path(route.Attachment, 50) + `"}}]}`
+	copied := `{"type":"doc","content":[{"type":"image","attrs":{"src":"` + route.Path(
+		route.Attachment,
+		50,
+	) + `"}}]}`
 	zipBody := sampleTakeHome(t, func(th *export.TakeHome) {
-		th.Notes = append(th.Notes, export.TakeHomeNote{ID: 6, Kind: enum.NoteGeneric, Title: "Copy", CreatedAt: th.Manifest.CreatedAt, UpdatedAt: th.Manifest.CreatedAt,
-			Blocks: []export.TakeHomeBlock{{ID: 7, Visibility: enum.VisOwner, Doc: json.RawMessage(copied), ByCharacter: true}}})
+		th.Notes = append(
+			th.Notes,
+			export.TakeHomeNote{
+				ID:        6,
+				Kind:      enum.NoteGeneric,
+				Title:     "Copy",
+				CreatedAt: th.Manifest.CreatedAt,
+				UpdatedAt: th.Manifest.CreatedAt,
+				Blocks: []export.TakeHomeBlock{
+					{
+						ID:          7,
+						Visibility:  enum.VisOwner,
+						Doc:         json.RawMessage(copied),
+						ByCharacter: true,
+					},
+				},
+			},
+		)
 	})
 	w := e.importRequest(t, zipBody, "", nil)
 	if w.Code != http.StatusNoContent {
@@ -506,14 +733,18 @@ func TestHomeImport(t *testing.T) {
 		t.Errorf("%d level-ups", n)
 	}
 	looks, err := e.q().ListCharacterImages(ctx, charID)
-	if err != nil || len(looks) != 1 || !looks[0].AttachmentID.Valid || !looks[0].IsCurrent || !looks[0].IsRevealed {
+	if err != nil || len(looks) != 1 || !looks[0].AttachmentID.Valid || !looks[0].IsCurrent ||
+		!looks[0].IsRevealed {
 		t.Fatalf("looks %+v, %v", looks, err)
 	}
 	att, err := e.q().GetAttachment(ctx, looks[0].AttachmentID.Int64)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := os.ReadFile(filepath.Join(e.app.attachmentsDir(), att.Path)); err != nil || string(got) != "data-tablelook" {
+	if got, err := os.ReadFile(
+		filepath.Join(e.app.attachmentsDir(), att.Path),
+	); err != nil ||
+		string(got) != "data-tablelook" {
 		t.Errorf("look file %q, %v", got, err)
 	}
 
@@ -522,7 +753,9 @@ func TestHomeImport(t *testing.T) {
 		t.Fatalf("notes %+v, %v", notes, err)
 	}
 	blocks, err := e.q().ListOwnNoteBlocks(ctx, nullID(charID))
-	if err != nil || len(blocks) != 1 || blocks[0].Visibility != enum.VisOwner || blocks[0].Version != 0 || !blocks[0].AuthorCharacterID.Valid {
+	if err != nil || len(blocks) != 1 || blocks[0].Visibility != enum.VisOwner ||
+		blocks[0].Version != 0 ||
+		!blocks[0].AuthorCharacterID.Valid {
 		t.Fatalf("blocks %+v, %v", blocks, err)
 	}
 	files, err := e.q().ListOwnNoteAttachments(ctx, nullID(charID))
@@ -533,7 +766,9 @@ func TestHomeImport(t *testing.T) {
 	oldSrc := route.Path(route.Attachment, 50)
 	// The image node points at the new file; text that only looks like the old
 	// address stays as written.
-	if doc := blocks[0].DocJson; !strings.Contains(doc, `"src":"`+wantSrc+`"`) || strings.Contains(doc, `"src":"`+oldSrc) || !strings.Contains(doc, `"text":"`+oldSrc+`"`) {
+	if doc := blocks[0].DocJson; !strings.Contains(doc, `"src":"`+wantSrc+`"`) ||
+		strings.Contains(doc, `"src":"`+oldSrc) ||
+		!strings.Contains(doc, `"text":"`+oldSrc+`"`) {
 		t.Errorf("doc %s, want src %s", doc, wantSrc)
 	}
 
@@ -541,10 +776,13 @@ func TestHomeImport(t *testing.T) {
 	if err != nil || len(own) != 1 || !own[0].Scoped {
 		t.Fatalf("own homebrew %+v, %v", own, err)
 	}
-	if linked, _ := e.q().ListEntryCampaigns(ctx, own[0].ID); len(linked) != 1 || linked[0] != camp.ID {
+	if linked, _ := e.q().
+		ListEntryCampaigns(ctx, own[0].ID); len(linked) != 1 ||
+		linked[0] != camp.ID {
 		t.Errorf("own homebrew linked to %v", linked)
 	}
-	if _, err := e.q().GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSpell, Slug: "bolt", SourceKey: "src1"}); err != nil {
+	if _, err := e.q().
+		GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSpell, Slug: "bolt", SourceKey: "src1"}); err != nil {
 		t.Errorf("source entry: %v", err)
 	}
 	if src, err := e.q().GetCompendiumSource(ctx, "src1"); err != nil || src.Priority != 150 {
@@ -553,7 +791,9 @@ func TestHomeImport(t *testing.T) {
 	if ok, _ := e.q().ListCampaignSources(ctx, camp.ID); len(ok) != 1 {
 		t.Errorf("campaign sources %v", ok)
 	}
-	if hc, err := e.q().GetHomeCopyByTable(ctx, sqlc.GetHomeCopyByTableParams{ServerID: "srv", TableCharacterID: 7}); err != nil || hc.CharacterID != charID {
+	if hc, err := e.q().
+		GetHomeCopyByTable(ctx, sqlc.GetHomeCopyByTableParams{ServerID: "srv", TableCharacterID: 7}); err != nil ||
+		hc.CharacterID != charID {
 		t.Errorf("home copy %+v, %v", hc, err)
 	}
 
@@ -561,13 +801,27 @@ func TestHomeImport(t *testing.T) {
 	if w := e.get(t, route.Campaigns+"/"+"1", ""); w.Code == http.StatusOK {
 		t.Error("loopback is admin in the player app")
 	}
-	if w := e.get(t, route.Home, c.Value); w.Header().Get("Location") != route.Path(route.Character, charID) {
+	if w := e.get(
+		t,
+		route.Home,
+		c.Value,
+	); w.Header().
+		Get("Location") !=
+		route.Path(
+			route.Character,
+			charID,
+		) {
 		t.Errorf("home goes to %q", w.Header().Get("Location"))
 	}
 	if w := e.get(t, route.Home, ""); w.Header().Get("Location") != route.AtHome {
 		t.Errorf("visitor home goes to %q", w.Header().Get("Location"))
 	}
-	if w := e.get(t, route.AtHome, c.Value); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Playing") {
+	if w := e.get(
+		t,
+		route.AtHome,
+		c.Value,
+	); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), "Playing") {
 		t.Errorf("at-home page %d", w.Code)
 	}
 }
@@ -585,15 +839,28 @@ func TestHomeImportReplace(t *testing.T) {
 		th.Character.Name = "Aria Two"
 	})
 	w := e.importRequest(t, newer, c.Value, nil)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Aria Two is already on this computer") || !strings.Contains(w.Body.String(), `name="replace"`) {
+	if w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), "Aria Two is already on this computer") ||
+		!strings.Contains(w.Body.String(), `name="replace"`) {
 		t.Fatalf("no confirmation: %d %s", w.Code, w.Body)
 	}
 	if _, err := e.q().GetCharacter(ctx, oldID); err != nil {
 		t.Fatal("the copy went before the player confirmed")
 	}
 
-	older := sampleTakeHome(t, func(th *export.TakeHome) { th.Manifest.CreatedAt = th.Manifest.CreatedAt.Add(-48 * time.Hour) })
-	if w := e.importRequest(t, older, c.Value, nil); !strings.Contains(w.Body.String(), "is older than the copy here") {
+	older := sampleTakeHome(
+		t,
+		func(th *export.TakeHome) { th.Manifest.CreatedAt = th.Manifest.CreatedAt.Add(-48 * time.Hour) },
+	)
+	if w := e.importRequest(
+		t,
+		older,
+		c.Value,
+		nil,
+	); !strings.Contains(
+		w.Body.String(),
+		"is older than the copy here",
+	) {
 		t.Errorf("older file not named: %s", w.Body)
 	}
 
@@ -626,7 +893,15 @@ func TestHomeReplaceKeepsSharedHomebrew(t *testing.T) {
 		t.Fatalf("first import: %d %s", first.Code, first.Body)
 	}
 	s1, _ := e.mgr.Resolve(ctx, c1.Value) // the second import ends this session
-	zap := export.TakeHomeEntry{Kind: enum.KindSpell, Slug: "zap", Name: "Zap", SourceKey: "homebrew", Data: json.RawMessage(`{}`), ContentHash: "h1", Scoped: true}
+	zap := export.TakeHomeEntry{
+		Kind:        enum.KindSpell,
+		Slug:        "zap",
+		Name:        "Zap",
+		SourceKey:   "homebrew",
+		Data:        json.RawMessage(`{}`),
+		ContentHash: "h1",
+		Scoped:      true,
+	}
 	second := e.importRequest(t, sampleTakeHome(t, func(th *export.TakeHome) {
 		th.Manifest.CharacterID, th.Character.Name = 8, "Brin"
 		th.Homebrew = nil
@@ -641,29 +916,45 @@ func TestHomeReplaceKeepsSharedHomebrew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, err := e.q().GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSpell, Slug: "zap", SourceKey: "homebrew"})
+	entry, err := e.q().
+		GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSpell, Slug: "zap", SourceKey: "homebrew"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if entry.OwnerCharacterID.Int64 != s1.CharacterID.Int64 || !entry.Scoped {
-		t.Fatalf("entry %+v: a link-only import changed its owner (want %d) or scope", entry, s1.CharacterID.Int64)
+		t.Fatalf(
+			"entry %+v: a link-only import changed its owner (want %d) or scope",
+			entry,
+			s1.CharacterID.Int64,
+		)
 	}
 
 	replaced := e.importRequest(t, sampleTakeHome(t, nil), "", map[string]string{"replace": "1"})
 	if replaced.Code != http.StatusNoContent {
 		t.Fatalf("replace: %d %s", replaced.Code, replaced.Body)
 	}
-	entry, err = e.q().GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSpell, Slug: "zap", SourceKey: "homebrew"})
+	entry, err = e.q().
+		GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSpell, Slug: "zap", SourceKey: "homebrew"})
 	if err != nil {
 		t.Fatal("the shared entry was deleted with the replaced copy")
 	}
 	linked, err := e.q().ListEntryCampaigns(ctx, entry.ID)
 	if err != nil || !slices.Contains(linked, brin.CampaignID) {
-		t.Errorf("entry linked to %v, want it to include Brin's campaign %d (%v)", linked, brin.CampaignID, err)
+		t.Errorf(
+			"entry linked to %v, want it to include Brin's campaign %d (%v)",
+			linked,
+			brin.CampaignID,
+			err,
+		)
 	}
 	newSess, err := e.mgr.Resolve(ctx, homeCookie(replaced).Value)
 	if err != nil || entry.OwnerCharacterID.Int64 != newSess.CharacterID.Int64 {
-		t.Errorf("owner %v, want the new copy %d (%v)", entry.OwnerCharacterID, newSess.CharacterID.Int64, err)
+		t.Errorf(
+			"owner %v, want the new copy %d (%v)",
+			entry.OwnerCharacterID,
+			newSess.CharacterID.Int64,
+			err,
+		)
 	}
 }
 
@@ -677,13 +968,31 @@ func TestHomeImportRefusals(t *testing.T) {
 		mutate func(*export.TakeHome)
 		want   []string
 	}{
-		{"sheet with an unknown field", func(th *export.TakeHome) { th.Character.Sheet = sheetWith(`,"from_the_future":1`) }, []string{"v-table", "v-home"}},
-		{"level-up from a newer app", func(th *export.TakeHome) { th.LevelUps[0].Sheet = sheetWith(`,"effects_version":99`) }, []string{"v-table", "v-home"}},
+		{
+			"sheet with an unknown field",
+			func(th *export.TakeHome) { th.Character.Sheet = sheetWith(`,"from_the_future":1`) },
+			[]string{"v-table", "v-home"},
+		},
+		{
+			"level-up from a newer app",
+			func(th *export.TakeHome) { th.LevelUps[0].Sheet = sheetWith(`,"effects_version":99`) },
+			[]string{"v-table", "v-home"},
+		},
 		{"unsafe link in a note", func(th *export.TakeHome) {
-			th.Notes[0].Blocks[0].Doc = json.RawMessage(`{"type":"doc","content":[{"type":"text","text":"x","marks":[{"type":"link","attrs":{"href":"javascript:alert(1)"}}]}]}`)
+			th.Notes[0].Blocks[0].Doc = json.RawMessage(
+				`{"type":"doc","content":[{"type":"text","text":"x","marks":[{"type":"link","attrs":{"href":"javascript:alert(1)"}}]}]}`,
+			)
 		}, []string{"link"}},
-		{"look link that is not a web address", func(th *export.TakeHome) { th.Looks[0].URL = "javascript:alert(1)" }, []string{"web address"}},
-		{"entry from an unlisted source", func(th *export.TakeHome) { th.Entries[0].SourceKey = "other" }, []string{"source"}},
+		{
+			"look link that is not a web address",
+			func(th *export.TakeHome) { th.Looks[0].URL = "javascript:alert(1)" },
+			[]string{"web address"},
+		},
+		{
+			"entry from an unlisted source",
+			func(th *export.TakeHome) { th.Entries[0].SourceKey = "other" },
+			[]string{"source"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -713,7 +1022,15 @@ func TestHomePlay(t *testing.T) {
 	first := e.importRequest(t, sampleTakeHome(t, nil), "", nil)
 	c1 := homeCookie(first)
 	s1, _ := e.mgr.Resolve(ctx, c1.Value)
-	second := e.importRequest(t, sampleTakeHome(t, func(th *export.TakeHome) { th.Manifest.CharacterID = 8; th.Character.Name = "Brin" }), c1.Value, nil)
+	second := e.importRequest(
+		t,
+		sampleTakeHome(
+			t,
+			func(th *export.TakeHome) { th.Manifest.CharacterID = 8; th.Character.Name = "Brin" },
+		),
+		c1.Value,
+		nil,
+	)
 	c2 := homeCookie(second)
 	if c2 == nil {
 		t.Fatalf("second import: %d %s", second.Code, second.Body)
@@ -723,7 +1040,12 @@ func TestHomePlay(t *testing.T) {
 	}
 
 	play := func(id int64, cookie string) *httptest.ResponseRecorder {
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, route.Path(route.AtHomePlay, id), nil)
+		req := httptest.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			route.Path(route.AtHomePlay, id),
+			nil,
+		)
 		req.RemoteAddr = loopbackAddr
 		req.AddCookie(&http.Cookie{Name: auth.PlayerCookieName, Value: cookie})
 		w := httptest.NewRecorder()
@@ -731,7 +1053,8 @@ func TestHomePlay(t *testing.T) {
 		return w
 	}
 	w := play(s1.CharacterID.Int64, c2.Value)
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != route.Path(route.Character, s1.CharacterID.Int64) {
+	if w.Code != http.StatusSeeOther ||
+		w.Header().Get("Location") != route.Path(route.Character, s1.CharacterID.Int64) {
 		t.Fatalf("play: %d %q", w.Code, w.Header().Get("Location"))
 	}
 	c3 := homeCookie(w)
@@ -741,16 +1064,22 @@ func TestHomePlay(t *testing.T) {
 	if _, err := e.mgr.Resolve(ctx, c2.Value); err == nil {
 		t.Error("the previous session survived the switch")
 	}
-	if s, err := e.mgr.Resolve(ctx, c3.Value); err != nil || s.CharacterID.Int64 != s1.CharacterID.Int64 {
+	if s, err := e.mgr.Resolve(
+		ctx,
+		c3.Value,
+	); err != nil ||
+		s.CharacterID.Int64 != s1.CharacterID.Int64 {
 		t.Errorf("new session %+v, %v", s, err)
 	}
 
 	// Any character on this computer can be played, not only a taken-home one.
-	other, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
+	other, err := e.q().
+		CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stray, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: other.ID, Name: "Stray", System: "dnd5e", SheetJson: "{}"})
+	stray, err := e.q().
+		CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: other.ID, Name: "Stray", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -785,7 +1114,12 @@ func TestCheckSheetFile(t *testing.T) {
 }
 
 func TestRewriteDocAttachments(t *testing.T) {
-	doc := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"attachment:5","label":"a"}},{"type":"mention","attrs":{"id":"attachment:6","label":"b"}}]},{"type":"image","attrs":{"src":"` + route.Path(route.Attachment, 5) + `"}}]}`)
+	doc := json.RawMessage(
+		`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"attachment:5","label":"a"}},{"type":"mention","attrs":{"id":"attachment:6","label":"b"}}]},{"type":"image","attrs":{"src":"` + route.Path(
+			route.Attachment,
+			5,
+		) + `"}}]}`,
+	)
 	got, err := rewriteDocAttachments(doc, map[int64]int64{5: 77})
 	if err != nil {
 		t.Fatal(err)

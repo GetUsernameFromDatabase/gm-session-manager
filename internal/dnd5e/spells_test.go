@@ -4,8 +4,19 @@ import "testing"
 
 // TestSpellbook reads a spellbook's size from the class's features.
 func TestSpellbook(t *testing.T) {
-	wizard := ClassInfo{Features: []ClassFeature{{Name: "Spellcasting", Description: "The book contains the level 1+ spells you know. It starts with six level 1 Wizard spells of your choice.\n\nWhenever you gain a Wizard level after 1, add two Wizard spells of your choice to your spellbook."}}}
-	lock := ClassInfo{Features: []ClassFeature{{Name: "Pact Magic", Description: "You know two Warlock cantrips of your choice."}}}
+	wizard := ClassInfo{
+		Features: []ClassFeature{
+			{
+				Name:        "Spellcasting",
+				Description: "The book contains the level 1+ spells you know. It starts with six level 1 Wizard spells of your choice.\n\nWhenever you gain a Wizard level after 1, add two Wizard spells of your choice to your spellbook.",
+			},
+		},
+	}
+	lock := ClassInfo{
+		Features: []ClassFeature{
+			{Name: "Pact Magic", Description: "You know two Warlock cantrips of your choice."},
+		},
+	}
 	for _, tt := range []struct {
 		name  string
 		info  ClassInfo

@@ -22,14 +22,14 @@ import (
 // compendium.Habitats (TestHabitatsMatchSchema keeps them in step).
 type habitatCellForm struct {
 	EntryID int64  `form:"entry_id" validate:"required,gt=0"`
-	Habitat string `form:"habitat" validate:"required,oneof=Arctic Coastal Desert Forest Grassland Hill Mountain Planar Swamp Underdark Underwater Urban"`
+	Habitat string `form:"habitat"  validate:"required,oneof=Arctic Coastal Desert Forest Grassland Hill Mountain Planar Swamp Underdark Underwater Urban"`
 	On      bool   `form:"on"`
 }
 
 // habitatBatchForm adds or removes a habitat for every monster whose name
 // contains Filter.
 type habitatBatchForm struct {
-	Filter  string `form:"q" validate:"max=200"`
+	Filter  string `form:"q"       validate:"max=200"`
 	Habitat string `form:"habitat" validate:"required,oneof=Arctic Coastal Desert Forest Grassland Hill Mountain Planar Swamp Underdark Underwater Urban"`
 	On      bool   `form:"on"`
 }
@@ -42,7 +42,7 @@ type habitatFillForm struct {
 // habitatCopyForm gives a monster with no habitats those of another source's copy.
 type habitatCopyForm struct {
 	EntryID int64 `form:"entry_id" validate:"required,gt=0"`
-	FromID  int64 `form:"from_id" validate:"required,gt=0"`
+	FromID  int64 `form:"from_id"  validate:"required,gt=0"`
 }
 
 // habitatAnyForm toggles every habitat of one monster.
@@ -107,14 +107,20 @@ func (a *App) habitatCell(c *gin.Context) error {
 	}
 	ctx := c.Request.Context()
 	if !f.On {
-		if err := a.Store.RemoveMonsterHabitat(ctx, sqlc.RemoveMonsterHabitatParams{EntryID: f.EntryID, Habitat: enum.Habitat(f.Habitat)}); err != nil {
+		if err := a.Store.RemoveMonsterHabitat(
+			ctx,
+			sqlc.RemoveMonsterHabitatParams{EntryID: f.EntryID, Habitat: enum.Habitat(f.Habitat)},
+		); err != nil {
 			return err
 		}
 		a.habitatsChanged()
 		a.render(c, http.StatusOK, views.Flash("", false))
 		return nil
 	}
-	n, err := a.Store.AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: f.EntryID, Habitat: f.Habitat})
+	n, err := a.Store.AddMonsterHabitat(
+		ctx,
+		sqlc.AddMonsterHabitatParams{EntryID: f.EntryID, Habitat: f.Habitat},
+	)
 	if err != nil {
 		return err
 	}
@@ -142,15 +148,24 @@ func (a *App) habitatAny(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		every := !slices.ContainsFunc(compendium.Habitats, func(h enum.Habitat) bool { return !slices.Contains(current, h) })
+		every := !slices.ContainsFunc(
+			compendium.Habitats,
+			func(h enum.Habitat) bool { return !slices.Contains(current, h) },
+		)
 		for _, h := range compendium.Habitats {
 			if every {
-				if err := q.RemoveMonsterHabitat(ctx, sqlc.RemoveMonsterHabitatParams{EntryID: f.EntryID, Habitat: h}); err != nil {
+				if err := q.RemoveMonsterHabitat(
+					ctx,
+					sqlc.RemoveMonsterHabitatParams{EntryID: f.EntryID, Habitat: h},
+				); err != nil {
 					return err
 				}
 				continue
 			}
-			n, err := q.AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: f.EntryID, Habitat: string(h)})
+			n, err := q.AddMonsterHabitat(
+				ctx,
+				sqlc.AddMonsterHabitatParams{EntryID: f.EntryID, Habitat: string(h)},
+			)
 			if err != nil {
 				return err
 			}
@@ -173,7 +188,11 @@ func (a *App) habitatAny(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.render(c, http.StatusOK, views.HabitatRow(sqlc.ListMonstersByNameRow{ID: e.ID, Name: e.Name}, has))
+	a.render(
+		c,
+		http.StatusOK,
+		views.HabitatRow(sqlc.ListMonstersByNameRow{ID: e.ID, Name: e.Name}, has),
+	)
 	return nil
 }
 
@@ -196,7 +215,14 @@ func (a *App) habitatFill(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.render(c, http.StatusOK, templ.Join(views.HabitatGrid(v), views.Toast(fmt.Sprintf("Added %d habitats from other sources' copies.", n), false)))
+	a.render(
+		c,
+		http.StatusOK,
+		templ.Join(
+			views.HabitatGrid(v),
+			views.Toast(fmt.Sprintf("Added %d habitats from other sources' copies.", n), false),
+		),
+	)
 	return nil
 }
 
@@ -240,9 +266,15 @@ func (a *App) habitatBatch(c *gin.Context) error {
 	f.Filter = strings.TrimSpace(f.Filter)
 	var err error
 	if f.On {
-		_, err = a.Store.AddHabitatByName(ctx, sqlc.AddHabitatByNameParams{Habitat: f.Habitat, Filter: f.Filter})
+		_, err = a.Store.AddHabitatByName(
+			ctx,
+			sqlc.AddHabitatByNameParams{Habitat: f.Habitat, Filter: f.Filter},
+		)
 	} else {
-		_, err = a.Store.RemoveHabitatByName(ctx, sqlc.RemoveHabitatByNameParams{Habitat: f.Habitat, Filter: f.Filter})
+		_, err = a.Store.RemoveHabitatByName(
+			ctx,
+			sqlc.RemoveHabitatByNameParams{Habitat: f.Habitat, Filter: f.Filter},
+		)
 	}
 	if err != nil {
 		return err

@@ -13,7 +13,9 @@ import (
 func fighter() Character {
 	s := NewSheet()
 	s.Scores[Con] = 14
-	s.Classes = []ClassLevel{{Slug: "fighter", Name: "Fighter", Level: 3, HitDie: 10, Caster: CasterNone}}
+	s.Classes = []ClassLevel{
+		{Slug: "fighter", Name: "Fighter", Level: 3, HitDie: 10, Caster: CasterNone},
+	}
 	s.Slots[0] = Slot{Max: 2}
 	s.Inventory = []Item{{Name: "Torch", Qty: 3}}
 	return Character{Name: "Tess", HP: 20, MaxHP: 28, TempHP: 5, Sheet: s}
@@ -26,85 +28,234 @@ func TestCommands(t *testing.T) {
 		check   func(c Character, fx Effects) bool
 		wantErr bool
 	}{
-		{"hp -3", perm.ScopeHP, func(c Character, _ Effects) bool { return c.HP == 20 && c.TempHP == 2 }, false},
-		{"hp -8", perm.ScopeHP, func(c Character, _ Effects) bool { return c.HP == 17 && c.TempHP == 0 }, false},
-		{"hp -100", perm.ScopeHP, func(c Character, _ Effects) bool { return c.HP == -75 && c.TempHP == 0 }, false},
+		{
+			"hp -3",
+			perm.ScopeHP,
+			func(c Character, _ Effects) bool { return c.HP == 20 && c.TempHP == 2 },
+			false,
+		},
+		{
+			"hp -8",
+			perm.ScopeHP,
+			func(c Character, _ Effects) bool { return c.HP == 17 && c.TempHP == 0 },
+			false,
+		},
+		{
+			"hp -100",
+			perm.ScopeHP,
+			func(c Character, _ Effects) bool { return c.HP == -75 && c.TempHP == 0 },
+			false,
+		},
 		{"hp +100", perm.ScopeHP, func(c Character, _ Effects) bool { return c.HP == 28 }, false},
 		{"hp =7", perm.ScopeHP, func(c Character, _ Effects) bool { return c.HP == 7 }, false},
 		{"hp 5", 0, nil, true},
 		{`hp ""`, 0, nil, true},
 		{"hp", 0, nil, true},
 		{"temp 8", perm.ScopeHP, func(c Character, _ Effects) bool { return c.TempHP == 8 }, false},
-		{"temp -10", perm.ScopeHP, func(c Character, _ Effects) bool { return c.TempHP == 0 }, false},
-		{"maxhp +2", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.MaxHP == 30 }, false},
-		{"maxhp =10", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.MaxHP == 10 && c.HP == 10 }, false},
+		{
+			"temp -10",
+			perm.ScopeHP,
+			func(c Character, _ Effects) bool { return c.TempHP == 0 },
+			false,
+		},
+		{
+			"maxhp +2",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.MaxHP == 30 },
+			false,
+		},
+		{
+			"maxhp =10",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.MaxHP == 10 && c.HP == 10 },
+			false,
+		},
 		{"toggle prone", perm.ScopeConditions, func(_ Character, fx Effects) bool {
-			return len(fx.Conditions) == 1 && fx.Conditions[0] == CondOp{Op: CondToggle, Slug: "prone"}
+			return len(fx.Conditions) == 1 &&
+				fx.Conditions[0] == CondOp{Op: CondToggle, Slug: "prone"}
 		}, false},
-		{"toggle condition Prone", perm.ScopeConditions, func(_ Character, fx Effects) bool { return fx.Conditions[0].Slug == "prone" }, false},
+		{
+			"toggle condition Prone",
+			perm.ScopeConditions,
+			func(_ Character, fx Effects) bool { return fx.Conditions[0].Slug == "prone" },
+			false,
+		},
 		{"toggle flying", 0, nil, true},
-		{"condition add poisoned spider bite", perm.ScopeConditions, func(_ Character, fx Effects) bool {
-			return fx.Conditions[0] == CondOp{Op: CondAdd, Slug: "poisoned", Note: "spider bite"}
-		}, false},
+		{
+			"condition add poisoned spider bite",
+			perm.ScopeConditions,
+			func(_ Character, fx Effects) bool {
+				return fx.Conditions[0] == CondOp{
+					Op:   CondAdd,
+					Slug: "poisoned",
+					Note: "spider bite",
+				}
+			},
+			false,
+		},
 		{"concentrate Bless", perm.ScopeConditions, func(_ Character, fx Effects) bool {
 			return fx.Conditions[0] == CondOp{Op: CondAdd, Slug: TrackConcentration, Note: "Bless"}
 		}, false},
-		{"exhaustion +1", perm.ScopeConditions, func(_ Character, fx Effects) bool { return fx.Conditions[0].Delta == 1 }, false},
+		{
+			"exhaustion +1",
+			perm.ScopeConditions,
+			func(_ Character, fx Effects) bool { return fx.Conditions[0].Delta == 1 },
+			false,
+		},
 		{"exhaustion =3", 0, nil, true},
-		{"deathsave fail", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.DeathSaves.Failures == 1 }, false},
-		{"slot use 1", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Slots[0].Used == 1 }, false},
+		{
+			"deathsave fail",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.DeathSaves.Failures == 1 },
+			false,
+		},
+		{
+			"slot use 1",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.Slots[0].Used == 1 },
+			false,
+		},
 		{"slot use 2", 0, nil, true},
 		{"slot use 10", 0, nil, true},
-		{"slot max 2 3", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Slots[1].Max == 3 }, false},
+		{
+			"slot max 2 3",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.Slots[1].Max == 3 },
+			false,
+		},
 		{"rest long", perm.ScopeSheet, func(c Character, fx Effects) bool {
 			return c.HP == 28 && c.TempHP == 0 && fx.Conditions[0].Op == CondExhaustion
 		}, false},
 		{`item add "Rope (50 ft)" 2`, perm.ScopeSheet, func(c Character, _ Effects) bool {
-			return len(c.Sheet.Inventory) == 2 && c.Sheet.Inventory[1].Name == "Rope (50 ft)" && c.Sheet.Inventory[1].Qty == 2
+			return len(c.Sheet.Inventory) == 2 && c.Sheet.Inventory[1].Name == "Rope (50 ft)" &&
+				c.Sheet.Inventory[1].Qty == 2
 		}, false},
-		{"item add torch", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Inventory[0].Qty == 4 }, false},
-		{"item remove Torch 3", perm.ScopeSheet, func(c Character, _ Effects) bool { return len(c.Sheet.Inventory) == 0 }, false},
+		{
+			"item add torch",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.Inventory[0].Qty == 4 },
+			false,
+		},
+		{
+			"item remove Torch 3",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return len(c.Sheet.Inventory) == 0 },
+			false,
+		},
 		{"item remove Shield", 0, nil, true},
 		{`item add "unclosed`, 0, nil, true},
 		// Names quoted by strconv.Quote, as the sheet's buttons send them.
 		{`item add "Ring of \"Luck\" \\ x y"`, perm.ScopeSheet, func(c Character, _ Effects) bool {
 			return c.Sheet.Inventory[1].Name == "Ring of \"Luck\" \\ x y"
 		}, false},
-		{"coin gp +10", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Coins.GP == 10 }, false},
+		{
+			"coin gp +10",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.Coins.GP == 10 },
+			false,
+		},
 		{"coin gp -1", 0, nil, true},
-		{"coin gp +10 SP =3", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Coins.GP == 10 && c.Sheet.Coins.SP == 3 }, false},
+		{
+			"coin gp +10 SP =3",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.Coins.GP == 10 && c.Sheet.Coins.SP == 3 },
+			false,
+		},
 		{"coin gp +10 sp -1", 0, nil, true},
 		{"coin gp", 0, nil, true},
-		{"item set torch 7", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Inventory[0].Qty == 7 }, false},
-		{"item set Torch 0", perm.ScopeSheet, func(c Character, _ Effects) bool { return len(c.Sheet.Inventory) == 0 }, false},
+		{
+			"item set torch 7",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.Inventory[0].Qty == 7 },
+			false,
+		},
+		{
+			"item set Torch 0",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return len(c.Sheet.Inventory) == 0 },
+			false,
+		},
 		{"item set Torch", 0, nil, true},
 		{"item add Torch 0", 0, nil, true},
-		{"set ability str 16", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Scores[Str] == 16 }, false},
+		{
+			"set ability str 16",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.Scores[Str] == 16 },
+			false,
+		},
 		{"set ability str 31", 0, nil, true},
-		{"set name Tess the Bold", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Name == "Tess the Bold" }, false},
-		{"prof add skill athletics", perm.ScopeSheet, func(c Character, _ Effects) bool { return len(c.Sheet.SkillProfs) == 1 }, false},
+		{
+			"set name Tess the Bold",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Name == "Tess the Bold" },
+			false,
+		},
+		{
+			"prof add skill athletics",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return len(c.Sheet.SkillProfs) == 1 },
+			false,
+		},
 		{"prof add skill flying", 0, nil, true},
 		{"prof set skill stealth expertise", perm.ScopeSheet, func(c Character, _ Effects) bool {
-			return c.Sheet.ProfLevel("stealth") == ProfExpertise && slices.Contains(c.Sheet.SkillProfs, "stealth")
+			return c.Sheet.ProfLevel("stealth") == ProfExpertise &&
+				slices.Contains(c.Sheet.SkillProfs, "stealth")
 		}, false},
-		{"prof set skill stealth none", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.ProfLevel("stealth") == ProfNone }, false},
-		{"prof set save con proficient", perm.ScopeSheet, func(c Character, _ Effects) bool { return slices.Contains(c.Sheet.SaveProfs, Con) }, false},
+		{
+			"prof set skill stealth none",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.ProfLevel("stealth") == ProfNone },
+			false,
+		},
+		{
+			"prof set save con proficient",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return slices.Contains(c.Sheet.SaveProfs, Con) },
+			false,
+		},
 		{"prof set save con expertise", 0, nil, true},
 		{"prof set skill flying proficient", 0, nil, true},
-		{"set backstory Raised by wolves", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Backstory == "Raised by wolves" }, false},
-		{"weapon add Longsword str 1d8 slashing prof", perm.ScopeSheet, func(c Character, _ Effects) bool {
-			return c.Sheet.Weapons[0] == Weapon{Name: "Longsword", Ability: Str, Dice: "1d8", DamageType: "slashing", Proficient: true}
-		}, false},
+		{
+			"set backstory Raised by wolves",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.Backstory == "Raised by wolves" },
+			false,
+		},
+		{
+			"weapon add Longsword str 1d8 slashing prof",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool {
+				return c.Sheet.Weapons[0] == Weapon{
+					Name:       "Longsword",
+					Ability:    Str,
+					Dice:       "1d8",
+					DamageType: "slashing",
+					Proficient: true,
+				}
+			},
+			false,
+		},
 		{"weapon add Club luck 1d4", 0, nil, true},
 		{"weapon remove Longsword", 0, nil, true},
-		{`mod add skill.stealth +2 "Cloak of Elvenkind"`, perm.ScopeSheet, func(c Character, _ Effects) bool {
-			return c.Sheet.Bonus("skill.stealth") == 2 && c.Sheet.Modifiers[0].Note == "Cloak of Elvenkind"
-		}, false},
+		{
+			`mod add skill.stealth +2 "Cloak of Elvenkind"`,
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool {
+				return c.Sheet.Bonus("skill.stealth") == 2 &&
+					c.Sheet.Modifiers[0].Note == "Cloak of Elvenkind"
+			},
+			false,
+		},
 		{"mod add ac +1", 0, nil, true},
 		{"mod add ac 0 nothing", 0, nil, true},
 		{"mod add flying +1 wings", 0, nil, true},
 		{"mod remove ac Ring", 0, nil, true},
-		{"inspiration", perm.ScopeSheet, func(c Character, _ Effects) bool { return c.Sheet.Inspiration }, false},
+		{
+			"inspiration",
+			perm.ScopeSheet,
+			func(c Character, _ Effects) bool { return c.Sheet.Inspiration },
+			false,
+		},
 		{"dance", 0, nil, true},
 		{"", 0, nil, true},
 	}
@@ -198,7 +349,14 @@ func TestConIncreaseAddsHPForEarlierLevels(t *testing.T) {
 			t.Fatal(err)
 		}
 		if c.MaxHP != step.max || c.HP != step.hp {
-			t.Errorf("%s: max %d hp %d, want %d and %d", step.line, c.MaxHP, c.HP, step.max, step.hp)
+			t.Errorf(
+				"%s: max %d hp %d, want %d and %d",
+				step.line,
+				c.MaxHP,
+				c.HP,
+				step.max,
+				step.hp,
+			)
 		}
 	}
 
@@ -295,11 +453,17 @@ func TestCustomMods(t *testing.T) {
 			t.Errorf("%s: err = %v", tt.in, err)
 		}
 	}
-	if got := c.Sheet.Mods(ModAC); len(got) != 1 || got[0] != (CustomMod{Target: ModAC, Value: 2, Note: "Ring +2"}) || c.Sheet.Bonus(ModInit) != -1 {
+	acMods := c.Sheet.Mods(ModAC)
+	if len(acMods) != 1 || acMods[0] != (CustomMod{Target: ModAC, Value: 2, Note: "Ring +2"}) ||
+		c.Sheet.Bonus(ModInit) != -1 {
 		t.Errorf("after edits: %+v", c.Sheet.Modifiers)
 	}
 	cmd, _ := Parse("weapon remove rapier")
-	if _, err := cmd.Apply(&c, Env{}); err != nil || len(c.Sheet.Weapons) != 0 || len(c.Sheet.Mods("attack.Rapier")) != 0 {
+	if _, err := cmd.Apply(
+		&c,
+		Env{},
+	); err != nil || len(c.Sheet.Weapons) != 0 ||
+		len(c.Sheet.Mods("attack.Rapier")) != 0 {
 		t.Errorf("weapon remove left %+v %+v (%v)", c.Sheet.Weapons, c.Sheet.Modifiers, err)
 	}
 }
@@ -338,16 +502,44 @@ func TestSlotMaxima(t *testing.T) {
 		{"wizard 5", []ClassLevel{{Level: 5, Caster: CasterFull}}, 4, 3, 0, 0},
 		{"paladin 1 rounds up", []ClassLevel{{Level: 1, Caster: CasterHalf}}, 2, 1, 0, 0},
 		{"paladin 5", []ClassLevel{{Level: 5, Caster: CasterHalf}}, 4, 2, 0, 0},
-		{"wizard 3 paladin 2", []ClassLevel{{Level: 3, Caster: CasterFull}, {Level: 2, Caster: CasterHalf}}, 4, 2, 0, 0},
+		{
+			"wizard 3 paladin 2",
+			[]ClassLevel{{Level: 3, Caster: CasterFull}, {Level: 2, Caster: CasterHalf}},
+			4,
+			2,
+			0,
+			0,
+		},
 		{"wizard 20", []ClassLevel{{Level: 20, Caster: CasterFull}}, 4, 9, 0, 0},
 		{"knight 2 has none yet", []ClassLevel{{Level: 2, Caster: CasterThird}}, 0, 0, 0, 0},
 		{"knight 3", []ClassLevel{{Level: 3, Caster: CasterThird}}, 2, 1, 0, 0},
 		{"knight 4", []ClassLevel{{Level: 4, Caster: CasterThird}}, 3, 1, 0, 0},
 		{"knight 7", []ClassLevel{{Level: 7, Caster: CasterThird}}, 4, 2, 0, 0},
 		{"knight 19", []ClassLevel{{Level: 19, Caster: CasterThird}}, 4, 4, 0, 0},
-		{"wizard 4 knight 3 rounds down", []ClassLevel{{Level: 4, Caster: CasterFull}, {Level: 3, Caster: CasterThird}}, 4, 3, 0, 0},
-		{"wizard 5 knight 6", []ClassLevel{{Level: 5, Caster: CasterFull}, {Level: 6, Caster: CasterThird}}, 4, 4, 0, 0},
-		{"knight 5 warlock 3, pact is no spellcaster slot", []ClassLevel{{Level: 5, Caster: CasterThird}, {Level: 3, Caster: CasterPact}}, 3, 1, 2, 2},
+		{
+			"wizard 4 knight 3 rounds down",
+			[]ClassLevel{{Level: 4, Caster: CasterFull}, {Level: 3, Caster: CasterThird}},
+			4,
+			3,
+			0,
+			0,
+		},
+		{
+			"wizard 5 knight 6",
+			[]ClassLevel{{Level: 5, Caster: CasterFull}, {Level: 6, Caster: CasterThird}},
+			4,
+			4,
+			0,
+			0,
+		},
+		{
+			"knight 5 warlock 3, pact is no spellcaster slot",
+			[]ClassLevel{{Level: 5, Caster: CasterThird}, {Level: 3, Caster: CasterPact}},
+			3,
+			1,
+			2,
+			2,
+		},
 		{"warlock 5", []ClassLevel{{Level: 5, Caster: CasterPact}}, 0, 0, 2, 3},
 		{"warlock 11", []ClassLevel{{Level: 11, Caster: CasterPact}}, 0, 0, 3, 5},
 	}
@@ -360,7 +552,8 @@ func TestSlotMaxima(t *testing.T) {
 					highest = i + 1
 				}
 			}
-			if slots[0] != tt.first || highest != tt.highest || pact != tt.pact || pactLevel != tt.pactLevel {
+			if slots[0] != tt.first || highest != tt.highest || pact != tt.pact ||
+				pactLevel != tt.pactLevel {
 				t.Errorf("slots %v pact %d@%d", slots, pact, pactLevel)
 			}
 		})
@@ -407,7 +600,8 @@ func TestLevelUp(t *testing.T) {
 	if err := c.LevelUp(LevelUpChoice{Class: wizard}); err != nil {
 		t.Fatal(err)
 	}
-	if c.MaxHP != 8 || c.HP != 8 || c.Sheet.Level() != 1 || len(c.Sheet.SaveProfs) != 2 || c.Sheet.Slots[0].Max != 2 {
+	if c.MaxHP != 8 || c.HP != 8 || c.Sheet.Level() != 1 || len(c.Sheet.SaveProfs) != 2 ||
+		c.Sheet.Slots[0].Max != 2 {
 		t.Fatalf("level 1: %+v", c)
 	}
 	if len(c.Sheet.Features) != 1 || c.Sheet.Features[0].Name != "Arcane Recovery" {
@@ -437,7 +631,9 @@ func TestLevelUp(t *testing.T) {
 	if !plan.ASI || plan.Columns["Cantrips"] != "4" {
 		t.Errorf("plan 4: %+v", plan)
 	}
-	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{Int}, Feat: "Alert"}); err == nil {
+	if err := c.LevelUp(
+		LevelUpChoice{Class: wizard, ASI: []string{Int}, Feat: "Alert"},
+	); err == nil {
 		t.Error("feat and ASI together accepted")
 	}
 	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{Int}}); err == nil {
@@ -451,10 +647,18 @@ func TestLevelUp(t *testing.T) {
 	}
 
 	// Multiclassing adds a class without its saving throws.
-	fighterClass := ClassInfo{Slug: "fighter", Name: "Fighter", HitDie: 10, Caster: CasterNone, Saves: []string{Str, Con}}
+	fighterClass := ClassInfo{
+		Slug:   "fighter",
+		Name:   "Fighter",
+		HitDie: 10,
+		Caster: CasterNone,
+		Saves:  []string{Str, Con},
+	}
 	// Unmet prerequisites warn (Fighter needs STR or DEX 13) but do not block.
-	if plan, _ := c.Sheet.Plan(fighterClass); len(plan.Warnings) != 1 || !strings.Contains(plan.Warnings[0], "Strength or Dexterity") {
-		t.Errorf("multiclass warnings %q", plan.Warnings)
+	fighterPlan, _ := c.Sheet.Plan(fighterClass)
+	if len(fighterPlan.Warnings) != 1 ||
+		!strings.Contains(fighterPlan.Warnings[0], "Strength or Dexterity") {
+		t.Errorf("multiclass warnings %q", fighterPlan.Warnings)
 	}
 	if plan, _ := c.Sheet.Plan(wizard); len(plan.Warnings) != 0 {
 		t.Errorf("same class warned: %q", plan.Warnings)
@@ -468,7 +672,8 @@ func TestLevelUp(t *testing.T) {
 	if got := c.Sheet.DefaultClass(); got != "fighter" {
 		t.Errorf("default class after multiclass %q", got)
 	}
-	if len(c.Sheet.Classes) != 2 || len(c.Sheet.SaveProfs) != 2 || c.Sheet.ClassSummary() != "Wizard 4 (Evoker) / Fighter 1" {
+	if len(c.Sheet.Classes) != 2 || len(c.Sheet.SaveProfs) != 2 ||
+		c.Sheet.ClassSummary() != "Wizard 4 (Evoker) / Fighter 1" {
 		t.Errorf("multiclass: %+v saves %v", c.Sheet.Classes, c.Sheet.SaveProfs)
 	}
 	if err := c.LevelUp(LevelUpChoice{Class: wizard, ASI: []string{Str}}); err == nil {
@@ -483,15 +688,23 @@ func TestLevelUpSubclassAndPools(t *testing.T) {
 		Slug: "monk", Name: "Monk", HitDie: 8, Caster: CasterNone,
 		Table: map[string]map[int]string{"Focus Points": {2: "2", 3: "3"}},
 		Features: []ClassFeature{
-			{Name: "Monk's Focus", Description: "Your Monk level determines the number of points you have, as shown in the Focus Points column of the Monk Features table.", Levels: []int{2}},
+			{
+				Name:        "Monk's Focus",
+				Description: "Your Monk level determines the number of points you have, as shown in the Focus Points column of the Monk Features table.",
+				Levels:      []int{2},
+			},
 			{Name: "Monastic Tradition", Levels: []int{3}, Subclass: true},
 		},
 		SubclassFeatures: []ClassFeature{{Name: "Hands of Healing", Levels: []int{3}}},
 	}
 	c := Character{Name: "Tam", Sheet: NewSheet()}
-	c.Sheet.Classes = []ClassLevel{{Slug: "monk", Name: "Monk", Level: 2, HitDie: 8, Caster: CasterNone}}
+	c.Sheet.Classes = []ClassLevel{
+		{Slug: "monk", Name: "Monk", Level: 2, HitDie: 8, Caster: CasterNone},
+	}
 	// Added before the parser knew Focus Points: no uses yet.
-	c.Sheet.Features = []Feature{{Name: "Monk's Focus", Source: "Monk", Description: monk.Features[0].Description}}
+	c.Sheet.Features = []Feature{
+		{Name: "Monk's Focus", Source: "Monk", Description: monk.Features[0].Description},
+	}
 
 	plan, err := c.Sheet.Plan(monk)
 	if err != nil || !plan.NeedsSubclass || len(plan.Features) != 2 {
@@ -503,7 +716,10 @@ func TestLevelUpSubclassAndPools(t *testing.T) {
 	if got := c.Sheet.MaxUses(c.Sheet.Features[0].Uses); got != 3 {
 		t.Errorf("focus points %d, uses %+v", got, c.Sheet.Features[0].Uses)
 	}
-	if !slices.ContainsFunc(c.Sheet.Features, func(f Feature) bool { return f.Name == "Hands of Healing" }) {
+	if !slices.ContainsFunc(
+		c.Sheet.Features,
+		func(f Feature) bool { return f.Name == "Hands of Healing" },
+	) {
 		t.Errorf("subclass feature missing: %+v", c.Sheet.Features)
 	}
 }
@@ -555,7 +771,15 @@ func TestDefenses(t *testing.T) {
 	} {
 		d.ResistAll = tt.resistAll
 		if got := d.Taken(tt.n, tt.kind, tt.when); got != tt.want {
-			t.Errorf("Taken(%d, %q, %d) petrified %v = %d, want %d", tt.n, tt.kind, tt.when, tt.resistAll, got, tt.want)
+			t.Errorf(
+				"Taken(%d, %q, %d) petrified %v = %d, want %d",
+				tt.n,
+				tt.kind,
+				tt.when,
+				tt.resistAll,
+				got,
+				tt.want,
+			)
 		}
 	}
 
@@ -647,7 +871,8 @@ func TestResistances(t *testing.T) {
 			t.Errorf("%s: %v", tt.line, err)
 		}
 	}
-	if !slices.Equal(c.Sheet.Immunities, []string{"poison"}) || !slices.Equal(c.Sheet.Vulnerabilities, []string{"radiant"}) {
+	if !slices.Equal(c.Sheet.Immunities, []string{"poison"}) ||
+		!slices.Equal(c.Sheet.Vulnerabilities, []string{"radiant"}) {
 		t.Errorf("immunities %q, vulnerabilities %q", c.Sheet.Immunities, c.Sheet.Vulnerabilities)
 	}
 	s := Sheet{Classes: []ClassLevel{{Name: "Warlock"}}}
@@ -655,17 +880,27 @@ func TestResistances(t *testing.T) {
 		t.Error("SpellAbilityOf")
 	}
 	// A multiclass casts each class's spells with that class's ability.
-	multi := Sheet{Classes: []ClassLevel{{Slug: "wizard", Name: "Wizard"}, {Slug: "cleric", Name: "Cleric"}}}
+	multi := Sheet{
+		Classes: []ClassLevel{{Slug: "wizard", Name: "Wizard"}, {Slug: "cleric", Name: "Cleric"}},
+	}
 	if multi.SpellAbilityOf(Spell{Class: "cleric"}) != Wis || multi.SpellAbilityOf(Spell{}) != Int {
 		t.Error("SpellAbilityOf multiclass")
 	}
 	// A third caster (Eldritch Knight) casts with Intelligence; the header lists each ability once.
 	knight := Sheet{
-		Classes: []ClassLevel{{Slug: "fighter", Name: "Fighter", Caster: CasterThird}, {Slug: "cleric", Name: "Cleric"}},
-		Spells:  []Spell{{Class: "fighter"}, {Class: "cleric"}, {Ability: Cha}},
+		Classes: []ClassLevel{
+			{Slug: "fighter", Name: "Fighter", Caster: CasterThird},
+			{Slug: "cleric", Name: "Cleric"},
+		},
+		Spells: []Spell{{Class: "fighter"}, {Class: "cleric"}, {Ability: Cha}},
 	}
-	if knight.SpellAbilityOf(Spell{Class: "fighter"}) != Int || !slices.Equal(knight.SpellAbilities(), []string{Int, Wis, Cha}) {
-		t.Errorf("third caster: %q, abilities %q", knight.SpellAbilityOf(Spell{Class: "fighter"}), knight.SpellAbilities())
+	if knight.SpellAbilityOf(Spell{Class: "fighter"}) != Int ||
+		!slices.Equal(knight.SpellAbilities(), []string{Int, Wis, Cha}) {
+		t.Errorf(
+			"third caster: %q, abilities %q",
+			knight.SpellAbilityOf(Spell{Class: "fighter"}),
+			knight.SpellAbilities(),
+		)
 	}
 }
 
@@ -693,7 +928,14 @@ func TestCompletions(t *testing.T) {
 		{"set ability", "<ab>", Str},
 	}
 	for _, tt := range tests {
-		if got := Completions(s, strings.Fields(tt.words), tt.slot); !slices.Contains(got, tt.want) {
+		if got := Completions(
+			s,
+			strings.Fields(tt.words),
+			tt.slot,
+		); !slices.Contains(
+			got,
+			tt.want,
+		) {
 			t.Errorf("%s %s: %q lacks %q", tt.words, tt.slot, got, tt.want)
 		}
 	}
@@ -749,7 +991,10 @@ func TestMasteryCommand(t *testing.T) {
 }
 
 func TestMasteryLimit(t *testing.T) {
-	fighterInfo := ClassInfo{Slug: "fighter", Table: map[string]map[int]string{MasteryColumn: {1: "3", 4: "4", 10: "5"}}}
+	fighterInfo := ClassInfo{
+		Slug:  "fighter",
+		Table: map[string]map[int]string{MasteryColumn: {1: "3", 4: "4", 10: "5"}},
+	}
 	rogueInfo := ClassInfo{Slug: "rogue", Table: map[string]map[int]string{MasteryColumn: {1: "2"}}}
 	wizardInfo := ClassInfo{Slug: "wizard", Table: map[string]map[int]string{"Cantrips": {1: "3"}}}
 	infos := map[string]ClassInfo{"fighter": fighterInfo, "rogue": rogueInfo, "wizard": wizardInfo}

@@ -33,7 +33,11 @@ func TestWizardStepSaves(t *testing.T) {
 		}
 	}
 	if len(wizardStepSaves) != len(wizardSteps) {
-		t.Errorf("wizardStepSaves has %d steps, wizardSteps %d", len(wizardStepSaves), len(wizardSteps))
+		t.Errorf(
+			"wizardStepSaves has %d steps, wizardSteps %d",
+			len(wizardStepSaves),
+			len(wizardSteps),
+		)
 	}
 }
 
@@ -67,16 +71,50 @@ func TestCreationWizard(t *testing.T) {
 	e.allowEntrySources(t)
 	player := e.token(t, enum.RolePlayer)
 	base := route.Path(route.CharacterCreate, e.characterID)
-	if w := e.do(t, http.MethodGet, base, player, nil, false); w.Header().Get("Location") != base+"/class" {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		base,
+		player,
+		nil,
+		false,
+	); w.Header().
+		Get("Location") !=
+		base+"/class" {
 		t.Fatalf("start: %d %v", w.Code, w.Header())
 	}
-	if w := e.do(t, http.MethodGet, base+"/class?pick=wizard", player, nil, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Choose Wizard") {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		base+"/class?pick=wizard",
+		player,
+		nil,
+		false,
+	); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), "Choose Wizard") {
 		t.Fatalf("class page: %d %s", w.Code, w.Body)
 	}
-	if w := e.do(t, http.MethodGet, base+"/abilities", player, nil, false); !strings.Contains(w.Body.String(), "Choose these first") {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		base+"/abilities",
+		player,
+		nil,
+		false,
+	); !strings.Contains(
+		w.Body.String(),
+		"Choose these first",
+	) {
 		t.Errorf("abilities page before a background does not ask for it: %s", w.Body)
 	}
-	scores := url.Values{"str": {"8"}, "dex": {"14"}, "con": {"14"}, "int": {"15"}, "wis": {"12"}, "cha": {"10"}}
+	scores := url.Values{
+		"str": {"8"},
+		"dex": {"14"},
+		"con": {"14"},
+		"int": {"15"},
+		"wis": {"12"},
+		"cha": {"10"},
+	}
 	raised := maps.Clone(scores)
 	raised.Set("mode", "two")
 	raised.Set("plus2", "int")
@@ -101,7 +139,17 @@ func TestCreationWizard(t *testing.T) {
 		{"review", nil, route.Path(route.Character, e.characterID)},
 	} {
 		if step.step == "abilities" {
-			if w := e.do(t, http.MethodGet, base+"/abilities", player, nil, false); !strings.Contains(w.Body.String(), "Sage: ability score increases") {
+			if w := e.do(
+				t,
+				http.MethodGet,
+				base+"/abilities",
+				player,
+				nil,
+				false,
+			); !strings.Contains(
+				w.Body.String(),
+				"Sage: ability score increases",
+			) {
 				t.Errorf("abilities page lacks the background's increases: %s", w.Body)
 			}
 			// Refused, the page keeps the scores and increases asked for and
@@ -127,7 +175,11 @@ func TestCreationWizard(t *testing.T) {
 				{form: low, at: []string{"str", "cha"}},
 			} {
 				w := e.do(t, http.MethodPost, base+"/abilities", player, bad.form, false)
-				if lost := lostPicks(w.Body.String(), bad.form); w.Code != http.StatusUnprocessableEntity || len(lost) > 0 {
+				if lost := lostPicks(
+					w.Body.String(),
+					bad.form,
+				); w.Code != http.StatusUnprocessableEntity ||
+					len(lost) > 0 {
 					t.Errorf("abilities %v: %d, lost %v", bad.form, w.Code, lost)
 				}
 				for _, at := range bad.at {
@@ -140,10 +192,23 @@ func TestCreationWizard(t *testing.T) {
 		if step.step == "details" {
 			// A blank name and an unknown size are refused at their fields
 			// together, and the page keeps the rest as typed.
-			blank := url.Values{"name": {"  "}, "backstory": {"Raised in a library."}, "size": {"Huge-ish"}, "vision": {"Darkvision 60 ft"}}
+			blank := url.Values{
+				"name":      {"  "},
+				"backstory": {"Raised in a library."},
+				"size":      {"Huge-ish"},
+				"vision":    {"Darkvision 60 ft"},
+			}
 			w := e.do(t, http.MethodPost, base+"/details", player, blank, false)
-			if w.Code != http.StatusUnprocessableEntity || !errorAt(w.Body.String(), views.FieldName) || !errorAt(w.Body.String(), views.FieldSize) {
-				t.Errorf("details %v: %d, error at name %v, at size %v", blank, w.Code, errorAt(w.Body.String(), views.FieldName), errorAt(w.Body.String(), views.FieldSize))
+			if w.Code != http.StatusUnprocessableEntity ||
+				!errorAt(w.Body.String(), views.FieldName) ||
+				!errorAt(w.Body.String(), views.FieldSize) {
+				t.Errorf(
+					"details %v: %d, error at name %v, at size %v",
+					blank,
+					w.Code,
+					errorAt(w.Body.String(), views.FieldName),
+					errorAt(w.Body.String(), views.FieldSize),
+				)
 			}
 			for _, kept := range []string{"Raised in a library.", `value="Darkvision 60 ft"`} {
 				if !strings.Contains(w.Body.String(), kept) {
@@ -153,12 +218,26 @@ func TestCreationWizard(t *testing.T) {
 		}
 		if step.step == "choices" {
 			for _, bad := range []url.Values{{"language": {"Elvish", "Dwarvish", "Orc"}}, {"trait_keen-senses": {"Arcana"}}} {
-				if w := e.do(t, http.MethodPost, base+"/choices", player, bad, false); w.Code != http.StatusUnprocessableEntity {
+				if w := e.do(
+					t,
+					http.MethodPost,
+					base+"/choices",
+					player,
+					bad,
+					false,
+				); w.Code != http.StatusUnprocessableEntity {
 					t.Errorf("choices %v: %d", bad, w.Code)
 				}
 			}
 			// Every wrong group shows its own error in one refusal.
-			w := e.do(t, http.MethodPost, base+"/choices", player, url.Values{"language": {"Orc"}, "trait_keen-senses": {"Arcana"}}, false)
+			w := e.do(
+				t,
+				http.MethodPost,
+				base+"/choices",
+				player,
+				url.Values{"language": {"Orc"}, "trait_keen-senses": {"Arcana"}},
+				false,
+			)
 			for _, at := range []string{"language", "trait_keen-senses"} {
 				if !errorAt(w.Body.String(), at) {
 					t.Errorf("choices: no error at %s", at)
@@ -169,7 +248,9 @@ func TestCreationWizard(t *testing.T) {
 			}
 		}
 		w := e.do(t, http.MethodPost, base+"/"+step.step, player, step.form, false)
-		if got := w.Header().Get("Location"); w.Code != http.StatusSeeOther || !strings.HasSuffix(got, step.next) {
+		if got := w.Header().
+			Get("Location"); w.Code != http.StatusSeeOther ||
+			!strings.HasSuffix(got, step.next) {
 			t.Fatalf("%s: %d %q %s", step.step, w.Code, got, w.Body)
 		}
 	}
@@ -193,28 +274,58 @@ func TestCreationWizard(t *testing.T) {
 	if sh.Size != "Medium" || sh.Vision != "Darkvision 60 ft" {
 		t.Errorf("size %q vision %q", sh.Size, sh.Vision)
 	}
-	if sh.Species != "Goliath" || sh.Speed != 35 || sh.Background != "Sage" || sh.Scores["int"] != 17 || sh.Scores["con"] != 15 || sh.Coins.GP != 50 {
-		t.Errorf("species %q speed %d background %q int %d con %d gp %d", sh.Species, sh.Speed, sh.Background, sh.Scores["int"], sh.Scores["con"], sh.Coins.GP)
+	if sh.Species != "Goliath" || sh.Speed != 35 || sh.Background != "Sage" ||
+		sh.Scores["int"] != 17 ||
+		sh.Scores["con"] != 15 ||
+		sh.Coins.GP != 50 {
+		t.Errorf(
+			"species %q speed %d background %q int %d con %d gp %d",
+			sh.Species,
+			sh.Speed,
+			sh.Background,
+			sh.Scores["int"],
+			sh.Scores["con"],
+			sh.Coins.GP,
+		)
 	}
 	// The choices: the ancestry names its feature. Fire Bolt, picked from the
 	// class list, is another ancestry's cantrip, so it keeps the class's ability.
 	if sh.SpeciesAbility != "wis" {
 		t.Errorf("species ability %q", sh.SpeciesAbility)
 	}
-	if !slices.Equal(sh.Languages, []string{"Common", "Dwarvish", "Elvish"}) || !slices.Contains(sh.SkillProfs, "perception") ||
-		len(sh.Spells) != 1 || sh.Spells[0].Slug != "fire-bolt" || sh.Spells[0].Ability != "" || !slices.Contains(sh.Feats, "Alert") {
-		t.Errorf("languages %q skills %q spells %+v feats %q", sh.Languages, sh.SkillProfs, sh.Spells, sh.Feats)
+	if !slices.Equal(sh.Languages, []string{"Common", "Dwarvish", "Elvish"}) ||
+		!slices.Contains(sh.SkillProfs, "perception") ||
+		len(sh.Spells) != 1 ||
+		sh.Spells[0].Slug != "fire-bolt" ||
+		sh.Spells[0].Ability != "" ||
+		!slices.Contains(sh.Feats, "Alert") {
+		t.Errorf(
+			"languages %q skills %q spells %+v feats %q",
+			sh.Languages,
+			sh.SkillProfs,
+			sh.Spells,
+			sh.Feats,
+		)
 	}
 	for _, f := range []string{"Powerful Build", "Giant Ancestry (Cloud's Jaunt (Cloud Giant))", "Alert", "Magic Initiate (Wizard)", "Arcane Recovery"} {
 		if !strings.Contains(row.SheetJson, `"name":"`+f+`"`) {
 			t.Errorf("missing feature %s: %s", f, row.SheetJson)
 		}
 	}
-	if strings.Count(row.SheetJson, `"name":"Powerful Build"`) != 1 || !sh.SetUp("review") || !strings.Contains(strings.Join(sh.SkillProfs, ","), "arcana") || sh.SetupSnapshots != nil {
+	if strings.Count(row.SheetJson, `"name":"Powerful Build"`) != 1 || !sh.SetUp("review") ||
+		!strings.Contains(strings.Join(sh.SkillProfs, ","), "arcana") ||
+		sh.SetupSnapshots != nil {
 		t.Errorf("sheet after the wizard: %s", row.SheetJson)
 	}
 	// Finished: no step can be redone in the wizard any more.
-	if w := e.do(t, http.MethodPost, base+"/species/change", player, nil, false); w.Code != http.StatusUnprocessableEntity {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		base+"/species/change",
+		player,
+		nil,
+		false,
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("change after the review: %d", w.Code)
 	}
 }
@@ -235,12 +346,20 @@ func TestWizardChange(t *testing.T) {
 		{"species", url.Values{"pick": {"human"}}},
 		{"abilities", url.Values{"str": {"8"}, "dex": {"14"}, "con": {"14"}, "int": {"15"}, "wis": {"12"}, "cha": {"10"}}},
 	} {
-		if w := e.do(t, http.MethodPost, base+"/"+step.step, player, step.form, false); w.Code != http.StatusSeeOther {
+		if w := e.do(
+			t,
+			http.MethodPost,
+			base+"/"+step.step,
+			player,
+			step.form,
+			false,
+		); w.Code != http.StatusSeeOther {
 			t.Fatalf("%s: %d %s", step.step, w.Code, w.Body)
 		}
 	}
 	// A level-up taken mid-creation: undone with the step, so Revert must not bring it back.
-	if err := e.q().CreateLevelUp(t.Context(), sqlc.CreateLevelUpParams{CharacterID: e.characterID, MaxHp: 8, SheetJson: "{}"}); err != nil {
+	if err := e.q().
+		CreateLevelUp(t.Context(), sqlc.CreateLevelUpParams{CharacterID: e.characterID, MaxHp: 8, SheetJson: "{}"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {
@@ -252,7 +371,14 @@ func TestWizardChange(t *testing.T) {
 		{"background", http.StatusSeeOther},
 		{"species", http.StatusUnprocessableEntity}, // undone with the background
 	} {
-		if w := e.do(t, http.MethodPost, route.Path(route.CharacterCreateChange, e.characterID, c.step), player, nil, false); w.Code != c.code {
+		if w := e.do(
+			t,
+			http.MethodPost,
+			route.Path(route.CharacterCreateChange, e.characterID, c.step),
+			player,
+			nil,
+			false,
+		); w.Code != c.code {
 			t.Errorf("change %s: %d, want %d", c.step, w.Code, c.code)
 		}
 	}
@@ -264,8 +390,11 @@ func TestWizardChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sh.Background != "" || sh.Species != "" || sh.Scores["con"] != 10 || !slices.Equal(sh.SetupDone, []string{"class"}) ||
-		!slices.Equal(slices.Sorted(maps.Keys(sh.SetupSnapshots)), []string{"class"}) || sh.ClassSummary() != "Wizard 1" || row.MaxHp != 6 {
+	if sh.Background != "" || sh.Species != "" || sh.Scores["con"] != 10 ||
+		!slices.Equal(sh.SetupDone, []string{"class"}) ||
+		!slices.Equal(slices.Sorted(maps.Keys(sh.SetupSnapshots)), []string{"class"}) ||
+		sh.ClassSummary() != "Wizard 1" ||
+		row.MaxHp != 6 {
 		t.Errorf("after changing the background: max hp %d, sheet %s", row.MaxHp, row.SheetJson)
 	}
 	if n, err := e.q().CountLevelUps(t.Context(), e.characterID); err != nil || n != 0 {
@@ -288,7 +417,14 @@ func TestWizardStepSavedTwice(t *testing.T) {
 		{views.StepBackground, url.Values{"pick": {"sage"}}, http.StatusUnprocessableEntity},
 		{views.StepClass, url.Values{"pick": {"wizard"}}, http.StatusUnprocessableEntity},
 	} {
-		if w := e.do(t, http.MethodPost, route.Path(route.CharacterCreateStep, e.characterID, step.step), player, step.form, false); w.Code != step.code {
+		if w := e.do(
+			t,
+			http.MethodPost,
+			route.Path(route.CharacterCreateStep, e.characterID, step.step),
+			player,
+			step.form,
+			false,
+		); w.Code != step.code {
 			t.Errorf("%s: %d, want %d: %s", step.step, w.Code, step.code, w.Body)
 		}
 	}
@@ -297,31 +433,122 @@ func TestWizardStepSavedTwice(t *testing.T) {
 // featFixtures are feats with choices, the spells and tools they offer, and
 // a species and background that grant them.
 var featFixtures = []sqlc.UpsertCompendiumEntryParams{
-	{Kind: "species", Slug: "human", Name: "Human", DataJson: `{"desc":"","parts":[{"name":"Versatile","desc":"You gain an Origin feat of your choice."}]}`},
-	{Kind: "feat", Slug: "alert", Name: "Alert", DataJson: `{"desc":"You add your Proficiency Bonus to Initiative.","category":"Origin"}`},
-	{Kind: "feat", Slug: "magic-initiate", Name: "Magic Initiate", DataJson: `{"desc":"You gain the following benefits.","category":"Origin","parts":[
+	{
+		Kind:     "species",
+		Slug:     "human",
+		Name:     "Human",
+		DataJson: `{"desc":"","parts":[{"name":"Versatile","desc":"You gain an Origin feat of your choice."}]}`,
+	},
+	{
+		Kind:     "feat",
+		Slug:     "alert",
+		Name:     "Alert",
+		DataJson: `{"desc":"You add your Proficiency Bonus to Initiative.","category":"Origin"}`,
+	},
+	{
+		Kind: "feat",
+		Slug: "magic-initiate",
+		Name: "Magic Initiate",
+		DataJson: `{"desc":"You gain the following benefits.","category":"Origin","parts":[
 		{"name":"Two Cantrips","desc":"You learn two cantrips of your choice from the Cleric, Druid, or Wizard spell list. Intelligence, Wisdom, or Charisma is your spellcasting ability for this feat's spells."},
-		{"name":"Level One Spell","desc":"Choose a level 1 spell from the same list you selected for this feat's cantrips. You always have that spell prepared."}]}`},
-	{Kind: "feat", Slug: "skilled", Name: "Skilled", DataJson: `{"desc":"","category":"Origin","parts":[{"name":"","desc":"You gain proficiency in any combination of three skills or tools of your choice."}]}`},
-	{Kind: "feat", Slug: "veteran", Name: "Veteran", DataJson: `{"desc":"An Origin feat with a prerequisite.","category":"Origin","prerequisite":"Level 4+"}`},
-	{Kind: "feat", Slug: "grappler", Name: "Grappler", DataJson: `{"desc":"","category":"General","prerequisite":"Level 4+, Strength or Dexterity 13+","parts":[{"name":"Ability Score Increase","desc":"Increase your Strength or Dexterity score by 1, to a maximum of 20."}]}`},
-	{Kind: "feat", Slug: "archery", Name: "Archery", DataJson: `{"desc":"","category":"Fighting Style","prerequisite":"Fighting Style Feature"}`},
-	{Kind: "feat", Slug: "boon-of-fate", Name: "Boon of Fate", DataJson: `{"desc":"","category":"Epic Boon","prerequisite":"Level 19+","parts":[{"name":"Ability Score Increase","desc":"Increase one ability score of your choice by 1, to a maximum of 30."}]}`},
-	{Kind: "feat", Slug: "ability-score-improvement", Name: "Ability Score Improvement", DataJson: `{"desc":"","category":"General"}`},
-	{Kind: "background", Slug: "sage", Name: "Sage", DataJson: `{"desc":"","parts":[{"name":"Skill Proficiencies","desc":"Arcana and History","type":"skill_proficiency"},{"name":"Feat","desc":"Magic Initiate (Wizard)","type":"feat"}]}`},
-	// A background that asks nothing, so the choices step opens with only the class's and species' picks.
+		{"name":"Level One Spell","desc":"Choose a level 1 spell from the same list you selected for this feat's cantrips. You always have that spell prepared."}]}`,
+	},
+	{
+		Kind:     "feat",
+		Slug:     "skilled",
+		Name:     "Skilled",
+		DataJson: `{"desc":"","category":"Origin","parts":[{"name":"","desc":"You gain proficiency in any combination of three skills or tools of your choice."}]}`,
+	},
+	{
+		Kind:     "feat",
+		Slug:     "veteran",
+		Name:     "Veteran",
+		DataJson: `{"desc":"An Origin feat with a prerequisite.","category":"Origin","prerequisite":"Level 4+"}`,
+	},
+	{
+		Kind:     "feat",
+		Slug:     "grappler",
+		Name:     "Grappler",
+		DataJson: `{"desc":"","category":"General","prerequisite":"Level 4+, Strength or Dexterity 13+","parts":[{"name":"Ability Score Increase","desc":"Increase your Strength or Dexterity score by 1, to a maximum of 20."}]}`,
+	},
+	{
+		Kind:     "feat",
+		Slug:     "archery",
+		Name:     "Archery",
+		DataJson: `{"desc":"","category":"Fighting Style","prerequisite":"Fighting Style Feature"}`,
+	},
+	{
+		Kind:     "feat",
+		Slug:     "boon-of-fate",
+		Name:     "Boon of Fate",
+		DataJson: `{"desc":"","category":"Epic Boon","prerequisite":"Level 19+","parts":[{"name":"Ability Score Increase","desc":"Increase one ability score of your choice by 1, to a maximum of 30."}]}`,
+	},
+	{
+		Kind:     "feat",
+		Slug:     "ability-score-improvement",
+		Name:     "Ability Score Improvement",
+		DataJson: `{"desc":"","category":"General"}`,
+	},
+	{
+		Kind:     "background",
+		Slug:     "sage",
+		Name:     "Sage",
+		DataJson: `{"desc":"","parts":[{"name":"Skill Proficiencies","desc":"Arcana and History","type":"skill_proficiency"},{"name":"Feat","desc":"Magic Initiate (Wizard)","type":"feat"}]}`,
+	},
+	// A background that asks nothing, so the choices step opens with only
+	// the class's and species' picks.
 	{Kind: "background", Slug: "testfolk", Name: "Testfolk", DataJson: `{"desc":"","parts":[]}`},
-	{Kind: "spell", Slug: "light", Name: "Light", DataJson: `{"level":0,"classes":["cleric","wizard"]}`},
-	{Kind: "spell", Slug: "mage-hand", Name: "Mage Hand", DataJson: `{"level":0,"classes":["wizard"]}`},
-	{Kind: "spell", Slug: "guidance", Name: "Guidance", DataJson: `{"level":0,"classes":["cleric"]}`},
+	{
+		Kind:     "spell",
+		Slug:     "light",
+		Name:     "Light",
+		DataJson: `{"level":0,"classes":["cleric","wizard"]}`,
+	},
+	{
+		Kind:     "spell",
+		Slug:     "mage-hand",
+		Name:     "Mage Hand",
+		DataJson: `{"level":0,"classes":["wizard"]}`,
+	},
+	{
+		Kind:     "spell",
+		Slug:     "guidance",
+		Name:     "Guidance",
+		DataJson: `{"level":0,"classes":["cleric"]}`,
+	},
 	// Enough Wizard cantrips besides the feat's Light and Mage Hand.
-	{Kind: "spell", Slug: "ray-of-frost", Name: "Ray of Frost", DataJson: `{"level":0,"classes":["wizard"]}`},
-	{Kind: "spell", Slug: "minor-illusion", Name: "Minor Illusion", DataJson: `{"level":0,"classes":["wizard"]}`},
-	{Kind: "spell", Slug: "magic-missile", Name: "Magic Missile", DataJson: `{"level":1,"classes":["wizard"]}`},
+	{
+		Kind:     "spell",
+		Slug:     "ray-of-frost",
+		Name:     "Ray of Frost",
+		DataJson: `{"level":0,"classes":["wizard"]}`,
+	},
+	{
+		Kind:     "spell",
+		Slug:     "minor-illusion",
+		Name:     "Minor Illusion",
+		DataJson: `{"level":0,"classes":["wizard"]}`,
+	},
+	{
+		Kind:     "spell",
+		Slug:     "magic-missile",
+		Name:     "Magic Missile",
+		DataJson: `{"level":1,"classes":["wizard"]}`,
+	},
 	{Kind: "spell", Slug: "shield", Name: "Shield", DataJson: `{"level":1,"classes":["wizard"]}`},
 	{Kind: "spell", Slug: "bless", Name: "Bless", DataJson: `{"level":1,"classes":["cleric"]}`},
-	{Kind: "item", Slug: "smiths-tools", Name: "Smith's Tools (20 GP)", DataJson: `{"category":"tools","desc":"Ability: Strength. Utilize: Pry open a door (DC 20)."}`},
-	{Kind: "item", Slug: "climbers-kit", Name: "Climber's Kit", DataJson: `{"category":"tools","desc":"A Climber's Kit includes boot tips and pitons."}`},
+	{
+		Kind:     "item",
+		Slug:     "smiths-tools",
+		Name:     "Smith's Tools (20 GP)",
+		DataJson: `{"category":"tools","desc":"Ability: Strength. Utilize: Pry open a door (DC 20)."}`,
+	},
+	{
+		Kind:     "item",
+		Slug:     "climbers-kit",
+		Name:     "Climber's Kit",
+		DataJson: `{"category":"tools","desc":"A Climber's Kit includes boot tips and pitons."}`,
+	},
 }
 
 // loadFeatFixtures imports the test SRD and featFixtures.
@@ -378,8 +605,16 @@ func TestFeatChoices(t *testing.T) {
 		{"one language of two", url.Values{"language": {"Elvish"}}, http.StatusUnprocessableEntity, nil},
 	} {
 		// Every choice the step asks for, so each case fails only on its own.
-		form := url.Values{"language": {"Elvish", "Dwarvish"}, "trait_versatile": {"Alert"},
-			"feat_magic-initiate_wizard_cantrips": {"Light", "Mage Hand"}, "feat_magic-initiate_wizard_spell": {"Magic Missile"}, "feat_magic-initiate_ability": {"Intelligence"}}
+		form := url.Values{
+			"language":        {"Elvish", "Dwarvish"},
+			"trait_versatile": {"Alert"},
+			"feat_magic-initiate_wizard_cantrips": {
+				"Light",
+				"Mage Hand",
+			},
+			"feat_magic-initiate_wizard_spell": {"Magic Missile"},
+			"feat_magic-initiate_ability":      {"Intelligence"},
+		}
 		maps.Copy(form, tc.form)
 		t.Run(tc.name, func(t *testing.T) {
 			e := newTestEnv(t)
@@ -389,7 +624,14 @@ func TestFeatChoices(t *testing.T) {
 			base := route.Path(route.CharacterCreate, e.characterID) + "/"
 			for _, step := range []string{"class=wizard", "species=human", "background=sage"} {
 				step, pick, _ := strings.Cut(step, "=")
-				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
+				if w := e.do(
+					t,
+					http.MethodPost,
+					base+step,
+					player,
+					url.Values{"pick": {pick}},
+					false,
+				); w.Code != http.StatusSeeOther {
 					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
 				}
 			}
@@ -397,7 +639,11 @@ func TestFeatChoices(t *testing.T) {
 			if w.Code != tc.code {
 				t.Fatalf("choices: %d %s", w.Code, w.Body)
 			}
-			if lost := lostPicks(w.Body.String(), form); tc.code == http.StatusUnprocessableEntity && len(lost) > 0 {
+			if lost := lostPicks(
+				w.Body.String(),
+				form,
+			); tc.code == http.StatusUnprocessableEntity &&
+				len(lost) > 0 {
 				t.Errorf("refused page lost %v", lost)
 			}
 			if tc.check == nil {
@@ -446,7 +692,14 @@ func TestCreationSpeciesSpells(t *testing.T) {
 			base := route.Path(route.CharacterCreate, e.characterID) + "/"
 			for _, step := range []string{"class=wizard", "species=" + tc.species, "background=testfolk"} {
 				step, pick, _ := strings.Cut(step, "=")
-				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
+				if w := e.do(
+					t,
+					http.MethodPost,
+					base+step,
+					player,
+					url.Values{"pick": {pick}},
+					false,
+				); w.Code != http.StatusSeeOther {
 					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
 				}
 			}
@@ -456,36 +709,62 @@ func TestCreationSpeciesSpells(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if offersLight := slices.ContainsFunc(cr.view.Spells, func(o views.Option) bool { return o.Slug == "light" }); offersLight == (tc.species == "testglow") {
+			if offersLight := slices.ContainsFunc(
+				cr.view.Spells,
+				func(o views.Option) bool { return o.Slug == "light" },
+			); offersLight == (tc.species == "testglow") {
 				t.Errorf("class list offers Light: %v", offersLight)
 			}
 			// The lineage that teaches Light hides it from the class list while picked.
-			if i := slices.IndexFunc(cr.view.Spells, func(o views.Option) bool { return o.Slug == "light" }); tc.species == "testgnome" && i >= 0 {
-				if got := cr.view.Spells[i].TaughtBy; !slices.Equal(got, []string{"trait_gnomish-lineage=Forest"}) {
+			if i := slices.IndexFunc(
+				cr.view.Spells,
+				func(o views.Option) bool { return o.Slug == "light" },
+			); tc.species == "testgnome" &&
+				i >= 0 {
+				if got := cr.view.Spells[i].TaughtBy; !slices.Equal(
+					got,
+					[]string{"trait_gnomish-lineage=Forest"},
+				) {
 					t.Errorf("Light taught by %v, want the Forest lineage", got)
 				}
 			}
 			tc.form["language"] = []string{"Elvish", "Dwarvish"}
-			w := e.do(t, http.MethodPost, base+"choices", player, creationSpells(t, e, tc.form), false)
+			w := e.do(
+				t,
+				http.MethodPost,
+				base+"choices",
+				player,
+				creationSpells(t, e, tc.form),
+				false,
+			)
 			if w.Code != tc.code {
 				t.Fatalf("choices: %d %s", w.Code, w.Body)
 			}
 			if tc.code == http.StatusUnprocessableEntity {
 				body := w.Body.String()
 				// Light is dropped on purpose: the picked Forest lineage teaches it.
-				lost := slices.DeleteFunc(lostPicks(body, tc.form), func(l string) bool { return l == "spell=light" })
+				lost := slices.DeleteFunc(
+					lostPicks(body, tc.form),
+					func(l string) bool { return l == "spell=light" },
+				)
 				if len(lost) > 0 || !errorAt(body, views.FieldSpell) {
 					t.Errorf("refused page lost %v, or the error is not at the spells", lost)
 				}
 				// Unticked, not disabled, so it can be picked once shown again.
-				if row := reHiddenRow.FindStringSubmatch(body); row == nil || !strings.Contains(row[1], `value="light"`) || reChecked.MatchString(row[1]) || reDisabled.MatchString(row[1]) {
+				row := reHiddenRow.FindStringSubmatch(body)
+				if row == nil || !strings.Contains(row[1], `value="light"`) ||
+					reChecked.MatchString(row[1]) || reDisabled.MatchString(row[1]) {
 					t.Errorf("Light row not hidden and unticked: %v", row)
 				}
 				return
 			}
 			ch, _ = e.q().GetCharacter(ctx, e.characterID)
 			sh, _ = dnd5e.ParseSheet(ch.SheetJson)
-			if lights := slices.DeleteFunc(slices.Clone(sh.Spells), func(sp dnd5e.Spell) bool { return sp.Slug != "light" }); len(lights) != 1 {
+			lights := slices.DeleteFunc(
+				slices.Clone(sh.Spells),
+				func(sp dnd5e.Spell) bool { return sp.Slug != "light" },
+			)
+			if len(lights) != 1 {
 				t.Errorf("Light %d times: %+v", len(lights), sh.Spells)
 			}
 		})
@@ -495,7 +774,9 @@ func TestCreationSpeciesSpells(t *testing.T) {
 // TestCheckNewOptions: an option a level-up added must meet its prerequisite
 // on the result and name a cantrip the sheet knows; older ones are not checked.
 func TestCheckNewOptions(t *testing.T) {
-	info, err := classInfo(sqlc.CompendiumEntry{Slug: testlock.Slug, Name: testlock.Name, DataJson: testlock.DataJson})
+	info, err := classInfo(
+		sqlc.CompendiumEntry{Slug: testlock.Slug, Name: testlock.Name, DataJson: testlock.DataJson},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,15 +784,28 @@ func TestCheckNewOptions(t *testing.T) {
 		for _, f := range info.Features {
 			for _, o := range compendium.Options(f.Description) {
 				if strings.HasPrefix(name, o.Name) {
-					return dnd5e.Feature{Name: "Eldritch Invocation: " + name, Source: "Testlock", Description: o.Desc}
+					return dnd5e.Feature{
+						Name:        "Eldritch Invocation: " + name,
+						Source:      "Testlock",
+						Description: o.Desc,
+					}
 				}
 			}
 		}
 		t.Fatalf("no option %s", name)
 		return dnd5e.Feature{}
 	}
-	blast := []dnd5e.Cantrip{{Name: "Test Blast", Classes: []string{"testlock"}, Range: "120 feet", Desc: "takes 1d10 Force damage"}}
-	armor, step, spear := opt("Armor of Shadows"), opt("Shadow Step"), opt("Eldritch Spear (Test Blast)")
+	blast := []dnd5e.Cantrip{
+		{
+			Name:    "Test Blast",
+			Classes: []string{"testlock"},
+			Range:   "120 feet",
+			Desc:    "takes 1d10 Force damage",
+		},
+	}
+	armor := opt("Armor of Shadows")
+	step := opt("Shadow Step")
+	spear := opt("Eldritch Spear (Test Blast)")
 	for _, tc := range []struct {
 		name          string
 		before, after []dnd5e.Feature
@@ -525,8 +819,15 @@ func TestCheckNewOptions(t *testing.T) {
 		{"cantrip not known", nil, []dnd5e.Feature{opt("Eldritch Spear (Fire Bolt)")}, blast, "needs Fire Bolt"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := checkNewOptions(info, dnd5e.Sheet{Features: tc.before}, dnd5e.Sheet{Features: tc.after}, 2, tc.cantrips)
-			if (tc.err == "") != (err == nil) || err != nil && !strings.Contains(err.Error(), tc.err) {
+			err := checkNewOptions(
+				info,
+				dnd5e.Sheet{Features: tc.before},
+				dnd5e.Sheet{Features: tc.after},
+				2,
+				tc.cantrips,
+			)
+			if (tc.err == "") != (err == nil) ||
+				err != nil && !strings.Contains(err.Error(), tc.err) {
 				t.Errorf("checkNewOptions = %v, want %q", err, tc.err)
 			}
 		})
@@ -549,12 +850,33 @@ func TestBackgroundRepicksClassSkill(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	base, player := route.Path(route.CharacterCreate, e.characterID)+"/", e.token(t, enum.RolePlayer)
-	if w := e.do(t, http.MethodPost, base+"class", player, url.Values{"pick": {"testmonk"}, "skill": {"insight", "stealth"}}, false); w.Code != http.StatusSeeOther {
+	base, player := route.Path(
+		route.CharacterCreate,
+		e.characterID,
+	)+"/", e.token(
+		t,
+		enum.RolePlayer,
+	)
+	if w := e.do(
+		t,
+		http.MethodPost,
+		base+"class",
+		player,
+		url.Values{"pick": {"testmonk"}, "skill": {"insight", "stealth"}},
+		false,
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("class: %d %s", w.Code, w.Body)
 	}
-	page := e.do(t, http.MethodGet, base+"background?pick=testacolyte", player, nil, false).Body.String()
-	if !strings.Contains(page, "choose one more") || !strings.Contains(page, `value="athletics"`) || strings.Contains(page, `value="insight"`) {
+	page := e.do(
+		t,
+		http.MethodGet,
+		base+"background?pick=testacolyte",
+		player,
+		nil,
+		false,
+	).Body.String()
+	if !strings.Contains(page, "choose one more") || !strings.Contains(page, `value="athletics"`) ||
+		strings.Contains(page, `value="insight"`) {
 		t.Errorf("background page does not ask for one more class skill")
 	}
 	for _, tc := range []struct {
@@ -567,22 +889,38 @@ func TestBackgroundRepicksClassSkill(t *testing.T) {
 		{"not a class skill", []string{"stealth", "perception"}, http.StatusUnprocessableEntity},
 		{"one more", []string{"stealth", "athletics"}, http.StatusSeeOther},
 	} {
-		w := e.do(t, http.MethodPost, base+"background", player, url.Values{"pick": {"testacolyte"}, "skill": tc.skills}, false)
+		w := e.do(
+			t,
+			http.MethodPost,
+			base+"background",
+			player,
+			url.Values{"pick": {"testacolyte"}, "skill": tc.skills},
+			false,
+		)
 		if w.Code != tc.code {
 			t.Errorf("%s: %d, want %d", tc.name, w.Code, tc.code)
 		}
 	}
 	sh := e.sheet(t)
-	if got := slices.Sorted(slices.Values(sh.SkillProfs)); !slices.Equal(got, []string{"athletics", "insight", "religion", "stealth"}) ||
-		sh.ProfSources["insight"] != "Testacolyte" || sh.ProfSources["athletics"] != "Testmonk" {
+	if got := slices.Sorted(
+		slices.Values(sh.SkillProfs),
+	); !slices.Equal(got, []string{"athletics", "insight", "religion", "stealth"}) ||
+		sh.ProfSources["insight"] != "Testacolyte" ||
+		sh.ProfSources["athletics"] != "Testmonk" {
 		t.Errorf("skills %q, sources %v", sh.SkillProfs, sh.ProfSources)
 	}
 
 	// A class step after the background shows its skills known.
 	s := dnd5e.NewSheet()
 	s.Background, s.SkillProfs = "Testacolyte", []string{"insight", "religion"}
-	p := classSkillPick(s, []string{"acrobatics", "athletics", "history", "insight", "religion", "stealth"}, 2, nil)
-	if !slices.Equal(p.Known, []string{"insight", "religion"}) || len(p.Options) != 4 || p.Count != 2 {
+	p := classSkillPick(
+		s,
+		[]string{"acrobatics", "athletics", "history", "insight", "religion", "stealth"},
+		2,
+		nil,
+	)
+	if !slices.Equal(p.Known, []string{"insight", "religion"}) || len(p.Options) != 4 ||
+		p.Count != 2 {
 		t.Errorf("class pick after background: %+v", p)
 	}
 }
@@ -603,7 +941,14 @@ func TestBackgroundStepWithoutClass(t *testing.T) {
 		}
 	}
 	e.allowEntrySources(t)
-	if w := e.do(t, http.MethodPost, route.Path(route.CharacterCreateStep, e.characterID, "class"), e.token(t, enum.RolePlayer), url.Values{"pick": {"testmonk"}, "skill": {"insight", "stealth"}}, false); w.Code != http.StatusSeeOther {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CharacterCreateStep, e.characterID, "class"),
+		e.token(t, enum.RolePlayer),
+		url.Values{"pick": {"testmonk"}, "skill": {"insight", "stealth"}},
+		false,
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("class: %d %s", w.Code, w.Body)
 	}
 	ch, err := e.q().GetCharacter(t.Context(), e.characterID)
@@ -611,7 +956,14 @@ func TestBackgroundStepWithoutClass(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(url.Values{"pick": {"testacolyte"}, "skill": {"stealth", "athletics"}}.Encode()))
+	c.Request = httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/",
+		strings.NewReader(
+			url.Values{"pick": {"testacolyte"}, "skill": {"stealth", "athletics"}}.Encode(),
+		),
+	)
 	c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	cmd, err := e.app.backgroundStep(c, ch)
 	if err != nil || cmd == nil {
@@ -627,15 +979,40 @@ func TestBackgroundStepWithoutClass(t *testing.T) {
 // TestClassSkillCount: the class step takes exactly its skill count, of its
 // listed skills, each once.
 func TestClassSkillCount(t *testing.T) {
-	class := sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testfighter", Name: "Testfighter", SourceKey: "test", ContentHash: "x",
-		DataJson: `{"hit_die":10,"desc":"|Skill Proficiencies|Choose 2: Athletics, Insight, or Stealth|"}`}
+	class := sqlc.UpsertCompendiumEntryParams{
+		Kind:        "class",
+		Slug:        "testfighter",
+		Name:        "Testfighter",
+		SourceKey:   "test",
+		ContentHash: "x",
+		DataJson:    `{"hit_die":10,"desc":"|Skill Proficiencies|Choose 2: Athletics, Insight, or Stealth|"}`,
+	}
 	// A class with no skills table draws no skills field.
 	e0 := newTestEnv(t)
-	if err := e0.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testcommoner", Name: "Testcommoner", SourceKey: "test", ContentHash: "x", DataJson: `{"hit_die":8}`}); err != nil {
+	if err := e0.upsertEntry(
+		t.Context(),
+		sqlc.UpsertCompendiumEntryParams{
+			Kind:        "class",
+			Slug:        "testcommoner",
+			Name:        "Testcommoner",
+			SourceKey:   "test",
+			ContentHash: "x",
+			DataJson:    `{"hit_die":8}`,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
-	w0 := e0.do(t, http.MethodPost, route.Path(route.CharacterCreateStep, e0.characterID, "class"), e0.token(t, enum.RolePlayer), url.Values{"pick": {"testcommoner"}, "skill": {"athletics"}}, false)
-	if body := w0.Body.String(); w0.Code != http.StatusUnprocessableEntity || errorAt(body, views.FieldSkill) || !strings.Contains(body, ">choose none<") {
+	w0 := e0.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CharacterCreateStep, e0.characterID, "class"),
+		e0.token(t, enum.RolePlayer),
+		url.Values{"pick": {"testcommoner"}, "skill": {"athletics"}},
+		false,
+	)
+	if body := w0.Body.String(); w0.Code != http.StatusUnprocessableEntity ||
+		errorAt(body, views.FieldSkill) ||
+		!strings.Contains(body, ">choose none<") {
 		t.Errorf("skill on a class without skills: %d, message not at the top", w0.Code)
 	}
 	for _, tc := range []struct {
@@ -653,16 +1030,28 @@ func TestClassSkillCount(t *testing.T) {
 			t.Fatal(err)
 		}
 		form := url.Values{"pick": {"testfighter"}, "skill": tc.skills}
-		path, player := route.Path(route.CharacterCreateStep, e.characterID, "class"), e.token(t, enum.RolePlayer)
+		path := route.Path(route.CharacterCreateStep, e.characterID, "class")
+		player := e.token(t, enum.RolePlayer)
 		w := e.do(t, http.MethodPost, path, player, form, false)
 		if w.Code != tc.code {
 			t.Errorf("%v: %d, want %d", tc.skills, w.Code, tc.code)
 		}
-		if lost := lostPicks(w.Body.String(), form); tc.code == http.StatusUnprocessableEntity && (len(lost) > 0 || !errorAt(w.Body.String(), views.FieldSkill)) {
+		if lost := lostPicks(
+			w.Body.String(),
+			form,
+		); tc.code == http.StatusUnprocessableEntity &&
+			(len(lost) > 0 || !errorAt(w.Body.String(), views.FieldSkill)) {
 			t.Errorf("%v: refused page lost %v or its error is not at the skills", tc.skills, lost)
 		}
 		// Chosen already, the step is refused as saved, not for missing skills.
-		if w := e.do(t, http.MethodPost, path, player, url.Values{"pick": {"testfighter"}}, false); tc.code == http.StatusSeeOther &&
+		if w := e.do(
+			t,
+			http.MethodPost,
+			path,
+			player,
+			url.Values{"pick": {"testfighter"}},
+			false,
+		); tc.code == http.StatusSeeOther &&
 			(w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "already saved")) {
 			t.Errorf("class again: %d", w.Code)
 		}
@@ -675,13 +1064,27 @@ func TestClassSkillCount(t *testing.T) {
 		base := route.Path(route.CharacterCreate, e.characterID) + "/"
 		for _, step := range []string{"species=human", "background=testfolk"} {
 			step, pick, _ := strings.Cut(step, "=")
-			if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
+			if w := e.do(
+				t,
+				http.MethodPost,
+				base+step,
+				player,
+				url.Values{"pick": {pick}},
+				false,
+			); w.Code != http.StatusSeeOther {
 				t.Fatalf("%s: %d %s", step, w.Code, w.Body)
 			}
 		}
-		form = url.Values{"language": {"Elvish", "Dwarvish"}, "trait_versatile": {"Alert"}, "spell": {"light"}}
+		form = url.Values{
+			"language":        {"Elvish", "Dwarvish"},
+			"trait_versatile": {"Alert"},
+			"spell":           {"light"},
+		}
 		w = e.do(t, http.MethodPost, base+"choices", player, form, false)
-		if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || errorAt(body, views.FieldSpell) || !strings.Contains(body, "choose spells from the list") || len(lostPicks(body, form)) > 0 {
+		if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity ||
+			errorAt(body, views.FieldSpell) ||
+			!strings.Contains(body, "choose spells from the list") ||
+			len(lostPicks(body, form)) > 0 {
 			t.Errorf("spell on a non-caster: %d, message not at the top or picks lost", w.Code)
 		}
 	}
@@ -705,7 +1108,13 @@ func hasError(body, want string) bool {
 	if !strings.HasPrefix(want, "@") || !ok {
 		return strings.Contains(body, want)
 	}
-	re := regexp.MustCompile(`<div id="error-` + regexp.QuoteMeta(html.EscapeString(key)) + `"[^>]*>` + regexp.QuoteMeta(html.EscapeString(msg)) + `</div>`)
+	re := regexp.MustCompile(
+		`<div id="error-` + regexp.QuoteMeta(
+			html.EscapeString(key),
+		) + `"[^>]*>` + regexp.QuoteMeta(
+			html.EscapeString(msg),
+		) + `</div>`,
+	)
 	return re.MatchString(body)
 }
 
@@ -731,7 +1140,11 @@ func lostPicks(body string, form url.Values) []string {
 				if !strings.Contains(tag, name) {
 					continue
 				}
-				box, has := strings.Contains(tag, `type="checkbox"`) || strings.Contains(tag, `type="radio"`), strings.Contains(tag, value)
+				box, has := strings.Contains(tag, `type="checkbox"`) ||
+					strings.Contains(tag, `type="radio"`), strings.Contains(
+					tag,
+					value,
+				)
 				offered = offered || has || !box
 				kept = kept || has && (!box || reChecked.MatchString(tag))
 			}
@@ -761,7 +1174,11 @@ func withSpells(form url.Values, offered []views.Option, need views.SpellNeed) u
 		}
 	}
 	for _, o := range offered {
-		if k := min(o.Level, 1); n[k] > 0 && !slices.Contains(form["spell"], o.Slug) && !slices.Contains(named, o.Name) {
+		if k := min(
+			o.Level,
+			1,
+		); n[k] > 0 && !slices.Contains(form["spell"], o.Slug) &&
+			!slices.Contains(named, o.Name) {
 			form.Add("spell", o.Slug)
 			n[k]--
 		}
@@ -839,7 +1256,12 @@ func TestReadPicks(t *testing.T) {
 		{"empty without No change", views.ChoiceGroup{Key: "k", Count: 1, Options: opts("A")}, nil, false},
 	} {
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(tc.form.Encode()))
+		c.Request = httptest.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			"/",
+			strings.NewReader(tc.form.Encode()),
+		)
 		c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		if _, err := readPicks(c, []choiceGroup{{tc.group, nil, nil}}); (err == nil) != tc.ok {
 			t.Errorf("%s: %v", tc.name, err)
@@ -853,10 +1275,19 @@ func TestReadPicks(t *testing.T) {
 	}{{"Mace", false}, {"Club", true}} {
 		form := url.Values{views.FieldMastery: {"Mace"}, feat: {tc.feat}}
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(form.Encode()))
+		c.Request = httptest.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			"/",
+			strings.NewReader(form.Encode()),
+		)
 		c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		groups := []choiceGroup{
-			{views.ChoiceGroup{Key: views.FieldMastery, Count: 1, Options: opts("Mace", "Club")}, nil, nil},
+			{
+				views.ChoiceGroup{Key: views.FieldMastery, Count: 1, Options: opts("Mace", "Club")},
+				nil,
+				nil,
+			},
 			{views.ChoiceGroup{Key: feat, Count: 1, Options: opts("Mace", "Club")}, nil, nil},
 		}
 		if _, err := readPicks(c, groups); (err == nil) != tc.ok {
@@ -870,7 +1301,12 @@ func TestReadPicks(t *testing.T) {
 // option needing Armor of Shadows, is offered next to it but not alone.
 func TestCreationOptionCheck(t *testing.T) {
 	cloak := testlock
-	cloak.DataJson = strings.Replace(testlock.DataJson, "### Shadow Step", `### Shadow Cloak\n\n*Prerequisite: Armor of Shadows Invocation*\n\nCloak.\n\n### Shadow Step`, 1)
+	cloak.DataJson = strings.Replace(
+		testlock.DataJson,
+		"### Shadow Step",
+		`### Shadow Cloak\n\n*Prerequisite: Armor of Shadows Invocation*\n\nCloak.\n\n### Shadow Step`,
+		1,
+	)
 	const pick = "class_eldritch-invocation"
 	for _, tc := range []struct {
 		name string
@@ -891,13 +1327,28 @@ func TestCreationOptionCheck(t *testing.T) {
 			base := route.Path(route.CharacterCreate, e.characterID) + "/"
 			for _, step := range []string{"class=testlock", "species=human", "background=testfolk"} {
 				step, pick, _ := strings.Cut(step, "=")
-				if w := e.do(t, http.MethodPost, base+step, player, url.Values{"pick": {pick}}, false); w.Code != http.StatusSeeOther {
+				if w := e.do(
+					t,
+					http.MethodPost,
+					base+step,
+					player,
+					url.Values{"pick": {pick}},
+					false,
+				); w.Code != http.StatusSeeOther {
 					t.Fatalf("%s: %d %s", step, w.Code, w.Body)
 				}
 			}
 			form := url.Values{"language": {"Elvish", "Dwarvish"}, "trait_versatile": {"Alert"}}
 			maps.Copy(form, tc.form)
-			if w := e.do(t, http.MethodPost, base+"choices", player, form, false); w.Code != tc.code || !strings.Contains(w.Body.String(), tc.err) {
+			if w := e.do(
+				t,
+				http.MethodPost,
+				base+"choices",
+				player,
+				form,
+				false,
+			); w.Code != tc.code ||
+				!strings.Contains(w.Body.String(), tc.err) {
 				t.Errorf("choices: %d, want %d with %q", w.Code, tc.code, tc.err)
 			}
 		})
@@ -923,23 +1374,30 @@ func TestClassOptionChoices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	i := slices.IndexFunc(cr.groups, func(g choiceGroup) bool { return g.Key == "class_eldritch-invocation" })
+	i := slices.IndexFunc(
+		cr.groups,
+		func(g choiceGroup) bool { return g.Key == "class_eldritch-invocation" },
+	)
 	if i < 0 {
 		t.Fatalf("no invocation group: %+v", cr.view.Groups)
 	}
 	g := cr.groups[i]
-	if g.Count != 1 || g.Title != "Eldritch Invocations" || len(g.Options) != 1 || g.Options[0].Name != "Armor of Shadows" {
+	if g.Count != 1 || g.Title != "Eldritch Invocations" || len(g.Options) != 1 ||
+		g.Options[0].Name != "Armor of Shadows" {
 		t.Fatalf("group %+v", g.ChoiceGroup)
 	}
 	g.apply(&sh, []string{"Armor of Shadows"})
 	if !slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool {
-		return f.Name == "Eldritch Invocation: Armor of Shadows" && f.Source == "Testlock" && f.Description == "Mage Armor."
+		return f.Name == "Eldritch Invocation: Armor of Shadows" && f.Source == "Testlock" &&
+			f.Description == "Mage Armor."
 	}) {
 		t.Errorf("features %+v", sh.Features)
 	}
 	// At level 2 the column grows by 2; the level 2 options whose prerequisite
 	// holds open up (not Eldritch Spear: no cantrip) and the one taken is gone.
-	info, err := classInfo(sqlc.CompendiumEntry{Slug: testlock.Slug, Name: testlock.Name, DataJson: testlock.DataJson})
+	info, err := classInfo(
+		sqlc.CompendiumEntry{Slug: testlock.Slug, Name: testlock.Name, DataJson: testlock.DataJson},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -950,11 +1408,28 @@ func TestClassOptionChoices(t *testing.T) {
 		}
 		return out
 	}
-	if gs := classOptionGroups(info, 2, 1, sh, nil); len(gs) != 2 || gs[0].Count != 2 || !slices.Equal(names(gs[0]), []string{"Agonizing Blast", "Shadow Step"}) {
+	if gs := classOptionGroups(
+		info,
+		2,
+		1,
+		sh,
+		nil,
+	); len(gs) != 2 || gs[0].Count != 2 ||
+		!slices.Equal(names(gs[0]), []string{"Agonizing Blast", "Shadow Step"}) {
 		t.Errorf("level 2: %+v", groupViews(gs))
 	}
 	// Without Armor of Shadows, Shadow Step is offered next to it: picked together, they hold.
-	if gs := classOptionGroups(info, 2, 1, dnd5e.NewSheet(), nil); len(gs) != 1 || !slices.Equal(names(gs[0]), []string{"Agonizing Blast", "Armor of Shadows", "Shadow Step"}) {
+	if gs := classOptionGroups(
+		info,
+		2,
+		1,
+		dnd5e.NewSheet(),
+		nil,
+	); len(gs) != 1 ||
+		!slices.Equal(
+			names(gs[0]),
+			[]string{"Agonizing Blast", "Armor of Shadows", "Shadow Step"},
+		) {
 		t.Errorf("level 2, same group: %+v", groupViews(gs))
 	}
 	// A Repeatable option stays on offer and is added again under a new name.
@@ -973,9 +1448,18 @@ func TestClassOptionChoices(t *testing.T) {
 	// An Eldritch Spear held without its cantrip (taken before the check) does
 	// not make Armor of Shadows look needed: both stay replaceable.
 	spearDesc := compendium.Options(info.Features[1].Description)[2].Desc
-	old := dnd5e.Sheet{Features: []dnd5e.Feature{{Name: "Eldritch Invocation: Armor of Shadows", Description: "Mage Armor."}, {Name: "Eldritch Invocation: Eldritch Spear", Description: spearDesc}}}
+	old := dnd5e.Sheet{
+		Features: []dnd5e.Feature{
+			{Name: "Eldritch Invocation: Armor of Shadows", Description: "Mage Armor."},
+			{Name: "Eldritch Invocation: Eldritch Spear", Description: spearDesc},
+		},
+	}
 	gs := classOptionGroups(info, 3, 2, old, nil)
-	if i := slices.IndexFunc(gs, func(g choiceGroup) bool { return g.Key == "replace_eldritch-invocation" }); i < 0 || !slices.Equal(names(gs[i]), []string{keepSpells, "Armor of Shadows", "Eldritch Spear"}) {
+	if i := slices.IndexFunc(
+		gs,
+		func(g choiceGroup) bool { return g.Key == "replace_eldritch-invocation" },
+	); i < 0 ||
+		!slices.Equal(names(gs[i]), []string{keepSpells, "Armor of Shadows", "Eldritch Spear"}) {
 		t.Errorf("swap with a stale option: %+v", groupViews(gs))
 	}
 }
@@ -983,13 +1467,26 @@ func TestClassOptionChoices(t *testing.T) {
 // testlock is a pact caster with invocations: one at level 1, three at 2.
 // Shadow Step needs Armor of Shadows; Eldritch Spear a damaging cantrip
 // (testBlast).
-var testlock = sqlc.UpsertCompendiumEntryParams{Kind: "class", Slug: "testlock", Name: "Testlock", SourceKey: "test", ContentHash: "x", DataJson: `{"caster":"pact","hit_die":8,
+var testlock = sqlc.UpsertCompendiumEntryParams{
+	Kind:        "class",
+	Slug:        "testlock",
+	Name:        "Testlock",
+	SourceKey:   "test",
+	ContentHash: "x",
+	DataJson: `{"caster":"pact","hit_die":8,
 	"table":{"Cantrips":{"1":"0","2":"1"},"Eldritch Invocations":{"1":"1","2":"3"}},
 	"features":[{"name":"Eldritch Invocations","desc":"You gain one invocation. Whenever you gain a Testlock level, you can replace one of your invocations with another one for which you qualify.","levels":[1]},
-		{"name":"Eldritch Invocation Options","desc":"In order.\n\n### Agonizing Blast\n\n*Prerequisite: Level 2+ Warlock*\n\n**Repeatable.** More damage.\n\n### Armor of Shadows\n\nMage Armor.\n\n### Eldritch Spear\n\n*Prerequisite: Level 2+ Warlock, a Testlock Cantrip That Deals Damage*\n\nChoose one of your known Testlock cantrips that deals damage and has a range of 10+ feet.\n\n### Shadow Step\n\n*Prerequisite: Level 2+ Warlock, Armor of Shadows Invocation*\n\nTeleport."}]}`}
+		{"name":"Eldritch Invocation Options","desc":"In order.\n\n### Agonizing Blast\n\n*Prerequisite: Level 2+ Warlock*\n\n**Repeatable.** More damage.\n\n### Armor of Shadows\n\nMage Armor.\n\n### Eldritch Spear\n\n*Prerequisite: Level 2+ Warlock, a Testlock Cantrip That Deals Damage*\n\nChoose one of your known Testlock cantrips that deals damage and has a range of 10+ feet.\n\n### Shadow Step\n\n*Prerequisite: Level 2+ Warlock, Armor of Shadows Invocation*\n\nTeleport."}]}`,
+}
 
-var testBlast = sqlc.UpsertCompendiumEntryParams{Kind: "spell", Slug: "test-blast", Name: "Test Blast", SourceKey: "test", ContentHash: "x",
-	DataJson: `{"level":0,"classes":["testlock"],"range":"120 feet","desc":"Make a ranged spell attack. On a hit, the target takes 1d10 Force damage."}`}
+var testBlast = sqlc.UpsertCompendiumEntryParams{
+	Kind:        "spell",
+	Slug:        "test-blast",
+	Name:        "Test Blast",
+	SourceKey:   "test",
+	ContentHash: "x",
+	DataJson:    `{"level":0,"classes":["testlock"],"range":"120 feet","desc":"Make a ranged spell attack. On a hit, the target takes 1d10 Force damage."}`,
+}
 
 // TestApplyTraitText: trait text sets darkvision, a speed increase and
 // resistances, but "the damage type determined by…" names none.
@@ -1025,7 +1522,12 @@ func TestTrainedIn(t *testing.T) {
 		{"Simple weapons", "Choose three Musical Instruments", []string{"Simple weapons"}},
 		{"None", "three musical instruments of your choice", nil},
 	} {
-		got := trainedIn(map[string]string{compendium.TraitWeaponProficiencies: tt.weapons, compendium.TraitToolProficiencies: tt.tools})
+		got := trainedIn(
+			map[string]string{
+				compendium.TraitWeaponProficiencies: tt.weapons,
+				compendium.TraitToolProficiencies:   tt.tools,
+			},
+		)
 		if !slices.Equal(got, tt.want) {
 			t.Errorf("%q / %q: %q, want %q", tt.weapons, tt.tools, got, tt.want)
 		}
@@ -1034,7 +1536,14 @@ func TestTrainedIn(t *testing.T) {
 
 // TestTextMarkdown: unnamed parts (a feat's body) get no empty bold label.
 func TestTextMarkdown(t *testing.T) {
-	got := textMarkdown(&compendium.TextData{Parts: []compendium.NameDesc{{Desc: "You strike twice."}, {Name: "Repeatable", Desc: "Again."}}})
+	got := textMarkdown(
+		&compendium.TextData{
+			Parts: []compendium.NameDesc{
+				{Desc: "You strike twice."},
+				{Name: "Repeatable", Desc: "Again."},
+			},
+		},
+	)
 	if want := "You strike twice.\n\n**Repeatable.** Again."; got != want {
 		t.Errorf("got %q", got)
 	}
@@ -1045,10 +1554,17 @@ func TestTextMarkdown(t *testing.T) {
 func TestSpeciesResistance(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	species := sqlc.UpsertCompendiumEntryParams{Kind: "species", Slug: "testborn", Name: "Testborn", SourceKey: "test", ContentHash: "x", DataJson: `{"desc":"","parts":[
+	species := sqlc.UpsertCompendiumEntryParams{
+		Kind:        "species",
+		Slug:        "testborn",
+		Name:        "Testborn",
+		SourceKey:   "test",
+		ContentHash: "x",
+		DataJson: `{"desc":"","parts":[
 		{"name":"Draconic Ancestry","desc":"Choose the kind of dragon.\n\n| Dragon | Damage Type |\n|---|---|\n| Red | Fire |\n| White | Cold |"},
 		{"name":"Damage Resistance","desc":"You have Resistance to the damage type determined by your Draconic Ancestry trait."},
-		{"name":"Tough Hide","desc":"You have Resistance to Poison damage."}]}`}
+		{"name":"Tough Hide","desc":"You have Resistance to Poison damage."}]}`,
+	}
 	if err := e.upsertEntry(ctx, species); err != nil {
 		t.Fatal(err)
 	}
@@ -1062,7 +1578,10 @@ func TestSpeciesResistance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	i := slices.IndexFunc(cr.groups, func(g choiceGroup) bool { return g.Key == "trait_draconic-ancestry" })
+	i := slices.IndexFunc(
+		cr.groups,
+		func(g choiceGroup) bool { return g.Key == "trait_draconic-ancestry" },
+	)
 	if i < 0 {
 		t.Fatalf("no ancestry group: %+v", cr.view.Groups)
 	}
@@ -1094,9 +1613,15 @@ func TestLineageSpells(t *testing.T) {
 	drow.Spells = []dnd5e.Spell{{Slug: "dancing-lights", Name: "Dancing Lights", Ability: "int"}}
 	// Faerie Fire from the class list, so its free cast is still owed.
 	knowsFire := drow
-	knowsFire.Spells = append(slices.Clone(drow.Spells), dnd5e.Spell{Slug: "faerie-fire", Name: "Faerie Fire", Level: 1})
+	knowsFire.Spells = append(
+		slices.Clone(drow.Spells),
+		dnd5e.Spell{Slug: "faerie-fire", Name: "Faerie Fire", Level: 1},
+	)
 	withFire := knowsFire
-	withFire.Features = append(slices.Clone(drow.Features), dnd5e.Feature{Name: "Faerie Fire (free cast)", Source: "Testelf"})
+	withFire.Features = append(
+		slices.Clone(drow.Features),
+		dnd5e.Feature{Name: "Faerie Fire (free cast)", Source: "Testelf"},
+	)
 	noPick := drow
 	noPick.Features = nil
 	// The cantrip was swapped; the ability picked at creation is kept.
@@ -1142,13 +1667,29 @@ func TestApplySpeciesSizeVision(t *testing.T) {
 		parts          []compendium.NameDesc
 		wantVision     string
 	}{
-		{"Medium", "Medium", []compendium.NameDesc{{Name: "Darkvision", Desc: "You can see in dim light within 60 feet of you."}}, "Darkvision 60 ft"},
+		{
+			"Medium",
+			"Medium",
+			[]compendium.NameDesc{
+				{Name: "Darkvision", Desc: "You can see in dim light within 60 feet of you."},
+			},
+			"Darkvision 60 ft",
+		},
 		{"Medium or Small", "", nil, ""},
-		{"Small.", "Small", []compendium.NameDesc{{Name: "Superior Darkvision", Desc: "Your darkvision has a range of 120 feet."}}, "Darkvision 120 ft"},
+		{
+			"Small.",
+			"Small",
+			[]compendium.NameDesc{
+				{Name: "Superior Darkvision", Desc: "Your darkvision has a range of 120 feet."},
+			},
+			"Darkvision 120 ft",
+		},
 	}
 	for _, tt := range tests {
 		var s dnd5e.Sheet
-		parts := append([]compendium.NameDesc{{Name: "Size", Desc: tt.size, Type: "size"}}, tt.parts...)
+		parts := append(
+			[]compendium.NameDesc{{Name: "Size", Desc: tt.size, Type: "size"}},
+			tt.parts...)
 		applySpecies(&s, "Test", &compendium.TextData{Parts: parts})
 		if s.Size != tt.wantSize || s.Vision != tt.wantVision {
 			t.Errorf("%q: size %q vision %q", tt.size, s.Size, s.Vision)
@@ -1161,7 +1702,14 @@ func TestFindItemPlurals(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	for _, slug := range []string{"dagger", "pouch", "glass"} {
-		entry := sqlc.UpsertCompendiumEntryParams{Kind: enum.KindItem, Slug: slug, Name: slug, DataJson: "{}", SourceKey: "test", ContentHash: "x"}
+		entry := sqlc.UpsertCompendiumEntryParams{
+			Kind:        enum.KindItem,
+			Slug:        slug,
+			Name:        slug,
+			DataJson:    "{}",
+			SourceKey:   "test",
+			ContentHash: "x",
+		}
 		if err := e.upsertEntry(ctx, entry); err != nil {
 			t.Fatal(err)
 		}
@@ -1183,9 +1731,20 @@ func TestFindItemPlurals(t *testing.T) {
 // TestApplyEquipmentMergesGear: an equipment line found in the compendium is
 // stored under the entry's name, so the weapon and the stack are one item.
 func TestApplyEquipmentMergesGear(t *testing.T) {
-	picked := []compendium.EquipmentOption{{Items: []compendium.EquipmentItem{{Name: "Daggers", Qty: 4}, {Name: "Pouches", Qty: 2}, {Name: "Rope", Qty: 1}}}}
+	picked := []compendium.EquipmentOption{
+		{
+			Items: []compendium.EquipmentItem{
+				{Name: "Daggers", Qty: 4},
+				{Name: "Pouches", Qty: 2},
+				{Name: "Rope", Qty: 1},
+			},
+		},
+	}
 	dagger := dnd5e.Weapon{Name: "Dagger", Ability: "finesse", Dice: "1d4"}
-	g := gear{weapons: []dnd5e.Weapon{dagger}, names: map[string]string{"Daggers": "Dagger", "Pouches": "Pouch"}}
+	g := gear{
+		weapons: []dnd5e.Weapon{dagger},
+		names:   map[string]string{"Daggers": "Dagger", "Pouches": "Pouch"},
+	}
 	var s dnd5e.Sheet
 	applyEquipment(&s, picked, g)
 	sheetJSON, err := s.JSON()
@@ -1200,7 +1759,14 @@ func TestApplyEquipmentMergesGear(t *testing.T) {
 	for _, it := range s.Inventory {
 		got = append(got, fmt.Sprintf("%s %d %v", it.Name, it.Qty, it.Weapon != nil))
 	}
-	if want := []string{"Dagger 4 true", "Pouch 2 false", "Rope 1 false"}; !slices.Equal(got, want) {
+	if want := []string{
+		"Dagger 4 true",
+		"Pouch 2 false",
+		"Rope 1 false",
+	}; !slices.Equal(
+		got,
+		want,
+	) {
 		t.Errorf("inventory %v, want %v", got, want)
 	}
 }
@@ -1209,7 +1775,9 @@ func TestApplyEquipmentMergesGear(t *testing.T) {
 // increase in offers those abilities, below the maximum.
 func TestFeatRaiseText(t *testing.T) {
 	e := newTestEnv(t)
-	sh := dnd5e.Sheet{Scores: map[string]int{"str": 20, "dex": 14, "con": 12, "int": 10, "wis": 10, "cha": 10}}
+	sh := dnd5e.Sheet{
+		Scores: map[string]int{"str": 20, "dex": 14, "con": 12, "int": 10, "wis": 10, "cha": 10},
+	}
 	for _, tt := range []struct {
 		text string
 		want []string
@@ -1220,7 +1788,9 @@ func TestFeatRaiseText(t *testing.T) {
 		{"Increase your Strength score by 1, to a maximum of 20.", nil}, // at the maximum: no pick, the feat is still taken
 		{"Increase one ability score of your choice by 1, to a maximum of 30.", []string{"Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"}},
 	} {
-		td := &compendium.TextData{Parts: []compendium.NameDesc{{Name: "Ability Score Increase", Desc: tt.text}}}
+		td := &compendium.TextData{
+			Parts: []compendium.NameDesc{{Name: "Ability Score Increase", Desc: tt.text}},
+		}
 		groups, err := e.app.featChoices(t.Context(), "feat_x", "X", td, "", sh, 0)
 		if err != nil || len(groups) != min(len(tt.want), 1) {
 			t.Fatalf("%q: groups %+v %v", tt.text, groups, err)
@@ -1270,7 +1840,9 @@ func TestWizardSpeciesVariant(t *testing.T) {
 		// A variant of another species is ignored.
 		{"?pick=half-elf&variant=elf-high", []string{"Skill Versatility", `name="pick" value="half-elf"`}, nil},
 	} {
-		body := html.UnescapeString(e.do(t, http.MethodGet, base+tt.query, player, nil, false).Body.String())
+		body := html.UnescapeString(
+			e.do(t, http.MethodGet, base+tt.query, player, nil, false).Body.String(),
+		)
 		for _, s := range tt.want {
 			if !strings.Contains(body, s) {
 				t.Errorf("%s: no %q", tt.query, s)
@@ -1282,7 +1854,14 @@ func TestWizardSpeciesVariant(t *testing.T) {
 			}
 		}
 	}
-	e.do(t, http.MethodPost, base, player, url.Values{"pick": {"half-elf-aquatic-elf-descent"}}, false)
+	e.do(
+		t,
+		http.MethodPost,
+		base,
+		player,
+		url.Values{"pick": {"half-elf-aquatic-elf-descent"}},
+		false,
+	)
 	row, err := e.q().GetCharacter(ctx, e.characterID)
 	if err != nil {
 		t.Fatal(err)
@@ -1291,13 +1870,22 @@ func TestWizardSpeciesVariant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sh.Species != "Half-Elf (Aquatic Elf Descent)" || sh.SpeciesSource != "book-b" || sh.Speed != 35 ||
+	if sh.Species != "Half-Elf (Aquatic Elf Descent)" || sh.SpeciesSource != "book-b" ||
+		sh.Speed != 35 ||
 		!slices.ContainsFunc(sh.Features, func(f dnd5e.Feature) bool { return f.Name == "Swim" }) {
-		t.Errorf("saved species %q from %q, speed %d, features %v", sh.Species, sh.SpeciesSource, sh.Speed, sh.Features)
+		t.Errorf(
+			"saved species %q from %q, speed %d, features %v",
+			sh.Species,
+			sh.SpeciesSource,
+			sh.Speed,
+			sh.Features,
+		)
 	}
 	// The finished step shows what the saved variant gave, not its base.
 	done := html.UnescapeString(e.do(t, http.MethodGet, base, player, nil, false).Body.String())
-	if !strings.Contains(done, "Already chosen: Half-Elf (Aquatic Elf Descent).") || !strings.Contains(done, "You swim.") || strings.Contains(done, "Skill Versatility") {
+	if !strings.Contains(done, "Already chosen: Half-Elf (Aquatic Elf Descent).") ||
+		!strings.Contains(done, "You swim.") ||
+		strings.Contains(done, "Skill Versatility") {
 		t.Error("the finished species step does not show the saved variant's card")
 	}
 }

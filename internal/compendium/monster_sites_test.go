@@ -33,12 +33,32 @@ func TestParseAidedd(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := MonsterData{
-		Size: "Large", Type: "fiend (demon)", Alignment: "chaotic evil", AC: 16, ACDetail: "natural armor", HP: 90, HitDice: "12d10 + 24", Initiative: 3,
-		Speed:     map[string]int{"walk": 40, "climb": 20},
-		Abilities: map[string]int{"str": 17, "dex": 16, "con": 15, "int": 5, "wis": 20, "cha": 6},
-		Saves:     map[string]int{"dex": 6}, Skills: map[string]int{"perception": 5},
-		CR: "8", Senses: "darkvision 60 ft., passive Perception 15", Languages: "understands Abyssal", Resistance: "cold, fire", Immunity: "frightened", Vulnerability: "radiant",
-		Traits: []NameDesc{{Name: "Pack Tactics", Desc: "Trait text."}},
+		Size:       "Large",
+		Type:       "fiend (demon)",
+		Alignment:  "chaotic evil",
+		AC:         16,
+		ACDetail:   "natural armor",
+		HP:         90,
+		HitDice:    "12d10 + 24",
+		Initiative: 3,
+		Speed:      map[string]int{"walk": 40, "climb": 20},
+		Abilities: map[string]int{
+			"str": 17,
+			"dex": 16,
+			"con": 15,
+			"int": 5,
+			"wis": 20,
+			"cha": 6,
+		},
+		Saves:         map[string]int{"dex": 6},
+		Skills:        map[string]int{"perception": 5},
+		CR:            "8",
+		Senses:        "darkvision 60 ft., passive Perception 15",
+		Languages:     "understands Abyssal",
+		Resistance:    "cold, fire",
+		Immunity:      "frightened",
+		Vulnerability: "radiant",
+		Traits:        []NameDesc{{Name: "Pack Tactics", Desc: "Trait text."}},
 		Actions: []MonsterAction{
 			{Name: "Multiattack", Type: "action"},
 			{Name: "Rending Bite", Desc: "Bite text.\nMore bite text.", Type: "action"},
@@ -74,19 +94,47 @@ func TestParseFiveTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := MonsterData{
-		Size: "Large", Type: "fiend (demon)", Alignment: "chaotic evil", AC: 16, ACDetail: "natural armor", HP: 90, HitDice: "12d10 + 24", Initiative: 3,
-		Speed:     map[string]int{"walk": 40, "fly": 30},
-		Abilities: map[string]int{"str": 17, "dex": 16, "con": 15, "int": 5, "wis": 20, "cha": 6},
-		Saves:     map[string]int{"dex": 6}, Skills: map[string]int{"perception": 8, "sleight-of-hand": 2},
-		CR: "8", Senses: "darkvision 60 ft., passive Perception 15", Languages: "understands Abyssal but can't speak",
-		Resistance: "cold, fire; bludgeoning, piercing from nonmagical attacks", Immunity: "frightened", Vulnerability: "radiant",
+		Size:       "Large",
+		Type:       "fiend (demon)",
+		Alignment:  "chaotic evil",
+		AC:         16,
+		ACDetail:   "natural armor",
+		HP:         90,
+		HitDice:    "12d10 + 24",
+		Initiative: 3,
+		Speed:      map[string]int{"walk": 40, "fly": 30},
+		Abilities:  map[string]int{"str": 17, "dex": 16, "con": 15, "int": 5, "wis": 20, "cha": 6},
+		Saves: map[string]int{
+			"dex": 6,
+		},
+		Skills:        map[string]int{"perception": 8, "sleight-of-hand": 2},
+		CR:            "8",
+		Senses:        "darkvision 60 ft., passive Perception 15",
+		Languages:     "understands Abyssal but can't speak",
+		Resistance:    "cold, fire; bludgeoning, piercing from nonmagical attacks",
+		Immunity:      "frightened",
+		Vulnerability: "radiant",
 		Traits: []NameDesc{
-			{Name: "Pack Tactics", Desc: "Has advantage unless the ally is [[compendium:condition/incapacitated|incapacitated]]."},
-			{Name: "Innate Spellcasting", Desc: "Casts:\n\nAt will: [[compendium:spell/darkness|darkness]]\n\n1/day each: [[compendium:spell/fear|fear]], [[compendium:spell/sleep|sleep]]"},
+			{
+				Name: "Pack Tactics",
+				Desc: "Has advantage unless the ally is [[compendium:condition/incapacitated|incapacitated]].",
+			},
+			{
+				Name: "Innate Spellcasting",
+				Desc: "Casts:\n\nAt will: [[compendium:spell/darkness|darkness]]\n\n1/day each: [[compendium:spell/fear|fear]], [[compendium:spell/sleep|sleep]]",
+			},
 		},
 		Actions: []MonsterAction{
-			{Name: "Rending Bite", Desc: "Melee Weapon Attack: +6 to hit, reach 5 ft. Hit: 13 (2d8 + 4) piercing damage.", Type: "action"},
-			{Name: "Howl (Recharge 4–6)", Desc: "Wisdom Saving Throw: DC 16.\n\n- One.\n- Two.", Type: "action"},
+			{
+				Name: "Rending Bite",
+				Desc: "Melee Weapon Attack: +6 to hit, reach 5 ft. Hit: 13 (2d8 + 4) piercing damage.",
+				Type: "action",
+			},
+			{
+				Name: "Howl (Recharge 4–6)",
+				Desc: "Wisdom Saving Throw: DC 16.\n\n- One.\n- Two.",
+				Type: "action",
+			},
 			{Name: "Lunge", Desc: "Moves.", Type: "legendary_action"},
 		},
 	}
@@ -124,7 +172,14 @@ func TestFiveToolsTypeAndInitiative(t *testing.T) {
 			t.Fatal(err)
 		}
 		if d := m.data(); d.Type != tc.typ || d.Initiative != tc.initiative {
-			t.Errorf("%s: type %q initiative %d, want %q %d", tc.name, d.Type, d.Initiative, tc.typ, tc.initiative)
+			t.Errorf(
+				"%s: type %q initiative %d, want %q %d",
+				tc.name,
+				d.Type,
+				d.Initiative,
+				tc.typ,
+				tc.initiative,
+			)
 		}
 	}
 }

@@ -43,7 +43,10 @@ func parseFixtures(files map[string][]byte) (fixtures, error) {
 			if !strings.HasPrefix(r.Model, "api_v2.") {
 				return nil, fmt.Errorf("%s: model %q: %w", name, r.Model, errNotOpen5e)
 			}
-			out[strings.TrimPrefix(r.Model, "api_v2.")] = append(out[strings.TrimPrefix(r.Model, "api_v2.")], r)
+			out[strings.TrimPrefix(r.Model, "api_v2.")] = append(
+				out[strings.TrimPrefix(r.Model, "api_v2.")],
+				r,
+			)
 		}
 	}
 	return out, nil
@@ -104,7 +107,11 @@ func parseOpen5e(sourceKey string, files map[string][]byte) (Source, []Entry, er
 	}
 	docs := fx["document"]
 	if len(docs) != 1 {
-		return Source{}, nil, fmt.Errorf("expected one Document record, found %d: %w", len(docs), errNotOpen5e)
+		return Source{}, nil, fmt.Errorf(
+			"expected one Document record, found %d: %w",
+			len(docs),
+			errNotOpen5e,
+		)
 	}
 	doc, err := decode[open5eDoc](docs[0])
 	if err != nil {
@@ -117,8 +124,13 @@ func parseOpen5e(sourceKey string, files map[string][]byte) (Source, []Entry, er
 		licenses = append(licenses, cmp.Or(licenseNames[l], l))
 	}
 	src.License = strings.Join(licenses, ", ")
-	src.Attribution = fmt.Sprintf("This work includes material from %s by %s, available at %s, licensed under %s.",
-		doc.Name, doc.Author, doc.Permalink, src.License)
+	src.Attribution = fmt.Sprintf(
+		"This work includes material from %s by %s, available at %s, licensed under %s.",
+		doc.Name,
+		doc.Author,
+		doc.Permalink,
+		src.License,
+	)
 
 	n := normalizer{fx: fx, prefix: docs[0].pk() + "_"}
 	var entries []Entry
@@ -225,10 +237,22 @@ func (n normalizer) monsters() ([]Entry, error) {
 		_ = json.Unmarshal(r.Fields, &raw)
 
 		d := MonsterData{
-			Size: label(c.Size), Type: c.Type, Alignment: c.Alignment, AC: c.AC, ACDetail: c.ACDetail,
-			HP: c.HP, HitDice: c.HitDice, CR: formatCR(string(c.CR)), Languages: c.Languages,
-			Resistance: c.Resistances, Immunity: joinNonEmpty("; ", c.Immunities, c.CondImmunities), Vulnerability: c.Vulnerable,
-			Speed: map[string]int{}, Abilities: map[string]int{}, Saves: map[string]int{}, Skills: map[string]int{},
+			Size:          label(c.Size),
+			Type:          c.Type,
+			Alignment:     c.Alignment,
+			AC:            c.AC,
+			ACDetail:      c.ACDetail,
+			HP:            c.HP,
+			HitDice:       c.HitDice,
+			CR:            formatCR(string(c.CR)),
+			Languages:     c.Languages,
+			Resistance:    c.Resistances,
+			Immunity:      joinNonEmpty("; ", c.Immunities, c.CondImmunities),
+			Vulnerability: c.Vulnerable,
+			Speed:         map[string]int{},
+			Abilities:     map[string]int{},
+			Saves:         map[string]int{},
+			Skills:        map[string]int{},
 		}
 		if c.Initiative != nil {
 			d.Initiative = *c.Initiative
@@ -270,12 +294,28 @@ func (n normalizer) monsters() ([]Entry, error) {
 		}
 		acts := actions[r.pk()]
 		slices.SortStableFunc(acts, func(a, b o5eChild) int {
-			return cmp.Or(cmp.Compare(actionRank(a.ActionType), actionRank(b.ActionType)), cmp.Compare(a.Order, b.Order))
+			return cmp.Or(
+				cmp.Compare(actionRank(a.ActionType), actionRank(b.ActionType)),
+				cmp.Compare(a.Order, b.Order),
+			)
 		})
 		for _, a := range acts {
-			d.Actions = append(d.Actions, MonsterAction{Name: a.Name, Desc: a.Desc, Type: strings.ToLower(a.ActionType)})
+			d.Actions = append(
+				d.Actions,
+				MonsterAction{Name: a.Name, Desc: a.Desc, Type: strings.ToLower(a.ActionType)},
+			)
 		}
-		out = append(out, Entry{Kind: enum.KindMonster, Slug: n.slug(r.pk()), Name: c.Name, Data: d, Text: d.searchText(), Habitats: habitatsFrom(c.Environments)})
+		out = append(
+			out,
+			Entry{
+				Kind:     enum.KindMonster,
+				Slug:     n.slug(r.pk()),
+				Name:     c.Name,
+				Data:     d,
+				Text:     d.searchText(),
+				Habitats: habitatsFrom(c.Environments),
+			},
+		)
 	}
 	return out, nil
 }
@@ -348,7 +388,8 @@ type o5eSpell struct {
 var reFlatTable = regexp.MustCompile(`Table: ([^|]*?) (\|.*\|)`)
 
 // unflattenTable puts a flattened table's rows back on their own lines.
-// shortcut: one table per text, and an empty cell ("| |") would split its row; fine for the SRD's four.
+// shortcut: one table per text, and an empty cell ("| |") would split its row;
+// fine for the SRD's four.
 func unflattenTable(s string) string {
 	m := reFlatTable.FindStringSubmatchIndex(s)
 	if m == nil {
@@ -376,7 +417,10 @@ func (n normalizer) spells() ([]Entry, error) {
 				comps = append(comps, c)
 			}
 		}
-		slices.SortFunc(comps, func(a, b string) int { return strings.Index("VSM", a) - strings.Index("VSM", b) })
+		slices.SortFunc(
+			comps,
+			func(a, b string) int { return strings.Index("VSM", a) - strings.Index("VSM", b) },
+		)
 		components := strings.Join(comps, ", ")
 		if s.Material && s.MaterialSpec != "" {
 			components += " (" + s.MaterialSpec + ")"
@@ -470,7 +514,11 @@ func (n normalizer) items() ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	assigned, err := children(n.fx, "weaponpropertyassignment", func(a o5eAssignment) string { return a.Weapon })
+	assigned, err := children(
+		n.fx,
+		"weaponpropertyassignment",
+		func(a o5eAssignment) string { return a.Weapon },
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -483,8 +531,14 @@ func (n normalizer) items() ([]Entry, error) {
 				return nil, err
 			}
 			d := ItemData{
-				Category: it.Category, Rarity: label(it.Rarity), Attunement: it.Attunement,
-				Cost: trimZeros(string(it.Cost)), Weight: trimZeros(string(it.Weight)), Desc: it.Desc,
+				Category:   it.Category,
+				Rarity:     label(it.Rarity),
+				Attunement: it.Attunement,
+				Cost: trimZeros(
+					string(it.Cost),
+				),
+				Weight: trimZeros(string(it.Weight)),
+				Desc:   it.Desc,
 			}
 			if it.Weapon != nil {
 				if w, ok := weapons[*it.Weapon]; ok {
@@ -609,7 +663,11 @@ func (n normalizer) classes() ([]Entry, error) {
 		f.pk = r.pk()
 		features[f.Parent] = append(features[f.Parent], f)
 	}
-	levels, err := children(n.fx, "classfeatureitem", func(i o5eFeatureItem) string { return i.Parent })
+	levels, err := children(
+		n.fx,
+		"classfeatureitem",
+		func(i o5eFeatureItem) string { return i.Parent },
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -621,8 +679,10 @@ func (n normalizer) classes() ([]Entry, error) {
 			return nil, err
 		}
 		d := ClassData{
-			HitDie: hitDie(c.HitDice), Caster: strings.ToLower(cmp.Or(c.CasterType, dnd5e.CasterNone)),
-			Saves: c.Saves, Table: map[string]map[int]string{},
+			HitDie: hitDie(c.HitDice),
+			Caster: strings.ToLower(cmp.Or(c.CasterType, dnd5e.CasterNone)),
+			Saves:  c.Saves,
+			Table:  map[string]map[int]string{},
 		}
 		kind := enum.KindClass
 		if c.SubclassOf != nil {
@@ -674,7 +734,16 @@ func (n normalizer) classes() ([]Entry, error) {
 		slices.SortStableFunc(d.Features, func(a, b ClassFeature) int {
 			return cmp.Compare(firstOr(a.Levels, 99), firstOr(b.Levels, 99))
 		})
-		out = append(out, Entry{Kind: kind, Slug: n.slug(r.pk()), Name: c.Name, Data: d, Text: joinText(d.Desc, strings.Join(text, "\n"))})
+		out = append(
+			out,
+			Entry{
+				Kind: kind,
+				Slug: n.slug(r.pk()),
+				Name: c.Name,
+				Data: d,
+				Text: joinText(d.Desc, strings.Join(text, "\n")),
+			},
+		)
 	}
 	return out, nil
 }
@@ -700,7 +769,10 @@ type o5eText struct {
 }
 
 // textEntries builds a TextData entry per record with child parts.
-func (n normalizer) textEntries(kind enum.CompendiumKind, model, childModel string) ([]Entry, error) {
+func (n normalizer) textEntries(
+	kind enum.CompendiumKind,
+	model, childModel string,
+) ([]Entry, error) {
 	parts, err := children(n.fx, childModel, childParent)
 	if err != nil {
 		return nil, err
@@ -712,7 +784,10 @@ func (n normalizer) textEntries(kind enum.CompendiumKind, model, childModel stri
 			return nil, err
 		}
 		kids := parts[r.pk()]
-		slices.SortStableFunc(kids, func(a, b o5eChild) int { return cmp.Compare(a.SortOrder, b.SortOrder) })
+		slices.SortStableFunc(
+			kids,
+			func(a, b o5eChild) int { return cmp.Compare(a.SortOrder, b.SortOrder) },
+		)
 		d := TextData{Desc: t.Desc, Prerequisite: t.Prerequisite, Category: t.Type}
 		for _, p := range kids {
 			nd := NameDesc{Name: p.Name, Desc: p.Desc}
@@ -721,7 +796,16 @@ func (n normalizer) textEntries(kind enum.CompendiumKind, model, childModel stri
 			}
 			d.Parts = append(d.Parts, nd)
 		}
-		out = append(out, Entry{Kind: kind, Slug: n.slug(r.pk()), Name: t.Name, Data: d, Text: joinText(t.Desc, partsText(d.Parts))})
+		out = append(
+			out,
+			Entry{
+				Kind: kind,
+				Slug: n.slug(r.pk()),
+				Name: t.Name,
+				Data: d,
+				Text: joinText(t.Desc, partsText(d.Parts)),
+			},
+		)
 	}
 	return out, nil
 }
@@ -754,7 +838,16 @@ func (n normalizer) conditions() ([]Entry, error) {
 		if name == "" {
 			continue
 		}
-		out = append(out, Entry{Kind: enum.KindCondition, Slug: n.slug(r.pk()), Name: name, Data: TextData{Desc: c.Desc}, Text: c.Desc})
+		out = append(
+			out,
+			Entry{
+				Kind: enum.KindCondition,
+				Slug: n.slug(r.pk()),
+				Name: name,
+				Data: TextData{Desc: c.Desc},
+				Text: c.Desc,
+			},
+		)
 	}
 	return out, nil
 }
@@ -777,7 +870,16 @@ func (n normalizer) rules() ([]Entry, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, Entry{Kind: enum.KindRule, Slug: n.slug(r.pk()), Name: s.Name, Data: TextData{Desc: s.Desc}, Text: s.Desc})
+		out = append(
+			out,
+			Entry{
+				Kind: enum.KindRule,
+				Slug: n.slug(r.pk()),
+				Name: s.Name,
+				Data: TextData{Desc: s.Desc},
+				Text: s.Desc,
+			},
+		)
 	}
 	for _, r := range n.fx["rule"] {
 		s, err := decode[o5eRule](r)
@@ -785,16 +887,35 @@ func (n normalizer) rules() ([]Entry, error) {
 			return nil, err
 		}
 		cat := sets[s.RuleSet].Name
-		out = append(out, Entry{Kind: enum.KindRule, Slug: n.slug(r.pk()), Name: s.Name, Data: TextData{Desc: s.Desc, Category: cat}, Text: s.Desc})
+		out = append(
+			out,
+			Entry{
+				Kind: enum.KindRule,
+				Slug: n.slug(r.pk()),
+				Name: s.Name,
+				Data: TextData{Desc: s.Desc, Category: cat},
+				Text: s.Desc,
+			},
+		)
 	}
-	// Mastery properties are slugged by name ("sap", not "sap-mastery"), as 5etools books slug theirs.
+	// Mastery properties are slugged by name ("sap", not "sap-mastery"),
+	// as 5etools books slug theirs.
 	for _, r := range n.fx["weaponproperty"] {
 		p, err := decode[o5eProperty](r)
 		if err != nil {
 			return nil, err
 		}
 		if p.mastery() {
-			out = append(out, Entry{Kind: enum.KindRule, Slug: Slugify(p.Name), Name: p.Name, Data: TextData{Desc: p.Desc, Category: masteryCategory}, Text: p.Desc})
+			out = append(
+				out,
+				Entry{
+					Kind: enum.KindRule,
+					Slug: Slugify(p.Name),
+					Name: p.Name,
+					Data: TextData{Desc: p.Desc, Category: masteryCategory},
+					Text: p.Desc,
+				},
+			)
 		}
 	}
 	return out, nil

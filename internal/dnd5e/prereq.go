@@ -12,10 +12,12 @@ var (
 	rePrereqScore      = regexp.MustCompile(`^(.+) (\d+)\+$`)
 	rePrereqFeature    = regexp.MustCompile(`^(.+) Feature$`)
 	rePrereqInvocation = regexp.MustCompile(`^(.+) Invocation$`)
-	rePrereqCantrip    = regexp.MustCompile(`(?i)^an? (.+?) cantrip that deals damage( via an attack roll)?$`)
-	rePrereqArmor      = regexp.MustCompile(`(?i)^(Light|Medium|Heavy|Shield)(?: Armor)? Training$`)
-	reSpellDamage      = regexp.MustCompile(`\d+d\d+ \w+ damage`)
-	reSpellRange       = regexp.MustCompile(`(?i)^(\d+)\s*(?:feet|foot|ft\b\.?|(miles?)\b)`)
+	rePrereqCantrip    = regexp.MustCompile(
+		`(?i)^an? (.+?) cantrip that deals damage( via an attack roll)?$`,
+	)
+	rePrereqArmor = regexp.MustCompile(`(?i)^(Light|Medium|Heavy|Shield)(?: Armor)? Training$`)
+	reSpellDamage = regexp.MustCompile(`\d+d\d+ \w+ damage`)
+	reSpellRange  = regexp.MustCompile(`(?i)^(\d+)\s*(?:feet|foot|ft\b\.?|(miles?)\b)`)
 )
 
 // Cantrip is a class cantrip a sheet knows, or may learn this level-up:
@@ -47,7 +49,13 @@ func CantripFits(c Cantrip, classSlug string, attack bool, minRange int) bool {
 // Cantrip That Deals Damage"); every clause must hold. level is the character
 // level for feats and the class level for class options; cantrips are the
 // sheet's class cantrips. slug turns a class name into its compendium slug.
-func MeetsPrerequisite(prereq string, sh Sheet, level int, cantrips []Cantrip, slug func(string) string) bool {
+func MeetsPrerequisite(
+	prereq string,
+	sh Sheet,
+	level int,
+	cantrips []Cantrip,
+	slug func(string) string,
+) bool {
 	for _, clause := range strings.FieldsFunc(prereq, func(r rune) bool { return r == ',' || r == ';' }) {
 		clause = strings.TrimSpace(clause)
 		var scores []string // "Strength or Dexterity" of "… 13+"
@@ -66,7 +74,10 @@ func MeetsPrerequisite(prereq string, sh Sheet, level int, cantrips []Cantrip, s
 			}
 		} else if m := rePrereqFeature.FindStringSubmatch(clause); m != nil {
 			names := strings.Split(m[1], " or ")
-			if !slices.ContainsFunc(sh.Features, func(f Feature) bool { return slices.Contains(names, f.Name) }) {
+			if !slices.ContainsFunc(
+				sh.Features,
+				func(f Feature) bool { return slices.Contains(names, f.Name) },
+			) {
 				return false
 			}
 		} else if m := rePrereqInvocation.FindStringSubmatch(clause); m != nil {
@@ -77,7 +88,10 @@ func MeetsPrerequisite(prereq string, sh Sheet, level int, cantrips []Cantrip, s
 				return false
 			}
 		} else if m := rePrereqCantrip.FindStringSubmatch(clause); m != nil {
-			if !slices.ContainsFunc(cantrips, func(c Cantrip) bool { return CantripFits(c, slug(m[1]), m[2] != "", 0) }) {
+			if !slices.ContainsFunc(
+				cantrips,
+				func(c Cantrip) bool { return CantripFits(c, slug(m[1]), m[2] != "", 0) },
+			) {
 				return false
 			}
 		} else if m := rePrereqArmor.FindStringSubmatch(clause); m != nil {
@@ -85,7 +99,8 @@ func MeetsPrerequisite(prereq string, sh Sheet, level int, cantrips []Cantrip, s
 				return false
 			}
 		}
-		// shortcut: other clauses ("Proficiency with Heavy armor") pass unchecked; add a rule when a source uses one.
+		// shortcut: other clauses ("Proficiency with Heavy armor") pass unchecked; add a rule when
+		// a source uses one.
 	}
 	return true
 }

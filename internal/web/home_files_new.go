@@ -43,7 +43,11 @@ type newCharacter struct {
 
 // loadNewCharacter reads the zip at path and checks it against the table: its
 // kind, server and content. The review repeats it on every request.
-func (a *App) loadNewCharacter(ctx context.Context, q *sqlc.Queries, path string) (newCharacter, error) {
+func (a *App) loadNewCharacter(
+	ctx context.Context,
+	q *sqlc.Queries,
+	path string,
+) (newCharacter, error) {
 	var nc newCharacter
 	f, err := os.Open(path) //nolint:gosec // a random name inside our own folder
 	if err != nil {
@@ -71,7 +75,11 @@ func (a *App) loadNewCharacter(ctx context.Context, q *sqlc.Queries, path string
 	}
 	switch nc.cf, err = checkFileContent(file); {
 	case errors.Is(err, errNewerSheet):
-		return nc, userf("This file comes from a newer player app (%s); this server is %s and needs updating.", m.AppVersion, a.Version)
+		return nc, userf(
+			"This file comes from a newer player app (%s); this server is %s and needs updating.",
+			m.AppVersion,
+			a.Version,
+		)
 	case err != nil:
 		return nc, err
 	}
@@ -84,22 +92,33 @@ func (a *App) loadNewCharacter(ctx context.Context, q *sqlc.Queries, path string
 	// The file lists only books added at home: the table's own ones it pins
 	// come from here, so the review can offer those the campaign lacks.
 	// shortcut: only the current sheet is read, not level-up history, and bring-backs
-	// skip this (a book the GM switched off since the take-out slips through); reuse this loop if that bites.
+	// skip this (a book the GM switched off since the take-out slips through);
+	// reuse this loop if that bites.
 	keys, err := sheetSourceKeys(string(nc.cf.Sheet))
 	if err != nil {
 		return nc, err
 	}
 	for _, k := range keys {
-		if slices.ContainsFunc(file.Sources, func(s export.TakeHomeSource) bool { return s.SourceKey == k }) {
+		if slices.ContainsFunc(
+			file.Sources,
+			func(s export.TakeHomeSource) bool { return s.SourceKey == k },
+		) {
 			continue
 		}
 		src, err := q.GetCompendiumSource(ctx, k)
 		if errors.Is(err, sql.ErrNoRows) {
-			return nc, userf("%s uses the source %s, which this table does not have.", nc.cf.Name, k)
+			return nc, userf(
+				"%s uses the source %s, which this table does not have.",
+				nc.cf.Name,
+				k,
+			)
 		} else if err != nil {
 			return nc, err
 		}
-		nc.tableSources = append(nc.tableSources, export.TakeHomeSource{SourceKey: k, Edition: src.Edition})
+		nc.tableSources = append(
+			nc.tableSources,
+			export.TakeHomeSource{SourceKey: k, Edition: src.Edition},
+		)
 	}
 	nc.file = file
 	return nc, nil
@@ -108,7 +127,11 @@ func (a *App) loadNewCharacter(ctx context.Context, q *sqlc.Queries, path string
 // checkMadeAtHome refuses a file whose made-at-home token a live character
 // already holds. takeover says a deleted one holds it: its row goes when the
 // new character claims the token.
-func checkMadeAtHome(ctx context.Context, q *sqlc.Queries, token string) (takeover bool, err error) {
+func checkMadeAtHome(
+	ctx context.Context,
+	q *sqlc.Queries,
+	token string,
+) (takeover bool, err error) {
 	if token == "" {
 		return false, nil
 	}
@@ -135,7 +158,10 @@ func claimMadeAtHome(ctx context.Context, q *sqlc.Queries, token string, charact
 			return err
 		}
 	}
-	return q.CreateNewCharacterToken(ctx, sqlc.CreateNewCharacterTokenParams{CharacterID: characterID, Token: token})
+	return q.CreateNewCharacterToken(
+		ctx,
+		sqlc.CreateNewCharacterTokenParams{CharacterID: characterID, Token: token},
+	)
 }
 
 // newCharacterDialog is the dialog body that asks the GM for the file.
@@ -170,8 +196,14 @@ func (a *App) storeHomeFile(c *gin.Context, camp sqlc.Campaign, byPlayer bool) (
 		return "", err
 	}
 	id, err := a.homeFiles.put(homeFile{
-		kind: export.KindNewCharacter, campaignID: camp.ID, campaignName: camp.Name, characterName: nc.cf.Name,
-		byPlayer: byPlayer, savedAt: nc.file.Manifest.SavedAt, path: path, size: size,
+		kind:          export.KindNewCharacter,
+		campaignID:    camp.ID,
+		campaignName:  camp.Name,
+		characterName: nc.cf.Name,
+		byPlayer:      byPlayer,
+		savedAt:       nc.file.Manifest.SavedAt,
+		path:          path,
+		size:          size,
 	})
 	kept = err == nil
 	return id, err
@@ -224,10 +256,20 @@ func (a *App) joinNewCharacter(c *gin.Context) error {
 	var form playerForm
 	if err := c.ShouldBind(&form); err != nil {
 		if tooBig := new(http.MaxBytesError); errors.As(err, &tooBig) {
-			a.renderJoinCharacters(c, http.StatusRequestEntityTooLarge, camp, "That file is too large for a character file.")
+			a.renderJoinCharacters(
+				c,
+				http.StatusRequestEntityTooLarge,
+				camp,
+				"That file is too large for a character file.",
+			)
 			return nil
 		}
-		a.renderJoinCharacters(c, http.StatusUnprocessableEntity, camp, "Tell the GM your name (up to 12 characters).")
+		a.renderJoinCharacters(
+			c,
+			http.StatusUnprocessableEntity,
+			camp,
+			"Tell the GM your name (up to 12 characters).",
+		)
 		return nil
 	}
 	fileID, err := a.storeHomeFile(c, camp, true)
@@ -244,22 +286,47 @@ func (a *App) joinNewCharacter(c *gin.Context) error {
 		addr = c.Request.RemoteAddr
 	}
 	p, ok := a.Hub.AddPending(hub.Pending{
-		Addr: addr, CampaignID: camp.ID, CampaignName: camp.Name, Kind: hub.PendingNewCharacter, Name: f.characterName, FileID: fileID,
-		Player: strings.TrimSpace(form.Player), Device: userAgentSummary(ua), Phone: ua.Mobile, Host: lanHostname(c.Request.Context(), c.Request.RemoteAddr),
+		Addr:         addr,
+		CampaignID:   camp.ID,
+		CampaignName: camp.Name,
+		Kind:         hub.PendingNewCharacter,
+		Name:         f.characterName,
+		FileID:       fileID,
+		Player:       strings.TrimSpace(form.Player),
+		Device:       userAgentSummary(ua),
+		Phone:        ua.Mobile,
+		Host:         lanHostname(c.Request.Context(), c.Request.RemoteAddr),
 	})
 	if !ok {
 		a.homeFiles.drop(fileID)
-		a.renderJoinCharacters(c, http.StatusTooManyRequests, camp, "Too many people are waiting to join. Ask the GM to answer the requests first.")
+		a.renderJoinCharacters(
+			c,
+			http.StatusTooManyRequests,
+			camp,
+			"Too many people are waiting to join. Ask the GM to answer the requests first.",
+		)
 		return nil
 	}
 	epoch, seq := a.Hub.Position()
-	l := views.Layout{Title: "Waiting", WS: &views.WS{URL: route.WS + "?pending=" + p.Secret, Epoch: epoch, Seq: seq}}
-	a.render(c, http.StatusOK, views.JoinWaiting(l, views.Waiting{Secret: p.Secret, Name: p.Name, State: stateWaiting}))
+	l := views.Layout{
+		Title: "Waiting",
+		WS:    &views.WS{URL: route.WS + "?pending=" + p.Secret, Epoch: epoch, Seq: seq},
+	}
+	a.render(
+		c,
+		http.StatusOK,
+		views.JoinWaiting(l, views.Waiting{Secret: p.Secret, Name: p.Name, State: stateWaiting}),
+	)
 	return nil
 }
 
 // reviewNewCharacter reads, checks and plans a new character's file.
-func (a *App) reviewNewCharacter(ctx context.Context, q *sqlc.Queries, f homeFile, form func(string) string) (homeReview, error) {
+func (a *App) reviewNewCharacter(
+	ctx context.Context,
+	q *sqlc.Queries,
+	f homeFile,
+	form func(string) string,
+) (homeReview, error) {
 	var rv homeReview
 	nc, err := a.loadNewCharacter(ctx, q, f.path)
 	if err != nil {
@@ -277,13 +344,26 @@ func (a *App) reviewNewCharacter(ctx context.Context, q *sqlc.Queries, f homeFil
 			sources = append(sources, reviewSource{Key: s.SourceKey, Label: sourceLabel(s)})
 		}
 	}
-	if rv.x, err = planExtras(ctx, q, f.campaignID, 0, rv.file, export.TakeHomeBase{}, form); err != nil {
+	if rv.x, err = planExtras(
+		ctx,
+		q,
+		f.campaignID,
+		0,
+		rv.file,
+		export.TakeHomeBase{},
+		form,
+	); err != nil {
 		return rv, err
 	}
 	if err := applyRenames(rv.x.hb.Renames, &rv.cf, rv.file); err != nil {
 		return rv, err
 	}
-	if rv.plan.Sources, rv.plan.Block, err = planNewSources(string(rv.cf.Sheet), rv.cf.Name, sources, form); err != nil {
+	if rv.plan.Sources, rv.plan.Block, err = planNewSources(
+		string(rv.cf.Sheet),
+		rv.cf.Name,
+		sources,
+		form,
+	); err != nil {
 		return rv, err
 	}
 	if rv.plan.LevelTo, err = sheetLevel(string(rv.cf.Sheet)); err != nil {
@@ -319,7 +399,15 @@ func rebuildLinks(ctx context.Context, q *sqlc.Queries, ch sqlc.Character) error
 		lookIDs[i] = l.ID
 	}
 	for _, b := range blocks {
-		if err := writeBlockLinks(ctx, q, ch.CampaignID, b.NoteID, b.ID, json.RawMessage(b.DocJson), lookIDs); err != nil {
+		if err := writeBlockLinks(
+			ctx,
+			q,
+			ch.CampaignID,
+			b.NoteID,
+			b.ID,
+			json.RawMessage(b.DocJson),
+			lookIDs,
+		); err != nil {
 			return err
 		}
 	}
@@ -383,7 +471,17 @@ func (a *App) homeFileAdd(c *gin.Context, camp sqlc.Campaign, f homeFile) error 
 			}
 		}
 		maps := newHomeIDMaps()
-		if ch, err = createHomeCharacter(ctx, q, camp.ID, rv.cf, rv.addContent(), lookFiles, blockFiles, &maps, tableMentions); err != nil {
+		if ch, err = createHomeCharacter(
+			ctx,
+			q,
+			camp.ID,
+			rv.cf,
+			rv.addContent(),
+			lookFiles,
+			blockFiles,
+			&maps,
+			tableMentions,
+		); err != nil {
 			return err
 		}
 		if err := applyHomebrew(ctx, q, ch, rv.x.hb); err != nil {
@@ -423,7 +521,11 @@ func (a *App) homeFileAdd(c *gin.Context, camp sqlc.Campaign, f homeFile) error 
 	if _, err := UpgradeSheets(ctx, a.Store); err != nil {
 		slog.Warn("sheet upgrade after adding a new character", "err", err)
 	}
-	topics := []hub.Topic{{Kind: hub.TopicCampaign, ID: camp.ID}, {Kind: hub.TopicPending, ID: camp.ID}, {Kind: hub.TopicNotes, ID: camp.ID}}
+	topics := []hub.Topic{
+		{Kind: hub.TopicCampaign, ID: camp.ID},
+		{Kind: hub.TopicPending, ID: camp.ID},
+		{Kind: hub.TopicNotes, ID: camp.ID},
+	}
 	if allowedAny || rv.x.hb.touched() {
 		topics = append(topics, hub.Topic{Kind: hub.TopicCompendium})
 	}

@@ -48,7 +48,10 @@ const visitorFileGrace = 5 * time.Second
 func (a *App) pendingViews() []views.PendingGroup {
 	var out []views.PendingGroup
 	group := func(campaignID int64, name string) int {
-		i := slices.IndexFunc(out, func(g views.PendingGroup) bool { return g.CampaignID == campaignID })
+		i := slices.IndexFunc(
+			out,
+			func(g views.PendingGroup) bool { return g.CampaignID == campaignID },
+		)
 		if i < 0 {
 			i = len(out)
 			out = append(out, views.PendingGroup{CampaignID: campaignID, CampaignName: name})
@@ -62,15 +65,32 @@ func (a *App) pendingViews() []views.PendingGroup {
 			// Kept out of Requests: the approve-all bar must never approve a file unreviewed.
 			waitingFiles[p.FileID] = true
 			out[i].NewCharacters = append(out[i].NewCharacters, views.NewCharacterNotice{
-				FileID: p.FileID, CampaignID: p.CampaignID, Name: p.Name, Player: p.Player, Device: p.Device, Phone: p.Phone, Host: p.Host,
+				FileID:     p.FileID,
+				CampaignID: p.CampaignID,
+				Name:       p.Name,
+				Player:     p.Player,
+				Device:     p.Device,
+				Phone:      p.Phone,
+				Host:       p.Host,
 			})
 			continue
 		}
-		out[i].Requests = append(out[i].Requests, views.PendingView{ID: p.ID, CampaignID: p.CampaignID, Name: p.Name, Claim: p.Kind == hub.PendingClaim,
-			Player: p.Player, Device: p.Device, Phone: p.Phone, Host: p.Host,
-		})
+		out[i].Requests = append(
+			out[i].Requests,
+			views.PendingView{
+				ID:         p.ID,
+				CampaignID: p.CampaignID,
+				Name:       p.Name,
+				Claim:      p.Kind == hub.PendingClaim,
+				Player:     p.Player,
+				Device:     p.Device,
+				Phone:      p.Phone,
+				Host:       p.Host,
+			},
+		)
 	}
-	// Files wait for review after the join requests; the GM's own too, so leaving its review page loses nothing.
+	// Files wait for review after the join requests;
+	// the GM's own too, so leaving its review page loses nothing.
 	for _, f := range a.homeFiles.list() {
 		if f.byPlayer && f.kind == export.KindNewCharacter {
 			// A visitor's file shows through its request; it dies with it (the grace covers
@@ -82,7 +102,11 @@ func (a *App) pendingViews() []views.PendingGroup {
 		}
 		i := group(f.campaignID, f.campaignName)
 		out[i].BringBacks = append(out[i].BringBacks, views.BringBackNotice{
-			ID: f.id, CampaignID: f.campaignID, Name: f.characterName, SavedAt: f.savedAt, MadeAtHome: f.kind == export.KindNewCharacter,
+			ID:         f.id,
+			CampaignID: f.campaignID,
+			Name:       f.characterName,
+			SavedAt:    f.savedAt,
+			MadeAtHome: f.kind == export.KindNewCharacter,
 		})
 	}
 	return out
@@ -150,8 +174,18 @@ func (a *App) roster(ctx context.Context, campaignID int64) (views.Roster, error
 
 // playerCombat lists the started fights v's character is in and builds the
 // one asked for, or the first (the live fight) when want is not among them.
-func (a *App) playerCombat(ctx context.Context, v perm.Viewer, campaignID, want int64) ([]sqlc.Encounter, *views.EncounterView, error) {
-	list, err := a.Store.ListCharacterEncounters(ctx, sqlc.ListCharacterEncountersParams{CampaignID: campaignID, CharacterID: nullID(v.CharacterID)})
+func (a *App) playerCombat(
+	ctx context.Context,
+	v perm.Viewer,
+	campaignID, want int64,
+) ([]sqlc.Encounter, *views.EncounterView, error) {
+	list, err := a.Store.ListCharacterEncounters(
+		ctx,
+		sqlc.ListCharacterEncountersParams{
+			CampaignID:  campaignID,
+			CharacterID: nullID(v.CharacterID),
+		},
+	)
 	if err != nil || len(list) == 0 {
 		return nil, nil, err
 	}
@@ -168,7 +202,11 @@ const hiddenNPCName = "Unknown creature"
 
 // encounterView builds the turn order as v may see it. Hidden HP is zeroed
 // here so it never reaches the template, let alone the browser.
-func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encounter) (views.EncounterView, error) {
+func (a *App) encounterView(
+	ctx context.Context,
+	v perm.Viewer,
+	enc sqlc.Encounter,
+) (views.EncounterView, error) {
 	rows, err := a.Store.ListCombatants(ctx, enc.ID)
 	if err != nil {
 		return views.EncounterView{}, err
@@ -188,18 +226,29 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 	ev := views.EncounterView{Encounter: enc, IsGM: v.IsGM}
 	for _, r := range rows {
 		rowConds := rowConditions(r, conds)
-		sheet := pcSheetWith(r, rowConds) // parsed once for AC, initiative, defenses and out-of-fight; with its effects
+		sheet := pcSheetWith(
+			r,
+			rowConds,
+		) // parsed once for AC, initiative, defenses and out-of-fight; with its effects
 		cv := views.CombatantView{
-			ID: r.ID, Name: r.Name, AC: combatantArmorClass(r, sheet), HPVisible: r.HpVisible, CharacterID: r.CharacterID.Int64, EntityID: r.EntityID.Int64,
-			Kind:   combatantKind(r),
-			IsOwn:  v.IsPlayer() && r.CharacterID.Int64 == v.CharacterID,
-			Active: enc.Status == enum.EncounterActive && enc.ActiveCombatantID.Int64 == r.ID,
-			Out:    outOfFight(r, sheet),
+			ID:          r.ID,
+			Name:        r.Name,
+			AC:          combatantArmorClass(r, sheet),
+			HPVisible:   r.HpVisible,
+			CharacterID: r.CharacterID.Int64,
+			EntityID:    r.EntityID.Int64,
+			Kind:        combatantKind(r),
+			IsOwn:       v.IsPlayer() && r.CharacterID.Int64 == v.CharacterID,
+			Active:      enc.Status == enum.EncounterActive && enc.ActiveCombatantID.Int64 == r.ID,
+			Out:         outOfFight(r, sheet),
 		}
 		if r.Initiative.Valid {
 			cv.Initiative = fmt.Sprint(r.Initiative.Int64)
 		}
-		cv.ShowHP = perm.CanSeeCombatantHP(v, perm.Combatant{CharacterID: r.CharacterID.Int64, HPVisible: r.HpVisible})
+		cv.ShowHP = perm.CanSeeCombatantHP(
+			v,
+			perm.Combatant{CharacterID: r.CharacterID.Int64, HPVisible: r.HpVisible},
+		)
 		if cv.ShowHP {
 			cv.HP, cv.MaxHP, cv.TempHP = r.Hp, r.MaxHp, r.TempHp
 		}
@@ -221,14 +270,19 @@ func (a *App) encounterView(ctx context.Context, v perm.Viewer, enc sqlc.Encount
 		}
 		for _, p := range portraits {
 			look := toLook(p.ID, p.Name, p.Url, p.AttachmentID, p.IsRevealed, true)
-			if p.CharacterID == r.CharacterID.Int64 && len(perm.VisibleLooks(v, p.CharacterID, []perm.Look{look})) > 0 {
+			if p.CharacterID == r.CharacterID.Int64 &&
+				len(perm.VisibleLooks(v, p.CharacterID, []perm.Look{look})) > 0 {
 				cv.Portrait = views.LookItem(look).Src()
 			}
 		}
 		for _, p := range npcLooks {
 			look := toLook(p.ID, p.Name, p.Url, p.AttachmentID, p.IsRevealed, true)
 			// Players see it only when both the NPC and the look are revealed.
-			if e, ok := perm.VisibleEntity(v, perm.Entity{IsRevealed: p.EntityRevealed, Images: []perm.Look{look}}); p.EntityID == r.EntityID.Int64 && ok && len(e.Images) > 0 {
+			if e, ok := perm.VisibleEntity(
+				v,
+				perm.Entity{IsRevealed: p.EntityRevealed, Images: []perm.Look{look}},
+			); p.EntityID == r.EntityID.Int64 && ok &&
+				len(e.Images) > 0 {
 				cv.Portrait = views.LookItem(look).Src()
 			}
 		}
@@ -279,14 +333,20 @@ func combatantLink(r sqlc.ListCombatantsRow, campaignID int64) string {
 	case r.EntityID.Valid:
 		return route.Path(route.Entity, r.EntityID.Int64)
 	case r.MonsterRef.Valid:
-		return views.CompendiumBase(campaignID) + route.Path(route.CompendiumEntry, r.MonsterRef.Int64)
+		return views.CompendiumBase(campaignID) +
+			route.Path(route.CompendiumEntry, r.MonsterRef.Int64)
 	}
 	return ""
 }
 
 // playerCombatantLink is the page a player may open for a combatant: a sheet
 // they may view, a revealed NPC, or a monster whose HP the GM shows.
-func playerCombatantLink(v perm.Viewer, r sqlc.ListCombatantsRow, campaignID int64, showHP bool) string {
+func playerCombatantLink(
+	v perm.Viewer,
+	r sqlc.ListCombatantsRow,
+	campaignID int64,
+	showHP bool,
+) string {
 	switch {
 	case r.CharacterID.Valid:
 		if perm.CanCharacter(v, r.CharacterID.Int64, perm.ScopeView) {
@@ -312,15 +372,26 @@ func combatantKind(r sqlc.ListCombatantsRow) string {
 	return views.KindMonster
 }
 
-func (a *App) readableNotes(ctx context.Context, v perm.Viewer, campaignID int64) ([]sqlc.Note, error) {
+func (a *App) readableNotes(
+	ctx context.Context,
+	v perm.Viewer,
+	campaignID int64,
+) ([]sqlc.Note, error) {
 	return a.Store.ListReadableNotes(ctx, sqlc.ListReadableNotesParams{
-		CampaignID: campaignID, IsGm: v.IsGM, CharacterID: v.CharacterID, MaxResults: maxReadableNotes,
+		CampaignID:  campaignID,
+		IsGm:        v.IsGM,
+		CharacterID: v.CharacterID,
+		MaxResults:  maxReadableNotes,
 	})
 }
 
 // noteList is the notes index as v may see it, each note with its author:
 // the owning player, or the GM.
-func (a *App) noteList(ctx context.Context, v perm.Viewer, campaignID int64) ([]views.NoteItem, error) {
+func (a *App) noteList(
+	ctx context.Context,
+	v perm.Viewer,
+	campaignID int64,
+) ([]views.NoteItem, error) {
 	notes, err := a.readableNotes(ctx, v, campaignID)
 	if err != nil {
 		return nil, err
@@ -338,8 +409,10 @@ func (a *App) noteList(ctx context.Context, v perm.Viewer, campaignID int64) ([]
 	items := make([]views.NoteItem, len(notes))
 	for i, n := range notes {
 		items[i] = views.NoteItem{
-			Note: n, Author: author(v, names, n.OwnerCharacterID.Int64),
-			CanManage: perm.CanManageNote(v, n.OwnerCharacterID.Int64) && !perm.LocksShared(v, slices.Contains(shared, n.ID)),
+			Note:   n,
+			Author: author(v, names, n.OwnerCharacterID.Int64),
+			CanManage: perm.CanManageNote(v, n.OwnerCharacterID.Int64) &&
+				!perm.LocksShared(v, slices.Contains(shared, n.ID)),
 		}
 	}
 	return items, nil
@@ -373,8 +446,15 @@ func author(v perm.Viewer, names map[int64]string, characterID int64) views.Auth
 
 // noteView builds a note as v may see it; visible is false when v may see
 // neither a block nor manage the note (so even its title stays hidden).
-func (a *App) noteView(ctx context.Context, v perm.Viewer, note sqlc.Note) (views.NoteView, bool, error) {
-	rows, err := a.Store.ListReadableBlocks(ctx, sqlc.ListReadableBlocksParams{NoteID: note.ID, IsGm: v.IsGM, CharacterID: v.CharacterID})
+func (a *App) noteView(
+	ctx context.Context,
+	v perm.Viewer,
+	note sqlc.Note,
+) (views.NoteView, bool, error) {
+	rows, err := a.Store.ListReadableBlocks(
+		ctx,
+		sqlc.ListReadableBlocksParams{NoteID: note.ID, IsGm: v.IsGM, CharacterID: v.CharacterID},
+	)
 	if err != nil {
 		return views.NoteView{}, false, err
 	}
@@ -387,7 +467,11 @@ func (a *App) noteView(ctx context.Context, v perm.Viewer, note sqlc.Note) (view
 	if !manager && len(rows) == 0 {
 		return nv, false, nil
 	}
-	nv.Visibilities = perm.BlockVisibilities(v, note.OwnerCharacterID.Int64, note.Kind == enum.NoteGameSession)
+	nv.Visibilities = perm.BlockVisibilities(
+		v,
+		note.OwnerCharacterID.Int64,
+		note.Kind == enum.NoteGameSession,
+	)
 	chars, err := a.Store.ListCharacterNames(ctx, note.CampaignID)
 	if err != nil {
 		return nv, false, err
@@ -404,8 +488,11 @@ func (a *App) noteView(ctx context.Context, v perm.Viewer, note sqlc.Note) (view
 	for _, r := range rows {
 		audience := audiences[r.ID]
 		pb := perm.Block{
-			Visibility: r.Visibility, PlayersCanEdit: r.PlayersCanEdit, NoteOwnerID: note.OwnerCharacterID.Int64,
-			Audience: audience, AuthorID: r.AuthorCharacterID.Int64,
+			Visibility:     r.Visibility,
+			PlayersCanEdit: r.PlayersCanEdit,
+			NoteOwnerID:    note.OwnerCharacterID.Int64,
+			Audience:       audience,
+			AuthorID:       r.AuthorCharacterID.Int64,
 		}
 		if !perm.CanReadBlock(v, pb) {
 			continue // the SQL and Go rules agree; this is belt and braces
@@ -429,7 +516,11 @@ func (a *App) noteView(ctx context.Context, v perm.Viewer, note sqlc.Note) (view
 	return nv, true, nil
 }
 
-func (a *App) entityList(ctx context.Context, v perm.Viewer, campaignID int64) (views.EntityListView, error) {
+func (a *App) entityList(
+	ctx context.Context,
+	v perm.Viewer,
+	campaignID int64,
+) (views.EntityListView, error) {
 	list := views.EntityListView{CampaignID: campaignID, IsGM: v.IsGM}
 	var rows []sqlc.Entity
 	var err error
@@ -453,7 +544,9 @@ func (a *App) entityList(ctx context.Context, v perm.Viewer, campaignID int64) (
 		// Only the portrait: VisibleEntity drops it for players unless revealed.
 		for _, l := range looks {
 			if l.EntityID == e.ID {
-				e.Images = []perm.Look{toLook(l.ID, l.Name, l.Url, l.AttachmentID, l.IsRevealed, true)}
+				e.Images = []perm.Look{
+					toLook(l.ID, l.Name, l.Url, l.AttachmentID, l.IsRevealed, true),
+				}
 			}
 		}
 		if visible, ok := perm.VisibleEntity(v, e); ok {
@@ -466,7 +559,12 @@ func (a *App) entityList(ctx context.Context, v perm.Viewer, campaignID int64) (
 // readableLinks are the [[link]] targets in a player's visible fields they
 // may open: images (the revealed field lets them), notes they can read and
 // revealed NPCs.
-func (a *App) readableLinks(ctx context.Context, v perm.Viewer, campaignID int64, fields perm.Fields) (map[string]bool, error) {
+func (a *App) readableLinks(
+	ctx context.Context,
+	v perm.Viewer,
+	campaignID int64,
+	fields perm.Fields,
+) (map[string]bool, error) {
 	out := map[string]bool{}
 	var links []views.WikiLink
 	for _, f := range fields {
@@ -488,9 +586,15 @@ func (a *App) readableLinks(ctx context.Context, v perm.Viewer, campaignID int64
 		case string(enum.LinkImage):
 			out[l.Key()] = true
 		case string(enum.LinkNote):
-			out[l.Key()] = slices.ContainsFunc(notes, func(n sqlc.Note) bool { return n.ID == l.ID })
+			out[l.Key()] = slices.ContainsFunc(
+				notes,
+				func(n sqlc.Note) bool { return n.ID == l.ID },
+			)
 		case string(enum.LinkEntity):
-			out[l.Key()] = slices.ContainsFunc(npcs, func(e sqlc.Entity) bool { return e.ID == l.ID })
+			out[l.Key()] = slices.ContainsFunc(
+				npcs,
+				func(e sqlc.Entity) bool { return e.ID == l.ID },
+			)
 		}
 	}
 	return out, nil
@@ -501,10 +605,20 @@ func toEntity(r sqlc.Entity) (perm.Entity, error) {
 	if err != nil {
 		return perm.Entity{}, err
 	}
-	return perm.Entity{ID: r.ID, Name: r.Name, IsRevealed: r.IsRevealed, Fields: fields, CompendiumRef: r.CompendiumRef.Int64}, nil
+	return perm.Entity{
+		ID:            r.ID,
+		Name:          r.Name,
+		IsRevealed:    r.IsRevealed,
+		Fields:        fields,
+		CompendiumRef: r.CompendiumRef.Int64,
+	}, nil
 }
 
-func (a *App) entityView(ctx context.Context, v perm.Viewer, entityID int64) (views.EntityView, bool, error) {
+func (a *App) entityView(
+	ctx context.Context,
+	v perm.Viewer,
+	entityID int64,
+) (views.EntityView, bool, error) {
 	row, err := a.Store.GetEntity(ctx, entityID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return views.EntityView{}, false, nil
@@ -521,7 +635,10 @@ func (a *App) entityView(ctx context.Context, v perm.Viewer, entityID int64) (vi
 		return views.EntityView{}, false, err
 	}
 	for _, l := range looks {
-		e.Images = append(e.Images, toLook(l.ID, l.Name, l.Url, l.AttachmentID, l.IsRevealed, l.IsCurrent))
+		e.Images = append(
+			e.Images,
+			toLook(l.ID, l.Name, l.Url, l.AttachmentID, l.IsRevealed, l.IsCurrent),
+		)
 	}
 	visible, ok := perm.VisibleEntity(v, e)
 	if !ok {
@@ -548,7 +665,10 @@ func (a *App) entityView(ctx context.Context, v perm.Viewer, entityID int64) (vi
 			return views.EntityView{}, false, err
 		}
 		for _, img := range images {
-			if !slices.ContainsFunc(e.Images, func(l perm.Look) bool { return l.ImageID == img.ID }) {
+			if !slices.ContainsFunc(
+				e.Images,
+				func(l perm.Look) bool { return l.ImageID == img.ID },
+			) {
 				ev.ImageChoices = append(ev.ImageChoices, img)
 			}
 		}

@@ -211,7 +211,11 @@ func (s Sheet) multiclassWarning(class string) string {
 	if pre.anyOf {
 		join = " or "
 	}
-	return fmt.Sprintf("Multiclassing with %s needs %s 13 or higher.", class, strings.Join(names, join))
+	return fmt.Sprintf(
+		"Multiclassing with %s needs %s 13 or higher.",
+		class,
+		strings.Join(names, join),
+	)
 }
 
 // LevelUpChoice is what the player picked in the helper.
@@ -268,7 +272,12 @@ func (c *Character) LevelUp(ch LevelUpChoice) error {
 	}
 	s.CatchUpUses(ch.Class)
 	for _, f := range plan.Features {
-		feat := Feature{Name: f.Name, Source: ch.Class.Name, Level: plan.ClassLevel, Description: f.Description}
+		feat := Feature{
+			Name:        f.Name,
+			Source:      ch.Class.Name,
+			Level:       plan.ClassLevel,
+			Description: f.Description,
+		}
 		s.AddFeature(feat, ParseEffects(f.Name, f.Description, ch.Class.Table, ch.Class.Name))
 	}
 	s.ScaleSpeeds(ch.Class, plan.ClassLevel)
@@ -307,7 +316,10 @@ func (s *Sheet) ScaleSpeeds(class ClassInfo, level int) bool {
 			if !strings.EqualFold(col, m.Source) {
 				continue
 			}
-			if n, err := strconv.Atoi(reNumber.FindString(byLevel[level])); err == nil && n != m.Value {
+			if n, err := strconv.Atoi(
+				reNumber.FindString(byLevel[level]),
+			); err == nil &&
+				n != m.Value {
 				s.Modifiers[i].Value, changed = n, true
 			}
 		}
@@ -371,7 +383,8 @@ func (s *Sheet) CatchUpProfs() bool {
 	count := func() int { return len(s.SkillProfs) + len(s.OtherProfs) + len(s.ArmorTraining) }
 	before := count()
 	for _, f := range s.Features {
-		if f.Source == s.Species || f.Source == SourceFeat || slices.Contains(s.classNames(), f.Source) {
+		if f.Source == s.Species || f.Source == SourceFeat ||
+			slices.Contains(s.classNames(), f.Source) {
 			s.Grant(f.Name, ParseEffects(f.Name, f.Description, nil, ""))
 		}
 	}
@@ -390,7 +403,10 @@ func applyASI(s *Sheet, ch LevelUpChoice) error {
 		return errors.New("choose a feat or an ability score increase, not both")
 	case ch.Feat != "":
 		s.Feats = append(s.Feats, ch.Feat)
-		s.Features = append(s.Features, Feature{Name: ch.Feat, Source: SourceFeat, Description: ch.FeatDesc})
+		s.Features = append(
+			s.Features,
+			Feature{Name: ch.Feat, Source: SourceFeat, Description: ch.FeatDesc},
+		)
 		s.Grant(ch.Feat, ParseEffects(ch.Feat, ch.FeatDesc, nil, ""))
 	case len(ch.ASI) == 1:
 		return raise(s, ch.ASI[0], 2)
@@ -467,7 +483,8 @@ func (s Sheet) withClassLevel(class ClassInfo, subclass string) Sheet {
 		if subclass != "" {
 			s.Classes[i].Subclass = subclass
 		}
-		if cl := &s.Classes[i]; (cl.Caster == "" || cl.Caster == CasterNone) && class.Caster != "" { // a subclass brought spellcasting
+		if cl := &s.Classes[i]; (cl.Caster == "" || cl.Caster == CasterNone) &&
+			class.Caster != "" { // a subclass brought spellcasting
 			cl.Caster = class.Caster
 		}
 		if s.Classes[i].Subclass != "" && s.Classes[i].SubclassSlug == "" {
@@ -508,7 +525,10 @@ func RevertSheet(snap, cur Sheet) Sheet {
 		out.Armor = &armor
 	}
 	out.Backstory = cur.Backstory
-	out.Modifiers = slices.DeleteFunc(slices.Clone(snap.Modifiers), func(m CustomMod) bool { return m.Source == "" })
+	out.Modifiers = slices.DeleteFunc(
+		slices.Clone(snap.Modifiers),
+		func(m CustomMod) bool { return m.Source == "" },
+	)
 	for _, m := range cur.Modifiers {
 		if m.Source == "" {
 			out.Modifiers = append(out.Modifiers, m)
@@ -523,7 +543,10 @@ func RevertSheet(snap, cur Sheet) Sheet {
 	out.Pact.Used = min(cur.Pact.Used, snap.Pact.Max)
 	out.Features = slices.Clone(snap.Features)
 	for i, f := range out.Features {
-		j := slices.IndexFunc(cur.Features, func(c Feature) bool { return c.Name == f.Name && c.Source == f.Source })
+		j := slices.IndexFunc(
+			cur.Features,
+			func(c Feature) bool { return c.Name == f.Name && c.Source == f.Source },
+		)
 		if j >= 0 && f.Uses.Limited() {
 			out.Features[i].Uses.Used = min(cur.Features[j].Uses.Used, snap.MaxUses(f.Uses))
 		}

@@ -16,27 +16,84 @@ import (
 	"gm-session-manager/internal/route"
 )
 
-var noLinks = Links{Mention: func(string) string { return "" }, Image: func(string) string { return "" }}
+var noLinks = Links{
+	Mention: func(string) string { return "" },
+	Image:   func(string) string { return "" },
+}
 
 func TestMarkdown(t *testing.T) {
 	tests := []struct {
 		name, doc, want string
 		links           Links
 	}{
-		{"paragraphs", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello"}]},{"type":"paragraph","content":[{"type":"text","text":"World"}]}]}`, "Hello\n\nWorld\n", noLinks},
-		{"heading and marks", `{"type":"doc","content":[{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Loot"}]},{"type":"paragraph","content":[{"type":"text","text":"a ","marks":[]},{"type":"text","text":"sword","marks":[{"type":"bold"}]}]}]}`, "## Loot\n\na **sword**\n", noLinks},
-		{"lists", `{"type":"doc","content":[{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"one"}]}]},{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"two"}]}]}]}]}`, "- one\n- two\n", noLinks},
-		{"quote", `{"type":"doc","content":[{"type":"blockquote","content":[{"type":"paragraph","content":[{"type":"text","text":"Read aloud"}]}]}]}`, "> Read aloud\n", noLinks},
-		{"escaping", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"*not bold* [x]"}]}]}`, `\*not bold\* \[x\]` + "\n", noLinks},
-		{"mention resolved", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"note:3","label":"Inn"}}]}]}`, "[Inn](3-inn.md)\n",
-			Links{Mention: func(id string) string { return map[string]string{"note:3": "3-inn.md"}[id] }, Image: noLinks.Image}},
-		{"mention unresolved", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"entity:3","label":"Mira"}}]}]}`, "Mira\n", noLinks},
-		{"image dropped when not exported", `{"type":"doc","content":[{"type":"image","attrs":{"src":"` + route.Path(route.Attachment, 9) + `","alt":"map"}}]}`, "\n", noLinks},
-		{"attached picture exported as image", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"attachment:9","label":"map","float":"break"}}]}]}`, "![map](../attachments/ab12)\n",
+		{
+			"paragraphs",
+			`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello"}]},{"type":"paragraph","content":[{"type":"text","text":"World"}]}]}`,
+			"Hello\n\nWorld\n",
+			noLinks,
+		},
+		{
+			"heading and marks",
+			`{"type":"doc","content":[{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Loot"}]},{"type":"paragraph","content":[{"type":"text","text":"a ","marks":[]},{"type":"text","text":"sword","marks":[{"type":"bold"}]}]}]}`,
+			"## Loot\n\na **sword**\n",
+			noLinks,
+		},
+		{
+			"lists",
+			`{"type":"doc","content":[{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"one"}]}]},{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"two"}]}]}]}]}`,
+			"- one\n- two\n",
+			noLinks,
+		},
+		{
+			"quote",
+			`{"type":"doc","content":[{"type":"blockquote","content":[{"type":"paragraph","content":[{"type":"text","text":"Read aloud"}]}]}]}`,
+			"> Read aloud\n",
+			noLinks,
+		},
+		{
+			"escaping",
+			`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"*not bold* [x]"}]}]}`,
+			`\*not bold\* \[x\]` + "\n",
+			noLinks,
+		},
+		{
+			"mention resolved",
+			`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"note:3","label":"Inn"}}]}]}`,
+			"[Inn](3-inn.md)\n",
+			Links{
+				Mention: func(id string) string { return map[string]string{"note:3": "3-inn.md"}[id] },
+				Image:   noLinks.Image,
+			},
+		},
+		{
+			"mention unresolved",
+			`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"entity:3","label":"Mira"}}]}]}`,
+			"Mira\n",
+			noLinks,
+		},
+		{
+			"image dropped when not exported",
+			`{"type":"doc","content":[{"type":"image","attrs":{"src":"` + route.Path(
+				route.Attachment,
+				9,
+			) + `","alt":"map"}}]}`,
+			"\n",
+			noLinks,
+		},
+		{
+			"attached picture exported as image",
+			`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"attachment:9","label":"map","float":"break"}}]}]}`,
+			"![map](../attachments/ab12)\n",
 			Links{Mention: noLinks.Mention, Image: func(src string) string {
 				return map[string]string{route.Path(route.Attachment, 9): "../attachments/ab12"}[src]
-			}}},
-		{"attached picture dropped when not exported", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"attachment:9","label":"map"}}]}]}`, "\n", noLinks},
+			}},
+		},
+		{
+			"attached picture dropped when not exported",
+			`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"attachment:9","label":"map"}}]}]}`,
+			"\n",
+			noLinks,
+		},
 		{"empty doc", `{"type":"doc","content":[{"type":"paragraph"}]}`, "\n", noLinks},
 	}
 	for _, tt := range tests {
@@ -63,13 +120,43 @@ func TestCampaignExcludesOwnerBlocks(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 	q := db.NewStore(conn)
 
-	camp, _ := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"})
-	alice, _ := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: "Alice", System: "dnd5e", SheetJson: "{}"})
+	camp, _ := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"},
+	)
+	alice, _ := q.CreateCharacterWithSheet(
+		ctx,
+		sqlc.CreateCharacterWithSheetParams{
+			CampaignID: camp.ID,
+			Name:       "Alice",
+			System:     "dnd5e",
+			SheetJson:  "{}",
+		},
+	)
 	owner := sql.NullInt64{Int64: alice.ID, Valid: true}
 
-	gmNote, _ := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "game_session", Title: "Session one"})
-	private, _ := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "Alice diary", OwnerCharacterID: owner})
-	mixed, _ := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "Alice shared", OwnerCharacterID: owner})
+	gmNote, _ := q.CreateNote(
+		ctx,
+		sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "game_session", Title: "Session one"},
+	)
+	private, _ := q.CreateNote(
+		ctx,
+		sqlc.CreateNoteParams{
+			CampaignID:       camp.ID,
+			Kind:             "generic",
+			Title:            "Alice diary",
+			OwnerCharacterID: owner,
+		},
+	)
+	mixed, _ := q.CreateNote(
+		ctx,
+		sqlc.CreateNoteParams{
+			CampaignID:       camp.ID,
+			Kind:             "generic",
+			Title:            "Alice shared",
+			OwnerCharacterID: owner,
+		},
+	)
 
 	addBlock := func(noteID int64, vis enum.Visibility, text string) {
 		t.Helper()
@@ -78,10 +165,16 @@ func TestCampaignExcludesOwnerBlocks(t *testing.T) {
 			t.Fatal(err)
 		}
 		doc := `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"` + text + `"}]}]}`
-		if err := q.SetBlockVersion(ctx, sqlc.SetBlockVersionParams{ID: b.ID, Version: 1}); err != nil {
+		if err := q.SetBlockVersion(
+			ctx,
+			sqlc.SetBlockVersionParams{ID: b.ID, Version: 1},
+		); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := q.SaveBlockSnapshot(ctx, sqlc.SaveBlockSnapshotParams{ID: b.ID, DocJson: doc, DocVersion: 1, Text: text}); err != nil {
+		if _, err := q.SaveBlockSnapshot(
+			ctx,
+			sqlc.SaveBlockSnapshotParams{ID: b.ID, DocJson: doc, DocVersion: 1, Text: text},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -130,13 +223,25 @@ func TestCampaignSkipsMissingAttachment(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	q := db.NewStore(conn)
-	camp, _ := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"})
+	camp, _ := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"},
+	)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "here.png"), []byte("png"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range []string{"here.png", "gone.png"} {
-		if _, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{CampaignID: camp.ID, Path: p, Name: p, Mime: "image/png", Size: 3}); err != nil {
+		if _, err := q.CreateAttachment(
+			ctx,
+			sqlc.CreateAttachmentParams{
+				CampaignID: camp.ID,
+				Path:       p,
+				Name:       p,
+				Mime:       "image/png",
+				Size:       3,
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -159,7 +264,8 @@ func TestCampaignSkipsMissingAttachment(t *testing.T) {
 	if got["attachments/here.png"] != "png" {
 		t.Errorf("present file not exported: %v", got)
 	}
-	if list := got["attachments/MISSING.txt"]; !strings.Contains(list, "gone.png") || strings.Contains(list, "here.png") {
+	if list := got["attachments/MISSING.txt"]; !strings.Contains(list, "gone.png") ||
+		strings.Contains(list, "here.png") {
 		t.Errorf("MISSING.txt is %q", list)
 	}
 }

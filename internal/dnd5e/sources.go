@@ -21,7 +21,15 @@ const (
 )
 
 // RefKinds lists the ref kinds the source command takes.
-var RefKinds = []string{RefClass, RefSubclass, RefSpell, RefSpecies, RefBackground, RefFeat, RefArmor}
+var RefKinds = []string{
+	RefClass,
+	RefSubclass,
+	RefSpell,
+	RefSpecies,
+	RefBackground,
+	RefFeat,
+	RefArmor,
+}
 
 // SourceRef names a ref on the sheet and the source to pin it to.
 type SourceRef struct {
@@ -60,9 +68,15 @@ func PlanSourceSwitch(s Sheet, kind, slug string, old *ClassInfo, next ClassInfo
 	}
 	for i, to := range sw.replace {
 		f := s.Features[i]
-		p.Replace = append(p.Replace, SwitchFeature{Name: f.Name, Level: f.Level, Dropped: to == nil})
+		p.Replace = append(
+			p.Replace,
+			SwitchFeature{Name: f.Name, Level: f.Level, Dropped: to == nil},
+		)
 	}
-	slices.SortFunc(p.Replace, func(a, b SwitchFeature) int { return cmp.Or(a.Level-b.Level, strings.Compare(a.Name, b.Name)) })
+	slices.SortFunc(
+		p.Replace,
+		func(a, b SwitchFeature) int { return cmp.Or(a.Level-b.Level, strings.Compare(a.Name, b.Name)) },
+	)
 	for _, i := range sw.keep {
 		p.Keep = append(p.Keep, SwitchFeature{Name: s.Features[i].Name, Level: s.Features[i].Level})
 	}
@@ -104,7 +118,8 @@ func planSwitch(s Sheet, kind, slug string, old *ClassInfo, next ClassInfo) (fea
 		if f.Source != cl.Name || f.Level == 0 || others[name] {
 			continue
 		}
-		if desc, ok := oldDesc[name]; !ok || desc != f.Description { // edited, or not from the old copy
+		if desc, ok := oldDesc[name]; !ok ||
+			desc != f.Description { // edited, or not from the old copy
 			sw.keep = append(sw.keep, i)
 			continue
 		}
@@ -121,7 +136,10 @@ func planSwitch(s Sheet, kind, slug string, old *ClassInfo, next ClassInfo) (fea
 		// Once, at the first level gained, as LevelUp adds them.
 		for _, lvl := range slices.Sorted(slices.Values(f.Levels)) {
 			if lvl >= 1 && lvl <= cl.Level {
-				sw.add = append(sw.add, Feature{Name: f.Name, Source: cl.Name, Level: lvl, Description: f.Description})
+				sw.add = append(
+					sw.add,
+					Feature{Name: f.Name, Source: cl.Name, Level: lvl, Description: f.Description},
+				)
 				break
 			}
 		}
@@ -145,7 +163,8 @@ func (s Sheet) refClass(kind, slug string) int {
 	case RefSubclass:
 		// Unpinned sheets know the subclass by name only.
 		return slices.IndexFunc(s.Classes, func(c ClassLevel) bool {
-			return c.SubclassSlug == slug || c.SubclassSlug == "" && c.Subclass != "" && sameSlug(c.Subclass, slug)
+			return c.SubclassSlug == slug ||
+				c.SubclassSlug == "" && c.Subclass != "" && sameSlug(c.Subclass, slug)
 		})
 	}
 	return -1
@@ -173,7 +192,8 @@ func (c *Character) SwitchSource(ref SourceRef, env Env) error {
 	switch ref.Kind {
 	case RefClass, RefSubclass:
 		next := env.SourceNew
-		if ref.Kind == RefClass && next.Slug != ref.Slug || ref.Kind == RefSubclass && next.SubclassSlug != ref.Slug {
+		if ref.Kind == RefClass && next.Slug != ref.Slug ||
+			ref.Kind == RefSubclass && next.SubclassSlug != ref.Slug {
 			return fmt.Errorf("unknown %s %q", ref.Kind, ref.Slug)
 		}
 		sw, err := planSwitch(*s, ref.Kind, ref.Slug, env.SourceOld, next)
@@ -210,7 +230,8 @@ func (c *Character) SwitchSource(ref SourceRef, env Env) error {
 		*pin = ref.Source
 	case RefFeat:
 		_, pinned := s.FeatSources[ref.Slug]
-		if !pinned && !slices.ContainsFunc(s.Feats, func(n string) bool { return sameSlug(n, ref.Slug) }) {
+		if !pinned &&
+			!slices.ContainsFunc(s.Feats, func(n string) bool { return sameSlug(n, ref.Slug) }) {
 			return fmt.Errorf("no feat %q on the sheet", ref.Slug)
 		}
 		if s.FeatSources == nil {
@@ -238,7 +259,12 @@ func (s *Sheet) applySwitch(sw featureSwitch, next ClassInfo) {
 		}
 		// By index: an older sheet may still hold a feature once per level.
 		old := s.Features[i]
-		f := Feature{Name: old.Name, Source: old.Source, Level: old.Level, Description: to.Description}
+		f := Feature{
+			Name:        old.Name,
+			Source:      old.Source,
+			Level:       old.Level,
+			Description: to.Description,
+		}
 		e := ParseEffects(to.Name, to.Description, next.Table, next.Name)
 		s.putFeature(i, f, e.Apply(&f))
 		s.RemoveProfsFrom(old.Name)
@@ -249,7 +275,10 @@ func (s *Sheet) applySwitch(sw featureSwitch, next ClassInfo) {
 		name := s.Features[i].Name
 		s.Features = slices.Delete(s.Features, i, i+1)
 		if !slices.ContainsFunc(s.Features, func(f Feature) bool { return f.Name == name }) {
-			s.Modifiers = slices.DeleteFunc(s.Modifiers, func(m CustomMod) bool { return m.Source == name })
+			s.Modifiers = slices.DeleteFunc(
+				s.Modifiers,
+				func(m CustomMod) bool { return m.Source == name },
+			)
 			s.RemoveProfsFrom(name)
 		}
 	}
@@ -280,7 +309,13 @@ func (c *Character) ChangeSubclass(ref SubclassRef, env Env) error {
 	}
 	cl := s.Classes[i]
 	// An unpinned subclass is found by its name.
-	sw, err := planSwitch(*s, RefSubclass, cmp.Or(cl.SubclassSlug, cl.Subclass), env.SourceOld, next)
+	sw, err := planSwitch(
+		*s,
+		RefSubclass,
+		cmp.Or(cl.SubclassSlug, cl.Subclass),
+		env.SourceOld,
+		next,
+	)
 	if err != nil {
 		return err
 	}
@@ -306,6 +341,9 @@ func (s Sheet) PinsSource(key string) bool {
 // the build cannot be).
 func (s Sheet) BuildPinsSource(key string) bool {
 	return s.SpeciesSource == key || s.BackgroundSource == key ||
-		slices.ContainsFunc(s.Classes, func(c ClassLevel) bool { return c.Source == key || c.SubclassSource == key }) ||
+		slices.ContainsFunc(
+			s.Classes,
+			func(c ClassLevel) bool { return c.Source == key || c.SubclassSource == key },
+		) ||
 		slices.Contains(slices.Collect(maps.Values(s.FeatSources)), key)
 }

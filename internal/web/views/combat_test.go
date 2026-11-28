@@ -19,10 +19,17 @@ func TestChipRemovesOwnEffects(t *testing.T) {
 		{ID: 13, Slug: "custom", Note: "overflow", AppliedBy: applied},
 		{ID: 14, Slug: "poisoned"},
 	}
-	html := renderHTML(t, combatantChip(EncounterView{}, CombatantView{ID: 1, Name: "Ally", Kind: KindPC, CharacterID: 2, Conditions: conds}))
+	html := renderHTML(
+		t,
+		combatantChip(
+			EncounterView{},
+			CombatantView{ID: 1, Name: "Ally", Kind: KindPC, CharacterID: 2, Conditions: conds},
+		),
+	)
 	// The add button reads as an add slot after the conditions, not one more of them.
 	// The button's base class is border-transparent: the dash needs its own colour.
-	if !strings.Contains(html, "+ Effect") || !strings.Contains(html, "border-dashed") || !strings.Contains(html, "border-muted-foreground/50") {
+	if !strings.Contains(html, "+ Effect") || !strings.Contains(html, "border-dashed") ||
+		!strings.Contains(html, "border-muted-foreground/50") {
 		t.Error("the ally's add-effect button is not a dashed \"+ Effect\" pill")
 	}
 	// As tall as the condition pills on phones too, not the sheet button's 32px.
@@ -57,7 +64,10 @@ func TestCombatPageEmpty(t *testing.T) {
 		{"asked-for encounter missing", []sqlc.Encounter{{ID: 1, Name: "Fight"}}, false},
 	} {
 		var b strings.Builder
-		if err := CombatPage(Layout{}, CombatView{IsGM: true, CampaignID: 1, Encounters: tt.encounters}).Render(t.Context(), &b); err != nil {
+		if err := CombatPage(
+			Layout{},
+			CombatView{IsGM: true, CampaignID: 1, Encounters: tt.encounters},
+		).Render(t.Context(), &b); err != nil {
 			t.Fatal(err)
 		}
 		if got := strings.Contains(b.String(), "No encounters yet"); got != tt.want {

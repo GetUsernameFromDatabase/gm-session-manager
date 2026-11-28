@@ -32,7 +32,10 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 	switch c.Query("op") {
 	case views.OpSetSpecies, views.OpSetBackground:
 		kind := enum.CompendiumKind(strings.TrimPrefix(c.Query("op"), "set-"))
-		rows, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: campaignID})
+		rows, err := a.Store.ListCompendiumNames(
+			ctx,
+			sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: campaignID},
+		)
 		for _, r := range rows {
 			x.Suggestions = append(x.Suggestions, r.Name)
 		}
@@ -62,7 +65,10 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 		w := compendiumWeapon(e.Name, d)
 		x.Weapon = &w
 	case *compendium.ClassData:
-		if i := slices.IndexFunc(d.Features, func(f compendium.ClassFeature) bool { return f.Name == c.Query("feature") }); i >= 0 {
+		if i := slices.IndexFunc(
+			d.Features,
+			func(f compendium.ClassFeature) bool { return f.Name == c.Query("feature") },
+		); i >= 0 {
 			cf := d.Features[i]
 			f := dnd5e.Feature{Name: cf.Name, Description: cf.Desc, Source: e.Name}
 			x.FeatureMods = dnd5e.ParseEffects(cf.Name, cf.Desc, d.Table, e.Name).Apply(&f)
@@ -80,13 +86,24 @@ func (a *App) builderExtra(c *gin.Context, campaignID int64) (views.BuilderExtra
 }
 
 // kindSources name where a feature looked up in the compendium comes from.
-var kindSources = map[enum.CompendiumKind]string{enum.KindFeat: dnd5e.SourceFeat, enum.KindSpecies: "Species", enum.KindBackground: "Background"}
+var kindSources = map[enum.CompendiumKind]string{
+	enum.KindFeat:       dnd5e.SourceFeat,
+	enum.KindSpecies:    "Species",
+	enum.KindBackground: "Background",
+}
 
 // compendiumWeapon fills a sheet weapon from a compendium item: damage
 // "1d8 slashing", finesse weapons use the better of STR and DEX, and
 // ammunition (ranged) weapons DEX.
 func compendiumWeapon(name string, d *compendium.ItemData) dnd5e.Weapon {
-	w := dnd5e.Weapon{Name: name, Ability: dnd5e.Str, Proficient: true, Range: d.Range, Properties: d.Properties, Mastery: d.Mastery}
+	w := dnd5e.Weapon{
+		Name:       name,
+		Ability:    dnd5e.Str,
+		Proficient: true,
+		Range:      d.Range,
+		Properties: d.Properties,
+		Mastery:    d.Mastery,
+	}
 	w.Dice, w.DamageType, _ = strings.Cut(strings.TrimSpace(d.Damage), " ")
 	props := strings.ToLower(d.Properties)
 	switch {
@@ -135,7 +152,12 @@ func (a *App) builderPicks(c *gin.Context) error {
 	var err error
 	switch c.Query("pick") {
 	case views.PickWeapon, views.PickArmor:
-		picks, err = a.itemPicks(c.Request.Context(), q, ch.CampaignID, c.Query("pick") == views.PickArmor)
+		picks, err = a.itemPicks(
+			c.Request.Context(),
+			q,
+			ch.CampaignID,
+			c.Query("pick") == views.PickArmor,
+		)
 	default:
 		picks, err = a.featurePicks(c.Request.Context(), q, ch.CampaignID)
 	}
@@ -151,7 +173,12 @@ func (a *App) builderPicks(c *gin.Context) error {
 }
 
 // itemPicks are compendium weapons, or armor and shields.
-func (a *App) itemPicks(ctx context.Context, q string, campaignID int64, armor bool) ([]views.BuilderPick, error) {
+func (a *App) itemPicks(
+	ctx context.Context,
+	q string,
+	campaignID int64,
+	armor bool,
+) ([]views.BuilderPick, error) {
 	rows, err := a.searchRows(ctx, q, string(enum.KindItem), campaignID)
 	if err != nil {
 		return nil, err
@@ -172,9 +199,27 @@ func (a *App) itemPicks(ctx context.Context, q string, campaignID int64, armor b
 			if it.Armor.StrReq > 0 {
 				detail += fmt.Sprintf(" · Str %d", it.Armor.StrReq)
 			}
-			picks = append(picks, views.BuilderPick{EntryID: r.ID, Slug: r.Slug, Name: r.Name, Detail: detail, Source: r.SourceKey})
+			picks = append(
+				picks,
+				views.BuilderPick{
+					EntryID: r.ID,
+					Slug:    r.Slug,
+					Name:    r.Name,
+					Detail:  detail,
+					Source:  r.SourceKey,
+				},
+			)
 		case !armor && it.Damage != "":
-			picks = append(picks, views.BuilderPick{EntryID: r.ID, Slug: r.Slug, Name: r.Name, Detail: strings.Trim(it.Damage+" · "+it.Properties, " ·"), Source: r.SourceKey})
+			picks = append(
+				picks,
+				views.BuilderPick{
+					EntryID: r.ID,
+					Slug:    r.Slug,
+					Name:    r.Name,
+					Detail:  strings.Trim(it.Damage+" · "+it.Properties, " ·"),
+					Source:  r.SourceKey,
+				},
+			)
 		}
 	}
 	return picks, nil
@@ -191,14 +236,21 @@ func (a *App) entryData(ctx context.Context, id int64) (any, error) {
 
 // featurePicks are feats and class features named like q. Class features
 // live inside their class, so classes whose text matches are opened up.
-func (a *App) featurePicks(ctx context.Context, q string, campaignID int64) ([]views.BuilderPick, error) {
+func (a *App) featurePicks(
+	ctx context.Context,
+	q string,
+	campaignID int64,
+) ([]views.BuilderPick, error) {
 	feats, err := a.searchRows(ctx, q, string(enum.KindFeat), campaignID)
 	if err != nil {
 		return nil, err
 	}
 	var picks []views.BuilderPick
 	for _, r := range feats {
-		picks = append(picks, views.BuilderPick{EntryID: r.ID, Name: r.Name, Detail: "Feat", Source: r.SourceKey})
+		picks = append(
+			picks,
+			views.BuilderPick{EntryID: r.ID, Name: r.Name, Detail: "Feat", Source: r.SourceKey},
+		)
 	}
 	classes, err := a.searchRows(ctx, q, string(enum.KindClass), campaignID)
 	if err != nil {
@@ -212,8 +264,21 @@ func (a *App) featurePicks(ctx context.Context, q string, campaignID int64) ([]v
 		}
 		for _, f := range data.(*compendium.ClassData).Features {
 			name := strings.ToLower(f.Name)
-			if !slices.ContainsFunc(words, func(w string) bool { return !strings.Contains(name, w) }) && len(f.Levels) > 0 {
-				picks = append(picks, views.BuilderPick{EntryID: r.ID, Feature: f.Name, Name: f.Name, Detail: r.Name + " " + strconv.Itoa(f.Levels[0]), Source: r.SourceKey})
+			if !slices.ContainsFunc(
+				words,
+				func(w string) bool { return !strings.Contains(name, w) },
+			) &&
+				len(f.Levels) > 0 {
+				picks = append(
+					picks,
+					views.BuilderPick{
+						EntryID: r.ID,
+						Feature: f.Name,
+						Name:    f.Name,
+						Detail:  r.Name + " " + strconv.Itoa(f.Levels[0]),
+						Source:  r.SourceKey,
+					},
+				)
 			}
 		}
 	}
@@ -230,7 +295,8 @@ func (a *App) commandCompletions(c *gin.Context) error {
 	words := strings.Fields(c.Query("words"))
 	q := strings.ToLower(c.Query("q"))
 	out := []string{}
-	if len(words) >= 2 && strings.EqualFold(words[0], "spell") && strings.EqualFold(words[1], "add") {
+	if len(words) >= 2 && strings.EqualFold(words[0], "spell") &&
+		strings.EqualFold(words[1], "add") {
 		if q != "" {
 			rows, err := a.searchRows(c.Request.Context(), q, string(enum.KindSpell), ch.CampaignID)
 			if err != nil {
@@ -256,7 +322,11 @@ func (a *App) commandCompletions(c *gin.Context) error {
 }
 
 // searchRows is a compendium search of one kind, name matches first.
-func (a *App) searchRows(ctx context.Context, q, kind string, campaignID int64) ([]sqlc.SearchCompendiumRow, error) {
+func (a *App) searchRows(
+	ctx context.Context,
+	q, kind string,
+	campaignID int64,
+) ([]sqlc.SearchCompendiumRow, error) {
 	names, text, err := compendium.Search(ctx, a.Store.Queries, q, kind, "", campaignID, maxPicks)
 	return append(names, text...), err
 }
@@ -265,8 +335,16 @@ func (a *App) searchRows(ctx context.Context, q, kind string, campaignID int64) 
 // tracks for it: action, uses, unarmored AC and stat change rows.
 func featureCommand(c *gin.Context) (dnd5e.Command, error) {
 	f := dnd5e.Feature{
-		Name: strings.TrimSpace(c.PostForm(argSubject)), Source: c.PostForm("source"), Description: c.PostForm(argText),
-		Action: strings.TrimSpace(c.PostForm("action")), Unarmored: strings.TrimSpace(c.PostForm("unarmored")), NoShield: c.PostForm("no_shield") != "",
+		Name: strings.TrimSpace(
+			c.PostForm(argSubject),
+		),
+		Source:      c.PostForm("source"),
+		Description: c.PostForm(argText),
+		Action: strings.TrimSpace(
+			c.PostForm("action"),
+		),
+		Unarmored: strings.TrimSpace(c.PostForm("unarmored")),
+		NoShield:  c.PostForm("no_shield") != "",
 	}
 	if f.Name == "" {
 		return dnd5e.Command{}, errors.New("name the feature")
@@ -291,7 +369,11 @@ func featureCommand(c *gin.Context) (dnd5e.Command, error) {
 	default:
 		f.Uses.Ability = u
 	}
-	mods, err := modRows(c.PostFormArray("mod_target"), c.PostFormArray("mod_value"), c.PostFormArray("mod_when"))
+	mods, err := modRows(
+		c.PostFormArray("mod_target"),
+		c.PostFormArray("mod_value"),
+		c.PostFormArray("mod_when"),
+	)
 	if err != nil {
 		return dnd5e.Command{}, err
 	}
@@ -310,9 +392,17 @@ func weaponCommand(c *gin.Context) (dnd5e.Command, error) {
 		return dnd5e.Command{}, errors.New("name the weapon")
 	}
 	return dnd5e.SaveWeapon(dnd5e.Weapon{
-		Name: name, Ability: strings.ToLower(c.PostForm(argAbility)), Dice: strings.ToLower(strings.TrimSpace(c.PostForm(argDice))),
-		DamageType: strings.TrimSpace(c.PostForm(argDamageType)), Proficient: c.PostForm(argProf) != "",
-		Range: strings.TrimSpace(c.PostForm("range")), Properties: strings.TrimSpace(c.PostForm("properties")),
-		Mastery: strings.TrimSpace(c.PostForm("mastery")),
+		Name:    name,
+		Ability: strings.ToLower(c.PostForm(argAbility)),
+		Dice:    strings.ToLower(strings.TrimSpace(c.PostForm(argDice))),
+		DamageType: strings.TrimSpace(
+			c.PostForm(argDamageType),
+		),
+		Proficient: c.PostForm(argProf) != "",
+		Range: strings.TrimSpace(
+			c.PostForm("range"),
+		),
+		Properties: strings.TrimSpace(c.PostForm("properties")),
+		Mastery:    strings.TrimSpace(c.PostForm("mastery")),
 	}), nil
 }

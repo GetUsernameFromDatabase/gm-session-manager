@@ -24,7 +24,10 @@ func TestStoreInTx(t *testing.T) {
 			store := NewStore(openTemp(t))
 
 			err := store.InTx(ctx, func(q *sqlc.Queries) error {
-				if _, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Test", System: "dnd5e", Edition: "2024"}); err != nil {
+				if _, err := q.CreateCampaign(
+					ctx,
+					sqlc.CreateCampaignParams{Name: "Test", System: "dnd5e", Edition: "2024"},
+				); err != nil {
 					return err
 				}
 				return tt.fnErr

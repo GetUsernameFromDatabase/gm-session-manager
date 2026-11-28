@@ -29,7 +29,14 @@ func TestRowFigure(t *testing.T) {
 	} {
 		text, color := rowFigure(tt.row)
 		if text != tt.text || color != tt.wantColor {
-			t.Errorf("%s: rowFigure = %q, %q; want %q, %q", tt.name, text, color, tt.text, tt.wantColor)
+			t.Errorf(
+				"%s: rowFigure = %q, %q; want %q, %q",
+				tt.name,
+				text,
+				color,
+				tt.text,
+				tt.wantColor,
+			)
 		}
 	}
 }

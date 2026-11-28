@@ -1,5 +1,6 @@
-// Package deploy holds the tests of the server scripts: sql-normalize.pl, which update.sh's migration gate relies
-// on, and common.sh's names shared with the Go app. Every Docker build runs them, so a failure blocks the deploy.
+// Package deploy holds the tests of the server scripts: sql-normalize.pl, which update.sh's
+// migration gate relies on, and common.sh's names shared with the Go app. Every Docker build runs
+// them, so a failure blocks the deploy.
 package deploy
 
 import (
@@ -39,7 +40,8 @@ func TestNormalize(t *testing.T) {
 		for _, old := range olds {
 			name := dir + "/" + strings.TrimSuffix(filepath.Base(old), ".old.sql")
 			t.Run(name, func(t *testing.T) {
-				a, b := normalize(t, old), normalize(t, strings.TrimSuffix(old, ".old.sql")+".new.sql")
+				a := normalize(t, old)
+				b := normalize(t, strings.TrimSuffix(old, ".old.sql")+".new.sql")
 				if (a == b) != wantEqual {
 					t.Errorf("equal=%v, want %v\nold: %q\nnew: %q", a == b, wantEqual, a, b)
 				}

@@ -93,10 +93,15 @@ func sourcePositions(sources []sqlc.CompendiumSource) []int {
 
 // emptySourceKeys are the sources holding no entries that the trash button
 // would also offer to delete.
-func emptySourceKeys(ctx context.Context, sources []sqlc.CompendiumSource, counts map[string]sqlc.CountEntriesBySourceRow) []string {
+func emptySourceKeys(
+	ctx context.Context,
+	sources []sqlc.CompendiumSource,
+	counts map[string]sqlc.CountEntriesBySourceRow,
+) []string {
 	var keys []string
 	for _, s := range sources {
-		if s.SourceKey != compendium.HomebrewSource && !fromTable(ctx, s.SourceKey) && counts[s.SourceKey].Total == 0 {
+		if s.SourceKey != compendium.HomebrewSource && !fromTable(ctx, s.SourceKey) &&
+			counts[s.SourceKey].Total == 0 {
 			keys = append(keys, s.SourceKey)
 		}
 	}
@@ -114,7 +119,11 @@ func entryCountText(c sqlc.CountEntriesBySourceRow) string {
 
 // entryCountTitle explains the chip; hasShared adds the overlap with other
 // sources (s).
-func entryCountTitle(c sqlc.CountEntriesBySourceRow, s sqlc.CountSharedBySourceRow, hasShared bool) string {
+func entryCountTitle(
+	c sqlc.CountEntriesBySourceRow,
+	s sqlc.CountSharedBySourceRow,
+	hasShared bool,
+) string {
 	t := fmt.Sprintf("%d %s", c.Total, utils.IfElse(c.Total == 1, "entry", "entries"))
 	switch {
 	case c.Total == 0:
@@ -168,7 +177,12 @@ func entryCountClass(c sqlc.CountEntriesBySourceRow) string {
 
 // sortableSources is true with two or more sources besides homebrew.
 func sortableSources(sources []sqlc.CompendiumSource) bool {
-	return len(slices.DeleteFunc(slices.Clone(sources), func(s sqlc.CompendiumSource) bool { return s.SourceKey == compendium.HomebrewSource })) >= 2
+	return len(
+		slices.DeleteFunc(
+			slices.Clone(sources),
+			func(s sqlc.CompendiumSource) bool { return s.SourceKey == compendium.HomebrewSource },
+		),
+	) >= 2
 }
 
 // minLostPercent keeps a tiny loss (1 of 400) visible as a sliver of the pie.
@@ -320,7 +334,12 @@ func sharedHref(ctx context.Context, source string) templ.SafeURL {
 // sharedOnlyHref browses the entries only source holds in the campaign ctx
 // renders in.
 func sharedOnlyHref(ctx context.Context, source string) templ.SafeURL {
-	return templ.SafeURL(CompendiumPath(ctx, "?"+url.Values{SharedKey: {source}, SharedOnlyKey: {SharedOnlyOn}}.Encode()))
+	return templ.SafeURL(
+		CompendiumPath(
+			ctx,
+			"?"+url.Values{SharedKey: {source}, SharedOnlyKey: {SharedOnlyOn}}.Encode(),
+		),
+	)
 }
 
 // sharedWithHref narrows the shared list to entries with also holds ("" for

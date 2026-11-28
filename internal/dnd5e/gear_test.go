@@ -8,14 +8,43 @@ import (
 // leather with a readied dagger.
 func geared() Character {
 	c := fighter()
-	leather, chain := WornArmor{Name: "Leather", Type: "light", Base: 11, AddDex: true}, WornArmor{Name: "Chain Mail", Type: "heavy", Base: 16}
-	sword, dagger := Weapon{Name: "Longsword", Ability: Str, Dice: "1d8"}, Weapon{Name: "Dagger", Ability: "finesse", Dice: "1d4"}
+	leather, chain := WornArmor{
+		Name:   "Leather",
+		Type:   "light",
+		Base:   11,
+		AddDex: true,
+	}, WornArmor{
+		Name: "Chain Mail",
+		Type: "heavy",
+		Base: 16,
+	}
+	sword, dagger := Weapon{
+		Name:    "Longsword",
+		Ability: Str,
+		Dice:    "1d8",
+	}, Weapon{
+		Name:    "Dagger",
+		Ability: "finesse",
+		Dice:    "1d4",
+	}
 	c.Sheet.Armor, c.Sheet.Weapons = &leather, []Weapon{dagger}
 	c.Sheet.Modifiers = []CustomMod{{Target: ModAttack + ".Longsword", Value: 1, Note: "+1 sword"}}
-	c.Sheet.Inventory = append(c.Sheet.Inventory,
-		Item{Name: "Leather", Qty: 1, Armor: &leather}, Item{Name: "Chain Mail", Qty: 1, Armor: &chain},
+	c.Sheet.Inventory = append(
+		c.Sheet.Inventory,
+		Item{
+			Name:  "Leather",
+			Qty:   1,
+			Armor: &leather,
+		},
+		Item{Name: "Chain Mail", Qty: 1, Armor: &chain},
 		Item{Name: "Shield", Qty: 1, Shield: true},
-		Item{Name: "Longsword", Qty: 1, Weapon: &sword}, Item{Name: "Dagger", Qty: 2, Weapon: &dagger})
+		Item{
+			Name:   "Longsword",
+			Qty:    1,
+			Weapon: &sword,
+		},
+		Item{Name: "Dagger", Qty: 2, Weapon: &dagger},
+	)
 	return c
 }
 
@@ -27,17 +56,47 @@ func TestGearCommands(t *testing.T) {
 		check   func(s Sheet) bool
 		wantErr bool
 	}{
-		{`armor wear "chain mail"`, Env{}, func(s Sheet) bool { return s.Armor.Name == "Chain Mail" && s.ArmorClass() == 16 }, false},
+		{
+			`armor wear "chain mail"`,
+			Env{},
+			func(s Sheet) bool { return s.Armor.Name == "Chain Mail" && s.ArmorClass() == 16 },
+			false,
+		},
 		{"armor wear plate", chainEnv, func(s Sheet) bool {
 			i := findItem(s.Inventory, "Plate")
 			return s.Armor.Name == "Plate" && i >= 0 && s.Worn(s.Inventory[i])
 		}, false},
-		{"armor wear shield", Env{}, func(s Sheet) bool { return s.Shield && len(s.Inventory) == 6 }, false},
-		{"armor off", Env{}, func(s Sheet) bool { return s.Armor == nil && findItem(s.Inventory, "Leather") >= 0 }, false},
-		{"shield on", Env{}, func(s Sheet) bool { return s.Shield && len(s.Inventory) == 6 }, false},
-		{"weapon ready longsword", Env{}, func(s Sheet) bool { return len(s.Weapons) == 2 && s.AttackBonus(s.Weapons[1]) == 0+1 }, false},
+		{
+			"armor wear shield",
+			Env{},
+			func(s Sheet) bool { return s.Shield && len(s.Inventory) == 6 },
+			false,
+		},
+		{
+			"armor off",
+			Env{},
+			func(s Sheet) bool { return s.Armor == nil && findItem(s.Inventory, "Leather") >= 0 },
+			false,
+		},
+		{
+			"shield on",
+			Env{},
+			func(s Sheet) bool { return s.Shield && len(s.Inventory) == 6 },
+			false,
+		},
+		{
+			"weapon ready longsword",
+			Env{},
+			func(s Sheet) bool { return len(s.Weapons) == 2 && s.AttackBonus(s.Weapons[1]) == 0+1 },
+			false,
+		},
 		{"weapon ready torch", Env{}, nil, true},
-		{"weapon stow dagger", Env{}, func(s Sheet) bool { return len(s.Weapons) == 0 && findItem(s.Inventory, "Dagger") >= 0 }, false},
+		{
+			"weapon stow dagger",
+			Env{},
+			func(s Sheet) bool { return len(s.Weapons) == 0 && findItem(s.Inventory, "Dagger") >= 0 },
+			false,
+		},
 		{"weapon add Spear str 1d6 piercing", Env{}, func(s Sheet) bool {
 			i := findItem(s.Inventory, "Spear")
 			return len(s.Weapons) == 2 && i >= 0 && s.Ready(s.Inventory[i])
@@ -49,7 +108,12 @@ func TestGearCommands(t *testing.T) {
 		{"set ac -1", Env{}, func(s Sheet) bool { return s.ArmorClass() == 10 }, false},
 		{"set size small", Env{}, func(s Sheet) bool { return s.Size == "Small" }, false},
 		{"set size tall", Env{}, nil, true},
-		{"set vision Darkvision 60 ft", Env{}, func(s Sheet) bool { return s.Vision == "Darkvision 60 ft" }, false},
+		{
+			"set vision Darkvision 60 ft",
+			Env{},
+			func(s Sheet) bool { return s.Vision == "Darkvision 60 ft" },
+			false,
+		},
 		{"set vision none", Env{}, func(s Sheet) bool { return s.Vision == "" }, false},
 	}
 	for _, tt := range tests {
@@ -95,8 +159,20 @@ func TestUpgradeSheet(t *testing.T) {
 	}{
 		{"unarmored base", `{"abilities":{"dex":14},"ac":13}`, 13, 1, 0},
 		{"default base gets dex", `{"abilities":{"dex":14},"ac":10}`, 12, 0, 0},
-		{"armor ignored base", `{"abilities":{"dex":14},"ac":15,"armor":{"name":"Chain Mail","type":"heavy","base":16},"shield":true}`, 18, 0, 2},
-		{"weapons listed", `{"weapons":[{"name":"Club","ability":"str","dice":"1d4"}],"inventory":[{"name":"Club","qty":1}]}`, 10, 0, 1},
+		{
+			"armor ignored base",
+			`{"abilities":{"dex":14},"ac":15,"armor":{"name":"Chain Mail","type":"heavy","base":16},"shield":true}`,
+			18,
+			0,
+			2,
+		},
+		{
+			"weapons listed",
+			`{"weapons":[{"name":"Club","ability":"str","dice":"1d4"}],"inventory":[{"name":"Club","qty":1}]}`,
+			10,
+			0,
+			1,
+		},
 		{"current sheet", `{"abilities":{"dex":14},"ac_bonus":1}`, 13, 1, 0},
 	}
 	for _, tt := range tests {
@@ -105,7 +181,8 @@ func TestUpgradeSheet(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if s.ArmorClass() != tt.ac || s.ACBonus != tt.bonus || len(s.Inventory) != tt.items || s.AC != 0 {
+			if s.ArmorClass() != tt.ac || s.ACBonus != tt.bonus || len(s.Inventory) != tt.items ||
+				s.AC != 0 {
 				t.Errorf("AC %d bonus %d items %+v", s.ArmorClass(), s.ACBonus, s.Inventory)
 			}
 			raw, _ := s.JSON()
@@ -120,7 +197,10 @@ func TestUpgradeSheet(t *testing.T) {
 func TestExplainDamage(t *testing.T) {
 	c := geared()
 	c.Sheet.Scores[Dex] = 16
-	c.Sheet.Modifiers = append(c.Sheet.Modifiers, CustomMod{Target: ModDamage + ".Dagger", Value: 2, Note: "Sharp"})
+	c.Sheet.Modifiers = append(
+		c.Sheet.Modifiers,
+		CustomMod{Target: ModDamage + ".Dagger", Value: 2, Note: "Sharp"},
+	)
 	parts := c.Sheet.Explain(ModDamage + ".Dagger")
 	if len(parts) != 2 || Sum(parts) != 5 || c.Sheet.DamageLabel(c.Sheet.Weapons[0]) != "1d4+5" {
 		t.Errorf("damage parts %+v, label %q", parts, c.Sheet.DamageLabel(c.Sheet.Weapons[0]))
@@ -141,8 +221,18 @@ func TestExplainDamage(t *testing.T) {
 }
 
 func TestDualWield(t *testing.T) {
-	dagger := Weapon{Name: "Dagger", Ability: "finesse", Dice: "1d4", Properties: "Finesse, Light, Thrown"}
-	short := Weapon{Name: "Shortsword", Ability: "finesse", Dice: "1d6", Properties: "Finesse, Light"}
+	dagger := Weapon{
+		Name:       "Dagger",
+		Ability:    "finesse",
+		Dice:       "1d4",
+		Properties: "Finesse, Light, Thrown",
+	}
+	short := Weapon{
+		Name:       "Shortsword",
+		Ability:    "finesse",
+		Dice:       "1d6",
+		Properties: "Finesse, Light",
+	}
 	long := Weapon{Name: "Longsword", Ability: Str, Dice: "1d8", Properties: "Versatile"}
 	tests := []struct {
 		name     string
@@ -172,7 +262,12 @@ func TestDualWield(t *testing.T) {
 			}
 			if tt.can {
 				if got := s.OffHandDamage(dagger); got != tt.offhand {
-					t.Errorf("off-hand %q, want %q: %+v", got, tt.offhand, s.Explain("offhand.Dagger"))
+					t.Errorf(
+						"off-hand %q, want %q: %+v",
+						got,
+						tt.offhand,
+						s.Explain("offhand.Dagger"),
+					)
 				}
 				if s.DamageLabel(dagger) == tt.offhand && !tt.style && tt.dex > 10 {
 					t.Error("main-hand damage lost its modifier")

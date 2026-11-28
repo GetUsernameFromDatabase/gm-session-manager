@@ -158,7 +158,19 @@ func (w writer) inline(nodes []pmNode) string {
 			}
 			// An attached picture is an image of the block's own file.
 			if num, ok := strings.CutPrefix(id, "attachment:"); ok {
-				b.WriteString(w.inline([]pmNode{{Type: pmImage, Attrs: map[string]any{"src": route.Path(route.Attachment, num), "alt": label}}}))
+				b.WriteString(
+					w.inline(
+						[]pmNode{
+							{
+								Type: pmImage,
+								Attrs: map[string]any{
+									"src": route.Path(route.Attachment, num),
+									"alt": label,
+								},
+							},
+						},
+					),
+				)
 				continue
 			}
 			if target := w.links.Mention(id); target != "" {
@@ -199,7 +211,22 @@ func applyMarks(s string, marks []pmMark) string {
 
 // escape protects Markdown syntax characters in text.
 func escape(s string) string {
-	r := strings.NewReplacer(`\`, `\\`, "*", `\*`, "_", `\_`, "`", "\\`", "[", `\[`, "]", `\]`, "#", `\#`)
+	r := strings.NewReplacer(
+		`\`,
+		`\\`,
+		"*",
+		`\*`,
+		"_",
+		`\_`,
+		"`",
+		"\\`",
+		"[",
+		`\[`,
+		"]",
+		`\]`,
+		"#",
+		`\#`,
+	)
 	return r.Replace(s)
 }
 

@@ -98,7 +98,8 @@ func (a *App) recordRequest(c *gin.Context) {
 	key, ok := deviceKey(auth.FromContext(c))
 	path := c.Request.URL.Path
 	// Logout ends the device's log; logging it would start a new one.
-	if !ok || path == route.WS || path == route.Feedback || path == route.Logout || strings.HasPrefix(path, "/assets/") {
+	if !ok || path == route.WS || path == route.Feedback || path == route.Logout ||
+		strings.HasPrefix(path, "/assets/") {
 		c.Next()
 		return
 	}
@@ -111,7 +112,13 @@ func (a *App) recordRequest(c *gin.Context) {
 		c.Request.Body = sent
 	}
 	c.Next()
-	e := reqEntry{At: start.UTC(), Method: c.Request.Method, Path: c.Request.URL.RequestURI(), Status: w.Status(), Took: time.Since(start)}
+	e := reqEntry{
+		At:     start.UTC(),
+		Method: c.Request.Method,
+		Path:   c.Request.URL.RequestURI(),
+		Status: w.Status(),
+		Took:   time.Since(start),
+	}
 	if sent != nil {
 		e.Sent = sentText(c.ContentType(), sent.kept)
 	}

@@ -18,11 +18,18 @@ const (
 var ArmorKinds = []string{ArmorLight, ArmorMedium, ArmorHeavy, ArmorShield}
 
 // ArmorKindLabels name the kinds as the sheet shows them.
-var ArmorKindLabels = map[string]string{ArmorLight: "Light", ArmorMedium: "Medium", ArmorHeavy: "Heavy", ArmorShield: "Shields"}
+var ArmorKindLabels = map[string]string{
+	ArmorLight:  "Light",
+	ArmorMedium: "Medium",
+	ArmorHeavy:  "Heavy",
+	ArmorShield: "Shields",
+}
 
 var (
 	// reArmorRun is a run of armor types that ends in "armor": "Light, Medium, and Heavy armor".
-	reArmorRun  = regexp.MustCompile(`(?i)((?:\b(?:light|medium|heavy)\b(?:\s*,\s*(?:and\s+|or\s+)?|\s+(?:and|or)\s+|\s+))+)armor\b`)
+	reArmorRun = regexp.MustCompile(
+		`(?i)((?:\b(?:light|medium|heavy)\b(?:\s*,\s*(?:and\s+|or\s+)?|\s+(?:and|or)\s+|\s+))+)armor\b`,
+	)
 	reArmorType = regexp.MustCompile(`(?i)light|medium|heavy`)
 	reAllArmor  = regexp.MustCompile(`(?i)\ball armor\b`)
 	reShields   = regexp.MustCompile(`(?i)\bshields?\b`)
@@ -90,7 +97,8 @@ func armorKinds(has func(string) bool) []string {
 // armorGrants are the armor kinds a feature's or feat's text trains ("You
 // gain training with Medium armor and Shields"). A feature offering options
 // grants none: the pick decides (Divine Order's Protector).
-// shortcut: the picked option's training is added by hand; read it from the pick when options are applied.
+// shortcut: the picked option's training is added by hand;
+// read it from the pick when options are applied.
 func armorGrants(desc string) []string {
 	if reOptions.MatchString(desc) {
 		return nil
@@ -187,7 +195,9 @@ func (s *Sheet) moveArmorTraining() bool {
 }
 
 // reNotArmor is what an armor training text may hold besides armor kinds.
-var reNotArmor = regexp.MustCompile(`(?i)\b(?:light|medium|heavy|all|armor|shields?|and|or|training|none)\b|[\s,.]`)
+var reNotArmor = regexp.MustCompile(
+	`(?i)\b(?:light|medium|heavy|all|armor|shields?|and|or|training|none)\b|[\s,.]`,
+)
 
 // armorOnly reports whether a proficiency text names armor training and
 // nothing else.

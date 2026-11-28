@@ -17,8 +17,16 @@ import (
 
 // Kinds lists every kind in display order.
 var Kinds = []enum.CompendiumKind{
-	enum.KindMonster, enum.KindSpell, enum.KindItem, enum.KindClass, enum.KindSubclass, enum.KindSpecies,
-	enum.KindBackground, enum.KindFeat, enum.KindCondition, enum.KindRule,
+	enum.KindMonster,
+	enum.KindSpell,
+	enum.KindItem,
+	enum.KindClass,
+	enum.KindSubclass,
+	enum.KindSpecies,
+	enum.KindBackground,
+	enum.KindFeat,
+	enum.KindCondition,
+	enum.KindRule,
 }
 
 // PlayerKinds are the homebrew kinds players may write.

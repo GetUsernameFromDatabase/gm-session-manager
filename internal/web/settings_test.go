@@ -50,7 +50,11 @@ func TestSettingsFile(t *testing.T) {
 // TestStartUpBrokenSettings: a broken settings.json still lists the stale books.
 func TestStartUpBrokenSettings(t *testing.T) {
 	e := newTestEnv(t)
-	if err := os.WriteFile(filepath.Join(e.app.DataDir, settingsFile), []byte("{"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(e.app.DataDir, settingsFile),
+		[]byte("{"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	writeBook(t, e.app, "xge", compendium.Book{ID: "xge"})
@@ -69,7 +73,12 @@ func TestStaleBooksBanner(t *testing.T) {
 	gm := e.token(t, enum.RoleAdmin)
 	player := e.token(t, enum.RolePlayer)
 	writeBook(t, e.app, "xge", compendium.Book{ID: "xge", Name: "Xanathar"})
-	writeBook(t, e.app, "tce", compendium.Book{ID: "tce", Name: "Tasha", Version: compendium.DownloadVersion})
+	writeBook(
+		t,
+		e.app,
+		"tce",
+		compendium.Book{ID: "tce", Name: "Tasha", Version: compendium.DownloadVersion},
+	)
 	if err := e.app.StartUp(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +107,14 @@ func TestStaleBooksBanner(t *testing.T) {
 		t.Error("banner during an import")
 	}
 	e.app.fiveTools.update(func(j *views.FiveToolsJob) { j.Running = false })
-	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumFiveToolsAuto, gm, url.Values{"on": {"true"}}, true); w.Code != http.StatusNoContent {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Compendium+route.CompendiumFiveToolsAuto,
+		gm,
+		url.Values{"on": {"true"}},
+		true,
+	); w.Code != http.StatusNoContent {
 		t.Fatalf("switch: %d", w.Code)
 	}
 	if st, err := loadSettings(e.app.DataDir); err != nil || !st.FiveToolsAutoRedownload {

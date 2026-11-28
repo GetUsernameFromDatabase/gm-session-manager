@@ -19,7 +19,9 @@ func TestUpgradeSheets(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := dnd5e.NewSheet()
-	s.Classes = []dnd5e.ClassLevel{{Slug: "wizard", Name: "Wizard", Level: 2, HitDie: 6, Caster: dnd5e.CasterFull}}
+	s.Classes = []dnd5e.ClassLevel{
+		{Slug: "wizard", Name: "Wizard", Level: 2, HitDie: 6, Caster: dnd5e.CasterFull},
+	}
 	const desc = "You can use it a number of times equal to your proficiency bonus."
 	s.Features = []dnd5e.Feature{
 		{Name: "Old", Source: "Wizard", Description: desc},
@@ -29,7 +31,8 @@ func TestUpgradeSheets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.q().UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
+	if err := e.q().
+		UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: e.characterID, SheetJson: raw}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -46,7 +49,9 @@ func TestUpgradeSheets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Features[0].Uses.Prof || got.Features[1].Uses.Prof || got.Features[1].Uses.Fixed != 1 || got.Features[1].Uses.Used != 1 || got.EffectsVersion != dnd5e.EffectsVersion {
+	if !got.Features[0].Uses.Prof || got.Features[1].Uses.Prof || got.Features[1].Uses.Fixed != 1 ||
+		got.Features[1].Uses.Used != 1 ||
+		got.EffectsVersion != dnd5e.EffectsVersion {
 		t.Errorf("features %+v, version %d", got.Features, got.EffectsVersion)
 	}
 }
@@ -61,13 +66,31 @@ func TestUpgradeRepeatedFeature(t *testing.T) {
 	}
 	s := dnd5e.NewSheet()
 	s.EffectsVersion = 3
-	s.Classes = []dnd5e.ClassLevel{{Slug: "wizard", Name: "Wizard", Level: 12, HitDie: 6, Caster: dnd5e.CasterFull}}
-	mod := dnd5e.CustomMod{Target: dnd5e.ModSpeed, Value: 10, Note: "Fast Feet", Source: "Fast Feet"}
+	s.Classes = []dnd5e.ClassLevel{
+		{Slug: "wizard", Name: "Wizard", Level: 12, HitDie: 6, Caster: dnd5e.CasterFull},
+	}
+	mod := dnd5e.CustomMod{
+		Target: dnd5e.ModSpeed,
+		Value:  10,
+		Note:   "Fast Feet",
+		Source: "Fast Feet",
+	}
 	for _, lvl := range []int{9, 10, 11} {
-		s.Features = append(s.Features, dnd5e.Feature{Name: "Fast Feet", Source: "Wizard", Level: lvl})
+		s.Features = append(
+			s.Features,
+			dnd5e.Feature{Name: "Fast Feet", Source: "Wizard", Level: lvl},
+		)
 		s.Modifiers = append(s.Modifiers, mod)
 	}
-	s.Features = append(s.Features, dnd5e.Feature{Name: "Herb Lore", Source: "Wizard", Level: 1, Description: "You gain proficiency with the herbalism kit."})
+	s.Features = append(
+		s.Features,
+		dnd5e.Feature{
+			Name:        "Herb Lore",
+			Source:      "Wizard",
+			Level:       1,
+			Description: "You gain proficiency with the herbalism kit.",
+		},
+	)
 	e.setSheet(t, s)
 	for run, want := range []int{1, 0} {
 		if n, err := UpgradeSheets(t.Context(), e.app.Store); err != nil || n != want {
@@ -75,7 +98,8 @@ func TestUpgradeRepeatedFeature(t *testing.T) {
 		}
 	}
 	got := e.sheet(t)
-	if len(got.Features) != 2 || got.Features[0].Level != 9 || len(got.Modifiers) != 1 || got.Modifiers[0].Value != 15 {
+	if len(got.Features) != 2 || got.Features[0].Level != 9 || len(got.Modifiers) != 1 ||
+		got.Modifiers[0].Value != 15 {
 		t.Errorf("features %+v, mods %+v", got.Features, got.Modifiers)
 	}
 	if !slices.Equal(got.OtherProfLabels(), []string{"herbalism kit (Herb Lore)"}) {
@@ -94,8 +118,20 @@ func TestUpgradeThirdCaster(t *testing.T) {
 	}
 	s := dnd5e.NewSheet()
 	s.EffectsVersion = 2
-	s.Classes = []dnd5e.ClassLevel{{Slug: "testfighter", Name: "Testfighter", Subclass: "Test Knight", Level: 4, HitDie: 10, Caster: dnd5e.CasterNone}}
-	s.Weapons = []dnd5e.Weapon{{Name: "+1 Longsword", Ability: "str", Dice: "1d8"}, {Name: "Stick", Ability: "str", Dice: "1d4"}}
+	s.Classes = []dnd5e.ClassLevel{
+		{
+			Slug:     "testfighter",
+			Name:     "Testfighter",
+			Subclass: "Test Knight",
+			Level:    4,
+			HitDie:   10,
+			Caster:   dnd5e.CasterNone,
+		},
+	}
+	s.Weapons = []dnd5e.Weapon{
+		{Name: "+1 Longsword", Ability: "str", Dice: "1d8"},
+		{Name: "Stick", Ability: "str", Dice: "1d4"},
+	}
 	e.setSheet(t, s)
 	for run, want := range []int{1, 0} {
 		if n, err := UpgradeSheets(t.Context(), e.app.Store); err != nil || n != want {
@@ -103,7 +139,9 @@ func TestUpgradeThirdCaster(t *testing.T) {
 		}
 	}
 	got := e.sheet(t)
-	if got.Classes[0].Caster != dnd5e.CasterThird || got.Slots[0].Max != 3 || got.Weapons[0].Mastery != "Sap" || got.Weapons[1].Mastery != "" {
+	if got.Classes[0].Caster != dnd5e.CasterThird || got.Slots[0].Max != 3 ||
+		got.Weapons[0].Mastery != "Sap" ||
+		got.Weapons[1].Mastery != "" {
 		t.Errorf("classes %+v, slots %+v, weapons %+v", got.Classes, got.Slots[0], got.Weapons)
 	}
 }
@@ -114,21 +152,37 @@ func TestUpgradeThirdCaster(t *testing.T) {
 func TestUpgradeClassArmor(t *testing.T) {
 	e := newTestEnv(t)
 	if err := e.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
-		Kind: "class", Slug: "testwarrior", Name: "Testwarrior", SourceKey: "test", ContentHash: "x",
-		DataJson: `{"hit_die":10,"desc":"|Core Traits||\n|---|---|\n|Armor Training|Light, Medium, and Heavy armor and Shields|"}`,
+		Kind:        "class",
+		Slug:        "testwarrior",
+		Name:        "Testwarrior",
+		SourceKey:   "test",
+		ContentHash: "x",
+		DataJson:    `{"hit_die":10,"desc":"|Core Traits||\n|---|---|\n|Armor Training|Light, Medium, and Heavy armor and Shields|"}`,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	s := dnd5e.NewSheet()
 	s.EffectsVersion = 4
-	s.Classes = []dnd5e.ClassLevel{{Slug: "testwarrior", Name: "Testwarrior", Level: 2, HitDie: 10}, {Slug: "rogue", Name: "Rogue", Level: 1, HitDie: 8}}
+	s.Classes = []dnd5e.ClassLevel{
+		{Slug: "testwarrior", Name: "Testwarrior", Level: 2, HitDie: 10},
+		{Slug: "rogue", Name: "Rogue", Level: 1, HitDie: 8},
+	}
 	e.setSheet(t, s)
 	for run, want := range []int{1, 0} {
 		if n, err := UpgradeSheets(t.Context(), e.app.Store); err != nil || n != want {
 			t.Fatalf("run %d: changed %d, err %v", run, n, err)
 		}
 	}
-	if got := e.sheet(t).ArmorTrainingLabels(); !slices.Equal(got, []string{"Light (Testwarrior)", "Medium (Testwarrior)", "Heavy (Testwarrior)", "Shields (Testwarrior)"}) {
+	if got := e.sheet(t).
+		ArmorTrainingLabels(); !slices.Equal(
+		got,
+		[]string{
+			"Light (Testwarrior)",
+			"Medium (Testwarrior)",
+			"Heavy (Testwarrior)",
+			"Shields (Testwarrior)",
+		},
+	) {
 		t.Errorf("armor training %q", got)
 	}
 }
@@ -167,7 +221,8 @@ func TestCatchUpResistances(t *testing.T) {
 			t.Errorf("%s: %q, want %q", tt.name, s.Resistances, tt.want)
 		}
 	}
-	if s := (dnd5e.Sheet{Species: "Testborn"}); catchUpResistances(&s, nil) || len(s.Resistances) != 0 {
+	if s := (dnd5e.Sheet{Species: "Testborn"}); catchUpResistances(&s, nil) ||
+		len(s.Resistances) != 0 {
 		t.Errorf("unknown species: %q", s.Resistances)
 	}
 }

@@ -23,7 +23,13 @@ func TestTemplHasNoGoDecls(t *testing.T) {
 		}
 		for i, line := range strings.Split(string(b), "\n") {
 			if goDecl.MatchString(line) {
-				t.Errorf("%s:%d: Go declaration belongs in %s_view.go: %s", f, i+1, strings.TrimSuffix(f, ".templ"), line)
+				t.Errorf(
+					"%s:%d: Go declaration belongs in %s_view.go: %s",
+					f,
+					i+1,
+					strings.TrimSuffix(f, ".templ"),
+					line,
+				)
 			}
 		}
 	}

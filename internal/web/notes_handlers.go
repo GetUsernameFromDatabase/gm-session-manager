@@ -59,10 +59,19 @@ func (a *App) notesPage(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	v := views.NoteListView{CampaignID: id, Notes: notes, Query: strings.TrimSpace(c.Query("q")), CanCreate: true}
+	v := views.NoteListView{
+		CampaignID: id,
+		Notes:      notes,
+		Query:      strings.TrimSpace(c.Query("q")),
+		CanCreate:  true,
+	}
 	if v.Query != "" {
 		v.Hits, err = a.Store.SearchReadableBlocks(ctx, sqlc.SearchReadableBlocksParams{
-			CampaignID: id, Query: v.Query, IsGm: w.isGM(), CharacterID: w.viewer.CharacterID, MaxResults: maxSearchHits,
+			CampaignID:  id,
+			Query:       v.Query,
+			IsGm:        w.isGM(),
+			CharacterID: w.viewer.CharacterID,
+			MaxResults:  maxSearchHits,
 		})
 		if err != nil {
 			return err
@@ -95,7 +104,15 @@ func (a *App) createNote(c *gin.Context) error {
 	var note sqlc.Note
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		var err error
-		note, err = q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: id, Kind: form.Kind, Title: strings.TrimSpace(form.Title), OwnerCharacterID: nullID(owner)})
+		note, err = q.CreateNote(
+			ctx,
+			sqlc.CreateNoteParams{
+				CampaignID:       id,
+				Kind:             form.Kind,
+				Title:            strings.TrimSpace(form.Title),
+				OwnerCharacterID: nullID(owner),
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -177,7 +194,13 @@ func (a *App) notePage(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	if nv.EntityLinks, err = a.entityMentions(ctx, w, note.CampaignID, enum.LinkNote, note.ID); err != nil {
+	if nv.EntityLinks, err = a.entityMentions(
+		ctx,
+		w,
+		note.CampaignID,
+		enum.LinkNote,
+		note.ID,
+	); err != nil {
 		return err
 	}
 	a.render(c, http.StatusOK, views.NotePage(l, nv))
@@ -186,23 +209,47 @@ func (a *App) notePage(c *gin.Context) error {
 
 // entityMentions lists the NPCs whose fields link a target, as the viewer
 // may see them (revealed links of revealed NPCs for players).
-func (a *App) entityMentions(ctx context.Context, w who, campaignID int64, targetType enum.LinkTarget, targetID int64) ([]sqlc.ListEntityFieldBacklinksRow, error) {
+func (a *App) entityMentions(
+	ctx context.Context,
+	w who,
+	campaignID int64,
+	targetType enum.LinkTarget,
+	targetID int64,
+) ([]sqlc.ListEntityFieldBacklinksRow, error) {
 	note, entity, image := linkTarget(targetType, targetID)
 	return a.Store.ListEntityFieldBacklinks(ctx, sqlc.ListEntityFieldBacklinksParams{
-		CampaignID: campaignID, TargetNoteID: note, TargetEntityID: entity, TargetImageID: image, IsGm: w.isGM(),
+		CampaignID:     campaignID,
+		TargetNoteID:   note,
+		TargetEntityID: entity,
+		TargetImageID:  image,
+		IsGm:           w.isGM(),
 	})
 }
 
-func (a *App) backlinks(ctx context.Context, w who, campaignID int64, targetType enum.LinkTarget, targetID int64) ([]sqlc.ListBacklinksRow, error) {
+func (a *App) backlinks(
+	ctx context.Context,
+	w who,
+	campaignID int64,
+	targetType enum.LinkTarget,
+	targetID int64,
+) ([]sqlc.ListBacklinksRow, error) {
 	note, entity, image := linkTarget(targetType, targetID)
 	rows, err := a.Store.ListBacklinks(ctx, sqlc.ListBacklinksParams{
-		TargetNoteID: note, TargetEntityID: entity, TargetImageID: image, CampaignID: campaignID, IsGm: w.isGM(), CharacterID: w.viewer.CharacterID,
+		TargetNoteID:   note,
+		TargetEntityID: entity,
+		TargetImageID:  image,
+		CampaignID:     campaignID,
+		IsGm:           w.isGM(),
+		CharacterID:    w.viewer.CharacterID,
 	})
 	if err != nil {
 		return nil, err
 	}
 	// A note does not list itself as a backlink.
-	return slices.DeleteFunc(rows, func(r sqlc.ListBacklinksRow) bool { return targetType == enum.LinkNote && r.ID == targetID }), nil
+	return slices.DeleteFunc(
+		rows,
+		func(r sqlc.ListBacklinksRow) bool { return targetType == enum.LinkNote && r.ID == targetID },
+	), nil
 }
 
 func (a *App) renameNote(c *gin.Context) error {
@@ -214,10 +261,18 @@ func (a *App) renameNote(c *gin.Context) error {
 	if !a.bindForm(c, &form) {
 		return nil
 	}
-	if err := a.Store.RenameNote(c.Request.Context(), sqlc.RenameNoteParams{ID: note.ID, Title: strings.TrimSpace(form.Title), Kind: form.Kind}); err != nil {
+	if err := a.Store.RenameNote(
+		c.Request.Context(),
+		sqlc.RenameNoteParams{ID: note.ID, Title: strings.TrimSpace(form.Title), Kind: form.Kind},
+	); err != nil {
 		return err
 	}
-	a.changed(c, note.CampaignID, hub.Topic{Kind: hub.TopicNote, ID: note.ID}, hub.Topic{Kind: hub.TopicNotes, ID: note.CampaignID})
+	a.changed(
+		c,
+		note.CampaignID,
+		hub.Topic{Kind: hub.TopicNote, ID: note.ID},
+		hub.Topic{Kind: hub.TopicNotes, ID: note.CampaignID},
+	)
 	return nil
 }
 
@@ -249,7 +304,12 @@ func (a *App) readAccessForm(c *gin.Context, w who, note sqlc.Note) (blockAccess
 		return form, false
 	}
 	vis := form.Visibility
-	if !perm.ValidBlockVisibility(w.viewer, note.OwnerCharacterID.Int64, note.Kind == enum.NoteGameSession, vis) {
+	if !perm.ValidBlockVisibility(
+		w.viewer,
+		note.OwnerCharacterID.Int64,
+		note.Kind == enum.NoteGameSession,
+		vis,
+	) {
 		a.fail(c, http.StatusUnprocessableEntity, "You cannot give a block that visibility here.")
 		return form, false
 	}
@@ -268,7 +328,10 @@ func setAudience(ctx context.Context, q *sqlc.Queries, blockID int64, audience [
 	}
 	for _, id := range audience {
 		// AddBlockAudience only inserts characters of the block's campaign.
-		if err := q.AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: blockID, CharacterID: id}); err != nil {
+		if err := q.AddBlockAudience(
+			ctx,
+			sqlc.AddBlockAudienceParams{BlockID: blockID, CharacterID: id},
+		); err != nil {
 			return err
 		}
 	}
@@ -289,7 +352,10 @@ func (a *App) addBlock(c *gin.Context) error {
 	ctx := c.Request.Context()
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		b, err := q.CreateBlock(ctx, sqlc.CreateBlockParams{
-			NoteID: note.ID, Visibility: form.Visibility, PlayersCanEdit: form.PlayersCanEdit, AuthorCharacterID: nullID(w.viewer.CharacterID),
+			NoteID:            note.ID,
+			Visibility:        form.Visibility,
+			PlayersCanEdit:    form.PlayersCanEdit,
+			AuthorCharacterID: nullID(w.viewer.CharacterID),
 		})
 		if err != nil {
 			return err
@@ -302,7 +368,12 @@ func (a *App) addBlock(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.changed(c, note.CampaignID, hub.Topic{Kind: hub.TopicNote, ID: note.ID}, hub.Topic{Kind: hub.TopicNotes, ID: note.CampaignID})
+	a.changed(
+		c,
+		note.CampaignID,
+		hub.Topic{Kind: hub.TopicNote, ID: note.ID},
+		hub.Topic{Kind: hub.TopicNotes, ID: note.CampaignID},
+	)
 	return nil
 }
 
@@ -317,8 +388,11 @@ func (a *App) loadBlock(ctx context.Context, id int64) (sqlc.GetBlockRow, perm.B
 		return b, perm.Block{}, err
 	}
 	return b, perm.Block{
-		Visibility: b.Visibility, PlayersCanEdit: b.PlayersCanEdit,
-		NoteOwnerID: b.OwnerCharacterID.Int64, Audience: audience, AuthorID: b.AuthorCharacterID.Int64,
+		Visibility:     b.Visibility,
+		PlayersCanEdit: b.PlayersCanEdit,
+		NoteOwnerID:    b.OwnerCharacterID.Int64,
+		Audience:       audience,
+		AuthorID:       b.AuthorCharacterID.Int64,
 	}, nil
 }
 
@@ -334,7 +408,10 @@ const (
 
 // blockFor loads the :block parameter and checks the requester's rights.
 // Every collaboration call goes through here.
-func (a *App) blockFor(c *gin.Context, need blockAccessLevel) (who, sqlc.GetBlockRow, perm.Block, bool) {
+func (a *App) blockFor(
+	c *gin.Context,
+	need blockAccessLevel,
+) (who, sqlc.GetBlockRow, perm.Block, bool) {
 	id, ok := a.idParam(c, "block")
 	if !ok {
 		return who{}, sqlc.GetBlockRow{}, perm.Block{}, false
@@ -389,7 +466,14 @@ func (a *App) blockAccess(c *gin.Context) error {
 	}
 	ctx := c.Request.Context()
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		if err := q.UpdateBlockAccess(ctx, sqlc.UpdateBlockAccessParams{ID: b.ID, Visibility: form.Visibility, PlayersCanEdit: form.PlayersCanEdit}); err != nil {
+		if err := q.UpdateBlockAccess(
+			ctx,
+			sqlc.UpdateBlockAccessParams{
+				ID:             b.ID,
+				Visibility:     form.Visibility,
+				PlayersCanEdit: form.PlayersCanEdit,
+			},
+		); err != nil {
 			return err
 		}
 		return setAudience(ctx, q, b.ID, form.Audience)
@@ -397,7 +481,12 @@ func (a *App) blockAccess(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.changed(c, b.CampaignID, hub.Topic{Kind: hub.TopicNote, ID: b.NoteID}, hub.Topic{Kind: hub.TopicNotes, ID: b.CampaignID})
+	a.changed(
+		c,
+		b.CampaignID,
+		hub.Topic{Kind: hub.TopicNote, ID: b.NoteID},
+		hub.Topic{Kind: hub.TopicNotes, ID: b.CampaignID},
+	)
 	return nil
 }
 
@@ -408,7 +497,14 @@ func (a *App) moveBlock(c *gin.Context) error {
 	}
 	ctx := c.Request.Context()
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		blocks, err := q.ListReadableBlocks(ctx, sqlc.ListReadableBlocksParams{NoteID: b.NoteID, IsGm: w.isGM(), CharacterID: w.viewer.CharacterID})
+		blocks, err := q.ListReadableBlocks(
+			ctx,
+			sqlc.ListReadableBlocksParams{
+				NoteID:      b.NoteID,
+				IsGm:        w.isGM(),
+				CharacterID: w.viewer.CharacterID,
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -423,7 +519,10 @@ func (a *App) moveBlock(c *gin.Context) error {
 		// Renumber so equal positions from older rows cannot tie.
 		blocks[i], blocks[j] = blocks[j], blocks[i]
 		for pos, blk := range blocks {
-			if err := q.SetBlockPosition(ctx, sqlc.SetBlockPositionParams{ID: blk.ID, Position: int64(pos + 1)}); err != nil {
+			if err := q.SetBlockPosition(
+				ctx,
+				sqlc.SetBlockPositionParams{ID: blk.ID, Position: int64(pos + 1)},
+			); err != nil {
 				return err
 			}
 		}
@@ -445,7 +544,12 @@ func (a *App) deleteBlock(c *gin.Context) error {
 		return err
 	}
 	a.sweepFiles(c)
-	a.changed(c, b.CampaignID, hub.Topic{Kind: hub.TopicNote, ID: b.NoteID}, hub.Topic{Kind: hub.TopicNotes, ID: b.CampaignID})
+	a.changed(
+		c,
+		b.CampaignID,
+		hub.Topic{Kind: hub.TopicNote, ID: b.NoteID},
+		hub.Topic{Kind: hub.TopicNotes, ID: b.CampaignID},
+	)
 	return nil
 }
 
@@ -475,11 +579,19 @@ const keepSteps = 1000
 
 // stepsSince returns the steps after version, or false if they were
 // trimmed (the client must reload the document).
-func (a *App) stepsSince(ctx context.Context, q *sqlc.Queries, b sqlc.GetBlockRow, version int64) (stepsPayload, bool, error) {
+func (a *App) stepsSince(
+	ctx context.Context,
+	q *sqlc.Queries,
+	b sqlc.GetBlockRow,
+	version int64,
+) (stepsPayload, bool, error) {
 	if version > b.Version {
 		return stepsPayload{}, false, nil
 	}
-	rows, err := q.ListBlockStepsSince(ctx, sqlc.ListBlockStepsSinceParams{BlockID: b.ID, Version: version})
+	rows, err := q.ListBlockStepsSince(
+		ctx,
+		sqlc.ListBlockStepsSinceParams{BlockID: b.ID, Version: version},
+	)
 	if err != nil {
 		return stepsPayload{}, false, err
 	}
@@ -551,7 +663,8 @@ func (a *App) blockSteps(c *gin.Context) error {
 	return nil
 }
 
-// Limits of submitBody.Steps; tags cannot name constants (TestSharedLimitsMatchTags), shared.js sends them to the browser.
+// Limits of submitBody.Steps; tags cannot name constants (TestSharedLimitsMatchTags), shared.js
+// sends them to the browser.
 const (
 	maxSteps     = 500
 	maxStepBytes = 262144
@@ -603,12 +716,18 @@ func (a *App) submitSteps(c *gin.Context) error {
 		}
 		for i, step := range body.Steps {
 			if err := q.InsertBlockStep(ctx, sqlc.InsertBlockStepParams{
-				BlockID: b.ID, Version: body.Version + int64(i) + 1, ClientID: body.ClientID, StepJson: string(step),
+				BlockID:  b.ID,
+				Version:  body.Version + int64(i) + 1,
+				ClientID: body.ClientID,
+				StepJson: string(step),
 			}); err != nil {
 				return err
 			}
 		}
-		return q.SetBlockVersion(ctx, sqlc.SetBlockVersionParams{ID: b.ID, Version: body.Version + int64(len(body.Steps))})
+		return q.SetBlockVersion(
+			ctx,
+			sqlc.SetBlockVersionParams{ID: b.ID, Version: body.Version + int64(len(body.Steps))},
+		)
 	})
 	switch {
 	case err != nil:
@@ -625,7 +744,17 @@ func (a *App) submitSteps(c *gin.Context) error {
 	for i := range ids {
 		ids[i] = body.ClientID
 	}
-	a.broadcastSteps(ctx, b, stepsPayload{Type: msgSteps, Block: b.ID, Version: body.Version, Steps: body.Steps, ClientIDs: ids})
+	a.broadcastSteps(
+		ctx,
+		b,
+		stepsPayload{
+			Type:      msgSteps,
+			Block:     b.ID,
+			Version:   body.Version,
+			Steps:     body.Steps,
+			ClientIDs: ids,
+		},
+	)
 	c.JSON(http.StatusOK, gin.H{keyVersion: body.Version + int64(len(body.Steps))})
 	return nil
 }
@@ -657,7 +786,18 @@ const (
 
 // safeSchemes run no script when followed: TipTap Link's defaults, which it
 // autolinks, so refusing one would stall the block's saving.
-var safeSchemes = []string{"http", "https", "ftp", "ftps", "mailto", "tel", "callto", "sms", "cid", "xmpp"}
+var safeSchemes = []string{
+	"http",
+	"https",
+	"ftp",
+	"ftps",
+	"mailto",
+	"tel",
+	"callto",
+	"sms",
+	"cid",
+	"xmpp",
+}
 
 // unsafeHref reports whether the decoded JSON holds an "href" at any depth
 // whose scheme is not in safeSchemes. Browsers drop whitespace and control
@@ -674,7 +814,11 @@ func unsafeHref(v any) bool {
 					return r
 				}, s))
 				// A scheme is what precedes the first ':' before any '/', '?' or '#'.
-				if i := strings.IndexAny(clean, ":/?#"); i >= 0 && clean[i] == ':' && !slices.Contains(safeSchemes, clean[:i]) {
+				if i := strings.IndexAny(
+					clean,
+					":/?#",
+				); i >= 0 && clean[i] == ':' &&
+					!slices.Contains(safeSchemes, clean[:i]) {
 					return true
 				}
 			} else if unsafeHref(x) {
@@ -717,7 +861,7 @@ type snapshotBody struct {
 	Links   []struct {
 		Type enum.LinkTarget `json:"type" validate:"oneof=note entity image"`
 		ID   int64           `json:"id"   validate:"min=1"`
-	} `json:"links" validate:"max=1000,dive"`
+	} `json:"links"   validate:"max=1000,dive"`
 }
 
 // blockSnapshot stores a client's full document if it is newer than the
@@ -740,11 +884,22 @@ func (a *App) blockSnapshot(c *gin.Context) error {
 	}
 	ctx := c.Request.Context()
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		n, err := q.SaveBlockSnapshot(ctx, sqlc.SaveBlockSnapshotParams{ID: b.ID, DocJson: string(body.Doc), DocVersion: body.Version, Text: body.Text})
+		n, err := q.SaveBlockSnapshot(
+			ctx,
+			sqlc.SaveBlockSnapshotParams{
+				ID:         b.ID,
+				DocJson:    string(body.Doc),
+				DocVersion: body.Version,
+				Text:       body.Text,
+			},
+		)
 		if err != nil || n == 0 {
 			return err
 		}
-		if err := q.TrimBlockSteps(ctx, sqlc.TrimBlockStepsParams{BlockID: b.ID, Version: body.Version - keepSteps}); err != nil {
+		if err := q.TrimBlockSteps(
+			ctx,
+			sqlc.TrimBlockStepsParams{BlockID: b.ID, Version: body.Version - keepSteps},
+		); err != nil {
 			return err
 		}
 		// An image link lets the block's readers see the image, so only the
@@ -761,7 +916,16 @@ func (a *App) blockSnapshot(c *gin.Context) error {
 				continue
 			}
 			note, entity, image := linkTarget(l.Type, l.ID)
-			if err := q.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetNoteID: note, TargetEntityID: entity, TargetImageID: image}); err != nil {
+			if err := q.AddBlockLink(
+				ctx,
+				sqlc.AddBlockLinkParams{
+					SourceNoteID:   b.NoteID,
+					SourceBlockID:  b.ID,
+					TargetNoteID:   note,
+					TargetEntityID: entity,
+					TargetImageID:  image,
+				},
+			); err != nil {
 				return err
 			}
 		}
@@ -787,14 +951,21 @@ func (a *App) uploadAttachment(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		keyID: att.ID, keyURL: route.Path(route.Attachment, att.ID), keyName: att.Name, keyMime: att.Mime,
+		keyID:    att.ID,
+		keyURL:   route.Path(route.Attachment, att.ID),
+		keyName:  att.Name,
+		keyMime:  att.Mime,
 		keyImage: slices.Contains(inlineTypes, att.Mime),
 	})
 }
 
 // receiveUpload stores the request's "file" as an attachment, answering
 // with a JSON error itself when it is missing or too large.
-func (a *App) receiveUpload(c *gin.Context, campaignID int64, blockID sql.NullInt64) (sqlc.Attachment, bool) {
+func (a *App) receiveUpload(
+	c *gin.Context,
+	campaignID int64,
+	blockID sql.NullInt64,
+) (sqlc.Attachment, bool) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAttachmentBytes+1<<20)
 	fh, err := c.FormFile("file")
 	if err != nil {
@@ -814,7 +985,12 @@ func (a *App) receiveUpload(c *gin.Context, campaignID int64, blockID sql.NullIn
 }
 
 // storeUpload saves an uploaded file under a random name and records it.
-func (a *App) storeUpload(ctx context.Context, campaignID int64, blockID sql.NullInt64, fh *multipart.FileHeader) (sqlc.Attachment, error) {
+func (a *App) storeUpload(
+	ctx context.Context,
+	campaignID int64,
+	blockID sql.NullInt64,
+	fh *multipart.FileHeader,
+) (sqlc.Attachment, error) {
 	src, err := fh.Open()
 	if err != nil {
 		return sqlc.Attachment{}, err
@@ -824,13 +1000,24 @@ func (a *App) storeUpload(ctx context.Context, campaignID int64, blockID sql.Nul
 }
 
 // storeFile saves src under a random name and records it as fileName.
-func (a *App) storeFile(ctx context.Context, campaignID int64, blockID sql.NullInt64, fileName string, src io.Reader) (sqlc.Attachment, error) {
+func (a *App) storeFile(
+	ctx context.Context,
+	campaignID int64,
+	blockID sql.NullInt64,
+	fileName string,
+	src io.Reader,
+) (sqlc.Attachment, error) {
 	name, mime, size, err := a.saveFile(src)
 	if err != nil {
 		return sqlc.Attachment{}, err
 	}
 	att, err := a.Store.CreateAttachment(ctx, sqlc.CreateAttachmentParams{
-		CampaignID: campaignID, BlockID: blockID, Path: name, Name: fileName, Mime: mime, Size: size,
+		CampaignID: campaignID,
+		BlockID:    blockID,
+		Path:       name,
+		Name:       fileName,
+		Mime:       mime,
+		Size:       size,
 	})
 	if err != nil {
 		_ = os.Remove(filepath.Join(a.attachmentsDir(), name))
@@ -862,7 +1049,8 @@ func saveSniffed(path string, src io.Reader) (string, int64, error) {
 	}
 	head = head[:n]
 	mime, _, _ := strings.Cut(http.DetectContentType(head), ";")
-	dst, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // path is our random name in our directory
+	//nolint:gosec // path is our random name in our directory
+	dst, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return "", 0, err
 	}
@@ -972,7 +1160,10 @@ func (a *App) CleanAttachments(ctx context.Context) error {
 			continue
 		}
 		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > freshFile {
-			if err := os.Remove(filepath.Join(a.attachmentsDir(), e.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := os.Remove(
+				filepath.Join(a.attachmentsDir(), e.Name()),
+			); err != nil &&
+				!errors.Is(err, os.ErrNotExist) {
 				errs = errors.Join(errs, err)
 			}
 		}
@@ -981,12 +1172,22 @@ func (a *App) CleanAttachments(ctx context.Context) error {
 }
 
 // linkKinds maps the prefixes that narrow [[ links to the kind they pick.
-var linkKinds = map[string]string{"note": string(enum.LinkNote), "npc": string(enum.EntityNPC), "img": string(enum.LinkImage), "image": string(enum.LinkImage)}
+var linkKinds = map[string]string{
+	"note":  string(enum.LinkNote),
+	"npc":   string(enum.EntityNPC),
+	"img":   string(enum.LinkImage),
+	"image": string(enum.LinkImage),
+}
 
 // linkItems lists notes, entities and (for the GM) images the viewer may
 // see whose title contains q, for [[ links and the quick switcher. A
 // "kind:" prefix such as "img:" narrows the list to that kind.
-func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) ([]views.LinkItem, error) {
+func (a *App) linkItems(
+	ctx context.Context,
+	w who,
+	campaignID int64,
+	q string,
+) ([]views.LinkItem, error) {
 	q = strings.ToLower(strings.TrimSpace(q))
 	kind := ""
 	if prefix, rest, ok := strings.Cut(q, ":"); ok && linkKinds[prefix] != "" {
@@ -1002,7 +1203,15 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 	}
 	for _, n := range notes {
 		if note := string(enum.LinkNote); want(note, n.Title) {
-			items = append(items, views.LinkItem{ID: fmt.Sprintf("%s:%d", note, n.ID), Label: n.Title, Kind: note, URL: route.Path(route.Note, n.ID)})
+			items = append(
+				items,
+				views.LinkItem{
+					ID:    fmt.Sprintf("%s:%d", note, n.ID),
+					Label: n.Title,
+					Kind:  note,
+					URL:   route.Path(route.Note, n.ID),
+				},
+			)
 		}
 	}
 	ents, err := a.entityList(ctx, w.viewer, campaignID)
@@ -1011,7 +1220,15 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 	}
 	for _, e := range ents.Entities {
 		if npc := string(enum.EntityNPC); want(npc, e.Name) {
-			items = append(items, views.LinkItem{ID: fmt.Sprintf("entity:%d", e.ID), Label: e.Name, Kind: npc, URL: route.Path(route.Entity, e.ID)})
+			items = append(
+				items,
+				views.LinkItem{
+					ID:    fmt.Sprintf("entity:%d", e.ID),
+					Label: e.Name,
+					Kind:  npc,
+					URL:   route.Path(route.Entity, e.ID),
+				},
+			)
 		}
 	}
 	if image := string(enum.LinkImage); w.isGM() && (kind == "" || kind == image) {
@@ -1020,7 +1237,15 @@ func (a *App) linkItems(ctx context.Context, w who, campaignID int64, q string) 
 			return nil, err
 		}
 		for _, img := range imgs {
-			items = append(items, views.LinkItem{ID: fmt.Sprintf("%s:%d", image, img.ID), Label: img.Name, Kind: image, URL: route.Path(route.Image, img.ID)})
+			items = append(
+				items,
+				views.LinkItem{
+					ID:    fmt.Sprintf("%s:%d", image, img.ID),
+					Label: img.Name,
+					Kind:  image,
+					URL:   route.Path(route.Image, img.ID),
+				},
+			)
 		}
 	}
 	return items[:min(len(items), maxLinkSuggestions)], nil

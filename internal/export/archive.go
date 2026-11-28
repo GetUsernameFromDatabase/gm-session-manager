@@ -27,7 +27,13 @@ import (
 //
 // Notes left with no exportable block (a player's private note) are
 // skipped entirely, title included.
-func Campaign(ctx context.Context, w io.Writer, q *sqlc.Queries, campaignID int64, attachmentsDir string) error {
+func Campaign(
+	ctx context.Context,
+	w io.Writer,
+	q *sqlc.Queries,
+	campaignID int64,
+	attachmentsDir string,
+) error {
 	notes, err := q.ListExportNotes(ctx, campaignID)
 	if err != nil {
 		return err
@@ -111,7 +117,8 @@ func Campaign(ctx context.Context, w io.Writer, q *sqlc.Queries, campaignID int6
 
 	var missing []string
 	for _, a := range files {
-		body, err := os.ReadFile(filepath.Join(attachmentsDir, filepath.Base(a.Path))) //nolint:gosec // our random file name, kept inside attachmentsDir by Base
+		//nolint:gosec // our random file name, kept inside attachmentsDir by Base
+		body, err := os.ReadFile(filepath.Join(attachmentsDir, filepath.Base(a.Path)))
 		if errors.Is(err, fs.ErrNotExist) {
 			// One lost file must not make the whole campaign unexportable.
 			missing = append(missing, a.Path)
@@ -125,7 +132,10 @@ func Campaign(ctx context.Context, w io.Writer, q *sqlc.Queries, campaignID int6
 		}
 	}
 	if len(missing) > 0 {
-		list := "Attached files that were not on disk, so not exported:\n" + strings.Join(missing, "\n") + "\n"
+		list := "Attached files that were not on disk, so not exported:\n" + strings.Join(
+			missing,
+			"\n",
+		) + "\n"
 		if err := writeFile(zw, "attachments/MISSING.txt", []byte(list)); err != nil {
 			return err
 		}
@@ -153,17 +163,25 @@ func fileSlug(s string) string {
 // download write it, and as the GM's import reads it back.
 type CharacterFile struct {
 	ID     int64           `json:"id"`
-	Name   string          `json:"name"   validate:"required,max=200"`
-	System string          `json:"system" validate:"required"`
+	Name   string          `json:"name"    validate:"required,max=200"`
+	System string          `json:"system"  validate:"required"`
 	HP     int64           `json:"hp"`
 	MaxHP  int64           `json:"max_hp"`
 	TempHP int64           `json:"temp_hp"`
-	Sheet  json.RawMessage `json:"sheet"  validate:"required"`
+	Sheet  json.RawMessage `json:"sheet"   validate:"required"`
 }
 
 // NewCharacterFile is c as a file.
 func NewCharacterFile(c sqlc.Character) CharacterFile {
-	return CharacterFile{c.ID, c.Name, c.System, c.Hp, c.MaxHp, c.TempHp, json.RawMessage(c.SheetJson)}
+	return CharacterFile{
+		c.ID,
+		c.Name,
+		c.System,
+		c.Hp,
+		c.MaxHp,
+		c.TempHp,
+		json.RawMessage(c.SheetJson),
+	}
 }
 
 // JSON is the file's indented body.

@@ -15,7 +15,12 @@ import (
 // (player app) it was added at home; and the campaign's own books, in
 // priority order. sources is every source in priority order; allowed is nil
 // when the campaign allows all (no campaign).
-func booksUsed(pins []dnd5e.Pin, sources []sqlc.CompendiumSource, allowed, homeKeys []string, noCampaign bool) ([]views.BookUse, []string) {
+func booksUsed(
+	pins []dnd5e.Pin,
+	sources []sqlc.CompendiumSource,
+	allowed, homeKeys []string,
+	noCampaign bool,
+) ([]views.BookUse, []string) {
 	edition := map[string]string{}
 	for _, s := range sources {
 		edition[s.SourceKey] = s.Edition
@@ -40,7 +45,8 @@ func booksUsed(pins []dnd5e.Pin, sources []sqlc.CompendiumSource, allowed, homeK
 	var campaign []string
 	for _, s := range sources {
 		// The player app's home campaign may allow home books too: list only the table's.
-		if s.SourceKey != compendium.HomebrewSource && !slices.Contains(homeKeys, s.SourceKey) && (noCampaign || slices.Contains(allowed, s.SourceKey)) {
+		if s.SourceKey != compendium.HomebrewSource && !slices.Contains(homeKeys, s.SourceKey) &&
+			(noCampaign || slices.Contains(allowed, s.SourceKey)) {
 			campaign = append(campaign, views.SourceLabel(s.SourceKey, s.Edition))
 		}
 	}
@@ -48,7 +54,11 @@ func booksUsed(pins []dnd5e.Pin, sources []sqlc.CompendiumSource, allowed, homeK
 }
 
 // sheetBooks is booksUsed for a character's sheet (nil when it uses no books).
-func (a *App) sheetBooks(ctx context.Context, sheet dnd5e.Sheet, campaignID int64) ([]views.BookUse, []string, error) {
+func (a *App) sheetBooks(
+	ctx context.Context,
+	sheet dnd5e.Sheet,
+	campaignID int64,
+) ([]views.BookUse, []string, error) {
 	pins := sheet.Pins()
 	if len(pins) == 0 {
 		return nil, nil, nil

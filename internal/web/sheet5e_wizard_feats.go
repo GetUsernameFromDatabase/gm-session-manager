@@ -17,8 +17,16 @@ import (
 
 // originFeatChoice offers the compendium's Origin feats (Human Versatile),
 // each with its own choices.
-func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dnd5e.Sheet, campaignID int64) (choiceGroup, bool, error) {
-	names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: enum.KindFeat, CampaignID: campaignID})
+func (a *App) originFeatChoice(
+	ctx context.Context,
+	p compendium.NameDesc,
+	sh dnd5e.Sheet,
+	campaignID int64,
+) (choiceGroup, bool, error) {
+	names, err := a.Store.ListCompendiumNames(
+		ctx,
+		sqlc.ListCompendiumNamesParams{Kind: enum.KindFeat, CampaignID: campaignID},
+	)
 	if err != nil {
 		return choiceGroup{}, false, err
 	}
@@ -27,7 +35,10 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 		slugs[i] = n.Slug
 	}
 	// One query for every feat's priority copy, as entryFor picks unpinned.
-	rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: enum.KindFeat, Slugs: slugs})
+	rows, err := a.Store.ListCompendiumBySlugs(
+		ctx,
+		sqlc.ListCompendiumBySlugsParams{Kind: enum.KindFeat, Slugs: slugs},
+	)
 	if err != nil {
 		return choiceGroup{}, false, err
 	}
@@ -48,7 +59,8 @@ func (a *App) originFeatChoice(ctx context.Context, p compendium.NameDesc, sh dn
 		if err != nil {
 			return choiceGroup{}, false, err
 		}
-		if td.Category != "Origin" || !dnd5e.MeetsPrerequisite(td.Prerequisite, sh, sh.Level(), nil, compendium.Slugify) {
+		if td.Category != "Origin" ||
+			!dnd5e.MeetsPrerequisite(td.Prerequisite, sh, sh.Level(), nil, compendium.Slugify) {
 			continue
 		}
 		sources[n.Name] = row.SourceKey
@@ -92,11 +104,20 @@ func featKey(name string) string {
 
 // backgroundFeatChoices are the choices inside the feat the background
 // gave ("Magic Initiate (Wizard)").
-func (a *App) backgroundFeatChoices(ctx context.Context, sh dnd5e.Sheet, campaignID int64) ([]choiceGroup, error) {
+func (a *App) backgroundFeatChoices(
+	ctx context.Context,
+	sh dnd5e.Sheet,
+	campaignID int64,
+) ([]choiceGroup, error) {
 	if sh.Background == "" {
 		return nil, nil
 	}
-	bg, _, err := a.textEntrySource(ctx, enum.KindBackground, compendium.Slugify(sh.Background), sh.BackgroundSource)
+	bg, _, err := a.textEntrySource(
+		ctx,
+		enum.KindBackground,
+		compendium.Slugify(sh.Background),
+		sh.BackgroundSource,
+	)
 	if err != nil || bg == nil {
 		return nil, err
 	}
@@ -123,12 +144,16 @@ func featList(full string) (string, string) {
 }
 
 var (
-	reFeatCantrips = regexp.MustCompile(`learn (\w+) cantrips of your choice from the (.+?) spell list`)
-	reFeatSpell    = regexp.MustCompile(`Choose a level 1 spell from the same list`)
-	reFeatProfs    = regexp.MustCompile(`proficiency in any combination of (\w+) skills or tools`)
-	reFeatRaise    = regexp.MustCompile(`Increase (?:your (?:((?:\w+, )*\w+) or )?(\w+) score|one ability score of your choice) by 1, to a maximum of (\d+)`)
-	reFeatMastery  = regexp.MustCompile(`mastery property of (\w+) kinds? of`)
-	reToolCost     = regexp.MustCompile(`\s*\(\d+ GP\)$`)
+	reFeatCantrips = regexp.MustCompile(
+		`learn (\w+) cantrips of your choice from the (.+?) spell list`,
+	)
+	reFeatSpell = regexp.MustCompile(`Choose a level 1 spell from the same list`)
+	reFeatProfs = regexp.MustCompile(`proficiency in any combination of (\w+) skills or tools`)
+	reFeatRaise = regexp.MustCompile(
+		`Increase (?:your (?:((?:\w+, )*\w+) or )?(\w+) score|one ability score of your choice) by 1, to a maximum of (\d+)`,
+	)
+	reFeatMastery = regexp.MustCompile(`mastery property of (\w+) kinds? of`)
+	reToolCost    = regexp.MustCompile(`\s*\(\d+ GP\)$`)
 )
 
 // featText is a feat's description and parts, for the reFeat patterns.
@@ -156,7 +181,14 @@ func featMasteries(td *compendium.TextData) int {
 // and tools, and an ability increase (Grappler, Epic Boons). name is the
 // feature on the sheet; list is the spell list a background names. Lists the
 // sheet took with this feat already are left out (Repeatable).
-func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.TextData, list string, sh dnd5e.Sheet, campaignID int64) ([]choiceGroup, error) {
+func (a *App) featChoices(
+	ctx context.Context,
+	key, name string,
+	td *compendium.TextData,
+	list string,
+	sh dnd5e.Sheet,
+	campaignID int64,
+) ([]choiceGroup, error) {
 	text, count := featText(td), dnd5e.CountWord
 	var out []choiceGroup
 	if m := reFeatCantrips.FindStringSubmatch(text); m != nil {
@@ -175,7 +207,17 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 			if list == "" {
 				full = fmt.Sprintf("%s (%s)", name, l)
 			}
-			groups, err := a.featSpellGroups(ctx, key+"_"+compendium.Slugify(l), full, l, count(m[1]), reFeatSpell.MatchString(text), sh, campaignID, added)
+			groups, err := a.featSpellGroups(
+				ctx,
+				key+"_"+compendium.Slugify(l),
+				full,
+				l,
+				count(m[1]),
+				reFeatSpell.MatchString(text),
+				sh,
+				campaignID,
+				added,
+			)
 			if err != nil {
 				return nil, err
 			}
@@ -187,10 +229,18 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 		if list != "" {
 			out = append(out, perList[list]...)
 		} else if len(opts) > 0 {
-			g := views.ChoiceGroup{Key: key + "_list", Title: name + ": spell list", Count: 1, Options: opts}
+			g := views.ChoiceGroup{
+				Key:     key + "_list",
+				Title:   name + ": spell list",
+				Count:   1,
+				Options: opts,
+			}
 			out = append(out, choiceGroup{g, func(s *dnd5e.Sheet, picked []string) {
 				full := fmt.Sprintf("%s (%s)", name, picked[0])
-				if i := slices.IndexFunc(s.Features, func(f dnd5e.Feature) bool { return f.Name == name && f.Source == dnd5e.SourceFeat }); i >= 0 {
+				if i := slices.IndexFunc(
+					s.Features,
+					func(f dnd5e.Feature) bool { return f.Name == name && f.Source == dnd5e.SourceFeat },
+				); i >= 0 {
 					s.Features[i].Name = full
 				}
 				if i := slices.Index(s.Feats, name); i >= 0 {
@@ -216,7 +266,12 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 		}
 		// A fixed "your X" already at its maximum asks nothing: the feat is still taken.
 		if fixedAtMax := len(opts) == 0 && m[1] == "" && m[2] != ""; !fixedAtMax {
-			g := views.ChoiceGroup{Key: key + "_raise", Title: name + ": +1 to an ability score", Count: 1, Options: opts}
+			g := views.ChoiceGroup{
+				Key:     key + "_raise",
+				Title:   name + ": +1 to an ability score",
+				Count:   1,
+				Options: opts,
+			}
 			out = append(out, choiceGroup{g, func(s *dnd5e.Sheet, picked []string) {
 				if ab := dnd5e.AbilityKeys(picked[0]); len(ab) == 1 {
 					s.Scores[ab[0]]++
@@ -240,16 +295,31 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 				opts = append(opts, compendium.NameDesc{Name: t})
 			}
 		}
-		g := views.ChoiceGroup{Key: key + "_profs", Title: name + ": skills or tools", Count: count(m[1]), Options: opts}
+		g := views.ChoiceGroup{
+			Key:     key + "_profs",
+			Title:   name + ": skills or tools",
+			Count:   count(m[1]),
+			Options: opts,
+		}
 		out = append(out, choiceGroup{g, func(s *dnd5e.Sheet, picked []string) {
 			tools := slices.DeleteFunc(slices.Clone(picked), func(p string) bool {
-				return slices.ContainsFunc(dnd5e.Skills, func(sk dnd5e.Skill) bool { return sk.Name == p })
+				return slices.ContainsFunc(
+					dnd5e.Skills,
+					func(sk dnd5e.Skill) bool { return sk.Name == p },
+				)
 			})
 			s.AddProfs(name, dnd5e.SkillKeys(picked), tools...)
 		}, nil})
 	}
 	if n := featMasteries(td); n > 0 {
-		groups, err := a.masteryChoice(ctx, sh, key+"_"+views.FieldMastery, name+": weapon mastery", n, campaignID)
+		groups, err := a.masteryChoice(
+			ctx,
+			sh,
+			key+"_"+views.FieldMastery,
+			name+": weapon mastery",
+			n,
+			campaignID,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -261,19 +331,43 @@ func (a *App) featChoices(ctx context.Context, key, name string, td *compendium.
 // featSpellGroups ask for a feat's cantrips and level 1 spell (always
 // prepared, one free cast per Long Rest) from a class's list, leaving out
 // spells the sheet has; added collects the picks.
-func (a *App) featSpellGroups(ctx context.Context, key, name, class string, cantrips int, spell bool, sh dnd5e.Sheet, campaignID int64, added map[string]bool) ([]choiceGroup, error) {
-	rows, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: compendium.Slugify(class), MaxLevel: 1, CampaignID: campaignID})
+func (a *App) featSpellGroups(
+	ctx context.Context,
+	key, name, class string,
+	cantrips int,
+	spell bool,
+	sh dnd5e.Sheet,
+	campaignID int64,
+	added map[string]bool,
+) ([]choiceGroup, error) {
+	rows, err := a.Store.ListSpellsForClass(
+		ctx,
+		sqlc.ListSpellsForClassParams{
+			ClassSlug:  compendium.Slugify(class),
+			MaxLevel:   1,
+			CampaignID: campaignID,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
 	var byLevel [2][]compendium.NameDesc
 	spells := map[string]dnd5e.Spell{}
 	for _, r := range rows {
-		if slices.ContainsFunc(sh.Spells, func(have dnd5e.Spell) bool { return have.Slug == r.Slug }) {
+		if slices.ContainsFunc(
+			sh.Spells,
+			func(have dnd5e.Spell) bool { return have.Slug == r.Slug },
+		) {
 			continue
 		}
 		byLevel[r.Level] = append(byLevel[r.Level], compendium.NameDesc{Name: r.Name})
-		spells[r.Name] = dnd5e.Spell{Slug: r.Slug, Name: r.Name, Source: r.SourceKey, Level: int(r.Level), Feat: name}
+		spells[r.Name] = dnd5e.Spell{
+			Slug:   r.Slug,
+			Name:   r.Name,
+			Source: r.SourceKey,
+			Level:  int(r.Level),
+			Feat:   name,
+		}
 	}
 	add := func(s *dnd5e.Sheet, picked []string) {
 		for _, n := range picked {
@@ -288,10 +382,34 @@ func (a *App) featSpellGroups(ctx context.Context, key, name, class string, cant
 	}
 	var out []choiceGroup
 	if cantrips > 0 && len(byLevel[0]) > 0 {
-		out = append(out, choiceGroup{views.ChoiceGroup{Key: key + "_cantrips", Title: name + ": cantrips", Count: cantrips, Options: byLevel[0]}, add, nil})
+		out = append(
+			out,
+			choiceGroup{
+				views.ChoiceGroup{
+					Key:     key + "_cantrips",
+					Title:   name + ": cantrips",
+					Count:   cantrips,
+					Options: byLevel[0],
+				},
+				add,
+				nil,
+			},
+		)
 	}
 	if spell && len(byLevel[1]) > 0 {
-		out = append(out, choiceGroup{views.ChoiceGroup{Key: key + "_spell", Title: name + ": level 1 spell", Count: 1, Options: byLevel[1]}, add, nil})
+		out = append(
+			out,
+			choiceGroup{
+				views.ChoiceGroup{
+					Key:     key + "_spell",
+					Title:   name + ": level 1 spell",
+					Count:   1,
+					Options: byLevel[1],
+				},
+				add,
+				nil,
+			},
+		)
 	}
 	return out, nil
 }
@@ -302,16 +420,31 @@ const keepSpells = "No change"
 // featSpellChanges offer each feat's Spell Change on level-up: one spell the
 // feat chose ("Magic Initiate (Wizard)") may become another of the same
 // level from its list, but not one the sheet has or this step teaches (taught).
-func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet, taught []dnd5e.Spell, campaignID int64) ([]choiceGroup, error) {
+func (a *App) featSpellChanges(
+	ctx context.Context,
+	sh dnd5e.Sheet,
+	taught []dnd5e.Spell,
+	campaignID int64,
+) ([]choiceGroup, error) {
 	known := slices.Concat(sh.Spells, taught)
 	var out []choiceGroup
 	for _, feat := range sh.Feats {
 		_, list := featList(feat)
-		mine := slices.DeleteFunc(slices.Clone(sh.Spells), func(sp dnd5e.Spell) bool { return sp.Feat != feat })
+		mine := slices.DeleteFunc(
+			slices.Clone(sh.Spells),
+			func(sp dnd5e.Spell) bool { return sp.Feat != feat },
+		)
 		if list == "" || len(mine) == 0 {
 			continue
 		}
-		rows, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: compendium.Slugify(list), MaxLevel: 1, CampaignID: campaignID})
+		rows, err := a.Store.ListSpellsForClass(
+			ctx,
+			sqlc.ListSpellsForClassParams{
+				ClassSlug:  compendium.Slugify(list),
+				MaxLevel:   1,
+				CampaignID: campaignID,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -322,20 +455,52 @@ func (a *App) featSpellChanges(ctx context.Context, sh dnd5e.Sheet, taught []dnd
 			var with []compendium.NameDesc
 			spells := map[string]dnd5e.Spell{}
 			for _, r := range rows {
-				if int(r.Level) == old.Level && !slices.ContainsFunc(known, func(h dnd5e.Spell) bool { return h.Slug == r.Slug }) {
+				if int(r.Level) == old.Level &&
+					!slices.ContainsFunc(
+						known,
+						func(h dnd5e.Spell) bool { return h.Slug == r.Slug },
+					) {
 					with = append(with, compendium.NameDesc{Name: r.Name})
-					spells[r.Name] = dnd5e.Spell{Slug: r.Slug, Name: r.Name, Source: r.SourceKey, Level: int(r.Level)}
+					spells[r.Name] = dnd5e.Spell{
+						Slug:   r.Slug,
+						Name:   r.Name,
+						Source: r.SourceKey,
+						Level:  int(r.Level),
+					}
 				}
 			}
 			if len(with) == 0 {
 				continue
 			}
 			opts = append(opts, compendium.NameDesc{Name: old.Name})
-			g := views.ChoiceGroup{Key: key + "_" + old.Slug, Title: "Replace " + old.Name + " with", Count: 1, Options: with}
-			sub[old.Name] = []choiceGroup{{g, func(s *dnd5e.Sheet, picked []string) { dnd5e.SwapFeatSpell(s, old, spells[picked[0]]) }, nil}}
+			g := views.ChoiceGroup{
+				Key:     key + "_" + old.Slug,
+				Title:   "Replace " + old.Name + " with",
+				Count:   1,
+				Options: with,
+			}
+			sub[old.Name] = []choiceGroup{
+				{
+					g,
+					func(s *dnd5e.Sheet, picked []string) { dnd5e.SwapFeatSpell(s, old, spells[picked[0]]) },
+					nil,
+				},
+			}
 		}
 		if len(sub) > 0 {
-			out = append(out, choiceGroup{views.ChoiceGroup{Key: key, Title: feat + ": Spell Change", Count: 1, Options: opts}, nil, sub})
+			out = append(
+				out,
+				choiceGroup{
+					views.ChoiceGroup{
+						Key:     key,
+						Title:   feat + ": Spell Change",
+						Count:   1,
+						Options: opts,
+					},
+					nil,
+					sub,
+				},
+			)
 		}
 	}
 	return out, nil

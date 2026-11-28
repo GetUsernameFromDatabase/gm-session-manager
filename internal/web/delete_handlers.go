@@ -37,7 +37,10 @@ func (a *App) removeCharacter(c *gin.Context) error {
 	var encounters, fallbacks []int64
 	err := a.Store.InTx(c.Request.Context(), func(q *sqlc.Queries) error {
 		var err error
-		if encounters, err = q.ListEncounterIDsByCharacter(c.Request.Context(), nullID(ch.ID)); err != nil {
+		if encounters, err = q.ListEncounterIDsByCharacter(
+			c.Request.Context(),
+			nullID(ch.ID),
+		); err != nil {
 			return err
 		}
 		if err := q.SoftDeleteCharacter(c.Request.Context(), ch.ID); err != nil {
@@ -53,14 +56,23 @@ func (a *App) removeCharacter(c *gin.Context) error {
 			}
 		}
 		// A removed caster stops concentrating, so what it held ends too.
-		if err := endConcentration(c.Request.Context(), q, condOwner{characterID: ch.ID}); err != nil {
+		if err := endConcentration(
+			c.Request.Context(),
+			q,
+			condOwner{characterID: ch.ID},
+		); err != nil {
 			return err
 		}
 		if err := q.DeleteCharacterSessions(c.Request.Context(), nullID(ch.ID)); err != nil {
 			return err
 		}
 		for _, e := range encounters {
-			if err := passTurn(c.Request.Context(), q, e, func(r sqlc.ListCombatantsRow) bool { return r.CharacterID.Int64 == ch.ID }); err != nil {
+			if err := passTurn(
+				c.Request.Context(),
+				q,
+				e,
+				func(r sqlc.ListCombatantsRow) bool { return r.CharacterID.Int64 == ch.ID },
+			); err != nil {
 				return err
 			}
 		}
@@ -73,13 +85,20 @@ func (a *App) removeCharacter(c *gin.Context) error {
 		a.Hub.CloseCharacter(id)
 	}
 	a.forgetGoneDevices(c.Request.Context())
-	topics := []hub.Topic{{Kind: hub.TopicCampaign, ID: ch.CampaignID}, {Kind: hub.TopicNotes, ID: ch.CampaignID}}
+	topics := []hub.Topic{
+		{Kind: hub.TopicCampaign, ID: ch.CampaignID},
+		{Kind: hub.TopicNotes, ID: ch.CampaignID},
+	}
 	for _, e := range encounters {
 		topics = append(topics, hub.Topic{Kind: hub.TopicEncounter, ID: e})
 	}
 	a.publish(c, ch.CampaignID, topics...)
 	if w.viewer.IsGM {
-		a.render(c, http.StatusOK, views.Flash("Deleted "+ch.Name+". You can restore it below.", false))
+		a.render(
+			c,
+			http.StatusOK,
+			views.Flash("Deleted "+ch.Name+". You can restore it below.", false),
+		)
 		return nil
 	}
 	redirect(c, route.Home)
@@ -104,7 +123,12 @@ func (a *App) restoreCharacter(c *gin.Context) error {
 	if err := a.Store.RestoreCharacter(c.Request.Context(), ch.ID); err != nil {
 		return err
 	}
-	a.changed(c, ch.CampaignID, hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID}, hub.Topic{Kind: hub.TopicNotes, ID: ch.CampaignID})
+	a.changed(
+		c,
+		ch.CampaignID,
+		hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID},
+		hub.Topic{Kind: hub.TopicNotes, ID: ch.CampaignID},
+	)
 	return nil
 }
 
@@ -118,7 +142,10 @@ func (a *App) downloadCharacter(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	c.Header("Content-Disposition", `attachment; filename="`+path.Base(export.CharacterFileName(ch))+`"`)
+	c.Header(
+		"Content-Disposition",
+		`attachment; filename="`+path.Base(export.CharacterFileName(ch))+`"`,
+	)
 	c.Data(http.StatusOK, "application/json", body)
 	return nil
 }
@@ -139,9 +166,18 @@ func (a *App) importCharacter(c *gin.Context, camp sqlc.Campaign, fh *multipart.
 	if err != nil {
 		return userf("That is not a character file: %v", err)
 	}
-	if _, err := a.Store.CreateCharacterWithSheet(c.Request.Context(), sqlc.CreateCharacterWithSheetParams{
-		CampaignID: camp.ID, Name: cf.Name, System: cf.System, Hp: cf.HP, MaxHp: cf.MaxHP, TempHp: cf.TempHP, SheetJson: string(cf.Sheet),
-	}); err != nil {
+	if _, err := a.Store.CreateCharacterWithSheet(
+		c.Request.Context(),
+		sqlc.CreateCharacterWithSheetParams{
+			CampaignID: camp.ID,
+			Name:       cf.Name,
+			System:     cf.System,
+			Hp:         cf.HP,
+			MaxHp:      cf.MaxHP,
+			TempHp:     cf.TempHP,
+			SheetJson:  string(cf.Sheet),
+		},
+	); err != nil {
 		return err
 	}
 	// A file exported by an older version catches up now, not at the next

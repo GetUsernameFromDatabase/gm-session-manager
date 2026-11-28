@@ -94,7 +94,8 @@ func starterEnv(t *testing.T) (e testEnv, gm string, other int64) {
 	t.Helper()
 	e = newTestEnv(t)
 	serveStarterSets(t, e)
-	camp, err := e.q().CreateCampaign(t.Context(), sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
+	camp, err := e.q().
+		CreateCampaign(t.Context(), sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,14 +130,38 @@ func pickerTicks(t *testing.T, picker string, ids ...string) map[string]bool {
 // ?set= picker ticks the set's books.
 func TestStarterSetsImport(t *testing.T) {
 	e, gm, other := starterEnv(t)
-	picker := e.do(t, http.MethodGet, views.FiveToolsPath+"?"+views.FiveToolsSetField+"="+views.FiveToolsSet2024, gm, nil, true).Body.String()
+	picker := e.do(
+		t,
+		http.MethodGet,
+		views.FiveToolsPath+"?"+views.FiveToolsSetField+"="+views.FiveToolsSet2024,
+		gm,
+		nil,
+		true,
+	).Body.String()
 	if got := pickerTicks(t, picker, "XPHB", "PHB"); !got["XPHB"] || got["PHB"] {
 		t.Errorf("set picker ticks %v", got)
 	}
 	// "Tick 2024 set" sends the boxes ticked in the browser, which stay ticked.
-	q := url.Values{views.FiveToolsSetField: {views.FiveToolsSet2024}, views.FiveToolsField: {"PHB"}}
-	picker = e.do(t, http.MethodGet, views.FiveToolsPath+"?"+q.Encode(), gm, nil, true).Body.String()
-	if got := pickerTicks(t, picker, "XPHB", "PHB", "BRK"); !got["XPHB"] || !got["PHB"] || got["BRK"] {
+	q := url.Values{
+		views.FiveToolsSetField: {views.FiveToolsSet2024},
+		views.FiveToolsField:    {"PHB"},
+	}
+	picker = e.do(
+		t,
+		http.MethodGet,
+		views.FiveToolsPath+"?"+q.Encode(),
+		gm,
+		nil,
+		true,
+	).Body.String()
+	if got := pickerTicks(
+		t,
+		picker,
+		"XPHB",
+		"PHB",
+		"BRK",
+	); !got["XPHB"] || !got["PHB"] ||
+		got["BRK"] {
 		t.Errorf("set picker with a ticked book ticks %v", got)
 	}
 
@@ -166,12 +191,33 @@ func TestStarterSetsImport(t *testing.T) {
 	if keys := e.ticked(t, e.campaignID); slices.Contains(keys, "5etools-phb") {
 		t.Errorf("2014 book ticked: %v", keys)
 	}
-	if w := e.do(t, http.MethodPost, base+route.CompendiumOpen5e, gm, url.Values{views.Open5eDocField: {"srd-3000"}}, false); !strings.Contains(w.Body.String(), "Pick an SRD") {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		base+route.CompendiumOpen5e,
+		gm,
+		url.Values{views.Open5eDocField: {"srd-3000"}},
+		false,
+	); !strings.Contains(
+		w.Body.String(),
+		"Pick an SRD",
+	) {
 		t.Errorf("unknown SRD: %d, not refused", w.Code)
 	}
 	// From the Data folder tab, the GM comes back to that tab.
-	w := e.do(t, http.MethodPost, base+route.CompendiumOpen5e, gm, url.Values{views.Open5eDocField: {compendium.SRD2014Key}, views.ImportKey: {views.ImportTabFolder}}, false)
-	if want := base + "?" + views.ImportKey + "=" + views.ImportTabFolder; w.Code != http.StatusSeeOther || w.Header().Get("Location") != want {
+	w := e.do(
+		t,
+		http.MethodPost,
+		base+route.CompendiumOpen5e,
+		gm,
+		url.Values{
+			views.Open5eDocField: {compendium.SRD2014Key},
+			views.ImportKey:      {views.ImportTabFolder},
+		},
+		false,
+	)
+	if want := base + "?" + views.ImportKey + "=" + views.ImportTabFolder; w.Code != http.StatusSeeOther ||
+		w.Header().Get("Location") != want {
 		t.Errorf("folder tab post: %d %q, want %q", w.Code, w.Header().Get("Location"), want)
 	}
 	waitJob(t, e)
@@ -183,14 +229,29 @@ func TestStarterSetsImport(t *testing.T) {
 func TestPartialDownloadTicks(t *testing.T) {
 	e, gm, other := starterEnv(t)
 	camp := route.Path(route.CampaignCompendium, e.campaignID)
-	if w := e.do(t, http.MethodPost, camp+route.CompendiumFiveTools, gm, url.Values{views.FiveToolsField: {"XPHB"}}, false); w.Code != http.StatusSeeOther {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		camp+route.CompendiumFiveTools,
+		gm,
+		url.Values{views.FiveToolsField: {"XPHB"}},
+		false,
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("first post: %d", w.Code)
 	}
 	waitJob(t, e)
-	if err := e.q().DisallowCampaignSource(t.Context(), sqlc.DisallowCampaignSourceParams{CampaignID: e.campaignID, SourceKey: "5etools-xphb"}); err != nil {
+	if err := e.q().
+		DisallowCampaignSource(t.Context(), sqlc.DisallowCampaignSourceParams{CampaignID: e.campaignID, SourceKey: "5etools-xphb"}); err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodPost, camp+route.CompendiumFiveTools, gm, url.Values{views.FiveToolsField: {"XPHB", "BRK"}}, false); w.Code != http.StatusSeeOther {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		camp+route.CompendiumFiveTools,
+		gm,
+		url.Values{views.FiveToolsField: {"XPHB", "BRK"}},
+		false,
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("second post: %d", w.Code)
 	}
 	for end := time.Now().Add(20 * time.Second); e.app.fiveTools.get().Running && time.Now().Before(end); {
@@ -215,14 +276,35 @@ func TestImportsTickFromCampaignOnly(t *testing.T) {
 	e, gm, other := starterEnv(t)
 	camp := route.Path(route.CampaignCompendium, e.campaignID)
 	book := url.Values{views.FiveToolsField: {"XPHB"}}
-	page := url.Values{"site": {"wikidot"}, "page": {"spell:fireball"}, "kind": {"spell"}, "name": {"Fireball"}, "level": {"3"}, "desc": {"A bright streak."}}
+	page := url.Values{
+		"site":  {"wikidot"},
+		"page":  {"spell:fireball"},
+		"kind":  {"spell"},
+		"name":  {"Fireball"},
+		"level": {"3"},
+		"desc":  {"A bright streak."},
+	}
 
 	// From the whole compendium: imported, ticked nowhere.
-	if w := e.do(t, http.MethodPost, views.FiveToolsPath, gm, book, false); w.Code != http.StatusSeeOther {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		views.FiveToolsPath,
+		gm,
+		book,
+		false,
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("global book post: %d", w.Code)
 	}
 	waitJob(t, e)
-	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumPage, gm, page, false); w.Code != http.StatusSeeOther {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Compendium+route.CompendiumPage,
+		gm,
+		page,
+		false,
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("global page save: %d %s", w.Code, w.Body)
 	}
 	for _, id := range []int64{e.campaignID, other} {
@@ -232,11 +314,26 @@ func TestImportsTickFromCampaignOnly(t *testing.T) {
 	}
 
 	// From the campaign's compendium: ticked there only.
-	if w := e.do(t, http.MethodPost, camp+route.CompendiumFiveTools, gm, book, false); w.Code != http.StatusSeeOther || w.Header().Get("Location") != camp+"?"+views.ImportKey+"="+views.ImportTabFiveTools {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		camp+route.CompendiumFiveTools,
+		gm,
+		book,
+		false,
+	); w.Code != http.StatusSeeOther ||
+		w.Header().Get("Location") != camp+"?"+views.ImportKey+"="+views.ImportTabFiveTools {
 		t.Fatalf("campaign book post: %d %q", w.Code, w.Header().Get("Location"))
 	}
 	waitJob(t, e)
-	if w := e.do(t, http.MethodPost, camp+route.CompendiumPage, gm, page, false); w.Code != http.StatusSeeOther {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		camp+route.CompendiumPage,
+		gm,
+		page,
+		false,
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("campaign page save: %d %s", w.Code, w.Body)
 	}
 	keys := e.ticked(t, e.campaignID)
@@ -249,7 +346,10 @@ func TestImportsTickFromCampaignOnly(t *testing.T) {
 	}
 
 	// A folder import ticks nothing, and lists what the campaign leaves off.
-	if err := os.CopyFS(filepath.Join(e.app.compendiumDir(), "srd-copy"), os.DirFS(srdMini)); err != nil {
+	if err := os.CopyFS(
+		filepath.Join(e.app.compendiumDir(), "srd-copy"),
+		os.DirFS(srdMini),
+	); err != nil {
 		t.Fatal(err)
 	}
 	body := e.do(t, http.MethodPost, camp+route.CompendiumImport, gm, nil, false).Body.String()
@@ -262,12 +362,32 @@ func TestImportsTickFromCampaignOnly(t *testing.T) {
 	if keys := e.ticked(t, e.campaignID); slices.Contains(keys, "srd-copy") {
 		t.Errorf("folder import ticked: %v", keys)
 	}
-	if body := e.do(t, http.MethodPost, route.Compendium+route.CompendiumImport, gm, nil, false).Body.String(); strings.Contains(body, "Use selected") {
+	if body := e.do(
+		t,
+		http.MethodPost,
+		route.Compendium+route.CompendiumImport,
+		gm,
+		nil,
+		false,
+	).Body.String(); strings.Contains(
+		body,
+		"Use selected",
+	) {
 		t.Error("global folder import offers campaign sources")
 	}
 	// "Use selected" ticks just the posted keys and goes back to the compendium.
-	w := e.do(t, http.MethodPost, route.Path(route.CampaignSources, e.campaignID), gm,
-		url.Values{views.SourceKeyField: {"srd-copy"}, "on": {"true"}, "back": {views.SourcesBackCompendium}}, true)
+	w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignSources, e.campaignID),
+		gm,
+		url.Values{
+			views.SourceKeyField: {"srd-copy"},
+			"on":                 {"true"},
+			"back":               {views.SourcesBackCompendium},
+		},
+		true,
+	)
 	if w.Header().Get("HX-Redirect") != camp {
 		t.Errorf("use selected: %d %q", w.Code, w.Header().Get("HX-Redirect"))
 	}
@@ -292,7 +412,12 @@ func TestImportsTickFromCampaignOnly(t *testing.T) {
 func TestPickerKeepsJobTicks(t *testing.T) {
 	e, gm, _ := starterEnv(t)
 	picker := func() map[string]bool {
-		return pickerTicks(t, e.do(t, http.MethodGet, views.FiveToolsPath, gm, nil, true).Body.String(), "XPHB", "PHB")
+		return pickerTicks(
+			t,
+			e.do(t, http.MethodGet, views.FiveToolsPath, gm, nil, true).Body.String(),
+			"XPHB",
+			"PHB",
+		)
 	}
 	if got := picker(); got["XPHB"] || got["PHB"] {
 		t.Fatalf("fresh picker ticks %v", got)
@@ -309,7 +434,14 @@ func TestPickerKeepsJobTicks(t *testing.T) {
 		t.Errorf("failed: %v", got)
 	}
 	// A real run ending well clears them.
-	if w := e.do(t, http.MethodPost, views.FiveToolsPath, gm, url.Values{views.FiveToolsField: {"XPHB"}}, false); w.Code != http.StatusSeeOther {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		views.FiveToolsPath,
+		gm,
+		url.Values{views.FiveToolsField: {"XPHB"}},
+		false,
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("post: %d", w.Code)
 	}
 	waitJob(t, e)
@@ -334,16 +466,40 @@ func TestSourcesCardStarterSets(t *testing.T) {
 	if !strings.Contains(body, live) || !strings.Contains(body, `action="`+srdPost+`"`) {
 		t.Fatal("Sources card offers no starting sets posting to the campaign's compendium")
 	}
-	if w := e.do(t, http.MethodGet, page, player, nil, false); w.Code != http.StatusForbidden || strings.Contains(w.Body.String(), live) {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		page,
+		player,
+		nil,
+		false,
+	); w.Code != http.StatusForbidden ||
+		strings.Contains(w.Body.String(), live) {
 		t.Errorf("player campaign page: %d", w.Code)
 	}
 	// The page's refetch names its campaign, as its socket does.
-	refetch := route.Live + "?" + url.Values{"v": {key}, "campaign": {strconv.FormatInt(e.campaignID, 10)}}.Encode()
-	if w := e.do(t, http.MethodGet, refetch, gm, nil, true); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `id="`+views.StarterSetsID+`"`) || !strings.Contains(w.Body.String(), `action="`+srdPost+`"`) {
+	refetch := route.Live + "?" + url.Values{
+		"v":        {key},
+		"campaign": {strconv.FormatInt(e.campaignID, 10)},
+	}.Encode()
+	if w := e.do(
+		t,
+		http.MethodGet,
+		refetch,
+		gm,
+		nil,
+		true,
+	); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `id="`+views.StarterSetsID+`"`) ||
+		!strings.Contains(w.Body.String(), `action="`+srdPost+`"`) {
 		t.Errorf("GM refetch: %d %s", w.Code, w.Body)
 	}
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, srdPost, strings.NewReader(url.Values{views.Open5eDocField: {compendium.SRD2024Key}}.Encode()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		srdPost,
+		strings.NewReader(url.Values{views.Open5eDocField: {compendium.SRD2024Key}}.Encode()),
+	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Referer", "https://host"+page)
 	req.RemoteAddr = lanAddr
@@ -355,13 +511,29 @@ func TestSourcesCardStarterSets(t *testing.T) {
 	}
 	msg := waitJob(t, e)
 
-	if w := e.do(t, http.MethodGet, refetch, gm, nil, true); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "Import SRD") || !strings.Contains(w.Body.String(), compendium.SRD2024Key) {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		refetch,
+		gm,
+		nil,
+		true,
+	); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "Import SRD") ||
+		!strings.Contains(w.Body.String(), compendium.SRD2024Key) {
 		t.Errorf("refetch after the import still offers the sets, or lacks the SRD: %d", w.Code)
 	}
 	// With sources in, the card still shows a running import's bar and a failed one's reason.
 	for _, job := range []views.FiveToolsJob{{Running: true, Total: 2, Current: "Book Two"}, {Msg: "Could not add them to the campaign", Failed: true}} {
 		e.app.fiveTools.update(func(j *views.FiveToolsJob) { *j = job })
-		if body := e.do(t, http.MethodGet, refetch, gm, nil, true).Body.String(); !strings.Contains(body, job.Current+job.Msg) || !strings.Contains(body, compendium.SRD2024Key) {
+		if body := e.do(
+			t,
+			http.MethodGet,
+			refetch,
+			gm,
+			nil,
+			true,
+		).Body.String(); !strings.Contains(body, job.Current+job.Msg) ||
+			!strings.Contains(body, compendium.SRD2024Key) {
 			t.Errorf("card with sources hides the job %+v", job)
 		}
 	}
@@ -369,10 +541,12 @@ func TestSourcesCardStarterSets(t *testing.T) {
 	// The live card turns into the source list by itself, so the finished
 	// sets in it offer no link, only the summary.
 	var b strings.Builder
-	if err := views.StarterSets(views.FiveToolsJob{Msg: msg}, e.campaignID).Render(t.Context(), &b); err != nil {
+	if err := views.StarterSets(views.FiveToolsJob{Msg: msg}, e.campaignID).
+		Render(t.Context(), &b); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(b.String(), msg) || strings.Contains(b.String(), "Show entries") || strings.Contains(b.String(), "data-live") {
+	if !strings.Contains(b.String(), msg) || strings.Contains(b.String(), "Show entries") ||
+		strings.Contains(b.String(), "data-live") {
 		t.Errorf("finished card sets: %s", b.String())
 	}
 }

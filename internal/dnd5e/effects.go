@@ -29,22 +29,39 @@ type FeatureEffects struct {
 }
 
 var (
-	reAction     = regexp.MustCompile(`(?i)\bas an? (bonus action|reaction|magic action|action)\b|\btake (?:a|the) (magic) action\b|\buse your (reaction)\b`)
-	reUsesAbil   = regexp.MustCompile(`(?i)a number of times equal to your (strength|dexterity|constitution|intelligence|wisdom|charisma) modifier`)
-	reUsesProf   = regexp.MustCompile(`(?i)a number of times equal to your proficiency bonus`)
-	reUsesCount  = regexp.MustCompile(`(?i)\byou can use (?:this feature|this trait|it|[a-z' ]{1,40}?) (twice|three times|four times)\b`)
+	reAction = regexp.MustCompile(
+		`(?i)\bas an? (bonus action|reaction|magic action|action)\b|\btake (?:a|the) (magic) action\b|\buse your (reaction)\b`,
+	)
+	reUsesAbil = regexp.MustCompile(
+		`(?i)a number of times equal to your (strength|dexterity|constitution|intelligence|wisdom|charisma) modifier`,
+	)
+	reUsesProf  = regexp.MustCompile(`(?i)a number of times equal to your proficiency bonus`)
+	reUsesCount = regexp.MustCompile(
+		`(?i)\byou can use (?:this feature|this trait|it|[a-z' ]{1,40}?) (twice|three times|four times)\b`,
+	)
 	reUsesOnce   = regexp.MustCompile(`(?i)\bonce you use this (?:feature|trait|ability)\b`)
-	reUsesColumn = regexp.MustCompile(`(?i)number of times shown for your [a-z]+ level in the ([a-z' ]+?) column`)
-	// reUsesShown is a pool that grows by level: Focus Points, Sorcery Points, Channel Divinity uses.
-	reUsesShown = regexp.MustCompile(`(?i)\b(?:points?|uses)\b[^.]*?as shown in the ([a-z' ]+?) column`)
-	reShortOne  = regexp.MustCompile(`(?i)regain one (?:of its )?expended uses? when you finish a short rest`)
+	reUsesColumn = regexp.MustCompile(
+		`(?i)number of times shown for your [a-z]+ level in the ([a-z' ]+?) column`,
+	)
+	// reUsesShown is a pool that grows by level: Focus Points, Sorcery Points,
+	// Channel Divinity uses.
+	reUsesShown = regexp.MustCompile(
+		`(?i)\b(?:points?|uses)\b[^.]*?as shown in the ([a-z' ]+?) column`,
+	)
+	reShortOne = regexp.MustCompile(
+		`(?i)regain one (?:of its )?expended uses? when you finish a short rest`,
+	)
 	reShortRest = regexp.MustCompile(`(?i)finish a short or long rest`)
 	reSpeed     = regexp.MustCompile(`(?i)your speed increases by (\d+) feet([^.]*)`)
-	reUnarmored = regexp.MustCompile(`(?i)base armor class equals 10 plus your dexterity and (strength|constitution|intelligence|wisdom|charisma) modifiers`)
+	reUnarmored = regexp.MustCompile(
+		`(?i)base armor class equals 10 plus your dexterity and (strength|constitution|intelligence|wisdom|charisma) modifiers`,
+	)
 	reSkillProf = regexp.MustCompile(`(?i)proficiency in (?:the )?([a-z ,]+?) skills?\b`)
 	reToolProf  = regexp.MustCompile(`(?i)proficiency with ([^.;:]+)`)
-	reTool      = regexp.MustCompile(`(?i)^(?:(?:the|an?) )?((?:[a-z']+ ){0,3}(?:kit|tools|supplies|set|utensils))$`)
-	reChoice    = regexp.MustCompile(`(?i)\b(?:or|one|two|any|type|choice|choose|this)\b`)
+	reTool      = regexp.MustCompile(
+		`(?i)^(?:(?:the|an?) )?((?:[a-z']+ ){0,3}(?:kit|tools|supplies|set|utensils))$`,
+	)
+	reChoice = regexp.MustCompile(`(?i)\b(?:or|one|two|any|type|choice|choose|this)\b`)
 	// reTag is a 5etools tag ({@skill Insight|XPHB}) or a compendium link
 	// ([[compendium:skill/insight|Insight]]); both keep their label.
 	reTag = regexp.MustCompile(`\{@\w+ ([^|}]*)[^}]*\}|\[\[[^\]|]*\|([^\]]*)\]\]`)
@@ -55,7 +72,13 @@ var abilityByName = map[string]string{
 	"intelligence": Int, "wisdom": Wis, "charisma": Cha,
 }
 
-var actionKinds = map[string]string{"action": ActionMain, "bonus action": ActionBonus, "reaction": ActionReaction, "magic action": ActionMagic, "magic": ActionMagic}
+var actionKinds = map[string]string{
+	"action":       ActionMain,
+	"bonus action": ActionBonus,
+	"reaction":     ActionReaction,
+	"magic action": ActionMagic,
+	"magic":        ActionMagic,
+}
 
 var timesWords = map[string]int{"twice": 2, "three times": 3, "four times": 4}
 
@@ -95,12 +118,24 @@ func ParseEffects(name, desc string, table map[string]map[int]string, class stri
 	}
 	if m := reSpeed.FindStringSubmatch(desc); m != nil {
 		n, _ := strconv.Atoi(m[1])
-		e.Mods = append(e.Mods, CustomMod{Target: ModSpeed, Value: n, Note: name, Source: name, When: armorCondition(m[2])})
+		e.Mods = append(
+			e.Mods,
+			CustomMod{
+				Target: ModSpeed,
+				Value:  n,
+				Note:   name,
+				Source: name,
+				When:   armorCondition(m[2]),
+			},
+		)
 	}
 	if m := reUnarmored.FindStringSubmatchIndex(desc); m != nil {
 		e.Unarmored = abilityByName[strings.ToLower(desc[m[2]:m[3]])]
 		sentenceStart := strings.LastIndex(desc[:m[0]], ".") + 1
-		e.NoShield = strings.Contains(strings.ToLower(desc[sentenceStart:m[0]]), "wielding a shield")
+		e.NoShield = strings.Contains(
+			strings.ToLower(desc[sentenceStart:m[0]]),
+			"wielding a shield",
+		)
 	}
 	e.Skills, e.Tools = parseProfs(desc)
 	e.Armor = armorGrants(desc)
@@ -122,7 +157,10 @@ func parseProfs(desc string) (skills, tools []string) {
 			if part = strings.TrimSpace(part); part == "" {
 				continue // "History, and Religion"
 			}
-			i := slices.IndexFunc(Skills, func(sk Skill) bool { return strings.EqualFold(sk.Name, part) })
+			i := slices.IndexFunc(
+				Skills,
+				func(sk Skill) bool { return strings.EqualFold(sk.Name, part) },
+			)
 			if i < 0 {
 				keys = nil
 				break
@@ -135,7 +173,10 @@ func parseProfs(desc string) (skills, tools []string) {
 	// each listed tool, not the armor or weapons beside it.
 	for _, m := range reToolProf.FindAllStringSubmatch(text, -1) {
 		for part := range strings.SplitSeq(strings.ReplaceAll(m[1], " and ", ","), ",") {
-			if t := reTool.FindStringSubmatch(strings.TrimSpace(part)); t != nil && !reChoice.MatchString(t[1]) {
+			if t := reTool.FindStringSubmatch(
+				strings.TrimSpace(part),
+			); t != nil &&
+				!reChoice.MatchString(t[1]) {
 				tools = append(tools, t[1])
 			}
 		}
@@ -162,7 +203,10 @@ func (s *Sheet) AddProfs(origin string, skills []string, other ...string) {
 		}
 	}
 	for _, o := range other {
-		if !slices.ContainsFunc(s.OtherProfs, func(x string) bool { return strings.EqualFold(x, o) }) {
+		if !slices.ContainsFunc(
+			s.OtherProfs,
+			func(x string) bool { return strings.EqualFold(x, o) },
+		) {
 			s.OtherProfs = append(s.OtherProfs, o)
 			note(o)
 		}
@@ -187,7 +231,10 @@ func (s *Sheet) RemoveProfsFrom(origin string) {
 		s.SkillProfs = slices.DeleteFunc(s.SkillProfs, func(x string) bool { return x == k })
 		s.Expertise = slices.DeleteFunc(s.Expertise, func(x string) bool { return x == k })
 		s.OtherProfs = slices.DeleteFunc(s.OtherProfs, func(x string) bool { return x == k })
-		s.ArmorTraining = slices.DeleteFunc(s.ArmorTraining, func(x string) bool { return armorSourceKey(x) == k })
+		s.ArmorTraining = slices.DeleteFunc(
+			s.ArmorTraining,
+			func(x string) bool { return armorSourceKey(x) == k },
+		)
 		delete(s.ProfSources, k)
 	}
 }
@@ -260,7 +307,12 @@ func (e FeatureEffects) Summary() []string {
 }
 
 // ActionLabels name a feature's action kinds.
-var ActionLabels = map[string]string{ActionMain: "Action", ActionBonus: "Bonus Action", ActionReaction: "Reaction", ActionMagic: "Magic action"}
+var ActionLabels = map[string]string{
+	ActionMain:     "Action",
+	ActionBonus:    "Bonus Action",
+	ActionReaction: "Reaction",
+	ActionMagic:    "Magic action",
+}
 
 // Feature.Action values.
 const (
@@ -297,25 +349,39 @@ func UsesLabel(u Uses) string {
 // changes with mods. A feat from the compendium (featKey set, as pinFeat
 // keys it) joins the sheet's feats too, pinned to featSource.
 func SaveFeature(f Feature, mods []CustomMod, featKey, featSource string) Command {
-	return NewCommand("feature add "+strconv.Quote(f.Name), perm.ScopeSheet, func(c *Character) error {
-		c.Sheet.PutFeature(f, mods)
-		if featKey == "" {
+	return NewCommand(
+		"feature add "+strconv.Quote(f.Name),
+		perm.ScopeSheet,
+		func(c *Character) error {
+			c.Sheet.PutFeature(f, mods)
+			if featKey == "" {
+				return nil
+			}
+			if !slices.ContainsFunc(
+				c.Sheet.Feats,
+				func(n string) bool { return strings.EqualFold(n, f.Name) },
+			) {
+				c.Sheet.Feats = append(c.Sheet.Feats, f.Name)
+			}
+			if c.Sheet.FeatSources == nil {
+				c.Sheet.FeatSources = map[string]string{}
+			}
+			c.Sheet.FeatSources[featKey] = featSource
 			return nil
-		}
-		if !slices.ContainsFunc(c.Sheet.Feats, func(n string) bool { return strings.EqualFold(n, f.Name) }) {
-			c.Sheet.Feats = append(c.Sheet.Feats, f.Name)
-		}
-		if c.Sheet.FeatSources == nil {
-			c.Sheet.FeatSources = map[string]string{}
-		}
-		c.Sheet.FeatSources[featKey] = featSource
-		return nil
-	})
+		},
+	)
 }
 
 // PutFeature is SaveFeature's change, for code that builds sheets.
 func (s *Sheet) PutFeature(f Feature, mods []CustomMod) {
-	s.putFeature(slices.IndexFunc(s.Features, func(x Feature) bool { return strings.EqualFold(x.Name, f.Name) }), f, mods)
+	s.putFeature(
+		slices.IndexFunc(
+			s.Features,
+			func(x Feature) bool { return strings.EqualFold(x.Name, f.Name) },
+		),
+		f,
+		mods,
+	)
 }
 
 // AddFeature puts a gained class, subclass or species feature and its
@@ -334,14 +400,19 @@ func (s *Sheet) AddFeature(f Feature, e FeatureEffects) {
 }
 
 func (s Sheet) featureIndex(name, source string) int {
-	return slices.IndexFunc(s.Features, func(x Feature) bool { return strings.EqualFold(x.Name, name) && x.Source == source })
+	return slices.IndexFunc(
+		s.Features,
+		func(x Feature) bool { return strings.EqualFold(x.Name, name) && x.Source == source },
+	)
 }
 
 // putFeature replaces the feature at i (appends when i < 0) and its mods.
 func (s *Sheet) putFeature(i int, f Feature, mods []CustomMod) {
 	if i >= 0 {
 		old := s.Features[i]
-		f.Name, f.Source, f.Level = old.Name, cmp.Or(f.Source, old.Source), cmp.Or(f.Level, old.Level)
+		f.Name = old.Name
+		f.Source = cmp.Or(f.Source, old.Source)
+		f.Level = cmp.Or(f.Level, old.Level)
 		f.Uses.Used = old.Uses.Used
 		s.Features[i] = f
 	} else {
@@ -351,5 +422,7 @@ func (s *Sheet) putFeature(i int, f Feature, mods []CustomMod) {
 	for i := range mods {
 		mods[i].Note, mods[i].Source = f.Name, f.Name
 	}
-	s.Modifiers = append(slices.DeleteFunc(s.Modifiers, func(m CustomMod) bool { return m.Source == f.Name }), mods...)
+	s.Modifiers = append(
+		slices.DeleteFunc(s.Modifiers, func(m CustomMod) bool { return m.Source == f.Name }),
+		mods...)
 }

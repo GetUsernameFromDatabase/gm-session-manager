@@ -23,7 +23,11 @@ import (
 // the compendium only what the table lacks (sources added at home that the home
 // campaign allows, homebrew is never one, with their entries). A note still
 // open in another tab refuses it.
-func (a *App) homeContent(ctx context.Context, q *sqlc.Queries, ch sqlc.Character) (export.TakeHome, error) {
+func (a *App) homeContent(
+	ctx context.Context,
+	q *sqlc.Queries,
+	ch sqlc.Character,
+) (export.TakeHome, error) {
 	th, _, err := buildTakeHome(ctx, q, ch)
 	if err != nil {
 		return th, err
@@ -32,7 +36,13 @@ func (a *App) homeContent(ctx context.Context, q *sqlc.Queries, ch sqlc.Characte
 	if err != nil {
 		return th, err
 	}
-	if err := takeHomeCompendium(ctx, q, ch, &th, func(k string) bool { return slices.Contains(keys, k) }); err != nil {
+	if err := takeHomeCompendium(
+		ctx,
+		q,
+		ch,
+		&th,
+		func(k string) bool { return slices.Contains(keys, k) },
+	); err != nil {
 		return th, err
 	}
 	return th, a.checkOpenNotes(ctx, q, ch.ID)
@@ -58,8 +68,15 @@ func homeHomebrew(rows []sqlc.CompendiumEntry) []export.TakeHomeEntry {
 	out := make([]export.TakeHomeEntry, len(rows))
 	for i, e := range rows {
 		out[i] = export.TakeHomeEntry{
-			ID: e.ID, Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: e.SourceKey, Data: json.RawMessage(e.DataJson),
-			BodyText: e.BodyText, ContentHash: e.ContentHash, Scoped: e.Scoped,
+			ID:          e.ID,
+			Kind:        e.Kind,
+			Slug:        e.Slug,
+			Name:        e.Name,
+			SourceKey:   e.SourceKey,
+			Data:        json.RawMessage(e.DataJson),
+			BodyText:    e.BodyText,
+			ContentHash: e.ContentHash,
+			Scoped:      e.Scoped,
 		}
 	}
 	return out
@@ -67,7 +84,10 @@ func homeHomebrew(rows []sqlc.CompendiumEntry) []export.TakeHomeEntry {
 
 // bringBack builds the bring-back file of a home copy and its file name, with
 // its fallback build when one is prepared and not deleted.
-func (a *App) bringBack(ctx context.Context, homeCharacterID int64) (export.TakeHome, string, error) {
+func (a *App) bringBack(
+	ctx context.Context,
+	homeCharacterID int64,
+) (export.TakeHome, string, error) {
 	var th export.TakeHome
 	hc, err := a.Store.GetHomeCopy(ctx, homeCharacterID)
 	if err != nil {
@@ -100,9 +120,20 @@ func (a *App) bringBack(ctx context.Context, homeCharacterID int64) (export.Take
 		if err != nil {
 			return err
 		}
-		th.Fallback = &export.TakeHomeFallback{MaxHP: fb.MaxHp, Sheet: json.RawMessage(fb.SheetJson)}
+		th.Fallback = &export.TakeHomeFallback{
+			MaxHP: fb.MaxHp,
+			Sheet: json.RawMessage(fb.SheetJson),
+		}
 		for _, l := range levelUps {
-			th.Fallback.LevelUps = append(th.Fallback.LevelUps, export.TakeHomeLevelUp{ID: l.ID, MaxHP: l.MaxHp, Sheet: json.RawMessage(l.SheetJson), CreatedAt: l.CreatedAt.UTC()})
+			th.Fallback.LevelUps = append(
+				th.Fallback.LevelUps,
+				export.TakeHomeLevelUp{
+					ID:        l.ID,
+					MaxHP:     l.MaxHp,
+					Sheet:     json.RawMessage(l.SheetJson),
+					CreatedAt: l.CreatedAt.UTC(),
+				},
+			)
 		}
 		own, err := q.ListOwnHomebrew(ctx, nullID(fb.ID))
 		if err != nil {
@@ -137,13 +168,18 @@ func (a *App) newCharacterFile(ctx context.Context, id int64) (export.TakeHome, 
 		return th, "", err
 	}
 	if _, err := a.Store.GetHomeCopy(ctx, id); err == nil {
-		return th, "", userf("%s goes back with a bring-back file, not as a new character.", ch.Name)
+		return th, "", userf(
+			"%s goes back with a bring-back file, not as a new character.",
+			ch.Name,
+		)
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return th, "", err
 	}
 	serverID, err := a.Store.GetHomeServerID(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
-		return th, "", userf("This computer does not know its table yet: open a take-home file first.")
+		return th, "", userf(
+			"This computer does not know its table yet: open a take-home file first.",
+		)
 	}
 	if err != nil {
 		return th, "", err
@@ -158,7 +194,11 @@ func (a *App) newCharacterFile(ctx context.Context, id int64) (export.TakeHome, 
 		if err != nil {
 			return err
 		}
-		th.Manifest.Campaign = export.TakeHomeCampaign{Name: camp.Name, System: camp.System, Edition: camp.Edition}
+		th.Manifest.Campaign = export.TakeHomeCampaign{
+			Name:    camp.Name,
+			System:  camp.System,
+			Edition: camp.Edition,
+		}
 		rows, err := q.ListCampaignHomeHomebrew(ctx, ch.CampaignID)
 		if err != nil {
 			return err
@@ -168,14 +208,21 @@ func (a *App) newCharacterFile(ctx context.Context, id int64) (export.TakeHome, 
 		th.Manifest.MadeAtHome, err = q.GetNewCharacterToken(ctx, ch.ID)
 		if errors.Is(err, sql.ErrNoRows) {
 			th.Manifest.MadeAtHome = rand.Text()
-			err = q.CreateNewCharacterToken(ctx, sqlc.CreateNewCharacterTokenParams{CharacterID: ch.ID, Token: th.Manifest.MadeAtHome})
+			err = q.CreateNewCharacterToken(
+				ctx,
+				sqlc.CreateNewCharacterTokenParams{
+					CharacterID: ch.ID,
+					Token:       th.Manifest.MadeAtHome,
+				},
+			)
 		}
 		return err
 	})
 	if err != nil {
 		return th, "", err
 	}
-	th.Manifest.Format, th.Manifest.Kind, th.Manifest.AppVersion = export.TakeHomeFormat, export.KindNewCharacter, a.Version
+	th.Manifest.Format, th.Manifest.Kind = export.TakeHomeFormat, export.KindNewCharacter
+	th.Manifest.AppVersion = a.Version
 	th.Manifest.ServerID, th.Manifest.SavedAt, th.Manifest.CreatedAt = serverID, now, now
 	return th, export.ZipFileName(export.KindNewCharacter, ch.Name, now), nil
 }
@@ -193,7 +240,10 @@ func (a *App) homeFile(ctx context.Context, id int64) (export.TakeHome, string, 
 	}
 	owner, err := a.Store.GetFallbackOwner(ctx, nullID(id))
 	if err == nil {
-		return export.TakeHome{}, "", userf("A fallback build goes back inside %s's file.", owner.Name)
+		return export.TakeHome{}, "", userf(
+			"A fallback build goes back inside %s's file.",
+			owner.Name,
+		)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return export.TakeHome{}, "", err

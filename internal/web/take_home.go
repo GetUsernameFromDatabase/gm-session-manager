@@ -43,7 +43,13 @@ func (a *App) takeHomeDialog(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.render(c, http.StatusOK, views.TakeHomeBody(views.TakeHomeView{CharacterID: ch.ID, Name: ch.Name, Downloads: names, ByGM: w.isGM()}))
+	a.render(
+		c,
+		http.StatusOK,
+		views.TakeHomeBody(
+			views.TakeHomeView{CharacterID: ch.ID, Name: ch.Name, Downloads: names, ByGM: w.isGM()},
+		),
+	)
 	return nil
 }
 
@@ -77,7 +83,14 @@ func (a *App) takeHome(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		rec, err = q.CreateTakeHome(ctx, sqlc.CreateTakeHomeParams{CharacterID: ch.ID, Token: rand.Text(), BaseJson: string(body)})
+		rec, err = q.CreateTakeHome(
+			ctx,
+			sqlc.CreateTakeHomeParams{
+				CharacterID: ch.ID,
+				Token:       rand.Text(),
+				BaseJson:    string(body),
+			},
+		)
 		return err
 	})
 	if err != nil {
@@ -88,23 +101,46 @@ func (a *App) takeHome(c *gin.Context) error {
 		return err
 	}
 	th.Manifest = export.TakeHomeManifest{
-		Format: export.TakeHomeFormat, Kind: export.KindTakeHome, AppVersion: a.Version, Token: rec.Token, ServerID: serverID,
-		Campaign:    export.TakeHomeCampaign{Name: camp.Name, System: camp.System, Edition: camp.Edition},
-		CharacterID: ch.ID, CreatedAt: rec.CreatedAt.UTC(),
+		Format:     export.TakeHomeFormat,
+		Kind:       export.KindTakeHome,
+		AppVersion: a.Version,
+		Token:      rec.Token,
+		ServerID:   serverID,
+		Campaign: export.TakeHomeCampaign{
+			Name:    camp.Name,
+			System:  camp.System,
+			Edition: camp.Edition,
+		},
+		CharacterID: ch.ID,
+		CreatedAt:   rec.CreatedAt.UTC(),
 	}
-	// A character added from a made-at-home file carries its token, so the player app can replace the original.
+	// A character added from a made-at-home file carries its token,
+	// so the player app can replace the original.
 	if tok, err := a.Store.GetNewCharacterToken(ctx, ch.ID); err == nil {
 		th.Manifest.MadeAtHome = tok
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 
-	a.publish(c, ch.CampaignID, hub.Topic{Kind: hub.TopicCharacter, ID: ch.ID}, hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID})
+	a.publish(
+		c,
+		ch.CampaignID,
+		hub.Topic{Kind: hub.TopicCharacter, ID: ch.ID},
+		hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID},
+	)
 	c.Header("Content-Type", "application/zip")
-	c.Header("Content-Disposition", `attachment; filename="`+export.ZipFileName(export.KindTakeHome, ch.Name, rec.CreatedAt)+`"`)
+	c.Header(
+		"Content-Disposition",
+		`attachment; filename="`+export.ZipFileName(
+			export.KindTakeHome,
+			ch.Name,
+			rec.CreatedAt,
+		)+`"`,
+	)
 	if err := export.WriteTakeHome(c.Writer, th, a.attachmentsDir()); err != nil {
 		// Headers are gone; the truncated zip tells the browser it failed.
-		// shortcut: the take-out stays recorded (the sheet says taken home); record it after the stream if that ever confuses.
+		// shortcut: the take-out stays recorded (the sheet says taken home); record it after the
+		// stream if that ever confuses.
 		a.serverError(c, err)
 	}
 	return nil
@@ -114,7 +150,13 @@ func (a *App) takeHome(c *gin.Context) error {
 // character may use (character kinds, no monsters), only of the sources keep
 // accepts (nil: all). Homebrew entries have the source key "homebrew", so a
 // keep that does not accept it drops them.
-func takeHomeCompendium(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, th *export.TakeHome, keep func(key string) bool) error {
+func takeHomeCompendium(
+	ctx context.Context,
+	q *sqlc.Queries,
+	ch sqlc.Character,
+	th *export.TakeHome,
+	keep func(key string) bool,
+) error {
 	sources, err := q.ListTakeHomeSources(ctx, ch.CampaignID)
 	if err != nil {
 		return err
@@ -124,7 +166,10 @@ func takeHomeCompendium(ctx context.Context, q *sqlc.Queries, ch sqlc.Character,
 			th.Sources = append(th.Sources, export.TakeHomeSource(s))
 		}
 	}
-	entries, err := q.ListTakeHomeEntries(ctx, sqlc.ListTakeHomeEntriesParams{CharacterID: nullID(ch.ID), CampaignID: ch.CampaignID})
+	entries, err := q.ListTakeHomeEntries(
+		ctx,
+		sqlc.ListTakeHomeEntriesParams{CharacterID: nullID(ch.ID), CampaignID: ch.CampaignID},
+	)
 	if err != nil {
 		return err
 	}
@@ -133,8 +178,14 @@ func takeHomeCompendium(ctx context.Context, q *sqlc.Queries, ch sqlc.Character,
 			continue
 		}
 		th.Entries = append(th.Entries, export.TakeHomeEntry{
-			Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: e.SourceKey, Data: json.RawMessage(e.DataJson),
-			BodyText: e.BodyText, ContentHash: e.ContentHash, Scoped: e.Scoped,
+			Kind:        e.Kind,
+			Slug:        e.Slug,
+			Name:        e.Name,
+			SourceKey:   e.SourceKey,
+			Data:        json.RawMessage(e.DataJson),
+			BodyText:    e.BodyText,
+			ContentHash: e.ContentHash,
+			Scoped:      e.Scoped,
 		})
 	}
 	return nil
@@ -143,11 +194,22 @@ func takeHomeCompendium(ctx context.Context, q *sqlc.Queries, ch sqlc.Character,
 // buildTakeHome reads what goes into the file about one character, and the
 // base the bring-back is merged against. Every note block the character may
 // read is sent, private ones included, whoever asks.
-func buildTakeHome(ctx context.Context, q *sqlc.Queries, ch sqlc.Character) (export.TakeHome, export.TakeHomeBase, error) {
+func buildTakeHome(
+	ctx context.Context,
+	q *sqlc.Queries,
+	ch sqlc.Character,
+) (export.TakeHome, export.TakeHomeBase, error) {
 	th := export.TakeHome{Character: export.NewCharacterFile(ch)}
 	base := export.TakeHomeBase{
-		Character: export.TakeHomeBaseCharacter{Name: ch.Name, Sheet: json.RawMessage(ch.SheetJson), HP: ch.Hp, MaxHP: ch.MaxHp, TempHP: ch.TempHp},
-		Blocks:    map[int64]int64{}, Homebrew: map[int64]string{},
+		Character: export.TakeHomeBaseCharacter{
+			Name:   ch.Name,
+			Sheet:  json.RawMessage(ch.SheetJson),
+			HP:     ch.Hp,
+			MaxHP:  ch.MaxHp,
+			TempHP: ch.TempHp,
+		},
+		Blocks:   map[int64]int64{},
+		Homebrew: map[int64]string{},
 	}
 
 	levelUps, err := q.ListLevelUps(ctx, ch.ID)
@@ -155,7 +217,15 @@ func buildTakeHome(ctx context.Context, q *sqlc.Queries, ch sqlc.Character) (exp
 		return th, base, err
 	}
 	for _, l := range levelUps {
-		th.LevelUps = append(th.LevelUps, export.TakeHomeLevelUp{ID: l.ID, MaxHP: l.MaxHp, Sheet: json.RawMessage(l.SheetJson), CreatedAt: l.CreatedAt.UTC()})
+		th.LevelUps = append(
+			th.LevelUps,
+			export.TakeHomeLevelUp{
+				ID:        l.ID,
+				MaxHP:     l.MaxHp,
+				Sheet:     json.RawMessage(l.SheetJson),
+				CreatedAt: l.CreatedAt.UTC(),
+			},
+		)
 		base.LevelUps = append(base.LevelUps, l.ID)
 	}
 
@@ -168,7 +238,14 @@ func buildTakeHome(ctx context.Context, q *sqlc.Queries, ch sqlc.Character) (exp
 		if err != nil {
 			return th, base, err
 		}
-		look := export.TakeHomeLook{ImageID: l.ID, Name: l.Name, Description: img.Description, URL: l.Url.String, IsRevealed: l.IsRevealed, IsCurrent: l.IsCurrent}
+		look := export.TakeHomeLook{
+			ImageID:     l.ID,
+			Name:        l.Name,
+			Description: img.Description,
+			URL:         l.Url.String,
+			IsRevealed:  l.IsRevealed,
+			IsCurrent:   l.IsCurrent,
+		}
 		if l.AttachmentID.Valid {
 			att, err := q.GetAttachment(ctx, l.AttachmentID.Int64)
 			if err != nil {
@@ -177,7 +254,14 @@ func buildTakeHome(ctx context.Context, q *sqlc.Queries, ch sqlc.Character) (exp
 			look.File, look.FileName, look.AttachmentID = export.ZipFile(att.Path), att.Name, att.ID
 		}
 		th.Looks = append(th.Looks, look)
-		base.Looks = append(base.Looks, export.TakeHomeBaseLook{ImageID: l.ID, IsRevealed: l.IsRevealed, IsCurrent: l.IsCurrent})
+		base.Looks = append(
+			base.Looks,
+			export.TakeHomeBaseLook{
+				ImageID:    l.ID,
+				IsRevealed: l.IsRevealed,
+				IsCurrent:  l.IsCurrent,
+			},
+		)
 	}
 
 	if err := takeHomeNotes(ctx, q, ch, &th, &base); err != nil {
@@ -190,8 +274,15 @@ func buildTakeHome(ctx context.Context, q *sqlc.Queries, ch sqlc.Character) (exp
 	}
 	for _, e := range own {
 		th.Homebrew = append(th.Homebrew, export.TakeHomeEntry{
-			ID: e.ID, Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: e.SourceKey, Data: json.RawMessage(e.DataJson),
-			BodyText: e.BodyText, ContentHash: e.ContentHash, Scoped: e.Scoped,
+			ID:          e.ID,
+			Kind:        e.Kind,
+			Slug:        e.Slug,
+			Name:        e.Name,
+			SourceKey:   e.SourceKey,
+			Data:        json.RawMessage(e.DataJson),
+			BodyText:    e.BodyText,
+			ContentHash: e.ContentHash,
+			Scoped:      e.Scoped,
 		})
 		base.Homebrew[e.ID] = e.ContentHash
 	}
@@ -200,7 +291,13 @@ func buildTakeHome(ctx context.Context, q *sqlc.Queries, ch sqlc.Character) (exp
 
 // takeHomeNotes adds the character's own notes, with the blocks the
 // character may read ('owner' blocks and their files included).
-func takeHomeNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, th *export.TakeHome, base *export.TakeHomeBase) error {
+func takeHomeNotes(
+	ctx context.Context,
+	q *sqlc.Queries,
+	ch sqlc.Character,
+	th *export.TakeHome,
+	base *export.TakeHomeBase,
+) error {
 	notes, err := q.ListOwnNotes(ctx, nullID(ch.ID))
 	if err != nil {
 		return err
@@ -223,7 +320,14 @@ func takeHomeNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, th *
 	}
 	filesOf := map[int64][]export.TakeHomeBlockFile{}
 	for _, f := range files {
-		filesOf[f.BlockID.Int64] = append(filesOf[f.BlockID.Int64], export.TakeHomeBlockFile{AttachmentID: f.ID, Name: f.Name, File: export.ZipFile(f.Path)})
+		filesOf[f.BlockID.Int64] = append(
+			filesOf[f.BlockID.Int64],
+			export.TakeHomeBlockFile{
+				AttachmentID: f.ID,
+				Name:         f.Name,
+				File:         export.ZipFile(f.Path),
+			},
+		)
 	}
 	player := perm.Player(ch.ID)
 	byNote := map[int64][]sqlc.NoteBlock{}
@@ -231,16 +335,34 @@ func takeHomeNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, th *
 		byNote[b.NoteID] = append(byNote[b.NoteID], b)
 	}
 	for _, n := range notes {
-		out := export.TakeHomeNote{ID: n.ID, Kind: n.Kind, Title: n.Title, CreatedAt: n.CreatedAt.UTC(), UpdatedAt: n.UpdatedAt.UTC()}
+		out := export.TakeHomeNote{
+			ID:        n.ID,
+			Kind:      n.Kind,
+			Title:     n.Title,
+			CreatedAt: n.CreatedAt.UTC(),
+			UpdatedAt: n.UpdatedAt.UTC(),
+		}
 		for _, b := range byNote[n.ID] {
-			pb := perm.Block{Visibility: b.Visibility, PlayersCanEdit: b.PlayersCanEdit, NoteOwnerID: ch.ID, Audience: audience[b.ID], AuthorID: b.AuthorCharacterID.Int64}
+			pb := perm.Block{
+				Visibility:     b.Visibility,
+				PlayersCanEdit: b.PlayersCanEdit,
+				NoteOwnerID:    ch.ID,
+				Audience:       audience[b.ID],
+				AuthorID:       b.AuthorCharacterID.Int64,
+			}
 			if !perm.CanReadBlock(player, pb) {
 				continue
 			}
 			out.Blocks = append(out.Blocks, export.TakeHomeBlock{
-				ID: b.ID, Position: b.Position, Visibility: b.Visibility, PlayersCanEdit: b.PlayersCanEdit,
-				Doc: json.RawMessage(b.DocJson), Version: b.DocVersion, Text: b.Text,
-				ByCharacter: b.AuthorCharacterID.Int64 == ch.ID, Files: filesOf[b.ID],
+				ID:             b.ID,
+				Position:       b.Position,
+				Visibility:     b.Visibility,
+				PlayersCanEdit: b.PlayersCanEdit,
+				Doc:            json.RawMessage(b.DocJson),
+				Version:        b.DocVersion,
+				Text:           b.Text,
+				ByCharacter:    b.AuthorCharacterID.Int64 == ch.ID,
+				Files:          filesOf[b.ID],
 			})
 			// doc_json is the last snapshot: steps after it are not in the file, so
 			// the base is the snapshot's version and the bring-back sees them as table edits.

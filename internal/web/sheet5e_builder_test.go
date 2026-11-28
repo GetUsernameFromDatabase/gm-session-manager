@@ -45,7 +45,14 @@ func TestBuilderInventory(t *testing.T) {
 			t.Fatalf("%v: status %d: %s", form, w.Code, w.Body)
 		}
 	}
-	if w := e.do(t, http.MethodPost, cmdPath, player, coins("-30", "0"), true); w.Code != http.StatusUnprocessableEntity {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		cmdPath,
+		player,
+		coins("-30", "0"),
+		true,
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("overspending: status %d", w.Code)
 	}
 	ch, _ := e.q().GetCharacter(t.Context(), e.characterID)
@@ -59,7 +66,17 @@ func TestBuilderInventory(t *testing.T) {
 		"coins&op=coin-edit":                          `name="coin_gp"`,
 		"items&op=item-edit&subject=Rope+%2850+ft%29": `value="3"`,
 	} {
-		if w := e.do(t, http.MethodGet, base+path, player, nil, true); !strings.Contains(w.Body.String(), want) {
+		if w := e.do(
+			t,
+			http.MethodGet,
+			base+path,
+			player,
+			nil,
+			true,
+		); !strings.Contains(
+			w.Body.String(),
+			want,
+		) {
 			t.Errorf("%s lacks %q: %s", path, want, w.Body)
 		}
 	}
@@ -70,31 +87,72 @@ func TestBuilderInventory(t *testing.T) {
 func TestBuilderFeat(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "feat", Slug: "test-alert", Name: "Test Alert", SourceKey: "test", ContentHash: "x", DataJson: `{"desc":"Add your Proficiency Bonus to Initiative."}`}); err != nil {
+	if err := e.upsertEntry(
+		ctx,
+		sqlc.UpsertCompendiumEntryParams{
+			Kind:        "feat",
+			Slug:        "test-alert",
+			Name:        "Test Alert",
+			SourceKey:   "test",
+			ContentHash: "x",
+			DataJson:    `{"desc":"Add your Proficiency Bonus to Initiative."}`,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
-	feat, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: "test-alert"})
+	feat, err := e.q().
+		GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: "test-alert"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
-	form := e.do(t, http.MethodGet, fmt.Sprintf("%s?verb=features&op=feature-add&entry=%d", route.Path(route.CharacterBuilder, e.characterID), feat.ID), player, nil, true).Body.String()
+	form := e.do(
+		t,
+		http.MethodGet,
+		fmt.Sprintf(
+			"%s?verb=features&op=feature-add&entry=%d",
+			route.Path(route.CharacterBuilder, e.characterID),
+			feat.ID,
+		),
+		player,
+		nil,
+		true,
+	).Body.String()
 	if !strings.Contains(form, `name="feat_source" value="test"`) {
 		t.Fatalf("form lacks the feat's source: %s", form)
 	}
 	cmd := route.Path(route.CharacterCmd, e.characterID)
-	add := url.Values{"prefix": {"feature add"}, "subject": {"Test Alert"}, "source": {"Feat"}, "text": {"Initiative."}, "feat_source": {"test"}}
+	add := url.Values{
+		"prefix":      {"feature add"},
+		"subject":     {"Test Alert"},
+		"source":      {"Feat"},
+		"text":        {"Initiative."},
+		"feat_source": {"test"},
+	}
 	if w := e.do(t, http.MethodPost, cmd, player, add, true); w.Code != http.StatusOK {
 		t.Fatalf("add: %d %s", w.Code, w.Body)
 	}
-	if sh := e.sheet(t); !slices.Equal(sh.Feats, []string{"Test Alert"}) || sh.FeatSources["test-alert"] != "test" {
+	sh := e.sheet(t)
+	if !slices.Equal(sh.Feats, []string{"Test Alert"}) || sh.FeatSources["test-alert"] != "test" {
 		t.Errorf("after add: feats %v, pins %v", sh.Feats, sh.FeatSources)
 	}
-	if w := e.do(t, http.MethodPost, cmd, player, url.Values{"cmd": {`feature remove "Test Alert"`}}, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		cmd,
+		player,
+		url.Values{"cmd": {`feature remove "Test Alert"`}},
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("remove: %d %s", w.Code, w.Body)
 	}
 	if sh := e.sheet(t); len(sh.Feats) != 0 || len(sh.FeatSources) != 0 || len(sh.Features) != 0 {
-		t.Errorf("after remove: feats %v, pins %v, features %v", sh.Feats, sh.FeatSources, sh.Features)
+		t.Errorf(
+			"after remove: feats %v, pins %v, features %v",
+			sh.Feats,
+			sh.FeatSources,
+			sh.Features,
+		)
 	}
 }
 
@@ -104,8 +162,21 @@ func TestBuilderFeatUsesN(t *testing.T) {
 	player := e.token(t, enum.RolePlayer)
 	cmd := route.Path(route.CharacterCmd, e.characterID)
 	for _, n := range []string{"-2", "x", "0"} {
-		add := url.Values{"prefix": {"feature add"}, "subject": {"Surge"}, "uses": {"n"}, "uses_n": {n}, "reset": {"long"}}
-		if w := e.do(t, http.MethodPost, cmd, player, add, true); w.Code != http.StatusUnprocessableEntity {
+		add := url.Values{
+			"prefix":  {"feature add"},
+			"subject": {"Surge"},
+			"uses":    {"n"},
+			"uses_n":  {n},
+			"reset":   {"long"},
+		}
+		if w := e.do(
+			t,
+			http.MethodPost,
+			cmd,
+			player,
+			add,
+			true,
+		); w.Code != http.StatusUnprocessableEntity {
 			t.Errorf("uses_n=%s: %d, want 422", n, w.Code)
 		}
 	}
@@ -120,16 +191,22 @@ func TestBuilderCompendium(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{
-		Kind: "item", Slug: "rapier", Name: "Rapier", SourceKey: "test", BodyText: "rapier",
-		DataJson: `{"category":"weapon","damage":"1d8 piercing","properties":"Finesse, Vex","desc":""}`,
+		Kind:      "item",
+		Slug:      "rapier",
+		Name:      "Rapier",
+		SourceKey: "test",
+		BodyText:  "rapier",
+		DataJson:  `{"category":"weapon","damage":"1d8 piercing","properties":"Finesse, Vex","desc":""}`,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	rapier, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "item", Slug: "rapier"})
+	rapier, err := e.q().
+		GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "item", Slug: "rapier"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wizard, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "class", Slug: "wizard"})
+	wizard, err := e.q().
+		GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "class", Slug: "wizard"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,9 +234,17 @@ func TestBuilderCompendium(t *testing.T) {
 		}
 	}
 	// The coin tapped on the sheet is the one the coin form focuses.
-	w := e.do(t, http.MethodGet, route.Path(route.CharacterBuilder, id)+"?verb=coins&op=coin-edit&subject=sp", player, nil, true)
+	w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.CharacterBuilder, id)+"?verb=coins&op=coin-edit&subject=sp",
+		player,
+		nil,
+		true,
+	)
 	for _, coin := range []string{"sp", "gp"} {
-		tag := regexp.MustCompile(`<input[^>]*id="coin-` + coin + `"[^>]*>`).FindString(w.Body.String())
+		tag := regexp.MustCompile(`<input[^>]*id="coin-` + coin + `"[^>]*>`).
+			FindString(w.Body.String())
 		if strings.Contains(tag, "autofocus") != (coin == "sp") {
 			t.Errorf("coin %s input: %s", coin, tag)
 		}
@@ -176,7 +261,10 @@ func TestCompendiumWeapon(t *testing.T) {
 		{"1 piercing", "Ammunition, Loading, Vex", dnd5e.Weapon{Name: "w", Ability: "dex", Dice: "1", DamageType: "piercing", Proficient: true, Properties: "Ammunition, Loading, Vex"}},
 		{"1d8 slashing", "Versatile", dnd5e.Weapon{Name: "w", Ability: "str", Dice: "1d8", DamageType: "slashing", Proficient: true, Properties: "Versatile", Mastery: "Sap"}},
 	} {
-		if got := compendiumWeapon("w", &compendium.ItemData{Damage: tt.damage, Properties: tt.props, Mastery: tt.want.Mastery}); got != tt.want {
+		if got := compendiumWeapon(
+			"w",
+			&compendium.ItemData{Damage: tt.damage, Properties: tt.props, Mastery: tt.want.Mastery},
+		); got != tt.want {
 			t.Errorf("%s %s: %+v", tt.damage, tt.props, got)
 		}
 	}
@@ -187,15 +275,27 @@ func TestCompendiumWeapon(t *testing.T) {
 func TestItemLookupByName(t *testing.T) {
 	e := newTestEnv(t)
 	if err := e.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{
-		Kind: "item", Slug: "rapier", Name: "Rapier", SourceKey: "test", BodyText: "rapier",
-		DataJson: `{"category":"weapon","damage":"1d8 piercing","properties":"Finesse, Vex","desc":""}`,
+		Kind:      "item",
+		Slug:      "rapier",
+		Name:      "Rapier",
+		SourceKey: "test",
+		BodyText:  "rapier",
+		DataJson:  `{"category":"weapon","damage":"1d8 piercing","properties":"Finesse, Vex","desc":""}`,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	player := e.token(t, enum.RolePlayer)
 	for _, tt := range []struct{ name, want string }{{"rapier", "1d8 piercing"}, {"Lucky pebble", ""}} {
-		w := e.do(t, http.MethodGet, route.Compendium+route.CompendiumLookup+"?kind=item&name="+url.QueryEscape(tt.name), player, nil, true)
-		if body := w.Body.String(); w.Code != http.StatusOK || (tt.want == "") != (body == "") || !strings.Contains(body, tt.want) {
+		w := e.do(
+			t,
+			http.MethodGet,
+			route.Compendium+route.CompendiumLookup+"?kind=item&name="+url.QueryEscape(tt.name),
+			player,
+			nil,
+			true,
+		)
+		if body := w.Body.String(); w.Code != http.StatusOK || (tt.want == "") != (body == "") ||
+			!strings.Contains(body, tt.want) {
 			t.Errorf("%s: %d %q, want %q", tt.name, w.Code, body, tt.want)
 		}
 	}
@@ -206,7 +306,14 @@ func TestItemLookupByName(t *testing.T) {
 func TestLanguagesForm(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
-	body := e.do(t, http.MethodGet, route.Path(route.CharacterBuilder, e.characterID)+"?verb=profs&op=lang-add", player, nil, true).Body.String()
+	body := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.CharacterBuilder, e.characterID)+"?verb=profs&op=lang-add",
+		player,
+		nil,
+		true,
+	).Body.String()
 	for _, want := range []string{`aria-label="Remove Common"`, "prof remove language", "Add a language"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)

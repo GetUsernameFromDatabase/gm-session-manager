@@ -74,11 +74,18 @@ func open5eFiles(ctx context.Context, doc string) ([]string, error) {
 // DownloadOpen5e writes the files of doc (SRD2024Key or SRD2014Key) into
 // dir/doc, replacing the old folder only once every file is in. progress, if set, hears of each
 // file as it starts.
-func DownloadOpen5e(ctx context.Context, dir, doc string, progress func(done, total int, name string)) error {
+func DownloadOpen5e(
+	ctx context.Context,
+	dir, doc string,
+	progress func(done, total int, name string),
+) error {
 	if doc != SRD2024Key && doc != SRD2014Key {
 		return fmt.Errorf("unknown open5e document %q", doc)
 	}
-	if err := os.MkdirAll(dir, 0o750); err != nil { //nolint:gosec // dir is the operator's DATA_DIR, never request input
+	if err := os.MkdirAll(
+		dir,
+		0o750,
+	); err != nil { //nolint:gosec // dir is the operator's DATA_DIR, never request input
 		return err
 	}
 	names, err := open5eFiles(ctx, doc)
@@ -99,7 +106,11 @@ func DownloadOpen5e(ctx context.Context, dir, doc string, progress func(done, to
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(tmp, name), body, 0o600); err != nil { //nolint:gosec // name matched open5eFilePattern
+		if err := os.WriteFile(
+			filepath.Join(tmp, name),
+			body,
+			0o600,
+		); err != nil { //nolint:gosec // name matched open5eFilePattern
 			return err
 		}
 	}

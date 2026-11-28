@@ -17,14 +17,34 @@ func TestCreateInMissingCampaign(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
 	for _, r := range []string{route.CampaignEncounters, route.CampaignEntities, route.CampaignImages} {
-		w := e.do(t, http.MethodPost, route.Path(r, 9999), gm, url.Values{"name": {"Goblin"}}, false)
+		w := e.do(
+			t,
+			http.MethodPost,
+			route.Path(r, 9999),
+			gm,
+			url.Values{"name": {"Goblin"}},
+			false,
+		)
 		if w.Code != http.StatusNotFound {
 			t.Errorf("%s: status %d, want 404", r, w.Code)
 		}
 	}
 	// A CSV import uploaded before the campaign was deleted.
-	token := e.app.imports.put(csvImport{campaignID: 9999, header: []string{"name", "link"}, rows: [][]string{{"Mira", "https://x.test/mira.png"}}})
-	if w := e.do(t, http.MethodPost, route.Path(route.CampaignImagesImportReview, 9999, token), gm, url.Values{}, false); w.Code != http.StatusNotFound {
+	token := e.app.imports.put(
+		csvImport{
+			campaignID: 9999,
+			header:     []string{"name", "link"},
+			rows:       [][]string{{"Mira", "https://x.test/mira.png"}},
+		},
+	)
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignImagesImportReview, 9999, token),
+		gm,
+		url.Values{},
+		false,
+	); w.Code != http.StatusNotFound {
 		t.Errorf("import commit: status %d, want 404", w.Code)
 	}
 }
@@ -37,7 +57,8 @@ func TestDeleteRestoreImport(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	player := e.token(t, enum.RolePlayer)
-	other, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bram", System: "dnd5e", SheetJson: "{}"})
+	other, err := e.q().
+		CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bram", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,50 +66,120 @@ func TestDeleteRestoreImport(t *testing.T) {
 	overview := route.Path(route.Campaign, e.campaignID)
 
 	// Another player's character cannot be deleted.
-	if w := e.do(t, http.MethodPost, route.Path(route.CharacterRemove, other.ID), player, nil, true); w.Code == http.StatusOK && w.Header().Get("HX-Redirect") != "" {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CharacterRemove, other.ID),
+		player,
+		nil,
+		true,
+	); w.Code == http.StatusOK &&
+		w.Header().Get("HX-Redirect") != "" {
 		t.Fatal("deleted another player's character")
 	}
 	if _, err := e.q().GetCharacter(ctx, other.ID); err != nil {
 		t.Fatalf("other character gone: %v", err)
 	}
 
-	w := e.do(t, http.MethodPost, route.Path(route.CharacterRemove, e.characterID), player, nil, true)
+	w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CharacterRemove, e.characterID),
+		player,
+		nil,
+		true,
+	)
 	if w.Header().Get("HX-Redirect") != route.Home {
 		t.Fatalf("remove: %d %v %s", w.Code, w.Header(), w.Body)
 	}
 	if _, err := e.q().GetCharacter(ctx, e.characterID); err == nil {
 		t.Error("deleted character still visible")
 	}
-	if w := e.do(t, http.MethodGet, sheet, player, nil, false); w.Code == http.StatusOK && strings.Contains(w.Body.String(), "Alice") {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		sheet,
+		player,
+		nil,
+		false,
+	); w.Code == http.StatusOK &&
+		strings.Contains(w.Body.String(), "Alice") {
 		t.Error("the deleted character's device still sees it")
 	}
 	body := e.do(t, http.MethodGet, overview, gm, nil, false).Body.String()
-	if !strings.Contains(body, "Deleted characters") || !strings.Contains(body, route.Path(route.CharacterRestore, e.characterID)) {
+	if !strings.Contains(body, "Deleted characters") ||
+		!strings.Contains(body, route.Path(route.CharacterRestore, e.characterID)) {
 		t.Errorf("overview lacks the deleted character: %s", body)
 	}
 
-	if w := e.do(t, http.MethodPost, route.Path(route.CharacterRestore, e.characterID), player, nil, true); w.Code == http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CharacterRestore, e.characterID),
+		player,
+		nil,
+		true,
+	); w.Code == http.StatusOK {
 		t.Error("a visitor restored a character")
 	}
-	if w := e.do(t, http.MethodPost, route.Path(route.CharacterRestore, e.characterID), gm, nil, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CharacterRestore, e.characterID),
+		gm,
+		nil,
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("restore: %d %s", w.Code, w.Body)
 	}
 	if _, err := e.q().GetCharacter(ctx, e.characterID); err != nil {
 		t.Errorf("restored character hidden: %v", err)
 	}
 
-	file := e.do(t, http.MethodGet, route.Path(route.CharacterDownload, e.characterID), gm, nil, false)
+	file := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.CharacterDownload, e.characterID),
+		gm,
+		nil,
+		false,
+	)
 	if file.Code != http.StatusOK || !strings.Contains(file.Body.String(), `"name": "Alice"`) {
 		t.Fatalf("download: %d %s", file.Code, file.Body)
 	}
 	importPath := route.Path(route.CampaignNewCharacter, e.campaignID)
-	if w := e.doFile(t, importPath, gm, nil, "file", "alice.json", file.Body.String()); w.Code != http.StatusSeeOther {
+	if w := e.doFile(
+		t,
+		importPath,
+		gm,
+		nil,
+		"file",
+		"alice.json",
+		file.Body.String(),
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("import: %d %s", w.Code, w.Body)
 	}
-	if w := e.doFile(t, importPath, gm, nil, "file", "bad.json", `{"name":"X","system":"dnd5e","sheet":{"abilities":{"str":99}}}`); w.Code != http.StatusUnprocessableEntity {
+	if w := e.doFile(
+		t,
+		importPath,
+		gm,
+		nil,
+		"file",
+		"bad.json",
+		`{"name":"X","system":"dnd5e","sheet":{"abilities":{"str":99}}}`,
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("invalid sheet imported: %d", w.Code)
 	}
-	if w := e.doFile(t, importPath, gm, nil, "file", "big.json", strings.Repeat(" ", maxCharacterFileBytes+1)); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "too large") {
+	if w := e.doFile(
+		t,
+		importPath,
+		gm,
+		nil,
+		"file",
+		"big.json",
+		strings.Repeat(" ", maxCharacterFileBytes+1),
+	); w.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(w.Body.String(), "too large") {
 		t.Errorf("oversize file: %d %s", w.Code, w.Body)
 	}
 	chars, _ := e.q().ListCharactersByCampaign(ctx, e.campaignID)
@@ -104,7 +195,15 @@ func TestImportCatchesUpOldSheet(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
 	file := `{"name":"Knight","system":"dnd5e","sheet":{"effects_version":4,"other_profs":["Heavy armor"]}}`
-	if w := e.doFile(t, route.Path(route.CampaignNewCharacter, e.campaignID), gm, nil, "file", "knight.json", file); w.Code != http.StatusSeeOther {
+	if w := e.doFile(
+		t,
+		route.Path(route.CampaignNewCharacter, e.campaignID),
+		gm,
+		nil,
+		"file",
+		"knight.json",
+		file,
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("import: %d %s", w.Code, w.Body)
 	}
 	chars, err := e.q().ListCharactersByCampaign(t.Context(), e.campaignID)
@@ -119,7 +218,8 @@ func TestImportCatchesUpOldSheet(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(got.SheetJson, `"armor_training":["heavy"]`) || strings.Contains(got.SheetJson, "Heavy armor") {
+		if !strings.Contains(got.SheetJson, `"armor_training":["heavy"]`) ||
+			strings.Contains(got.SheetJson, "Heavy armor") {
 			t.Errorf("imported sheet not caught up: %s", got.SheetJson)
 		}
 		return
@@ -137,21 +237,55 @@ func TestRenameDeleteCampaign(t *testing.T) {
 	overview := route.Path(route.Campaign, e.campaignID)
 	name := url.Values{"name": {"  Curse of Strahd  "}}
 
-	if w := e.do(t, http.MethodPost, route.Path(route.CampaignRename, e.campaignID), player, name, true); w.Code < http.StatusBadRequest {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignRename, e.campaignID),
+		player,
+		name,
+		true,
+	); w.Code < http.StatusBadRequest {
 		t.Errorf("player rename: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, route.Path(route.CampaignDelete, e.campaignID), player, nil, true); w.Code < http.StatusBadRequest {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignDelete, e.campaignID),
+		player,
+		nil,
+		true,
+	); w.Code < http.StatusBadRequest {
 		t.Errorf("player delete: %d", w.Code)
 	}
 
-	if w := e.do(t, http.MethodPost, route.Path(route.CampaignRename, e.campaignID), gm, name, true); w.Header().Get("HX-Redirect") != overview {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignRename, e.campaignID),
+		gm,
+		name,
+		true,
+	); w.Header().
+		Get("HX-Redirect") !=
+		overview {
 		t.Fatalf("rename: %d %v %s", w.Code, w.Header(), w.Body)
 	}
-	if camp, err := e.q().GetCampaign(ctx, e.campaignID); err != nil || camp.Name != "Curse of Strahd" {
+	if camp, err := e.q().
+		GetCampaign(ctx, e.campaignID); err != nil ||
+		camp.Name != "Curse of Strahd" {
 		t.Errorf("renamed campaign: %q %v", camp.Name, err)
 	}
 
-	if w := e.do(t, http.MethodPost, route.Path(route.CampaignDelete, e.campaignID), gm, nil, true); w.Header().Get("HX-Redirect") != route.Home {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignDelete, e.campaignID),
+		gm,
+		nil,
+		true,
+	); w.Header().
+		Get("HX-Redirect") !=
+		route.Home {
 		t.Fatalf("delete: %d %v %s", w.Code, w.Header(), w.Body)
 	}
 	if w := e.do(t, http.MethodGet, overview, gm, nil, false); w.Code != http.StatusNotFound {

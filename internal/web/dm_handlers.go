@@ -72,7 +72,10 @@ func (a *App) toggleOpenJoin(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
-	if err := a.Store.SetCampaignOpenJoin(c.Request.Context(), sqlc.SetCampaignOpenJoinParams{ID: id, OpenJoin: !camp.OpenJoin}); err != nil {
+	if err := a.Store.SetCampaignOpenJoin(
+		c.Request.Context(),
+		sqlc.SetCampaignOpenJoinParams{ID: id, OpenJoin: !camp.OpenJoin},
+	); err != nil {
 		return err
 	}
 	a.changed(c, id, hub.Topic{Kind: hub.TopicCampaign, ID: id})
@@ -91,7 +94,10 @@ func (a *App) renameCampaign(c *gin.Context) error {
 	if !a.bindForm(c, &form) {
 		return nil
 	}
-	if err := a.Store.RenameCampaign(c.Request.Context(), sqlc.RenameCampaignParams{ID: id, Name: strings.TrimSpace(form.Name)}); err != nil {
+	if err := a.Store.RenameCampaign(
+		c.Request.Context(),
+		sqlc.RenameCampaignParams{ID: id, Name: strings.TrimSpace(form.Name)},
+	); err != nil {
 		return err
 	}
 	redirect(c, route.Path(route.Campaign, id))
@@ -174,7 +180,12 @@ func (a *App) deleteCharacter(c *gin.Context) error {
 	a.sweepFiles(c)
 	a.Hub.CloseCharacter(id)
 	a.forgetGoneDevices(ctx)
-	a.changed(c, ch.CampaignID, hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID}, hub.Topic{Kind: hub.TopicNotes, ID: ch.CampaignID})
+	a.changed(
+		c,
+		ch.CampaignID,
+		hub.Topic{Kind: hub.TopicCampaign, ID: ch.CampaignID},
+		hub.Topic{Kind: hub.TopicNotes, ID: ch.CampaignID},
+	)
 	return nil
 }
 
@@ -199,7 +210,13 @@ func (a *App) copyCharacter(c *gin.Context) error {
 		return err
 	}
 	if _, err := a.Store.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{
-		CampaignID: target, Name: ch.Name, System: ch.System, Hp: ch.Hp, MaxHp: ch.MaxHp, TempHp: ch.TempHp, SheetJson: ch.SheetJson,
+		CampaignID: target,
+		Name:       ch.Name,
+		System:     ch.System,
+		Hp:         ch.Hp,
+		MaxHp:      ch.MaxHp,
+		TempHp:     ch.TempHp,
+		SheetJson:  ch.SheetJson,
 	}); err != nil {
 		return err
 	}
@@ -218,8 +235,17 @@ func (a *App) exportCampaign(c *gin.Context) error {
 		return nil
 	}
 	c.Header("Content-Type", "application/zip")
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, compendium.Slugify(camp.Name)))
-	if err := export.Campaign(c.Request.Context(), c.Writer, a.Store.Queries, id, a.attachmentsDir()); err != nil {
+	c.Header(
+		"Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s.zip"`, compendium.Slugify(camp.Name)),
+	)
+	if err := export.Campaign(
+		c.Request.Context(),
+		c.Writer,
+		a.Store.Queries,
+		id,
+		a.attachmentsDir(),
+	); err != nil {
 		// Headers are gone; the truncated zip tells the browser it failed.
 		a.serverError(c, err)
 	}

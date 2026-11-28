@@ -25,7 +25,14 @@ func TestChoiceOptionsMaxChecked(t *testing.T) {
 		count int
 		want  string // "" for no attribute
 	}{{2, `data-max-checked="2"`}, {1, ""}, {0, ""}} {
-		html := renderHTML(t, choiceOptions(ChoiceGroup{Key: "pick", Title: "Pick", Count: tc.count, Options: opts}, nil, nil))
+		html := renderHTML(
+			t,
+			choiceOptions(
+				ChoiceGroup{Key: "pick", Title: "Pick", Count: tc.count, Options: opts},
+				nil,
+				nil,
+			),
+		)
 		if tc.want == "" && strings.Contains(html, "data-max-checked") {
 			t.Errorf("count %d: unexpected cap in %s", tc.count, html)
 		}

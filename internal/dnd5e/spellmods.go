@@ -9,13 +9,18 @@ import (
 var (
 	// "+2 bonus to AC", "−2 penalty to AC and Dexterity saving throws, ..."
 	spellBonusRe = regexp.MustCompile(`([+\-−–])(\d+) (?:bonus|penalty) to ([^.,;]+)`)
-	spellSpeedRe = regexp.MustCompile(`(?i)\bspeed (increases|is increased|is reduced) by (\d+) feet`)
-	spellDiceRe  = regexp.MustCompile(`(?i)\b(adds|subtracts?) (\d+d\d+)|\+(\d+d\d+) bonus`)
-	// "+2 with a level 3–5 spell slot", "spell slot of 4th level or higher, the bonus increases to +2"
+	spellSpeedRe = regexp.MustCompile(
+		`(?i)\bspeed (increases|is increased|is reduced) by (\d+) feet`,
+	)
+	spellDiceRe = regexp.MustCompile(`(?i)\b(adds|subtracts?) (\d+d\d+)|\+(\d+d\d+) bonus`)
+	// "+2 with a level 3–5 spell slot",
+	// "spell slot of 4th level or higher, the bonus increases to +2"
 	spellSlotRe    = regexp.MustCompile(`\+(\d+) with a level (\d+)`)
-	spellSlotOldRe = regexp.MustCompile(`spell slot of (\d+)(?:st|nd|rd|th) level or higher[^.]*?\+(\d+)`)
-	saveTargetRe   = regexp.MustCompile(`(?i)(?:(\w+) )?saving throws`)
-	acTargetRe     = regexp.MustCompile(`(?i)\b(?:AC|armor class)\b`)
+	spellSlotOldRe = regexp.MustCompile(
+		`spell slot of (\d+)(?:st|nd|rd|th) level or higher[^.]*?\+(\d+)`,
+	)
+	saveTargetRe = regexp.MustCompile(`(?i)(?:(\w+) )?saving throws`)
+	acTargetRe   = regexp.MustCompile(`(?i)\b(?:AC|armor class)\b`)
 )
 
 // SpellMods are the stat changes and the dice bonus or penalty ("+1d4",

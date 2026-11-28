@@ -190,7 +190,12 @@ func compendiumPath(c *gin.Context, rest string) string {
 
 // compendiumLayout is the frame of a compendium page: the campaign's, with
 // the GM's switcher to the same page elsewhere.
-func (a *App) compendiumLayout(c *gin.Context, w who, title string, camp *sqlc.Campaign) (views.Layout, error) {
+func (a *App) compendiumLayout(
+	c *gin.Context,
+	w who,
+	title string,
+	camp *sqlc.Campaign,
+) (views.Layout, error) {
 	// Live for players too: Browse reloads when the compendium changes.
 	l := a.layout(w, title, views.NavCompendium, camp, true)
 	if !w.isGM() {
@@ -203,7 +208,12 @@ func (a *App) compendiumLayout(c *gin.Context, w who, title string, camp *sqlc.C
 	} else if c.Request.URL.RawQuery != "" {
 		here += "?" + c.Request.URL.RawQuery
 	}
-	l.Switch = &views.CampaignSwitch{Campaigns: campaigns, Base: views.CompendiumBase, All: "All sources", Here: here}
+	l.Switch = &views.CampaignSwitch{
+		Campaigns: campaigns,
+		Base:      views.CompendiumBase,
+		All:       "All sources",
+		Here:      here,
+	}
 	return l, err
 }
 
@@ -217,7 +227,11 @@ func viewerCampaign(camp *sqlc.Campaign) int64 {
 }
 
 // entryVisible reports whether a player in campaignID may see entry e.
-func (a *App) entryVisible(ctx context.Context, e sqlc.CompendiumEntry, campaignID int64) (bool, error) {
+func (a *App) entryVisible(
+	ctx context.Context,
+	e sqlc.CompendiumEntry,
+	campaignID int64,
+) (bool, error) {
 	if !e.Scoped || campaignID == 0 {
 		return true, nil
 	}
@@ -227,8 +241,16 @@ func (a *App) entryVisible(ctx context.Context, e sqlc.CompendiumEntry, campaign
 
 // entryBySlug finds an entry by kind and slug that a player in campaignID
 // may see; sql.ErrNoRows otherwise.
-func (a *App) entryBySlug(ctx context.Context, kind enum.CompendiumKind, slug string, campaignID int64) (sqlc.CompendiumEntry, error) {
-	e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug})
+func (a *App) entryBySlug(
+	ctx context.Context,
+	kind enum.CompendiumKind,
+	slug string,
+	campaignID int64,
+) (sqlc.CompendiumEntry, error) {
+	e, err := a.Store.GetCompendiumEntryBySlug(
+		ctx,
+		sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug},
+	)
 	if err != nil {
 		return e, err
 	}
@@ -241,7 +263,11 @@ func (a *App) entryBySlug(ctx context.Context, kind enum.CompendiumKind, slug st
 
 // decodeLinked is e's data with its cross-reference tokens resolved for a
 // viewer in campaignID.
-func (a *App) decodeLinked(ctx context.Context, e sqlc.CompendiumEntry, campaignID int64) (any, error) {
+func (a *App) decodeLinked(
+	ctx context.Context,
+	e sqlc.CompendiumEntry,
+	campaignID int64,
+) (any, error) {
 	js, err := a.resolveCompendiumLinks(ctx, e.DataJson, campaignID)
 	if err != nil {
 		return nil, err
@@ -269,7 +295,15 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 		return nil
 	}
 	ctx := c.Request.Context()
-	v := views.CompendiumView{Query: strings.TrimSpace(c.Query(views.QueryKey)), Kind: c.Query(views.KindKey), IsGM: w.isGM(), CanImport: perm.CanAddSources(w.viewer), Import: notice, Tab: c.Query(views.TabKey), Campaign: viewerCampaign(camp)}
+	v := views.CompendiumView{
+		Query:     strings.TrimSpace(c.Query(views.QueryKey)),
+		Kind:      c.Query(views.KindKey),
+		IsGM:      w.isGM(),
+		CanImport: perm.CanAddSources(w.viewer),
+		Import:    notice,
+		Tab:       c.Query(views.TabKey),
+		Campaign:  viewerCampaign(camp),
+	}
 	if a.Player && w.character != nil {
 		v.Import.HomeName = w.character.Name
 	}
@@ -288,7 +322,15 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 			return err
 		}
 	} else if v.Query != "" {
-		if v.Results, v.TextResults, err = compendium.Search(ctx, a.Store.Queries, v.Query, v.Kind, v.Habitat, viewerCampaign(camp), compendiumBatch); err != nil {
+		if v.Results, v.TextResults, err = compendium.Search(
+			ctx,
+			a.Store.Queries,
+			v.Query,
+			v.Kind,
+			v.Habitat,
+			viewerCampaign(camp),
+			compendiumBatch,
+		); err != nil {
 			return err
 		}
 	} else {
@@ -296,7 +338,17 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 		// of a full batch is the cursor for the next.
 		afterID, _ := strconv.ParseInt(c.Query(views.AfterIDKey), 10, 64)
 		pageSize := browsePageSize(c)
-		rows, err := a.Store.ListCompendiumByKind(ctx, sqlc.ListCompendiumByKindParams{Kind: v.Kind, Habitat: v.Habitat, AfterName: c.Query(views.AfterNameKey), AfterID: afterID, CampaignID: viewerCampaign(camp), PageSize: int64(pageSize)})
+		rows, err := a.Store.ListCompendiumByKind(
+			ctx,
+			sqlc.ListCompendiumByKindParams{
+				Kind:       v.Kind,
+				Habitat:    v.Habitat,
+				AfterName:  c.Query(views.AfterNameKey),
+				AfterID:    afterID,
+				CampaignID: viewerCampaign(camp),
+				PageSize:   int64(pageSize),
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -305,7 +357,15 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 		}
 		if len(rows) == pageSize {
 			last := rows[len(rows)-1]
-			v.More = views.CompendiumURL(url.Values{views.KindKey: {v.Kind}, views.HabitatKey: {v.Habitat}, views.AfterNameKey: {last.Name}, views.AfterIDKey: {strconv.FormatInt(last.ID, 10)}}, v.Campaign)
+			v.More = views.CompendiumURL(
+				url.Values{
+					views.KindKey:      {v.Kind},
+					views.HabitatKey:   {v.Habitat},
+					views.AfterNameKey: {last.Name},
+					views.AfterIDKey:   {strconv.FormatInt(last.ID, 10)},
+				},
+				v.Campaign,
+			)
 		}
 	}
 	if c.Query(views.AfterIDKey) != "" {
@@ -334,7 +394,10 @@ func (a *App) renderCompendium(c *gin.Context, notice views.ImportNotice) error 
 		return err
 	}
 	if perm.CanAddSources(w.viewer) {
-		if v.Sources, v.SharedCounts, v.EntryCounts, err = a.sourcesCard(ctx, viewerCampaign(camp)); err != nil {
+		if v.Sources, v.SharedCounts, v.EntryCounts, err = a.sourcesCard(
+			ctx,
+			viewerCampaign(camp),
+		); err != nil {
 			return err
 		}
 	}
@@ -361,7 +424,19 @@ func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
 	}
 	afterID, _ := strconv.ParseInt(c.Query(views.AfterIDKey), 10, 64)
 	pageSize := browsePageSize(c)
-	rows, err := a.Store.ListSharedEntries(ctx, sqlc.ListSharedEntriesParams{SourceKey: v.Shared, With: v.With, Only: v.Only, Kind: v.Kind, AfterName: c.Query(views.AfterNameKey), AfterID: afterID, CampaignID: v.Campaign, PageSize: int64(pageSize)})
+	rows, err := a.Store.ListSharedEntries(
+		ctx,
+		sqlc.ListSharedEntriesParams{
+			SourceKey:  v.Shared,
+			With:       v.With,
+			Only:       v.Only,
+			Kind:       v.Kind,
+			AfterName:  c.Query(views.AfterNameKey),
+			AfterID:    afterID,
+			CampaignID: v.Campaign,
+			PageSize:   int64(pageSize),
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -370,14 +445,23 @@ func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
 	}
 	if len(rows) == pageSize {
 		last := rows[len(rows)-1]
-		q := url.Values{views.SharedKey: {v.Shared}, views.SharedWithKey: {v.With}, views.KindKey: {v.Kind}, views.AfterNameKey: {last.Name}, views.AfterIDKey: {strconv.FormatInt(last.ID, 10)}}
+		q := url.Values{
+			views.SharedKey:     {v.Shared},
+			views.SharedWithKey: {v.With},
+			views.KindKey:       {v.Kind},
+			views.AfterNameKey:  {last.Name},
+			views.AfterIDKey:    {strconv.FormatInt(last.ID, 10)},
+		}
 		if v.Only {
 			q.Set(views.SharedOnlyKey, views.SharedOnlyOn)
 		}
 		v.More = views.CompendiumURL(q, v.Campaign)
 	}
 	if len(rows) > 0 && !v.Only { // only-here entries have no other copy to order
-		order, err := a.Store.ListSharedOrder(ctx, sqlc.ListSharedOrderParams{SourceKey: v.Shared, CampaignID: v.Campaign})
+		order, err := a.Store.ListSharedOrder(
+			ctx,
+			sqlc.ListSharedOrderParams{SourceKey: v.Shared, CampaignID: v.Campaign},
+		)
 		if err != nil {
 			return err
 		}
@@ -390,14 +474,25 @@ func (a *App) sharedEntries(c *gin.Context, v *views.CompendiumView) error {
 	if c.Query(views.AfterIDKey) != "" {
 		return nil // a later batch: the chips are already on the page
 	}
-	kinds, err := a.Store.CountSharedByKind(ctx, sqlc.CountSharedByKindParams{SourceKey: v.Shared, With: v.With, Only: v.Only, CampaignID: v.Campaign})
+	kinds, err := a.Store.CountSharedByKind(
+		ctx,
+		sqlc.CountSharedByKindParams{
+			SourceKey:  v.Shared,
+			With:       v.With,
+			Only:       v.Only,
+			CampaignID: v.Campaign,
+		},
+	)
 	for _, k := range kinds {
 		v.Counts = append(v.Counts, sqlc.CountCompendiumRow(k))
 	}
 	if err != nil {
 		return err
 	}
-	v.SharedWith, err = a.Store.ListSharedWith(ctx, sqlc.ListSharedWithParams{SourceKey: v.Shared, CampaignID: v.Campaign})
+	v.SharedWith, err = a.Store.ListSharedWith(
+		ctx,
+		sqlc.ListSharedWithParams{SourceKey: v.Shared, CampaignID: v.Campaign},
+	)
 	return err
 }
 
@@ -447,7 +542,15 @@ func (a *App) compendiumSearch(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	names, text, err := compendium.Search(c.Request.Context(), a.Store.Queries, c.Query(views.QueryKey), c.Query(views.KindKey), "", campaignID, maxPicks)
+	names, text, err := compendium.Search(
+		c.Request.Context(),
+		a.Store.Queries,
+		c.Query(views.QueryKey),
+		c.Query(views.KindKey),
+		"",
+		campaignID,
+		maxPicks,
+	)
 	if err != nil {
 		return err
 	}
@@ -464,7 +567,11 @@ func (a *App) compendiumSearch(c *gin.Context) error {
 
 // pickerCampaign is the campaign whose sources the GM's combat and NPC
 // pickers offer: the encounter's or the NPC's (campaignID when neither).
-func (a *App) pickerCampaign(ctx context.Context, t views.PickerTarget, campaignID int64) (int64, error) {
+func (a *App) pickerCampaign(
+	ctx context.Context,
+	t views.PickerTarget,
+	campaignID int64,
+) (int64, error) {
 	switch {
 	case t.EncounterID != 0:
 		enc, err := a.Store.GetEncounter(ctx, t.EncounterID)
@@ -498,7 +605,12 @@ func (a *App) compendiumFind(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
-	e, err := a.entryBySlug(c.Request.Context(), enum.CompendiumKind(c.Param(views.KindKey)), c.Param("slug"), viewerCampaign(camp))
+	e, err := a.entryBySlug(
+		c.Request.Context(),
+		enum.CompendiumKind(c.Param(views.KindKey)),
+		c.Param("slug"),
+		viewerCampaign(camp),
+	)
 	if err != nil {
 		return err
 	}
@@ -515,7 +627,12 @@ func (a *App) compendiumEntry(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
-	if visible, err := a.entryVisible(c.Request.Context(), e, viewerCampaign(camp)); err != nil || !visible {
+	if visible, err := a.entryVisible(
+		c.Request.Context(),
+		e,
+		viewerCampaign(camp),
+	); err != nil ||
+		!visible {
 		return cmp.Or(err, sql.ErrNoRows)
 	}
 	data, err := a.decodeLinked(c.Request.Context(), e, viewerCampaign(camp))
@@ -538,7 +655,16 @@ func (a *App) compendiumEntry(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	v := views.EntryView{Entry: e, Source: src, Data: data, IsGM: w.isGM(), Habitats: habitats, Copies: copies, CanEdit: e.SourceKey == compendium.HomebrewSource && perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64)}
+	v := views.EntryView{
+		Entry:    e,
+		Source:   src,
+		Data:     data,
+		IsGM:     w.isGM(),
+		Habitats: habitats,
+		Copies:   copies,
+		CanEdit: e.SourceKey == compendium.HomebrewSource &&
+			perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64),
+	}
 	if v.IsGM && e.Kind == enum.KindMonster && len(habitats) == 0 {
 		for _, cp := range copies {
 			h, err := a.Store.ListEntryHabitats(c.Request.Context(), cp.ID)
@@ -636,9 +762,17 @@ func (a *App) compendiumLookup(c *gin.Context) error {
 	var e sqlc.CompendiumEntry
 	var err error
 	if name != "" {
-		e, err = a.Store.GetCompendiumEntryByName(ctx, sqlc.GetCompendiumEntryByNameParams{Kind: kind, Name: name})
+		e, err = a.Store.GetCompendiumEntryByName(
+			ctx,
+			sqlc.GetCompendiumEntryByNameParams{Kind: kind, Name: name},
+		)
 		if err == nil {
-			if visible, verr := a.entryVisible(ctx, e, viewerCampaign(camp)); verr != nil || !visible {
+			if visible, verr := a.entryVisible(
+				ctx,
+				e,
+				viewerCampaign(camp),
+			); verr != nil ||
+				!visible {
 				err = cmp.Or(verr, sql.ErrNoRows)
 			}
 		}
@@ -670,7 +804,14 @@ func (a *App) compendiumRandom(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
-	id, err := a.Store.RandomCompendiumEntry(c.Request.Context(), sqlc.RandomCompendiumEntryParams{Kind: c.Query(views.KindKey), Habitat: c.Query(views.HabitatKey), CampaignID: viewerCampaign(camp)})
+	id, err := a.Store.RandomCompendiumEntry(
+		c.Request.Context(),
+		sqlc.RandomCompendiumEntryParams{
+			Kind:       c.Query(views.KindKey),
+			Habitat:    c.Query(views.HabitatKey),
+			CampaignID: viewerCampaign(camp),
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -694,7 +835,13 @@ func (a *App) compendiumImage(c *gin.Context) error {
 		a.fail(c, http.StatusUnprocessableEntity, "The picture link must be an https:// URL.")
 		return nil
 	}
-	n, err := a.Store.SetCompendiumImage(c.Request.Context(), sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: f.ImageURL, Valid: true}, ID: e.ID})
+	n, err := a.Store.SetCompendiumImage(
+		c.Request.Context(),
+		sqlc.SetCompendiumImageParams{
+			ImageUrl: sql.NullString{String: f.ImageURL, Valid: true},
+			ID:       e.ID,
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -738,7 +885,8 @@ func (a *App) compendiumImport(c *gin.Context) error {
 			return err
 		}
 		for _, r := range reports {
-			if r.Err == nil && r.Source != compendium.HomebrewSource && !slices.Contains(on, r.Source) {
+			if r.Err == nil && r.Source != compendium.HomebrewSource &&
+				!slices.Contains(on, r.Source) {
 				notice.Off = append(notice.Off, r.Source)
 			}
 		}
@@ -752,7 +900,11 @@ func (a *App) compendiumImport(c *gin.Context) error {
 // the GM is not looking at.
 func (a *App) compendiumFolder(c *gin.Context) error {
 	if !auth.IsLoopback(c.Request) {
-		a.fail(c, http.StatusForbidden, "The folder opens only from a browser on the host computer.")
+		a.fail(
+			c,
+			http.StatusForbidden,
+			"The folder opens only from a browser on the host computer.",
+		)
 		return nil
 	}
 	dir := a.compendiumDir()
@@ -769,7 +921,8 @@ func (a *App) compendiumFolder(c *gin.Context) error {
 	// explorer exits non-zero even when it opened the folder, so only a
 	// failure to start counts; the file manager outlives the request.
 	ctx := context.WithoutCancel(c.Request.Context())
-	cmd := exec.CommandContext(ctx, opener, dir) //nolint:gosec // dir is the configured data directory, not request input
+	//nolint:gosec // dir is the configured data directory, not request input
+	cmd := exec.CommandContext(ctx, opener, dir)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -799,13 +952,35 @@ func (a *App) compendiumPagePreview(c *gin.Context) error {
 	back = compendiumBack(back)
 	var f pageForm
 	if err := c.ShouldBind(&f); err != nil {
-		return a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabPage, Back: back, Msg: "Paste a link to a page of one of the sites below.", Failed: true})
+		return a.renderCompendium(
+			c,
+			views.ImportNotice{
+				Tab:    views.ImportTabPage,
+				Back:   back,
+				Msg:    "Paste a link to a page of one of the sites below.",
+				Failed: true,
+			},
+		)
 	}
 	p, err := compendium.FetchPage(c.Request.Context(), f.Page)
 	if err != nil {
-		return a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabPage, Back: back, Page: f.Page, Msg: netErrMsg("Import failed", err), Failed: true})
+		return a.renderCompendium(
+			c,
+			views.ImportNotice{
+				Tab:    views.ImportTabPage,
+				Back:   back,
+				Page:   f.Page,
+				Msg:    netErrMsg("Import failed", err),
+				Failed: true,
+			},
+		)
 	}
-	return a.renderPagePreview(c, http.StatusOK, w, views.HomebrewView{Input: compendium.InputForEntry(p.Entry), Page: p, Back: back})
+	return a.renderPagePreview(
+		c,
+		http.StatusOK,
+		w,
+		views.HomebrewView{Input: compendium.InputForEntry(p.Entry), Page: p, Back: back},
+	)
 }
 
 // compendiumBack keeps only the list filter (q, kind) of a query string, so
@@ -824,7 +999,10 @@ func compendiumBack(query string) string {
 // renderPagePreview shows a page's review form, linking the entry an
 // earlier import of the page made, which saving replaces.
 func (a *App) renderPagePreview(c *gin.Context, status int, w who, v views.HomebrewView) error {
-	rows, err := a.Store.ListCompendiumKeysBySource(c.Request.Context(), compendium.PageSourceKey(v.Page.Site.Key, v.Page.ID))
+	rows, err := a.Store.ListCompendiumKeysBySource(
+		c.Request.Context(),
+		compendium.PageSourceKey(v.Page.Site.Key, v.Page.ID),
+	)
 	if err != nil {
 		return err
 	}
@@ -849,7 +1027,12 @@ func (a *App) compendiumPageSave(c *gin.Context) error {
 	}
 	var in compendium.HomebrewInput
 	err := c.ShouldBind(&in)
-	p := compendium.Page{Site: site, ID: c.PostForm("page"), Book: c.PostForm("book"), Image: strings.TrimSpace(c.PostForm("image_url"))}
+	p := compendium.Page{
+		Site:  site,
+		ID:    c.PostForm("page"),
+		Book:  c.PostForm("book"),
+		Image: strings.TrimSpace(c.PostForm("image_url")),
+	}
 	back := compendiumBack(c.PostForm("back"))
 	var key string
 	if err == nil {
@@ -858,7 +1041,12 @@ func (a *App) compendiumPageSave(c *gin.Context) error {
 		}
 	}
 	if err != nil {
-		return a.renderPagePreview(c, http.StatusUnprocessableEntity, w, views.HomebrewView{Input: in, Page: p, Back: back, Error: err.Error()})
+		return a.renderPagePreview(
+			c,
+			http.StatusUnprocessableEntity,
+			w,
+			views.HomebrewView{Input: in, Page: p, Back: back, Error: err.Error()},
+		)
 	}
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
 	// Saved from a campaign's compendium (its path), the page's source is
@@ -870,7 +1058,15 @@ func (a *App) compendiumPageSave(c *gin.Context) error {
 	if err != nil || len(rows) == 0 {
 		return cmp.Or(err, errors.New("imported page has no entry"))
 	}
-	redirect(c, compendiumPath(c, route.Path(route.CompendiumEntry, rows[0].ID)+"?")+url.Values{"back": {back}}.Encode())
+	redirect(
+		c,
+		compendiumPath(
+			c,
+			route.Path(route.CompendiumEntry, rows[0].ID)+"?",
+		)+url.Values{
+			"back": {back},
+		}.Encode(),
+	)
 	return nil
 }
 
@@ -891,12 +1087,24 @@ func ImportSummary(reports []compendium.Report) (string, bool) {
 		case r.Unchanged:
 			lines = append(lines, r.Source+": unchanged")
 		default:
-			lines = append(lines, fmt.Sprintf("%s: %d entries imported, %d removed", r.Source, r.Entries, r.Removed))
+			lines = append(
+				lines,
+				fmt.Sprintf("%s: %d entries imported, %d removed", r.Source, r.Entries, r.Removed),
+			)
 			entries, removed = entries+r.Entries, removed+r.Removed
 		}
 	}
 	if len(reports) > 1 {
-		lines = append([]string{fmt.Sprintf("%d sources: %d entries imported, %d removed in all", len(reports), entries, removed)}, lines...)
+		lines = append(
+			[]string{
+				fmt.Sprintf(
+					"%d sources: %d entries imported, %d removed in all",
+					len(reports),
+					entries,
+					removed,
+				),
+			},
+			lines...)
 	}
 	return strings.Join(lines, "\n"), failed
 }

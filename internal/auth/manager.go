@@ -42,7 +42,10 @@ func NewPlayerManager(q *db.Store) *Manager {
 }
 
 // IssuePlayer creates a session bound to a character and returns its token.
-func (m *Manager) IssuePlayer(ctx context.Context, characterID int64) (string, sqlc.Session, error) {
+func (m *Manager) IssuePlayer(
+	ctx context.Context,
+	characterID int64,
+) (string, sqlc.Session, error) {
 	return m.issue(ctx, enum.RolePlayer, sql.NullInt64{Int64: characterID, Valid: true})
 }
 
@@ -56,7 +59,11 @@ func (m *Manager) LoginAdmin(ctx context.Context, user, pass string) (string, sq
 	return m.issue(ctx, enum.RoleAdmin, sql.NullInt64{})
 }
 
-func (m *Manager) issue(ctx context.Context, role enum.Role, characterID sql.NullInt64) (string, sqlc.Session, error) {
+func (m *Manager) issue(
+	ctx context.Context,
+	role enum.Role,
+	characterID sql.NullInt64,
+) (string, sqlc.Session, error) {
 	token, hash, err := newToken()
 	if err != nil {
 		return "", sqlc.Session{}, fmt.Errorf("generate token: %w", err)

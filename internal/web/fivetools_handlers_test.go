@@ -27,7 +27,8 @@ import (
 
 func (e testEnv) source(t testing.TB, key, edition string) {
 	t.Helper()
-	if err := e.q().UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: key, Edition: edition, License: "test", Attribution: key + " attribution", Priority: compendium.DefaultRank(key, edition)}); err != nil {
+	if err := e.q().
+		UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: key, Edition: edition, License: "test", Attribution: key + " attribution", Priority: compendium.DefaultRank(key, edition)}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -36,7 +37,8 @@ func (e testEnv) source(t testing.TB, key, edition string) {
 // has not made one: entries reference their source.
 func (e testEnv) upsertEntry(ctx context.Context, p sqlc.UpsertCompendiumEntryParams) error {
 	if _, err := e.q().GetCompendiumSource(ctx, p.SourceKey); errors.Is(err, sql.ErrNoRows) {
-		if err := e.q().UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: p.SourceKey}); err != nil {
+		if err := e.q().
+			UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: p.SourceKey}); err != nil {
 			return err
 		}
 	} else if err != nil {
@@ -48,15 +50,28 @@ func (e testEnv) upsertEntry(ctx context.Context, p sqlc.UpsertCompendiumEntryPa
 func (e testEnv) feat(t *testing.T, source, slug, desc string) int64 {
 	t.Helper()
 	data := fmt.Sprintf(`{"desc":%q}`, desc)
-	if err := e.upsertEntry(t.Context(), sqlc.UpsertCompendiumEntryParams{Kind: "feat", Slug: slug, Name: slug, SourceKey: source, DataJson: data, BodyText: desc, ContentHash: source + slug}); err != nil {
+	if err := e.upsertEntry(
+		t.Context(),
+		sqlc.UpsertCompendiumEntryParams{
+			Kind:        "feat",
+			Slug:        slug,
+			Name:        slug,
+			SourceKey:   source,
+			DataJson:    data,
+			BodyText:    desc,
+			ContentHash: source + slug,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
-	row, err := e.q().GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: slug})
+	row, err := e.q().
+		GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: slug})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if row.SourceKey != source { // the lower-priority copy
-		rows, _ := e.q().ListEntryCopies(t.Context(), sqlc.ListEntryCopiesParams{Kind: "feat", Slug: slug})
+		rows, _ := e.q().
+			ListEntryCopies(t.Context(), sqlc.ListEntryCopiesParams{Kind: "feat", Slug: slug})
 		for _, r := range rows {
 			if r.SourceKey == source {
 				return r.ID
@@ -74,7 +89,10 @@ func TestFiveToolsGMOnly(t *testing.T) {
 	tests := []struct{ method, path string }{
 		{http.MethodGet, views.FiveToolsPath},
 		{http.MethodPost, views.FiveToolsPath},
-		{http.MethodPost, route.Compendium + route.Path(route.CompendiumFiveToolsBookDelete, "phb")},
+		{
+			http.MethodPost,
+			route.Compendium + route.Path(route.CompendiumFiveToolsBookDelete, "phb"),
+		},
 		{http.MethodPost, route.Compendium + route.CompendiumFiveToolsAuto},
 		{http.MethodPost, route.Compendium + route.CompendiumImportDismiss},
 		{http.MethodPost, route.Compendium + route.CompendiumOpen5e},
@@ -86,18 +104,41 @@ func TestFiveToolsGMOnly(t *testing.T) {
 		// The same under the whole compendium and the player's campaign's.
 		for _, base := range []string{"", route.Path(route.Campaign, e.campaignID)} {
 			t.Run(tt.method+" "+base+tt.path, func(t *testing.T) {
-				if w := e.do(t, tt.method, base+tt.path, player, url.Values{"dir": {"up"}}, true); w.Code != http.StatusForbidden {
+				if w := e.do(
+					t,
+					tt.method,
+					base+tt.path,
+					player,
+					url.Values{"dir": {"up"}},
+					true,
+				); w.Code != http.StatusForbidden {
 					t.Errorf("player: %d", w.Code)
 				}
 			})
 		}
 	}
 	// Reloading the picker's URL (where an import posts) opens the whole page.
-	if w := e.do(t, http.MethodGet, views.FiveToolsPath, gm, nil, false); w.Code != http.StatusSeeOther || w.Header().Get("Location") != route.Compendium+"?import=fivetools" {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		views.FiveToolsPath,
+		gm,
+		nil,
+		false,
+	); w.Code != http.StatusSeeOther ||
+		w.Header().Get("Location") != route.Compendium+"?import=fivetools" {
 		t.Errorf("plain visit: %d %q", w.Code, w.Header().Get("Location"))
 	}
 	// An empty pick is refused before anything is downloaded.
-	if w := e.do(t, http.MethodPost, views.FiveToolsPath, gm, url.Values{}, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Pick at least one book") {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		views.FiveToolsPath,
+		gm,
+		url.Values{},
+		false,
+	); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), "Pick at least one book") {
 		t.Errorf("empty pick: %d", w.Code)
 	}
 }
@@ -132,7 +173,14 @@ func TestSourceOrder(t *testing.T) {
 		{name: "nothing sent", code: http.StatusUnprocessableEntity, want: "book-b,homebrew,book-a"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			w := e.do(t, http.MethodPost, views.SourceOrderPath, gm, url.Values{views.SourceKeyField: tt.keys}, true)
+			w := e.do(
+				t,
+				http.MethodPost,
+				views.SourceOrderPath,
+				gm,
+				url.Values{views.SourceKeyField: tt.keys},
+				true,
+			)
 			if w.Code != tt.code {
 				t.Fatalf("code %d, want %d: %s", w.Code, tt.code, w.Body)
 			}
@@ -149,10 +197,24 @@ func TestSourceSort(t *testing.T) {
 	gm := e.token(t, enum.RoleAdmin)
 	e.source(t, "book-a", "2014")
 	e.source(t, "book-b", "2024")
-	if w := e.do(t, http.MethodPost, views.SourceOrderPath, gm, url.Values{views.SourceKeyField: {"book-a", "homebrew", "book-b"}}, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		views.SourceOrderPath,
+		gm,
+		url.Values{views.SourceKeyField: {"book-a", "homebrew", "book-b"}},
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("order: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceSort, gm, nil, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Compendium+route.CompendiumSourceSort,
+		gm,
+		nil,
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("sort: %d %s", w.Code, w.Body)
 	}
 	rows, err := e.q().ListCompendiumSources(t.Context())
@@ -176,39 +238,117 @@ func TestFiveToolsImportRunning(t *testing.T) {
 	e.source(t, "5etools-phb", "2014")
 	e.app.fiveTools.start(4)
 	e.app.fiveTools.update(func(j *views.FiveToolsJob) { j.Done, j.Current = 1, "Test Book" })
-	body := e.do(t, http.MethodGet, route.Compendium+"?import="+views.ImportTabFiveTools, gm, nil, false).Body.String()
-	if !strings.Contains(body, "Downloading 2 of 4: Test Book") || !regexp.MustCompile(`style="width:\s?25%;?"`).MatchString(body) {
+	body := e.do(
+		t,
+		http.MethodGet,
+		route.Compendium+"?import="+views.ImportTabFiveTools,
+		gm,
+		nil,
+		false,
+	).Body.String()
+	if !strings.Contains(body, "Downloading 2 of 4: Test Book") ||
+		!regexp.MustCompile(`style="width:\s?25%;?"`).MatchString(body) {
 		t.Error("import tab misses the progress label or bar")
 	}
-	if w := e.do(t, http.MethodPost, views.FiveToolsPath, gm, url.Values{views.FiveToolsField: {"phb"}}, false); !strings.Contains(w.Body.String(), errImportRunning) {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		views.FiveToolsPath,
+		gm,
+		url.Values{views.FiveToolsField: {"phb"}},
+		false,
+	); !strings.Contains(
+		w.Body.String(),
+		errImportRunning,
+	) {
 		t.Errorf("second import: %d, not refused", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, views.FiveToolsPath+"/phb/delete", gm, nil, true); !strings.Contains(w.Body.String(), errImportRunning) {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		views.FiveToolsPath+"/phb/delete",
+		gm,
+		nil,
+		true,
+	); !strings.Contains(
+		w.Body.String(),
+		errImportRunning,
+	) {
 		t.Errorf("removal during an import: %d, not refused", w.Code)
 	}
 	dismiss := route.Compendium + route.CompendiumImportDismiss
-	if w := e.do(t, http.MethodPost, dismiss, gm, nil, true); !strings.Contains(w.Body.String(), errImportRunning) || !e.app.fiveTools.get().Running {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		dismiss,
+		gm,
+		nil,
+		true,
+	); !strings.Contains(w.Body.String(), errImportRunning) ||
+		!e.app.fiveTools.get().Running {
 		t.Errorf("dismiss during an import: %d, not refused or the job dropped", w.Code)
 	}
 	// Done, the tab shows the summary instead.
 	e.app.fiveTools.update(func(j *views.FiveToolsJob) {
 		*j = views.FiveToolsJob{Msg: "5etools-phb: 3 entries imported, 0 removed"}
 	})
-	if body := e.do(t, http.MethodGet, route.Compendium+"?import="+views.ImportTabFiveTools, gm, nil, false).Body.String(); !strings.Contains(body, "3 entries imported") || strings.Contains(body, "Downloading") || !strings.Contains(body, `hx-post="`+dismiss+`"`) {
+	if body := e.do(
+		t,
+		http.MethodGet,
+		route.Compendium+"?import="+views.ImportTabFiveTools,
+		gm,
+		nil,
+		false,
+	).Body.String(); !strings.Contains(body, "3 entries imported") || strings.Contains(body, "Downloading") ||
+		!strings.Contains(body, `hx-post="`+dismiss+`"`) {
 		t.Error("finished import shows no summary with its dismiss button, or still its progress")
 	}
 	// A player may not dismiss it; the GM's X clears it.
-	if w := e.do(t, http.MethodPost, dismiss, e.token(t, enum.RolePlayer), nil, true); w.Code != http.StatusForbidden || e.app.fiveTools.get().Msg == "" {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		dismiss,
+		e.token(t, enum.RolePlayer),
+		nil,
+		true,
+	); w.Code != http.StatusForbidden ||
+		e.app.fiveTools.get().Msg == "" {
 		t.Errorf("player dismiss: %d", w.Code)
 	}
 	// A stale tab's X names an older summary and clears nothing.
-	if w := e.do(t, http.MethodPost, dismiss, gm, url.Values{views.DismissWasField: {"older summary"}}, true); !strings.Contains(w.Body.String(), "changed meanwhile") || e.app.fiveTools.get().Msg == "" {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		dismiss,
+		gm,
+		url.Values{views.DismissWasField: {"older summary"}},
+		true,
+	); !strings.Contains(w.Body.String(), "changed meanwhile") ||
+		e.app.fiveTools.get().Msg == "" {
 		t.Errorf("stale dismiss: %d, job %+v", w.Code, e.app.fiveTools.get())
 	}
-	if w := e.do(t, http.MethodPost, dismiss, gm, url.Values{views.DismissWasField: {"5etools-phb: 3 entries imported, 0 removed"}}, true); w.Code != http.StatusNoContent || e.app.fiveTools.get().Msg != "" {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		dismiss,
+		gm,
+		url.Values{views.DismissWasField: {"5etools-phb: 3 entries imported, 0 removed"}},
+		true,
+	); w.Code != http.StatusNoContent ||
+		e.app.fiveTools.get().Msg != "" {
 		t.Errorf("GM dismiss: %d, job %+v", w.Code, e.app.fiveTools.get())
 	}
-	if body := e.do(t, http.MethodGet, route.Compendium+"?import="+views.ImportTabFiveTools, gm, nil, false).Body.String(); strings.Contains(body, "3 entries imported") {
+	if body := e.do(
+		t,
+		http.MethodGet,
+		route.Compendium+"?import="+views.ImportTabFiveTools,
+		gm,
+		nil,
+		false,
+	).Body.String(); strings.Contains(
+		body,
+		"3 entries imported",
+	) {
 		t.Error("dismissed summary still shows")
 	}
 }
@@ -224,40 +364,94 @@ func TestStarterSets(t *testing.T) {
 		return e.do(t, http.MethodGet, route.Compendium, cookie, nil, false).Body.String()
 	}
 	live := `data-live="` + views.LiveKey(views.LiveImport, views.StarterLiveCompendium) + `"`
-	if body := page(gm); !strings.Contains(body, "Import SRD") || !strings.Contains(body, "Import books") || !strings.Contains(body, live) {
+	emptyBody := page(gm)
+	if !strings.Contains(emptyBody, "Import SRD") || !strings.Contains(emptyBody, "Import books") ||
+		!strings.Contains(emptyBody, live) {
 		t.Error("GM's empty compendium has no starting sets")
 	}
 	if body := page(player); strings.Contains(body, "Import SRD") || strings.Contains(body, live) {
 		t.Error("player's empty compendium shows the starting sets")
 	}
 	// A bad set is refused before the book list is fetched (a.fail answers htmx with a 422).
-	if w := e.do(t, http.MethodGet, views.FiveToolsPath+"?"+views.FiveToolsSetField+"=2014", gm, nil, true); w.Code != http.StatusUnprocessableEntity {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		views.FiveToolsPath+"?"+views.FiveToolsSetField+"=2014",
+		gm,
+		nil,
+		true,
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("picker with a bad set: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, views.FiveToolsPath, gm, url.Values{views.FiveToolsSetField: {"2014"}}, false); !strings.Contains(w.Body.String(), "Pick at least one book") {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		views.FiveToolsPath,
+		gm,
+		url.Values{views.FiveToolsSetField: {"2014"}},
+		false,
+	); !strings.Contains(
+		w.Body.String(),
+		"Pick at least one book",
+	) {
 		t.Errorf("bad set posted: %d, not refused", w.Code)
 	}
 	// Running: the progress stands in for the rows, and both sets wait.
 	e.app.fiveTools.start(0)
-	if body := page(gm); !strings.Contains(body, "Starting…") || strings.Contains(body, "Import SRD") {
+	runningBody := page(gm)
+	if !strings.Contains(runningBody, "Starting…") || strings.Contains(runningBody, "Import SRD") {
 		t.Error("running job not shown in the empty compendium")
 	}
-	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumOpen5e, gm, url.Values{views.Open5eDocField: {compendium.SRD2024Key}}, false); !strings.Contains(w.Body.String(), errImportRunning) {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Compendium+route.CompendiumOpen5e,
+		gm,
+		url.Values{views.Open5eDocField: {compendium.SRD2024Key}},
+		false,
+	); !strings.Contains(
+		w.Body.String(),
+		errImportRunning,
+	) {
 		t.Errorf("SRD during an import: %d, not refused", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, views.FiveToolsPath, gm, url.Values{views.FiveToolsSetField: {views.FiveToolsSet2024}}, false); !strings.Contains(w.Body.String(), errImportRunning) {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		views.FiveToolsPath,
+		gm,
+		url.Values{views.FiveToolsSetField: {views.FiveToolsSet2024}},
+		false,
+	); !strings.Contains(
+		w.Body.String(),
+		errImportRunning,
+	) {
 		t.Errorf("2024 set during an import: %d, not refused", w.Code)
 	}
-	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumOpen5e, player, nil, false); w.Code != http.StatusForbidden {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Compendium+route.CompendiumOpen5e,
+		player,
+		nil,
+		false,
+	); w.Code != http.StatusForbidden {
 		t.Errorf("player SRD import: %d", w.Code)
 	}
 	// Done: the summary and a way to the entries above the rows; failed: the error.
-	e.app.fiveTools.update(func(j *views.FiveToolsJob) { *j = views.FiveToolsJob{Msg: "srd-2024: 3 entries imported"} })
-	if body := page(gm); !strings.Contains(body, "Show entries") || !strings.Contains(body, "Import SRD") {
+	e.app.fiveTools.update(
+		func(j *views.FiveToolsJob) { *j = views.FiveToolsJob{Msg: "srd-2024: 3 entries imported"} },
+	)
+	doneBody := page(gm)
+	if !strings.Contains(doneBody, "Show entries") || !strings.Contains(doneBody, "Import SRD") {
 		t.Error("finished job shows no way to the entries, or hides the sets")
 	}
-	e.app.fiveTools.update(func(j *views.FiveToolsJob) { *j = views.FiveToolsJob{Msg: "Download failed: boom", Failed: true} })
-	if body := page(gm); !strings.Contains(body, "Download failed: boom") || !strings.Contains(body, "Import SRD") {
+	e.app.fiveTools.update(
+		func(j *views.FiveToolsJob) { *j = views.FiveToolsJob{Msg: "Download failed: boom", Failed: true} },
+	)
+	failedBody := page(gm)
+	if !strings.Contains(failedBody, "Download failed: boom") ||
+		!strings.Contains(failedBody, "Import SRD") {
 		t.Error("failed job hides its error or the rows")
 	}
 }
@@ -267,9 +461,27 @@ func TestStarterSets(t *testing.T) {
 func TestTickSet(t *testing.T) {
 	wotc := "Wizards of the Coast"
 	books := map[string]compendium.Book{
-		"XPHB": {ID: "XPHB", Name: "Player's Handbook", Group: compendium.GroupCore, Publisher: wotc, Published: "2024-09-17"},
-		"PHB":  {ID: "PHB", Name: "Old Handbook", Group: compendium.GroupCore, Publisher: wotc, Published: "2014-08-19"},
-		"LMOP": {ID: "LMOP", Name: "Lost Mine", Group: compendium.GroupAdventure, Publisher: wotc, Published: "2025-01-01"},
+		"XPHB": {
+			ID:        "XPHB",
+			Name:      "Player's Handbook",
+			Group:     compendium.GroupCore,
+			Publisher: wotc,
+			Published: "2024-09-17",
+		},
+		"PHB": {
+			ID:        "PHB",
+			Name:      "Old Handbook",
+			Group:     compendium.GroupCore,
+			Publisher: wotc,
+			Published: "2014-08-19",
+		},
+		"LMOP": {
+			ID:        "LMOP",
+			Name:      "Lost Mine",
+			Group:     compendium.GroupAdventure,
+			Publisher: wotc,
+			Published: "2025-01-01",
+		},
 	}
 	want := map[string]bool{"XPHB": true}
 	var list []compendium.Book
@@ -295,7 +507,8 @@ func TestRunFiveToolsFinishes(t *testing.T) {
 		t.Fatal("job busy before the run")
 	}
 	e.app.runFiveTools(t.Context(), t.TempDir(), nil, 0) // no books: nothing to download
-	if j := e.app.fiveTools.get(); j.Running || !j.Failed || !strings.Contains(j.Msg, "No source folders") {
+	if j := e.app.fiveTools.get(); j.Running || !j.Failed ||
+		!strings.Contains(j.Msg, "No source folders") {
 		t.Errorf("job after the run: %+v", j)
 	}
 	if !e.app.fiveTools.start(1) {
@@ -339,12 +552,20 @@ func TestFiveToolsRemove(t *testing.T) {
 	if err := os.MkdirAll(folder, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	w := e.do(t, http.MethodPost, route.Compendium+route.Path(route.CompendiumFiveToolsBookDelete, "phb"), gm, nil, true)
+	w := e.do(
+		t,
+		http.MethodPost,
+		route.Compendium+route.Path(route.CompendiumFiveToolsBookDelete, "phb"),
+		gm,
+		nil,
+		true,
+	)
 	if w.Code != http.StatusOK {
 		t.Fatalf("remove: %d %s", w.Code, w.Body)
 	}
 	// A toast: the picker's notice would vanish with the reload the publish causes.
-	if body := w.Body.String(); !strings.Contains(body, "Removed phb.") || !strings.Contains(body, `id="`+views.FiveToolsID+`"`) {
+	if body := w.Body.String(); !strings.Contains(body, "Removed phb.") ||
+		!strings.Contains(body, `id="`+views.FiveToolsID+`"`) {
 		t.Errorf("remove answer lacks the toast or the picker: %s", body)
 	}
 	if _, err := os.Stat(folder); !os.IsNotExist(err) {
@@ -353,14 +574,26 @@ func TestFiveToolsRemove(t *testing.T) {
 	if _, err := e.q().GetCompendiumSource(t.Context(), "5etools-phb"); err == nil {
 		t.Error("source kept")
 	}
-	if _, err := e.q().GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: "alert"}); err == nil {
+	if _, err := e.q().
+		GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: "alert"}); err == nil {
 		t.Error("entry kept")
 	}
-	if _, err := e.q().GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: "tough"}); err != nil {
+	if _, err := e.q().
+		GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "feat", Slug: "tough"}); err != nil {
 		t.Errorf("another book's entry went too: %v", err)
 	}
 	// A path-like id is refused, never joined onto the folder.
-	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumFiveTools+"/..%2Fx/delete", gm, nil, true); strings.Contains(w.Body.String(), "Removed") {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Compendium+route.CompendiumFiveTools+"/..%2Fx/delete",
+		gm,
+		nil,
+		true,
+	); strings.Contains(
+		w.Body.String(),
+		"Removed",
+	) {
 		t.Errorf("bad id accepted: %d", w.Code)
 	}
 }
@@ -380,13 +613,15 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 	// Player homebrew: secret is linked to no campaign, shared to the player's.
 	scoped := map[string]int64{}
 	for _, slug := range []string{"secret", "shared"} {
-		row, err := e.q().CreateHomebrew(t.Context(), sqlc.CreateHomebrewParams{Kind: "feat", Slug: slug, Name: slug, DataJson: `{"desc":""}`, ContentHash: slug, OwnerCharacterID: nullID(e.characterID), Scoped: true})
+		row, err := e.q().
+			CreateHomebrew(t.Context(), sqlc.CreateHomebrewParams{Kind: "feat", Slug: slug, Name: slug, DataJson: `{"desc":""}`, ContentHash: slug, OwnerCharacterID: nullID(e.characterID), Scoped: true})
 		if err != nil {
 			t.Fatal(err)
 		}
 		scoped[slug] = row.ID
 	}
-	if err := e.q().LinkEntryCampaign(t.Context(), sqlc.LinkEntryCampaignParams{EntryID: scoped["shared"], CampaignID: e.campaignID}); err != nil {
+	if err := e.q().
+		LinkEntryCampaign(t.Context(), sqlc.LinkEntryCampaignParams{EntryID: scoped["shared"], CampaignID: e.campaignID}); err != nil {
 		t.Fatal(err)
 	}
 	// The GM reads the whole compendium, the player their campaign's.
@@ -399,11 +634,55 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 		name, cookie, path string
 		want, notWant      []string
 	}{
-		{"older names the newer", gm, route.Compendium + route.Path(route.CompendiumEntry, older), []string{"Also in", fmt.Sprintf(`href="%s%s"`, route.Compendium, route.Path(route.CompendiumEntry, newer)), "book-new, 2024"}, nil},
-		{"newer names the older", player, fmt.Sprintf("%s/entries/%d", mine, newer), []string{"Also in", fmt.Sprintf(`href="%s/entries/%d"`, mine, older)}, nil},
-		{"token links the winner, missing is plain", player, fmt.Sprintf("%s/entries/%d", mine, pointer),
-			[]string{fmt.Sprintf(`<a href="%s/entries/%d">Alert</a>`, mine, newer), "Ghost", "Secret", link(mine, "shared", "Shared")}, []string{"Also in", "[[compendium", route.Path(route.CompendiumEntry, older), link(mine, "secret", "Secret")}},
-		{"the GM sees every homebrew link", gm, route.Compendium + route.Path(route.CompendiumEntry, pointer), []string{link(route.Compendium, "secret", "Secret"), link(route.Compendium, "shared", "Shared")}, nil},
+		{
+			"older names the newer",
+			gm,
+			route.Compendium + route.Path(route.CompendiumEntry, older),
+			[]string{
+				"Also in",
+				fmt.Sprintf(
+					`href="%s%s"`,
+					route.Compendium,
+					route.Path(route.CompendiumEntry, newer),
+				),
+				"book-new, 2024",
+			},
+			nil,
+		},
+		{
+			"newer names the older",
+			player,
+			fmt.Sprintf("%s/entries/%d", mine, newer),
+			[]string{"Also in", fmt.Sprintf(`href="%s/entries/%d"`, mine, older)},
+			nil,
+		},
+		{
+			"token links the winner, missing is plain",
+			player,
+			fmt.Sprintf("%s/entries/%d", mine, pointer),
+			[]string{
+				fmt.Sprintf(`<a href="%s/entries/%d">Alert</a>`, mine, newer),
+				"Ghost",
+				"Secret",
+				link(mine, "shared", "Shared"),
+			},
+			[]string{
+				"Also in",
+				"[[compendium",
+				route.Path(route.CompendiumEntry, older),
+				link(mine, "secret", "Secret"),
+			},
+		},
+		{
+			"the GM sees every homebrew link",
+			gm,
+			route.Compendium + route.Path(route.CompendiumEntry, pointer),
+			[]string{
+				link(route.Compendium, "secret", "Secret"),
+				link(route.Compendium, "shared", "Shared"),
+			},
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -418,7 +697,11 @@ func TestEntryAlsoInAndCrossRefs(t *testing.T) {
 					t.Errorf("unexpected %q", s)
 				}
 			}
-			if strings.Contains(body, `href="`+route.Compendium+route.Path(route.CompendiumEntry, 0)+`"`) || strings.Contains(body, ">Ghost</a>") {
+			if strings.Contains(
+				body,
+				`href="`+route.Compendium+route.Path(route.CompendiumEntry, 0)+`"`,
+			) ||
+				strings.Contains(body, ">Ghost</a>") {
 				t.Error("link to a missing entry")
 			}
 		})
@@ -437,14 +720,16 @@ func TestSourceDeleteUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 	pin := func(sheet string) {
-		if err := e.q().UpdateCharacterSheet(t.Context(), sqlc.UpdateCharacterSheetParams{SheetJson: sheet, ID: e.characterID}); err != nil {
+		if err := e.q().
+			UpdateCharacterSheet(t.Context(), sqlc.UpdateCharacterSheetParams{SheetJson: sheet, ID: e.characterID}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	pin(`{"species_source":"my-folder"}`)
 	del := url.Values{"key": {"my-folder"}}
 	w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceDelete, gm, del, true)
-	if !strings.Contains(w.Body.String(), "my-folder is used by") || !strings.Contains(w.Body.String(), "Switch their sources first.") {
+	if !strings.Contains(w.Body.String(), "my-folder is used by") ||
+		!strings.Contains(w.Body.String(), "Switch their sources first.") {
 		t.Errorf("no refusal naming users: %d %s", w.Code, w.Body)
 	}
 	if got := w.Header().Get("HX-Reswap"); got != "none" {
@@ -455,17 +740,35 @@ func TestSourceDeleteUsed(t *testing.T) {
 	}
 	pin(`{}`)
 	// An entity linked to one of its entries keeps it too.
-	ent, err := e.q().CreateEntity(t.Context(), sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Goblin boss", FieldsJson: "{}", CompendiumRef: sql.NullInt64{Int64: featID, Valid: true}})
+	ent, err := e.q().
+		CreateEntity(t.Context(), sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Goblin boss", FieldsJson: "{}", CompendiumRef: sql.NullInt64{Int64: featID, Valid: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceDelete, gm, del, true); !strings.Contains(w.Body.String(), "my-folder is used by Goblin boss.") {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Compendium+route.CompendiumSourceDelete,
+		gm,
+		del,
+		true,
+	); !strings.Contains(
+		w.Body.String(),
+		"my-folder is used by Goblin boss.",
+	) {
 		t.Errorf("entity link not counted: %d %s", w.Code, w.Body)
 	}
 	if err := e.q().DeleteEntity(t.Context(), ent.ID); err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceDelete, gm, del, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Compendium+route.CompendiumSourceDelete,
+		gm,
+		del,
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", w.Code, w.Body)
 	}
 	if _, err := e.q().GetCompendiumSource(t.Context(), "my-folder"); err == nil {
@@ -488,18 +791,35 @@ func TestSourceDeleteMany(t *testing.T) {
 		return err == nil
 	}
 	post := func(keys ...string) *httptest.ResponseRecorder {
-		return e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceDelete, gm, url.Values{"key": keys}, true)
+		return e.do(
+			t,
+			http.MethodPost,
+			route.Compendium+route.CompendiumSourceDelete,
+			gm,
+			url.Values{"key": keys},
+			true,
+		)
 	}
-	if err := e.q().UpdateCharacterSheet(t.Context(), sqlc.UpdateCharacterSheetParams{SheetJson: `{"species_source":"src-used"}`, ID: e.characterID}); err != nil {
+	if err := e.q().
+		UpdateCharacterSheet(t.Context(), sqlc.UpdateCharacterSheetParams{SheetJson: `{"species_source":"src-used"}`, ID: e.characterID}); err != nil {
 		t.Fatal(err)
 	}
-	if w := post("src-a", "src-used", "src-b"); w.Code == http.StatusOK || !strings.Contains(w.Body.String(), "src-used is used by") {
+	if w := post(
+		"src-a",
+		"src-used",
+		"src-b",
+	); w.Code == http.StatusOK ||
+		!strings.Contains(w.Body.String(), "src-used is used by") {
 		t.Errorf("used key: %d %s", w.Code, w.Body)
 	}
 	if !has("src-a") || !has("src-b") || !has("src-used") {
 		t.Error("a refused request deleted something")
 	}
-	if w := post("src-a", compendium.HomebrewSource); w.Code == http.StatusOK || !strings.Contains(w.Body.String(), "Homebrew cannot be deleted") {
+	if w := post(
+		"src-a",
+		compendium.HomebrewSource,
+	); w.Code == http.StatusOK ||
+		!strings.Contains(w.Body.String(), "Homebrew cannot be deleted") {
 		t.Errorf("homebrew: %d %s", w.Code, w.Body)
 	}
 	if !has("src-a") {
@@ -545,24 +865,49 @@ func TestSourceKeyWithSlash(t *testing.T) {
 	for _, key := range []string{"5etools:mtf/howler", "aidedd:dnd/sorts.php?vf=a+b", longKey} {
 		t.Run(key[:min(len(key), 40)], func(t *testing.T) {
 			e.source(t, key, "2024")
-			body := e.do(t, http.MethodGet, route.Compendium+"?tab=import", gm, nil, false).Body.String()
+			body := e.do(
+				t,
+				http.MethodGet,
+				route.Compendium+"?tab=import",
+				gm,
+				nil,
+				false,
+			).Body.String()
 			// toJSON's sorted keys; none of these keys holds & < > (json escapes them)
 			if want := html.EscapeString(`{"key":"` + key + `"}`); !strings.Contains(body, want) {
 				t.Errorf("import tab lacks %s", want)
 			}
-			if want := `data-source-key="` + html.EscapeString(key) + `"`; !strings.Contains(body, want) {
+			want := `data-source-key="` + html.EscapeString(key) + `"`
+			if !strings.Contains(body, want) {
 				t.Errorf("import tab lacks %s", want)
 			}
 			// Typed or dragged, a move posts the whole order with the key first.
-			keys := slices.DeleteFunc(strings.Split(order(), ","), func(k string) bool { return k == key })
+			keys := slices.DeleteFunc(
+				strings.Split(order(), ","),
+				func(k string) bool { return k == key },
+			)
 			keys = append([]string{key}, keys...)
-			if w := e.do(t, http.MethodPost, views.SourceOrderPath, gm, url.Values{views.SourceKeyField: keys}, true); w.Code != http.StatusOK {
+			if w := e.do(
+				t,
+				http.MethodPost,
+				views.SourceOrderPath,
+				gm,
+				url.Values{views.SourceKeyField: keys},
+				true,
+			); w.Code != http.StatusOK {
 				t.Fatalf("order: %d %s", w.Code, w.Body)
 			}
 			if got := order(); got != strings.Join(keys, ",") {
 				t.Errorf("order %s, want %s", got, strings.Join(keys, ","))
 			}
-			if w := e.do(t, http.MethodPost, route.Compendium+route.CompendiumSourceDelete, gm, url.Values{"key": {key}}, true); w.Code != http.StatusOK {
+			if w := e.do(
+				t,
+				http.MethodPost,
+				route.Compendium+route.CompendiumSourceDelete,
+				gm,
+				url.Values{"key": {key}},
+				true,
+			); w.Code != http.StatusOK {
 				t.Fatalf("delete: %d %s", w.Code, w.Body)
 			}
 			if _, err := e.q().GetCompendiumSource(t.Context(), key); err == nil {
@@ -579,7 +924,11 @@ func TestFiveToolsBack(t *testing.T) {
 		{"global", "https://host" + global + "?q=x", global},
 		{"campaign", "https://host" + camp3, camp3},
 		{"unrelated page", "https://host" + route.Path(route.Campaign, 3) + route.Images, global},
-		{"campaign page", "https://host" + route.Path(route.Campaign, 3), route.Path(route.Campaign, 3)},
+		{
+			"campaign page",
+			"https://host" + route.Path(route.Campaign, 3),
+			route.Path(route.Campaign, 3),
+		},
 		{"other host", "https://elsewhere.example" + camp3, camp3},
 		{"entry page", "https://host" + camp3 + route.Path(route.CompendiumEntry, 7), global},
 		{"no referer", "", global},

@@ -79,7 +79,10 @@ func (v CampaignSourcesView) postURL() string {
 
 func sourceRowTitle(s CampaignSource, locked bool) string {
 	if locked {
-		return s.Key + " is used by " + strings.Join(s.Users, ", ") + "; switch their sources first."
+		return s.Key + " is used by " + strings.Join(
+			s.Users,
+			", ",
+		) + "; switch their sources first."
 	}
 	return cmp.Or(s.Attribution, s.Key)
 }

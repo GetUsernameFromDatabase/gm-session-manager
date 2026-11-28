@@ -17,9 +17,26 @@ func TestParseFlags(t *testing.T) {
 		wantData   string
 		wantErr    bool
 	}{
-		{name: "no flags is the GM server", args: nil, wantPort: config.DefaultPlayerPort, wantData: config.DefaultPlayerDataDir},
-		{name: "player defaults", args: []string{"--player"}, wantPlayer: true, wantPort: 8042, wantData: "data-player"},
-		{name: "player overrides", args: []string{"--player", "--port", "9000", "--data", "x"}, wantPlayer: true, wantPort: 9000, wantData: "x"},
+		{
+			name:     "no flags is the GM server",
+			args:     nil,
+			wantPort: config.DefaultPlayerPort,
+			wantData: config.DefaultPlayerDataDir,
+		},
+		{
+			name:       "player defaults",
+			args:       []string{"--player"},
+			wantPlayer: true,
+			wantPort:   8042,
+			wantData:   "data-player",
+		},
+		{
+			name:       "player overrides",
+			args:       []string{"--player", "--port", "9000", "--data", "x"},
+			wantPlayer: true,
+			wantPort:   9000,
+			wantData:   "x",
+		},
 		{name: "port alone refused", args: []string{"--port", "9000"}, wantErr: true},
 		{name: "data alone refused", args: []string{"--data", "x"}, wantErr: true},
 		{name: "no-browser alone refused", args: []string{"--no-browser"}, wantErr: true},

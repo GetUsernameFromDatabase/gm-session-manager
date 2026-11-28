@@ -35,5 +35,7 @@ func everyHabitat(has map[enum.Habitat]bool) bool {
 
 // habitatsURL opens the grid filtered to name.
 func habitatsURL(ctx context.Context, name string) templ.SafeURL {
-	return templ.SafeURL(CompendiumPath(ctx, route.CompendiumHabitats+"?"+url.Values{"q": {name}}.Encode()))
+	return templ.SafeURL(
+		CompendiumPath(ctx, route.CompendiumHabitats+"?"+url.Values{"q": {name}}.Encode()),
+	)
 }

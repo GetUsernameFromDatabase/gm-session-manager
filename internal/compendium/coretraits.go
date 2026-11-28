@@ -105,7 +105,10 @@ func Options(desc string) []NameDesc {
 	case strings.HasPrefix(desc, "### ") || strings.Contains(desc, "\n### "):
 		for _, line := range lines {
 			if name, ok := strings.CutPrefix(strings.TrimSpace(line), "### "); ok {
-				out = append(out, NameDesc{Name: strings.Trim(name, "* ")}) // some headings are bold too
+				out = append(
+					out,
+					NameDesc{Name: strings.Trim(name, "* ")},
+				) // some headings are bold too
 			} else if len(out) > 0 {
 				out[len(out)-1].Desc += line + "\n"
 			}

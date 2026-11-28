@@ -171,9 +171,18 @@ func guessMapping(header []string, rows [][]string) views.ImportMapping {
 		return best(func(int) float64 { return 1 })
 	}
 	m := views.ImportMapping{}
-	m.Link = best(func(i int) float64 { return 2*share(sample, i, isHTTPLink) + headerScore(header[i], linkHints) })
+	m.Link = best(
+		func(i int) float64 { return 2*share(sample, i, isHTTPLink) + headerScore(header[i], linkHints) },
+	)
 	m.Name = best(func(i int) float64 {
-		return 2*headerScore(header[i], nameHints) + share(sample, i, func(s string) bool { return s != "" && !isHTTPLink(s) })
+		return 2*headerScore(
+			header[i],
+			nameHints,
+		) + share(
+			sample,
+			i,
+			func(s string) bool { return s != "" && !isHTTPLink(s) },
+		)
 	})
 	m.Category = best(func(i int) float64 { return headerScore(header[i], categoryHints) })
 	m.Description = best(func(i int) float64 { return headerScore(header[i], descriptionHints) })
@@ -241,7 +250,13 @@ func categoryKey(s string) string { return strings.ToLower(strings.Join(strings.
 func reviewRows(rows [][]string, m views.ImportMapping) []views.ImportRow {
 	out := make([]views.ImportRow, 0, len(rows))
 	for i, row := range rows {
-		r := views.ImportRow{Index: i, Name: cell(row, m.Name), Link: cell(row, m.Link), Category: cell(row, m.Category), Description: cell(row, m.Description)}
+		r := views.ImportRow{
+			Index:       i,
+			Name:        cell(row, m.Name),
+			Link:        cell(row, m.Link),
+			Category:    cell(row, m.Category),
+			Description: cell(row, m.Description),
+		}
 		r.Host = httpHost(r.Link)
 		switch {
 		case r.Name == "":
@@ -264,7 +279,10 @@ func reviewRows(rows [][]string, m views.ImportMapping) []views.ImportRow {
 // so nothing is merged unless the GM gives two values the same target.
 // A value's default target is an existing category with the same
 // categoryKey, else the normalized (lowercase) categoryKey itself.
-func importCategories(rows []views.ImportRow, existing []sqlc.ImageCategory) []views.ImportCategory {
+func importCategories(
+	rows []views.ImportRow,
+	existing []sqlc.ImageCategory,
+) []views.ImportCategory {
 	counts := map[string]int{}
 	defaults := map[string]string{}
 	for _, r := range rows {
@@ -279,7 +297,10 @@ func importCategories(rows []views.ImportRow, existing []sqlc.ImageCategory) []v
 	}
 	cats := make([]views.ImportCategory, 0, len(counts))
 	for s, n := range counts {
-		cats = append(cats, views.ImportCategory{Source: s, Count: n, Target: defaults[categoryKey(s)]})
+		cats = append(
+			cats,
+			views.ImportCategory{Source: s, Count: n, Target: defaults[categoryKey(s)]},
+		)
 	}
 	// Sorted by key so the spellings of one category sit together.
 	slices.SortFunc(cats, func(a, b views.ImportCategory) int {
@@ -466,7 +487,11 @@ func (a *App) importUploadPage(c *gin.Context) {
 	if !ok {
 		return
 	}
-	a.render(c, http.StatusOK, views.ImportUploadPage(a.layout(w, "Import images", views.NavImages, &camp, false), id))
+	a.render(
+		c,
+		http.StatusOK,
+		views.ImportUploadPage(a.layout(w, "Import images", views.NavImages, &camp, false), id),
+	)
 }
 
 func (a *App) importUpload(c *gin.Context) {
@@ -513,7 +538,12 @@ func csvSource(c *gin.Context) (io.ReadCloser, error) {
 	if err := c.ShouldBind(&form); err != nil {
 		return nil, errors.New("choose a CSV file or give an http(s) link to one")
 	}
-	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, strings.TrimSpace(form.URL), nil)
+	req, err := http.NewRequestWithContext(
+		c.Request.Context(),
+		http.MethodGet,
+		strings.TrimSpace(form.URL),
+		nil,
+	)
 	if err != nil {
 		return nil, errors.New("that link is not valid")
 	}
@@ -537,7 +567,13 @@ func (a *App) importParam(c *gin.Context) (int64, string, csvImport, bool) {
 	token := c.Param("token")
 	imp, ok := a.imports.get(token, id)
 	if !ok {
-		a.failBack(c, http.StatusNotFound, "This import has expired. Upload the file again.", route.Path(route.CampaignImagesImport, id), "Start the import again")
+		a.failBack(
+			c,
+			http.StatusNotFound,
+			"This import has expired. Upload the file again.",
+			route.Path(route.CampaignImagesImport, id),
+			"Start the import again",
+		)
 	}
 	return id, token, imp, ok
 }
@@ -561,7 +597,11 @@ func (a *App) importReviewPage(c *gin.Context) error {
 		a.render(c, http.StatusOK, views.ImportReview(v))
 		return nil
 	}
-	a.render(c, http.StatusOK, views.ImportReviewPage(a.layout(w, "Import images", views.NavImages, &camp, false), v))
+	a.render(
+		c,
+		http.StatusOK,
+		views.ImportReviewPage(a.layout(w, "Import images", views.NavImages, &camp, false), v),
+	)
 	return nil
 }
 
@@ -594,7 +634,11 @@ func (a *App) importCommit(c *gin.Context) error {
 				return err
 			}
 			if _, err := q.CreateImage(ctx, sqlc.CreateImageParams{
-				CampaignID: id, Name: r.Name, Url: nullString(r.Link), CategoryID: category, Description: r.Description,
+				CampaignID:  id,
+				Name:        r.Name,
+				Url:         nullString(r.Link),
+				CategoryID:  category,
+				Description: r.Description,
 			}); err != nil {
 				return err
 			}
@@ -606,6 +650,9 @@ func (a *App) importCommit(c *gin.Context) error {
 		return err
 	}
 	a.imports.drop(token)
-	c.Redirect(http.StatusSeeOther, fmt.Sprintf("%s?imported=%d", route.Path(route.CampaignImages, id), n))
+	c.Redirect(
+		http.StatusSeeOther,
+		fmt.Sprintf("%s?imported=%d", route.Path(route.CampaignImages, id), n),
+	)
 	return nil
 }

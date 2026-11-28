@@ -26,7 +26,11 @@ import (
 // the sheet, for the sheet page and its live view. The builder, wizard and
 // level-up work on the stored sheet (sheetView), which must never gain an
 // effect's modifiers.
-func (a *App) shownSheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) (views.SheetView, error) {
+func (a *App) shownSheetView(
+	ctx context.Context,
+	v perm.Viewer,
+	row sqlc.Character,
+) (views.SheetView, error) {
 	s, err := a.sheetView(ctx, v, row)
 	if err != nil {
 		return s, err
@@ -39,7 +43,11 @@ func (a *App) shownSheetView(ctx context.Context, v perm.Viewer, row sqlc.Charac
 }
 
 // sheetView is the character as stored, with no effects.
-func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) (views.SheetView, error) {
+func (a *App) sheetView(
+	ctx context.Context,
+	v perm.Viewer,
+	row sqlc.Character,
+) (views.SheetView, error) {
 	sheet, err := dnd5e.ParseSheet(row.SheetJson)
 	if err != nil {
 		return views.SheetView{}, err
@@ -54,7 +62,10 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 	}
 	var looks []perm.Look
 	for _, l := range rows {
-		looks = append(looks, toLook(l.ID, l.Name, l.Url, l.AttachmentID, l.IsRevealed, l.IsCurrent))
+		looks = append(
+			looks,
+			toLook(l.ID, l.Name, l.Url, l.AttachmentID, l.IsRevealed, l.IsCurrent),
+		)
 	}
 	spells, err := a.sheetSpells(ctx, sheet)
 	if err != nil {
@@ -110,9 +121,22 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 		}
 	}
 	return views.SheetView{
-		CanTakeHome: canTakeHome, TakenHome: takenHome, FallbackFor: fallbackFor, FallbackHomeSources: fallbackSources,
-		ID: row.ID, CampaignID: row.CampaignID, Conditions: conds, Looks: perm.VisibleLooks(v, row.ID, looks), SpellData: spells,
-		C:             dnd5e.Character{Name: row.Name, HP: int(row.Hp), MaxHP: int(row.MaxHp), TempHP: int(row.TempHp), Sheet: sheet},
+		CanTakeHome:         canTakeHome,
+		TakenHome:           takenHome,
+		FallbackFor:         fallbackFor,
+		FallbackHomeSources: fallbackSources,
+		ID:                  row.ID,
+		CampaignID:          row.CampaignID,
+		Conditions:          conds,
+		Looks:               perm.VisibleLooks(v, row.ID, looks),
+		SpellData:           spells,
+		C: dnd5e.Character{
+			Name:   row.Name,
+			HP:     int(row.Hp),
+			MaxHP:  int(row.MaxHp),
+			TempHP: int(row.TempHp),
+			Sheet:  sheet,
+		},
 		CanHP:         perm.CanCharacter(v, row.ID, perm.ScopeHP),
 		CanConditions: perm.CanCharacter(v, row.ID, perm.ScopeConditions),
 		CanSheet:      canSheet,
@@ -128,7 +152,10 @@ func (a *App) sheetView(ctx context.Context, v perm.Viewer, row sqlc.Character) 
 // sheetSpells are the compendium details of the sheet's spells, by slug:
 // the priority copies in one query, and a pinned copy per spell pinned to
 // another source while it exists.
-func (a *App) sheetSpells(ctx context.Context, sheet dnd5e.Sheet) (map[string]*compendium.SpellData, error) {
+func (a *App) sheetSpells(
+	ctx context.Context,
+	sheet dnd5e.Sheet,
+) (map[string]*compendium.SpellData, error) {
 	if len(sheet.Spells) == 0 {
 		return nil, nil
 	}
@@ -136,7 +163,10 @@ func (a *App) sheetSpells(ctx context.Context, sheet dnd5e.Sheet) (map[string]*c
 	for i, sp := range sheet.Spells {
 		slugs[i] = sp.Slug
 	}
-	rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: enum.KindSpell, Slugs: slugs})
+	rows, err := a.Store.ListCompendiumBySlugs(
+		ctx,
+		sqlc.ListCompendiumBySlugsParams{Kind: enum.KindSpell, Slugs: slugs},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +182,14 @@ func (a *App) sheetSpells(ctx context.Context, sheet dnd5e.Sheet) (map[string]*c
 		r, ok := best[sp.Slug]
 		data := r.DataJson
 		if sp.Source != "" && sp.Source != r.SourceKey {
-			e, err := a.Store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: enum.KindSpell, Slug: sp.Slug, SourceKey: sp.Source})
+			e, err := a.Store.GetCompendiumEntryBySlugSource(
+				ctx,
+				sqlc.GetCompendiumEntryBySlugSourceParams{
+					Kind:      enum.KindSpell,
+					Slug:      sp.Slug,
+					SourceKey: sp.Source,
+				},
+			)
 			switch {
 			case err == nil:
 				data, ok = e.DataJson, true
@@ -264,14 +301,27 @@ func hpCommand(c *gin.Context) (dnd5e.Command, error) {
 	if err := c.ShouldBind(&f); err != nil {
 		return dnd5e.Command{}, errors.New("enter how many hit points, 1 or more")
 	}
-	line := map[string]string{"damage": "hp -", "heal": "hp +", "temp": "temp "}[f.Op] + strconv.Itoa(f.Amount)
-	return dnd5e.Parse(line, damageArgs(f.Op == "damage", f.Type, f.Crit)...) // Parse checks the type
+	prefix := map[string]string{"damage": "hp -", "heal": "hp +", "temp": "temp "}[f.Op]
+	line := prefix + strconv.Itoa(f.Amount)
+	return dnd5e.Parse(
+		line,
+		damageArgs(f.Op == "damage", f.Type, f.Crit)...) // Parse checks the type
 }
 
 // builderArgs are the command builder's fields, in the order the commands
 // take them (see views.CommandBuilder). from and fromnote name the thing an
 // edit changes.
-var builderArgs = []string{argFrom, argFromNote, argSubject, argAbility, argDice, argDamageType, argProf, argN, argText}
+var builderArgs = []string{
+	argFrom,
+	argFromNote,
+	argSubject,
+	argAbility,
+	argDice,
+	argDamageType,
+	argProf,
+	argN,
+	argText,
+}
 
 // Builder form fields passed to the command as arguments, in order.
 const (
@@ -338,7 +388,11 @@ func (a *App) commandBuilder(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.render(c, http.StatusOK, views.CommandBuilder(s, c.Query("verb"), c.Query("op"), c.Query(argSubject), x))
+	a.render(
+		c,
+		http.StatusOK,
+		views.CommandBuilder(s, c.Query("verb"), c.Query("op"), c.Query(argSubject), x),
+	)
 	return nil
 }
 
@@ -390,7 +444,13 @@ func (a *App) runCommand(ctx context.Context, ch sqlc.Character, cmd dnd5e.Comma
 }
 
 // commandEnv looks up what cmd needs from the compendium for sheet.
-func (a *App) commandEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet, campaignID int64, cmd dnd5e.Command) (dnd5e.Env, error) {
+func (a *App) commandEnv(
+	ctx context.Context,
+	q *sqlc.Queries,
+	sheet dnd5e.Sheet,
+	campaignID int64,
+	cmd dnd5e.Command,
+) (dnd5e.Env, error) {
 	var env dnd5e.Env
 	var err error
 	if cmd.SourceRef.Kind != "" {
@@ -399,7 +459,13 @@ func (a *App) commandEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet
 		}
 	}
 	if cmd.SubclassChange.Class != "" {
-		if env.SourceOld, env.SourceNew, err = a.subclassChangeEnv(ctx, q, sheet, cmd.SubclassChange, campaignID); err != nil {
+		if env.SourceOld, env.SourceNew, err = a.subclassChangeEnv(
+			ctx,
+			q,
+			sheet,
+			cmd.SubclassChange,
+			campaignID,
+		); err != nil {
 			return env, err
 		}
 	}
@@ -414,13 +480,23 @@ func (a *App) commandEnv(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet
 		}
 	}
 	if cmd.MasteryWeapon != "" {
-		if env.MasteryWeapon, env.MasteryLimit, err = a.masteryEnv(ctx, q, sheet, campaignID, cmd.MasteryWeapon); err != nil {
+		if env.MasteryWeapon, env.MasteryLimit, err = a.masteryEnv(
+			ctx,
+			q,
+			sheet,
+			campaignID,
+			cmd.MasteryWeapon,
+		); err != nil {
 			return env, err
 		}
 	}
 	// Armor the character carries is worn without a compendium lookup.
 	if cmd.ArmorSlug != "" && sheet.ArmorItem(cmd.ArmorSlug) < 0 {
-		if env.Armor, env.IsShield, err = a.compendiumArmor(ctx, cmd.ArmorSlug, campaignID); err != nil {
+		if env.Armor, env.IsShield, err = a.compendiumArmor(
+			ctx,
+			cmd.ArmorSlug,
+			campaignID,
+		); err != nil {
 			return env, userError{err}
 		}
 	}
@@ -499,12 +575,24 @@ func formErrors(err error, draws func(string) bool) (string, views.FieldErrors) 
 }
 
 // updateCharacter reads, changes and writes a character in one transaction.
-func (a *App) updateCharacter(ctx context.Context, id int64, fn func(q *sqlc.Queries, dc *dnd5e.Character) error) error {
-	return a.Store.InTx(ctx, func(q *sqlc.Queries) error { return changeCharacterTx(ctx, q, id, fn) })
+func (a *App) updateCharacter(
+	ctx context.Context,
+	id int64,
+	fn func(q *sqlc.Queries, dc *dnd5e.Character) error,
+) error {
+	return a.Store.InTx(
+		ctx,
+		func(q *sqlc.Queries) error { return changeCharacterTx(ctx, q, id, fn) },
+	)
 }
 
 // changeCharacterTx is updateCharacter inside the caller's transaction.
-func changeCharacterTx(ctx context.Context, q *sqlc.Queries, id int64, fn func(q *sqlc.Queries, dc *dnd5e.Character) error) error {
+func changeCharacterTx(
+	ctx context.Context,
+	q *sqlc.Queries,
+	id int64,
+	fn func(q *sqlc.Queries, dc *dnd5e.Character) error,
+) error {
 	row, err := q.GetCharacter(ctx, id)
 	if err != nil {
 		return err
@@ -513,16 +601,30 @@ func changeCharacterTx(ctx context.Context, q *sqlc.Queries, id int64, fn func(q
 	if err != nil {
 		return err
 	}
-	dc := dnd5e.Character{Name: row.Name, HP: int(row.Hp), MaxHP: int(row.MaxHp), TempHP: int(row.TempHp), Sheet: sheet}
+	dc := dnd5e.Character{
+		Name:   row.Name,
+		HP:     int(row.Hp),
+		MaxHP:  int(row.MaxHp),
+		TempHP: int(row.TempHp),
+		Sheet:  sheet,
+	}
 	if err := fn(q, &dc); err != nil {
 		return err
 	}
-	if !sheet.Dead() && dc.Sheet.Dead() { // dying for good drops every condition and effect, whichever path got here
-		if err := applyCondOps(ctx, q, condOwner{characterID: id}, []dnd5e.CondOp{{Op: dnd5e.CondClearAll}}, condExtra{}); err != nil {
+	if !sheet.Dead() &&
+		dc.Sheet.Dead() { // dying for good drops every condition and effect, whichever path got here
+		if err := applyCondOps(
+			ctx,
+			q,
+			condOwner{characterID: id},
+			[]dnd5e.CondOp{{Op: dnd5e.CondClearAll}},
+			condExtra{},
+		); err != nil {
 			return err
 		}
 	}
-	if row.Hp > 0 && dc.HP <= 0 { // falling to 0 HP (overkill stays below) knocks the caster unconscious
+	if row.Hp > 0 &&
+		dc.HP <= 0 { // falling to 0 HP (overkill stays below) knocks the caster unconscious
 		if err := endConcentration(ctx, q, condOwner{characterID: id}); err != nil {
 			return err
 		}
@@ -532,7 +634,12 @@ func changeCharacterTx(ctx context.Context, q *sqlc.Queries, id int64, fn func(q
 		return err
 	}
 	return q.UpdateCharacter(ctx, sqlc.UpdateCharacterParams{
-		ID: id, Name: dc.Name, Hp: int64(dc.HP), MaxHp: int64(dc.MaxHP), TempHp: int64(dc.TempHP), SheetJson: raw,
+		ID:        id,
+		Name:      dc.Name,
+		Hp:        int64(dc.HP),
+		MaxHp:     int64(dc.MaxHP),
+		TempHp:    int64(dc.TempHP),
+		SheetJson: raw,
 	})
 }
 
@@ -558,7 +665,11 @@ func (a *App) characterTopics(ctx context.Context, id int64) ([]hub.Topic, error
 }
 
 // compendiumArmor finds armor (or a shield) in the compendium by slug.
-func (a *App) compendiumArmor(ctx context.Context, slug string, campaignID int64) (dnd5e.WornArmor, bool, error) {
+func (a *App) compendiumArmor(
+	ctx context.Context,
+	slug string,
+	campaignID int64,
+) (dnd5e.WornArmor, bool, error) {
 	row, err := a.entryBySlug(ctx, enum.KindItem, slug, campaignID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return dnd5e.WornArmor{}, false, fmt.Errorf("no item %q in the compendium", slug)
@@ -577,10 +688,24 @@ func (a *App) compendiumArmor(ctx context.Context, slug string, campaignID int64
 	case ar.Type == compendium.ArmorShield:
 		return dnd5e.WornArmor{}, true, nil
 	}
-	return dnd5e.WornArmor{Slug: row.Slug, Name: row.Name, Source: row.SourceKey, Type: ar.Type, Base: ar.Base, AddDex: ar.AddDex, DexCap: ar.DexCap, StrReq: ar.StrReq, Stealth: ar.Stealth}, false, nil
+	return dnd5e.WornArmor{
+		Slug:    row.Slug,
+		Name:    row.Name,
+		Source:  row.SourceKey,
+		Type:    ar.Type,
+		Base:    ar.Base,
+		AddDex:  ar.AddDex,
+		DexCap:  ar.DexCap,
+		StrReq:  ar.StrReq,
+		Stealth: ar.Stealth,
+	}, false, nil
 }
 
-func (a *App) compendiumSpell(ctx context.Context, slug string, campaignID int64) (dnd5e.Spell, error) {
+func (a *App) compendiumSpell(
+	ctx context.Context,
+	slug string,
+	campaignID int64,
+) (dnd5e.Spell, error) {
 	row, err := a.entryBySlug(ctx, enum.KindSpell, slug, campaignID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return dnd5e.Spell{}, userError{fmt.Errorf("no spell %q in the compendium", slug)}
@@ -607,9 +732,15 @@ type condOwner struct {
 
 func (o condOwner) find(ctx context.Context, q *sqlc.Queries, slug string) (sqlc.Condition, error) {
 	if o.characterID != 0 {
-		return q.FindCharacterCondition(ctx, sqlc.FindCharacterConditionParams{CharacterID: nullID(o.characterID), Slug: slug})
+		return q.FindCharacterCondition(
+			ctx,
+			sqlc.FindCharacterConditionParams{CharacterID: nullID(o.characterID), Slug: slug},
+		)
 	}
-	return q.FindCombatantCondition(ctx, sqlc.FindCombatantConditionParams{CombatantID: nullID(o.combatantID), Slug: slug})
+	return q.FindCombatantCondition(
+		ctx,
+		sqlc.FindCombatantConditionParams{CombatantID: nullID(o.combatantID), Slug: slug},
+	)
 }
 
 // condExtra is what a new condition row carries besides its slug and note:
@@ -626,9 +757,15 @@ type condExtra struct {
 
 func (o condOwner) add(ctx context.Context, q *sqlc.Queries, slug, note string, x condExtra) error {
 	_, err := q.CreateCondition(ctx, sqlc.CreateConditionParams{
-		CharacterID: nullID(o.characterID), CombatantID: nullID(o.combatantID), Slug: slug, Note: note,
-		ExpiresRound: x.Expires, EndsOn: x.EndsOn, HeldBy: x.HeldBy, ModsJson: cmp.Or(x.ModsJSON, noMods),
-		AppliedBy: x.AppliedBy,
+		CharacterID:  nullID(o.characterID),
+		CombatantID:  nullID(o.combatantID),
+		Slug:         slug,
+		Note:         note,
+		ExpiresRound: x.Expires,
+		EndsOn:       x.EndsOn,
+		HeldBy:       x.HeldBy,
+		ModsJson:     cmp.Or(x.ModsJSON, noMods),
+		AppliedBy:    x.AppliedBy,
 	})
 	return err
 }
@@ -660,7 +797,12 @@ func endConcentration(ctx context.Context, q *sqlc.Queries, o condOwner) error {
 // endRest removes the owner's effects that end on a rest: a long rest ends
 // the short rest ones too.
 func endRest(ctx context.Context, q *sqlc.Queries, o condOwner, rest string) error {
-	p := sqlc.ListRestConditionsParams{CharacterID: nullID(o.characterID), CombatantID: nullID(o.combatantID), First: enum.EffectEndShortRest, Second: enum.EffectEndShortRest}
+	p := sqlc.ListRestConditionsParams{
+		CharacterID: nullID(o.characterID),
+		CombatantID: nullID(o.combatantID),
+		First:       enum.EffectEndShortRest,
+		Second:      enum.EffectEndShortRest,
+	}
 	if rest == dnd5e.ResetLong {
 		p.Second = enum.EffectEndLongRest
 	}
@@ -680,7 +822,13 @@ func endRest(ctx context.Context, q *sqlc.Queries, o condOwner, rest string) err
 // concentration is held at most once; custom effects may stack. x goes on
 // the rows the ops add. A condition that incapacitates also ends the
 // owner's concentration.
-func applyCondOps(ctx context.Context, q *sqlc.Queries, o condOwner, ops []dnd5e.CondOp, x condExtra) error {
+func applyCondOps(
+	ctx context.Context,
+	q *sqlc.Queries,
+	o condOwner,
+	ops []dnd5e.CondOp,
+	x condExtra,
+) error {
 	for _, op := range ops {
 		if op.Op == dnd5e.CondEndRest {
 			if err := endRest(ctx, q, o, op.Rest); err != nil {
@@ -689,7 +837,10 @@ func applyCondOps(ctx context.Context, q *sqlc.Queries, o condOwner, ops []dnd5e
 			continue
 		}
 		if op.Op == dnd5e.CondClearAll {
-			rows, err := q.ListConditionsByCharacter(ctx, nullID(o.characterID)) // only a character dies
+			rows, err := q.ListConditionsByCharacter(
+				ctx,
+				nullID(o.characterID),
+			) // only a character dies
 			if err != nil {
 				return err
 			}

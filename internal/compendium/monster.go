@@ -19,7 +19,12 @@ const (
 	monsterLegendaryAction = "legendary_action"
 )
 
-var actionTypes = []string{monsterAction, monsterBonusAction, monsterReaction, monsterLegendaryAction}
+var actionTypes = []string{
+	monsterAction,
+	monsterBonusAction,
+	monsterReaction,
+	monsterLegendaryAction,
+}
 
 // searchText is a statblock's plain text for search.
 func (d MonsterData) searchText() string {

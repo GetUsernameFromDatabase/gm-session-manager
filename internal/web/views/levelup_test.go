@@ -28,8 +28,16 @@ func TestOptionText(t *testing.T) {
 // render an at for it.
 func TestDrawsField(t *testing.T) {
 	spells := []Option{{Slug: "light", Name: "Light"}}
-	groups := []ChoiceGroup{{Key: "trait_lineage", Options: []compendium.NameDesc{{Name: "Drow"}, {Name: "High Elf"}},
-		Sub: map[string][]ChoiceGroup{"Drow": {{Key: "trait_lineage_ability"}}, "Gone": {{Key: "orphan"}}}}}
+	groups := []ChoiceGroup{
+		{
+			Key:     "trait_lineage",
+			Options: []compendium.NameDesc{{Name: "Drow"}, {Name: "High Elf"}},
+			Sub: map[string][]ChoiceGroup{
+				"Drow": {{Key: "trait_lineage_ability"}},
+				"Gone": {{Key: "orphan"}},
+			},
+		},
+	}
 	feats := map[string][]ChoiceGroup{"grappler": {{Key: "feat_grappler_ability"}}}
 	asi, plain := &dnd5e.LevelUpPlan{ASI: true}, &dnd5e.LevelUpPlan{}
 	for _, tt := range []struct {
@@ -135,7 +143,8 @@ func TestSpellCounts(t *testing.T) {
 	}
 }
 
-// TestSpellNeedString: the spellbook count is shown only for a book that was short before this level.
+// TestSpellNeedString: the spellbook count is shown only for a book
+// that was short before this level.
 func TestSpellNeedString(t *testing.T) {
 	for _, tt := range []struct {
 		name string

@@ -235,12 +235,22 @@ func (s SheetView) pickBuilder(verb, op string) ([]builderVerb, builderVerb, bui
 
 // builderURL opens a builder form, with subject preselected when not empty.
 func builderURL(s SheetView, verb, op, subject string) string {
-	return fmt.Sprintf("%s?verb=%s&op=%s&subject=%s", route.Path(route.CharacterBuilder, s.ID), verb, op, url.QueryEscape(subject))
+	return fmt.Sprintf(
+		"%s?verb=%s&op=%s&subject=%s",
+		route.Path(route.CharacterBuilder, s.ID),
+		verb,
+		op,
+		url.QueryEscape(subject),
+	)
 }
 
 // builderLoad makes an element load a builder form into the dialog.
 func builderLoad(s SheetView, verb, op, subject string) templ.Attributes {
-	return templ.Attributes{attrHxGet: builderURL(s, verb, op, subject), attrHxTarget: builderTarget, attrHxSwap: swapInner}
+	return templ.Attributes{
+		attrHxGet:    builderURL(s, verb, op, subject),
+		attrHxTarget: builderTarget,
+		attrHxSwap:   swapInner,
+	}
 }
 
 // BuilderExtra is what a builder form takes from the compendium: a weapon
@@ -284,7 +294,8 @@ const (
 // forms of cur's tab.
 func (v builderVerb) chips(cur builderOp) []builderOp {
 	return slices.DeleteFunc(slices.Clone(v.Ops), func(o builderOp) bool {
-		return slices.Contains([]string{modEdit, focusSkill, focusSave}, o.Key) || (v.Key == verbProfs && opGroup(o.Key) != opGroup(cur.Key))
+		return slices.Contains([]string{modEdit, focusSkill, focusSave}, o.Key) ||
+			(v.Key == verbProfs && opGroup(o.Key) != opGroup(cur.Key))
 	})
 }
 
@@ -297,8 +308,21 @@ func opGroup(key string) string {
 
 // profTabGroups are the proficiency tabs by opGroup; each opens its add form.
 var profTabGroups = []struct{ Key, Label string }{
-	{"skill", "Skills"}, {"exp", "Expertise"}, {"save", "Saves"}, {"lang", "Languages"}, {"armor", labelArmor},
-	{"res", "Resistances"}, {"imm", "Immunities"}, {"vuln", "Vulnerabilities"}, {"other", labelOther},
+	{
+		"skill",
+		"Skills",
+	},
+	{"exp", "Expertise"},
+	{"save", "Saves"},
+	{"lang", "Languages"},
+	{"armor", labelArmor},
+	{
+		"res",
+		"Resistances",
+	},
+	{"imm", "Immunities"},
+	{"vuln", "Vulnerabilities"},
+	{"other", labelOther},
 }
 
 // armorTrained are the sheet's armor training kinds by label, as its remove
@@ -325,8 +349,15 @@ func (s SheetView) damageList(key string) (noun, label string, list []string) {
 
 // missingDamageItems are the damage types not yet in list, to add one.
 func missingDamageItems(list []string) []selectcomp.ItemData {
-	missing := slices.DeleteFunc(slices.Clone(dnd5e.DamageTypes), func(d string) bool { return slices.Contains(list, d) })
-	return selectItems(missing, func(d string) string { return d }, func(d string) string { return capitalized([]string{d})[0] })
+	missing := slices.DeleteFunc(
+		slices.Clone(dnd5e.DamageTypes),
+		func(d string) bool { return slices.Contains(list, d) },
+	)
+	return selectItems(
+		missing,
+		func(d string) string { return d },
+		func(d string) string { return capitalized([]string{d})[0] },
+	)
 }
 
 // The kinds of compendium look-up the builder runs (the picks route's "pick").
@@ -354,17 +385,33 @@ func (s SheetView) profFocus(key, subject string) (profFocus, bool) {
 		if slices.Contains(sh.SaveProfs, subject) {
 			level = dnd5e.ProfProficient
 		}
-		return profFocus{name + " save", level, "save." + subject, sh.SaveBonus(subject), []string{dnd5e.ProfNone, dnd5e.ProfProficient}}, ok
+		return profFocus{
+			name + " save",
+			level,
+			"save." + subject,
+			sh.SaveBonus(subject),
+			[]string{dnd5e.ProfNone, dnd5e.ProfProficient},
+		}, ok
 	}
 	i := slices.IndexFunc(dnd5e.Skills, func(sk dnd5e.Skill) bool { return sk.Key == subject })
 	if i < 0 {
 		return profFocus{}, false
 	}
 	sk := dnd5e.Skills[i]
-	return profFocus{sk.Name, sh.ProfLevel(sk.Key), "skill." + sk.Key, sh.SkillBonus(sk), []string{dnd5e.ProfNone, dnd5e.ProfProficient, dnd5e.ProfExpertise}}, true
+	return profFocus{
+		sk.Name,
+		sh.ProfLevel(sk.Key),
+		"skill." + sk.Key,
+		sh.SkillBonus(sk),
+		[]string{dnd5e.ProfNone, dnd5e.ProfProficient, dnd5e.ProfExpertise},
+	}, true
 }
 
-var profLabels = map[string]string{dnd5e.ProfNone: "Not proficient", dnd5e.ProfProficient: "Proficient", dnd5e.ProfExpertise: "Expertise"}
+var profLabels = map[string]string{
+	dnd5e.ProfNone:       "Not proficient",
+	dnd5e.ProfProficient: "Proficient",
+	dnd5e.ProfExpertise:  "Expertise",
+}
 
 // removeVals are the fields of the button that removes what an edit form
 // shows, or nil when the subject does not exist yet.
@@ -405,7 +452,14 @@ func (s SheetView) modAt(subject string) (dnd5e.CustomMod, bool) {
 
 // stayOpen are forms (op key to verb) used several times in a row: after a
 // submit they reload with the sheet's new choices instead of closing the dialog.
-var stayOpen = map[string]string{opFeatureRemove: verbFeatures, opLangAdd: verbProfs, opArmorAdd: verbProfs, opResAdd: verbProfs, opImmAdd: verbProfs, opVulnAdd: verbProfs}
+var stayOpen = map[string]string{
+	opFeatureRemove: verbFeatures,
+	opLangAdd:       verbProfs,
+	opArmorAdd:      verbProfs,
+	opResAdd:        verbProfs,
+	opImmAdd:        verbProfs,
+	opVulnAdd:       verbProfs,
+}
 
 // The builder form fields (and hx-vals keys) holding the command prefix and
 // what it applies to.
@@ -440,7 +494,10 @@ func toJSON(v any) string {
 // featureToEdit is the feature the form starts from: the one on the sheet,
 // one picked in the look-up, or a new one; with its stat changes. A feature
 // with nothing automated yet gets suggestions read from its text.
-func (s SheetView) featureToEdit(subject string, x BuilderExtra) (dnd5e.Feature, []dnd5e.CustomMod, bool) {
+func (s SheetView) featureToEdit(
+	subject string,
+	x BuilderExtra,
+) (dnd5e.Feature, []dnd5e.CustomMod, bool) {
 	if f := s.feature(subject); f != nil {
 		var mods []dnd5e.CustomMod
 		for _, m := range s.C.Sheet.Modifiers {
@@ -448,7 +505,8 @@ func (s SheetView) featureToEdit(subject string, x BuilderExtra) (dnd5e.Feature,
 				mods = append(mods, m)
 			}
 		}
-		if f.Action == "" && !f.Uses.Limited() && f.Unarmored == "" && len(mods) == 0 && f.Description != "" {
+		if f.Action == "" && !f.Uses.Limited() && f.Unarmored == "" && len(mods) == 0 &&
+			f.Description != "" {
 			fe := *f
 			return fe, dnd5e.ParseEffects(f.Name, f.Description, nil, "").Apply(&fe), true
 		}
@@ -518,26 +576,60 @@ func weaponAbilities() []selectcomp.ItemData {
 	return items
 }
 
-var actionItems = []selectcomp.ItemData{{Value: " ", Label: "Nothing special"}, {Value: dnd5e.ActionMain, Label: "An action"}, {Value: dnd5e.ActionBonus, Label: "A bonus action"}, {Value: dnd5e.ActionReaction, Label: "A reaction"}, {Value: dnd5e.ActionMagic, Label: "A Magic action"}}
+var actionItems = []selectcomp.ItemData{
+	{Value: " ", Label: "Nothing special"},
+	{Value: dnd5e.ActionMain, Label: "An action"},
+	{Value: dnd5e.ActionBonus, Label: "A bonus action"},
+	{Value: dnd5e.ActionReaction, Label: "A reaction"},
+	{Value: dnd5e.ActionMagic, Label: "A Magic action"},
+}
 
-var sizeItems = selectItems(dnd5e.Sizes, func(s string) string { return s }, func(s string) string { return s })
+var sizeItems = selectItems(
+	dnd5e.Sizes,
+	func(s string) string { return s },
+	func(s string) string { return s },
+)
 
-var resetItems = []selectcomp.ItemData{{Value: dnd5e.ResetLong, Label: "A long rest"}, {Value: dnd5e.ResetShort, Label: "A short or long rest"}, {Value: dnd5e.ResetShortOne, Label: "One on a short rest, all on a long rest"}}
+var resetItems = []selectcomp.ItemData{
+	{Value: dnd5e.ResetLong, Label: "A long rest"},
+	{Value: dnd5e.ResetShort, Label: "A short or long rest"},
+	{Value: dnd5e.ResetShortOne, Label: "One on a short rest, all on a long rest"},
+}
 
-var whenItems = []selectcomp.ItemData{{Value: " ", Label: "Always"}, {Value: dnd5e.WhenNoHeavyArmor, Label: "Not in heavy armor"}, {Value: dnd5e.WhenUnarmored, Label: "Wearing no armor"}, {Value: dnd5e.WhenUnarmoredNoShield, Label: "No armor and no shield"}}
+var whenItems = []selectcomp.ItemData{
+	{Value: " ", Label: "Always"},
+	{Value: dnd5e.WhenNoHeavyArmor, Label: "Not in heavy armor"},
+	{Value: dnd5e.WhenUnarmored, Label: "Wearing no armor"},
+	{Value: dnd5e.WhenUnarmoredNoShield, Label: "No armor and no shield"},
+}
 
-var unarmoredItems = append([]selectcomp.ItemData{{Value: " ", Label: "Armor or base AC as usual"}},
-	selectItems(dnd5e.Abilities, func(a string) string { return a }, func(a string) string { return "10 + Dexterity + " + dnd5e.AbilityNames[a] })...)
+var unarmoredItems = append(
+	[]selectcomp.ItemData{{Value: " ", Label: "Armor or base AC as usual"}},
+	selectItems(
+		dnd5e.Abilities,
+		func(a string) string { return a },
+		func(a string) string { return "10 + Dexterity + " + dnd5e.AbilityNames[a] },
+	)...)
 
 // usesItems are the choices of how often a feature can be used; the class
 // table choice shows only for a feature that has one.
 func usesItems(u dnd5e.Uses) []selectcomp.ItemData {
-	items := []selectcomp.ItemData{{Value: usesUnlimited, Label: "Unlimited"}, {Value: usesNumber, Label: "A number"}, {Value: usesProf, Label: "Proficiency bonus"}}
+	items := []selectcomp.ItemData{
+		{Value: usesUnlimited, Label: "Unlimited"},
+		{Value: usesNumber, Label: "A number"},
+		{Value: usesProf, Label: "Proficiency bonus"},
+	}
 	for _, a := range dnd5e.Abilities {
-		items = append(items, selectcomp.ItemData{Value: a, Label: dnd5e.AbilityNames[a] + " modifier"})
+		items = append(
+			items,
+			selectcomp.ItemData{Value: a, Label: dnd5e.AbilityNames[a] + " modifier"},
+		)
 	}
 	if len(u.ByLevel) > 0 {
-		items = append(items, selectcomp.ItemData{Value: usesTable, Label: "By " + u.Class + " level (class table)"})
+		items = append(
+			items,
+			selectcomp.ItemData{Value: usesTable, Label: "By " + u.Class + " level (class table)"},
+		)
 	}
 	return items
 }
@@ -576,14 +668,23 @@ func (s SheetView) modTargetItems() []selectcomp.ItemData {
 
 // pickURL reloads the builder form filled in from a look-up pick.
 func pickURL(characterID int64, verb, op string, p BuilderPick) string {
-	return fmt.Sprintf("%s?verb=%s&op=%s&entry=%d&feature=%s", route.Path(route.CharacterBuilder, characterID), verb, op, p.EntryID, url.QueryEscape(p.Feature))
+	return fmt.Sprintf(
+		"%s?verb=%s&op=%s&entry=%d&feature=%s",
+		route.Path(route.CharacterBuilder, characterID),
+		verb,
+		op,
+		p.EntryID,
+		url.QueryEscape(p.Feature),
+	)
 }
 
 // closeAfter makes a builder button close the dialog once its request
 // succeeds, since the sheet behind it shows the result.
 func closeAfter(a templ.Attributes) templ.Attributes {
 	// templ blanks a spread event handler unless it is a ComponentScript.
-	a["hx-on::after-request"] = templ.JSUnsafeFuncCall("if (event.detail.successful) document.querySelector('#" + builderID + " [data-slot=dialog-close]')?.click()")
+	a["hx-on::after-request"] = templ.JSUnsafeFuncCall(
+		"if (event.detail.successful) document.querySelector('#" + builderID + " [data-slot=dialog-close]')?.click()",
+	)
 	return a
 }
 
@@ -597,7 +698,9 @@ func masteryCount(s SheetView) string {
 // attribute, so no data is spliced into the script.
 func reloadAfter(a templ.Attributes, url string) templ.Attributes {
 	a["data-reload"] = url
-	a["hx-on::after-request"] = templ.JSUnsafeFuncCall("if (event.detail.successful) htmx.ajax('GET', this.dataset.reload, {target: '#builder', swap: 'innerHTML'})")
+	a["hx-on::after-request"] = templ.JSUnsafeFuncCall(
+		"if (event.detail.successful) htmx.ajax('GET', this.dataset.reload, {target: '#builder', swap: 'innerHTML'})",
+	)
 	return a
 }
 
@@ -615,7 +718,9 @@ func (s SheetView) detail(key string) string {
 // builderSubjects lists what a form can pick (nil when it picks nothing,
 // empty when there is nothing to pick right now), with the most its number
 // may be and the number to start from for each pick.
-func (s SheetView) builderSubjects(key string) ([]selectcomp.ItemData, map[string]int, map[string]int) {
+func (s SheetView) builderSubjects(
+	key string,
+) ([]selectcomp.ItemData, map[string]int, map[string]int) {
 	sh := s.C.Sheet
 	items := []selectcomp.ItemData{}
 	maxes, values := map[string]int{}, map[string]int{}
@@ -645,7 +750,11 @@ func (s SheetView) builderSubjects(key string) ([]selectcomp.ItemData, map[strin
 		add(dnd5e.TrackCustom, "custom effect")
 	case opCondRemove:
 		for _, c := range s.Conditions {
-			if c.Slug != dnd5e.Exhaustion && !slices.ContainsFunc(items, func(it selectcomp.ItemData) bool { return it.Value == c.Slug }) {
+			if c.Slug != dnd5e.Exhaustion &&
+				!slices.ContainsFunc(
+					items,
+					func(it selectcomp.ItemData) bool { return it.Value == c.Slug },
+				) {
 				add(c.Slug, strings.TrimSpace(c.Slug+" "+c.Note))
 			}
 		}
@@ -672,7 +781,9 @@ func (s SheetView) builderSubjects(key string) ([]selectcomp.ItemData, map[strin
 	case opSkillRemove:
 		skills(func(sk dnd5e.Skill) bool { return has(sh.SkillProfs)(sk.Key) })
 	case opExpAdd:
-		skills(func(sk dnd5e.Skill) bool { return has(sh.SkillProfs)(sk.Key) && !has(sh.Expertise)(sk.Key) })
+		skills(
+			func(sk dnd5e.Skill) bool { return has(sh.SkillProfs)(sk.Key) && !has(sh.Expertise)(sk.Key) },
+		)
 	case opExpRemove:
 		skills(func(sk dnd5e.Skill) bool { return has(sh.Expertise)(sk.Key) })
 	case opSaveAdd:
@@ -692,13 +803,15 @@ func (s SheetView) builderSubjects(key string) ([]selectcomp.ItemData, map[strin
 	case opSlotUse, opSlotRestore, opSlotMax:
 		for i, sl := range sh.Slots {
 			lvl := fmt.Sprint(i + 1)
-			if key == opSlotMax || key == opSlotUse && sl.Used < sl.Max || key == opSlotRestore && sl.Used > 0 {
+			if key == opSlotMax || key == opSlotUse && sl.Used < sl.Max ||
+				key == opSlotRestore && sl.Used > 0 {
 				add(lvl, fmt.Sprintf("Level %s (%s)", lvl, slotLabel(sl)))
 			}
 			values[lvl] = sl.Max
 		}
 	case opPactUse, opPactRestore:
-		if key == opPactUse && sh.Pact.Used < sh.Pact.Max || key == opPactRestore && sh.Pact.Used > 0 {
+		if key == opPactUse && sh.Pact.Used < sh.Pact.Max ||
+			key == opPactRestore && sh.Pact.Used > 0 {
 			add("", "Pact slot ("+slotLabel(sh.Pact)+")")
 		}
 	case opItemEdit, opItemNote:
@@ -741,14 +854,25 @@ func coinList(c dnd5e.Coins) []coin {
 
 // modTargets lists every value a custom modifier can change.
 func (s SheetView) modTargets() []string {
-	out := []string{dnd5e.ModAC, dnd5e.ModSpeed, dnd5e.ModInit, dnd5e.ModPassive, dnd5e.ModAttack, dnd5e.ModDamage}
+	out := []string{
+		dnd5e.ModAC,
+		dnd5e.ModSpeed,
+		dnd5e.ModInit,
+		dnd5e.ModPassive,
+		dnd5e.ModAttack,
+		dnd5e.ModDamage,
+	}
 	for _, w := range s.C.Sheet.Weapons {
 		out = append(out, dnd5e.ModAttack+"."+w.Name, dnd5e.ModDamage+"."+w.Name)
 	}
 	// Stowed weapons' rows link here too.
 	for _, it := range s.C.Sheet.Inventory {
 		if it.Weapon != nil && !slices.Contains(out, dnd5e.ModAttack+"."+it.Weapon.Name) {
-			out = append(out, dnd5e.ModAttack+"."+it.Weapon.Name, dnd5e.ModDamage+"."+it.Weapon.Name)
+			out = append(
+				out,
+				dnd5e.ModAttack+"."+it.Weapon.Name,
+				dnd5e.ModDamage+"."+it.Weapon.Name,
+			)
 		}
 	}
 	out = append(out, dnd5e.Abilities...)

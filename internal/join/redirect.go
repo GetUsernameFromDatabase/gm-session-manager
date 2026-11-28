@@ -72,7 +72,10 @@ var RedirectHTTPS = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request
 	}
 	own, _ := os.Hostname()
 	if net.ParseIP(strings.Trim(host, "[]")) == nil && !strings.EqualFold(host, "localhost") &&
-		!strings.EqualFold(host, own) && !strings.EqualFold(host, own+".local") { // .local: mDNS on the LAN
+		!strings.EqualFold(
+			host,
+			own,
+		) && !strings.EqualFold(host, own+".local") { // .local: mDNS on the LAN
 		http.Error(w, "unknown host", http.StatusBadRequest)
 		return
 	}

@@ -30,7 +30,10 @@ var aideddSite = Site{
 	Imports: "2014 monsters, with a picture",
 	hosts:   []string{"www.aidedd.org", "aidedd.org"},
 	page: func(u *url.URL) string {
-		if vo := strings.ToLower(u.Query().Get("vo")); u.Path == "/dnd/monstres.php" && reSlug.MatchString(vo) {
+		if vo := strings.ToLower(
+			u.Query().Get("vo"),
+		); u.Path == "/dnd/monstres.php" &&
+			reSlug.MatchString(vo) {
 			return vo
 		}
 		return strings.TrimPrefix(u.Path, "/") + cutEmpty("?", u.RawQuery)
@@ -88,7 +91,10 @@ var (
 
 // aideddSections name the action sections, as action types.
 var aideddSections = map[string]string{
-	"actions": monsterAction, "bonus actions": monsterBonusAction, "reactions": monsterReaction, "legendary actions": monsterLegendaryAction,
+	"actions":           monsterAction,
+	"bonus actions":     monsterBonusAction,
+	"reactions":         monsterReaction,
+	"legendary actions": monsterLegendaryAction,
 }
 
 // ParseAidedd normalizes a monster page into an entry and its picture link.
@@ -129,7 +135,10 @@ func ParseAidedd(body []byte) (Entry, string, error) {
 		}
 	}
 	d.Initiative = abilityMod(d.Abilities[dnd5e.Dex])
-	img := find(doc, func(n *html.Node) bool { return n.Data == "img" && strings.Contains(attr(n, "src"), "/dnd/images/") })
+	img := find(
+		doc,
+		func(n *html.Node) bool { return n.Data == "img" && strings.Contains(attr(n, "src"), "/dnd/images/") },
+	)
 	image := ""
 	if img != nil {
 		if u, err := url.Parse(aideddBase); err == nil {
@@ -138,7 +147,13 @@ func ParseAidedd(body []byte) (Entry, string, error) {
 			}
 		}
 	}
-	return Entry{Kind: enum.KindMonster, Slug: Slugify(name), Name: name, Data: d, Text: d.searchText()}, image, nil
+	return Entry{
+		Kind: enum.KindMonster,
+		Slug: Slugify(name),
+		Name: name,
+		Data: d,
+		Text: d.searchText(),
+	}, image, nil
 }
 
 // Statblock labels the importers read and write (NameDesc.Name).
@@ -160,8 +175,19 @@ const (
 
 // aideddLabels are the statblock lines a monster has before its traits.
 var aideddLabels = []string{
-	LabelArmorClass, LabelHitPoints, LabelSpeed, LabelSavingThrows, LabelSkills, LabelDamageVulnerability, LabelDamageResistance,
-	LabelDamageImmunity, LabelConditionImmunity, LabelSenses, LabelLanguages, LabelChallenge, LabelProficiencyBonus,
+	LabelArmorClass,
+	LabelHitPoints,
+	LabelSpeed,
+	LabelSavingThrows,
+	LabelSkills,
+	LabelDamageVulnerability,
+	LabelDamageResistance,
+	LabelDamageImmunity,
+	LabelConditionImmunity,
+	LabelSenses,
+	LabelLanguages,
+	LabelChallenge,
+	LabelProficiencyBonus,
 }
 
 func statLabel(line string) (string, string) {
@@ -253,7 +279,11 @@ func textLines(n *html.Node) []string {
 		case n.Type == html.ElementNode && n.Data == "br":
 			b.WriteString("\n")
 		}
-		block := n.Type == html.ElementNode && slices.Contains([]string{"div", "p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr", "ul", "table"}, n.Data)
+		block := n.Type == html.ElementNode &&
+			slices.Contains(
+				[]string{"div", "p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr", "ul", "table"},
+				n.Data,
+			)
 		if block {
 			b.WriteString("\n")
 		}

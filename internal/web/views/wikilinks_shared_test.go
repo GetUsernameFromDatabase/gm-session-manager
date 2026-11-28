@@ -7,7 +7,9 @@ import (
 )
 
 // oldJSToken is fields.js's TOKEN before it shared the Go pattern.
-var oldJSToken = regexp.MustCompile(`\[\[(note|entity|image):(\d+)\|([^\]|]*)(?:\|(left|right|inline|break))?\]\]`)
+var oldJSToken = regexp.MustCompile(
+	`\[\[(note|entity|image):(\d+)\|([^\]|]*)(?:\|(left|right|inline|break))?\]\]`,
+)
 
 // TestWikiLinkPatternMatchesOldToken: the shared pattern reads every token the
 // old browser pattern did, the same way, and adds the compendium kind.
@@ -29,7 +31,11 @@ func TestWikiLinkPatternMatchesOldToken(t *testing.T) {
 		{name: "empty label", text: "[[note:5|]]"},
 		{name: "two", text: "[[note:1|a]] and [[entity:2|b|right]]"},
 		{name: "compendium", text: "[[compendium:spell/fireball|Fireball]]", compendium: true},
-		{name: "compendium float", text: "[[compendium:spell/fireball|Fireball|inline]]", compendium: true},
+		{
+			name:       "compendium float",
+			text:       "[[compendium:spell/fireball|Fireball|inline]]",
+			compendium: true,
+		},
 		{name: "bad id", text: "[[note:x|a]]", none: true},
 		{name: "no label", text: "[[note:1]]", none: true},
 		{name: "bad float", text: "[[note:1|a|up]]", none: true},
@@ -47,7 +53,8 @@ func TestWikiLinkPatternMatchesOldToken(t *testing.T) {
 				t.Fatalf("matched malformed %q: old %v shared %v", r.text, old, got)
 			}
 			if r.compendium {
-				if len(old) > 0 || len(got) != 1 || group(shared, got[0], "compendium") != "compendium" {
+				if len(old) > 0 || len(got) != 1 ||
+					group(shared, got[0], "compendium") != "compendium" {
 					t.Fatalf("compendium %q: old %v shared %v", r.text, old, got)
 				}
 				return

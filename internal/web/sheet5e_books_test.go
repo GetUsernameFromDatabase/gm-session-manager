@@ -10,7 +10,12 @@ import (
 
 func TestBooksUsed(t *testing.T) {
 	sources := []sqlc.CompendiumSource{
-		{SourceKey: "homebrew"}, {SourceKey: "xphb", Edition: "2024"}, {SourceKey: "tce", Edition: "2014"}, {SourceKey: "xge", Edition: "2014"},
+		{
+			SourceKey: "homebrew",
+		},
+		{SourceKey: "xphb", Edition: "2024"},
+		{SourceKey: "tce", Edition: "2014"},
+		{SourceKey: "xge", Edition: "2014"},
 	}
 	pins := []dnd5e.Pin{
 		{Source: "xphb", Kind: "class", Name: "Fighter"},
@@ -33,7 +38,9 @@ func TestBooksUsed(t *testing.T) {
 		{"xge", []string{"subclass Rune Knight"}, false, true},
 	} {
 		b := used[i]
-		if b.Key != want.key || !slices.Equal(b.Uses, want.uses) || b.NotAllowed != want.notAllowed || b.AtHome != want.home {
+		if b.Key != want.key || !slices.Equal(b.Uses, want.uses) ||
+			b.NotAllowed != want.notAllowed ||
+			b.AtHome != want.home {
 			t.Errorf("book %d: %+v, want %+v", i, b, want)
 		}
 	}
@@ -41,10 +48,20 @@ func TestBooksUsed(t *testing.T) {
 		t.Errorf("label %q", used[0].Label)
 	}
 	if !slices.Equal(campaign, []string{"xphb, 2024"}) {
-		t.Errorf("campaign books %v: homebrew, denied and home books stay out, priority order", campaign)
+		t.Errorf(
+			"campaign books %v: homebrew, denied and home books stay out, priority order",
+			campaign,
+		)
 	}
 	// A home book the campaign does not allow gets only the home warning.
-	if used, _ := booksUsed(pins, sources, []string{"xphb"}, []string{"xge"}, false); used[2].NotAllowed || !used[2].AtHome {
+	if used, _ := booksUsed(
+		pins,
+		sources,
+		[]string{"xphb"},
+		[]string{"xge"},
+		false,
+	); used[2].NotAllowed ||
+		!used[2].AtHome {
 		t.Errorf("home book %+v", used[2])
 	}
 	// No campaign allows everything.

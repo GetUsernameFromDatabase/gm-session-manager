@@ -10,7 +10,11 @@ import (
 func SkillKeys(names []string) []string {
 	var keys []string
 	for _, sk := range Skills {
-		if names == nil || slices.ContainsFunc(names, func(n string) bool { return Squash(n) == Squash(sk.Name) }) {
+		if names == nil ||
+			slices.ContainsFunc(
+				names,
+				func(n string) bool { return Squash(n) == Squash(sk.Name) },
+			) {
 			keys = append(keys, sk.Key)
 		}
 	}
@@ -19,7 +23,8 @@ func SkillKeys(names []string) []string {
 
 // AddResistance adds a damage type the sheet resists, once.
 func AddResistance(s *Sheet, damage string) {
-	if d := strings.ToLower(damage); slices.Contains(DamageTypes, d) && !slices.Contains(s.Resistances, d) {
+	d := strings.ToLower(damage)
+	if slices.Contains(DamageTypes, d) && !slices.Contains(s.Resistances, d) {
 		s.Resistances = append(s.Resistances, d)
 	}
 }
@@ -37,7 +42,8 @@ func AddFeat(s *Sheet, f Feature) {
 // no level (Feature.Level is a class level).
 func FreeCast(sp Spell, species string) Feature {
 	return Feature{
-		Name: sp.Name + " (free cast)", Source: species,
+		Name:        sp.Name + " (free cast)",
+		Source:      species,
 		Description: "Cast *" + sp.Name + "* once without a spell slot; you regain this when you finish a Long Rest.",
 		Uses:        Uses{Fixed: 1, Reset: "long"},
 	}
@@ -53,7 +59,10 @@ func SwapFeatSpell(s *Sheet, old, repl Spell) {
 	}
 	repl.Prepared, repl.Ability, repl.Feat = s.Spells[i].Prepared, s.Spells[i].Ability, s.Spells[i].Feat
 	s.Spells[i] = repl
-	if j := slices.IndexFunc(s.Features, func(f Feature) bool { return f.Name == FreeCast(old, "").Name }); j >= 0 {
+	if j := slices.IndexFunc(
+		s.Features,
+		func(f Feature) bool { return f.Name == FreeCast(old, "").Name },
+	); j >= 0 {
 		fc := FreeCast(repl, s.Features[j].Source)
 		s.Features[j].Name, s.Features[j].Description = fc.Name, fc.Description
 	}

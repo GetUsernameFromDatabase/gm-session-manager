@@ -63,20 +63,38 @@ func loopbackHostOnly(next http.Handler) http.Handler {
 	})
 }
 
-// parseFlags reads the command line; --port, --data and --no-browser only make sense for the player app.
+// parseFlags reads the command line;
+// --port, --data and --no-browser only make sense for the player app.
 func parseFlags(args []string) (player, noBrowser bool, port int, data string, err error) {
 	fs := flag.NewFlagSet("gm-session-manager", flag.ContinueOnError)
-	fs.BoolVar(&player, "player", false, "run the player app on this computer: 127.0.0.1 only, plain HTTP, no admin login, configured by flags only")
-	fs.BoolVar(&noBrowser, "no-browser", false, "do not open the player app in the browser (with --player)")
+	fs.BoolVar(
+		&player,
+		"player",
+		false,
+		"run the player app on this computer: 127.0.0.1 only, plain HTTP, no admin login, configured by flags only",
+	)
+	fs.BoolVar(
+		&noBrowser,
+		"no-browser",
+		false,
+		"do not open the player app in the browser (with --player)",
+	)
 	fs.IntVar(&port, "port", config.DefaultPlayerPort, "player app port (with --player)")
-	fs.StringVar(&data, "data", config.DefaultPlayerDataDir, "player app data folder (with --player)")
+	fs.StringVar(
+		&data,
+		"data",
+		config.DefaultPlayerDataDir,
+		"player app data folder (with --player)",
+	)
 	if err = fs.Parse(args); err != nil {
 		return false, false, 0, "", err
 	}
 	given := false
 	fs.Visit(func(f *flag.Flag) { given = given || f.Name != "player" })
 	if given && !player {
-		return false, false, 0, "", errors.New("--port, --data and --no-browser apply only with --player")
+		return false, false, 0, "", errors.New(
+			"--port, --data and --no-browser apply only with --player",
+		)
 	}
 	return player, noBrowser, port, data, nil
 }
@@ -127,7 +145,11 @@ func run() error {
 		if lanIPs, err = join.LANAddresses(); err != nil {
 			return err
 		}
-		cert, created, err := join.LoadOrCreateCert(filepath.Join(cfg.DataDir, tlsDir), lanIPs, time.Now())
+		cert, created, err := join.LoadOrCreateCert(
+			filepath.Join(cfg.DataDir, tlsDir),
+			lanIPs,
+			time.Now(),
+		)
 		if err != nil {
 			return fmt.Errorf("tls certificate: %w", err)
 		}
@@ -153,17 +175,33 @@ func run() error {
 		slog.Warn("removing unfinished 5etools downloads", "err", err)
 	}
 	// Each source is logged as it finishes, so a long import does not look stalled.
-	reports, err := compendium.ImportProgress(ctx, store, filepath.Join(cfg.DataDir, compendiumDir), func(done, total int, _ string) {
-		if done == 0 {
-			slog.Info("compendium importing", "sources", total)
-		}
-	}, func(r compendium.Report) {
-		if r.Err != nil {
-			slog.Warn("compendium import failed", "source", r.Source, "err", r.Err)
-		} else {
-			slog.Info("compendium", "source", r.Source, "unchanged", r.Unchanged, "entries", r.Entries, "removed", r.Removed)
-		}
-	})
+	reports, err := compendium.ImportProgress(
+		ctx,
+		store,
+		filepath.Join(cfg.DataDir, compendiumDir),
+		func(done, total int, _ string) {
+			if done == 0 {
+				slog.Info("compendium importing", "sources", total)
+			}
+		},
+		func(r compendium.Report) {
+			if r.Err != nil {
+				slog.Warn("compendium import failed", "source", r.Source, "err", r.Err)
+			} else {
+				slog.Info(
+					"compendium",
+					"source",
+					r.Source,
+					"unchanged",
+					r.Unchanged,
+					"entries",
+					r.Entries,
+					"removed",
+					r.Removed,
+				)
+			}
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -180,7 +218,17 @@ func run() error {
 				entries += r.Entries
 			}
 		}
-		slog.Info("compendium done", "changed", changed, "unchanged", unchanged, "failed", failed, "entries", entries)
+		slog.Info(
+			"compendium done",
+			"changed",
+			changed,
+			"unchanged",
+			unchanged,
+			"failed",
+			failed,
+			"entries",
+			entries,
+		)
 	}
 	if n, err := web.UpgradeSheets(ctx, store); err != nil {
 		slog.Warn("sheet upgrade failed", "err", err)
@@ -253,7 +301,15 @@ func run() error {
 
 		go keepAwake(ctx)
 		go func() {
-			slog.Info("listening", "url", fmt.Sprintf("https://localhost:%d", cfg.Port), "data_dir", cfg.DataDir, "version", version)
+			slog.Info(
+				"listening",
+				"url",
+				fmt.Sprintf("https://localhost:%d", cfg.Port),
+				"data_dir",
+				cfg.DataDir,
+				"version",
+				version,
+			)
 			errc <- srv.ServeTLS(tlsL, "", "")
 		}()
 	}

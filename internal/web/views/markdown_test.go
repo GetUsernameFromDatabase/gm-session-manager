@@ -11,8 +11,18 @@ func TestRenderMarkdown(t *testing.T) {
 		want     []string
 		not      []string
 	}{
-		{"table", "|Score|Modifier|\n|---|---|\n|1|−5|", []string{"<table>", "<th>Score</th>", "<td>−5</td>"}, nil},
-		{"bold callout", "> **Round Down**\n> Whenever", []string{"<blockquote>", "<strong>Round Down</strong><br", "Whenever"}, nil},
+		{
+			"table",
+			"|Score|Modifier|\n|---|---|\n|1|−5|",
+			[]string{"<table>", "<th>Score</th>", "<td>−5</td>"},
+			nil,
+		},
+		{
+			"bold callout",
+			"> **Round Down**\n> Whenever",
+			[]string{"<blockquote>", "<strong>Round Down</strong><br", "Whenever"},
+			nil,
+		},
 		{"raw html dropped", "<script>alert(1)</script>", nil, []string{"<script"}},
 		{"js link dropped", "[a](javascript:alert(1))", nil, []string{"javascript:"}},
 	}

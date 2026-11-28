@@ -12,7 +12,9 @@ import (
 // wikiPage wraps content the way dnd5e.wikidot.com lays out a page. The
 // fixtures copy its markup only; the text is placeholder.
 func wikiPage(title, content string) []byte {
-	return []byte(`<html><body><div id="page-title">` + title + `</div><div id="page-content">` + content + `</div></body></html>`)
+	return []byte(
+		`<html><body><div id="page-title">` + title + `</div><div id="page-content">` + content + `</div></body></html>`,
+	)
 }
 
 // TestParsePageURL: the link's host picks the site, and only the known
@@ -48,7 +50,8 @@ func TestParsePageURL(t *testing.T) {
 		{"https://5e.tools/bestiary/howler.html", "", "", "", nil},
 	} {
 		s, page, err := ParsePageURL(tt.url)
-		if (err == nil) != (tt.site != "") || s.Key != tt.site || page != tt.page || tt.err != nil && !errors.Is(err, tt.err) {
+		if (err == nil) != (tt.site != "") || s.Key != tt.site || page != tt.page ||
+			tt.err != nil && !errors.Is(err, tt.err) {
 			t.Errorf("%s: %q %q %v", tt.url, s.Key, page, err)
 		}
 		if err == nil {
@@ -60,11 +63,19 @@ func TestParsePageURL(t *testing.T) {
 }
 
 func TestParsePlainPage(t *testing.T) {
-	e, err := ParsePlainPage([]byte(`<html><head><title>Site</title></head><body><nav>x</nav><div><h1>Fireball</h1><p>A bright streak.</p><p>Each creature<br>takes damage.</p></div></body></html>`))
-	if err != nil || e.Name != "Fireball" || e.Kind != "" || e.Data.(TextData).Desc != "A bright streak.\n\nEach creature\ntakes damage." {
+	e, err := ParsePlainPage(
+		[]byte(
+			`<html><head><title>Site</title></head><body><nav>x</nav><div><h1>Fireball</h1><p>A bright streak.</p><p>Each creature<br>takes damage.</p></div></body></html>`,
+		),
+	)
+	if err != nil || e.Name != "Fireball" || e.Kind != "" ||
+		e.Data.(TextData).Desc != "A bright streak.\n\nEach creature\ntakes damage." {
 		t.Errorf("%+v %v", e, err)
 	}
-	if e, err := ParsePlainPage([]byte(`<html><head><title>Only a title</title></head><body><p>Text.</p></body></html>`)); err != nil || e.Name != "Only a title" {
+	if e, err := ParsePlainPage(
+		[]byte(`<html><head><title>Only a title</title></head><body><p>Text.</p></body></html>`),
+	); err != nil ||
+		e.Name != "Only a title" {
 		t.Errorf("%+v %v", e, err)
 	}
 	if _, err := ParsePlainPage([]byte(`<p>No name.</p>`)); err == nil {
@@ -73,7 +84,10 @@ func TestParsePlainPage(t *testing.T) {
 }
 
 func TestParseWikidotUnknownKind(t *testing.T) {
-	_, e, err := ParseWikidot("spell:fireball", wikiPage("Fireball", `<p>Source: Some Book</p><p>A bright streak.</p>`))
+	_, e, err := ParseWikidot(
+		"spell:fireball",
+		wikiPage("Fireball", `<p>Source: Some Book</p><p>A bright streak.</p>`),
+	)
 	if err != nil || e.Kind != "" || e.Data.(TextData).Desc != "A bright streak." {
 		t.Errorf("%+v %v", e, err)
 	}
@@ -100,11 +114,16 @@ func TestParseWikidotSpecies(t *testing.T) {
 		{Name: "Hippo Build", Desc: "You are strong."},
 		{Name: "Languages", Desc: "Common and one more.", Type: PartLanguages},
 	}
-	if e.Kind != enum.KindSpecies || e.Slug != "giff" || e.Name != "Giff" || d.Desc != "Flavor about the folk." || !reflect.DeepEqual(d.Parts, want) {
+	if e.Kind != enum.KindSpecies || e.Slug != "giff" || e.Name != "Giff" ||
+		d.Desc != "Flavor about the folk." ||
+		!reflect.DeepEqual(d.Parts, want) {
 		t.Errorf("%+v %+v", e, d)
 	}
 	roundTrip(t, e)
-	if src := pageSource(Page{Site: wikidotSite, ID: "lineage:giff", Book: book}); src.Key != "wikidot:lineage:giff" || src.Attribution != "Some Book via https://dnd5e.wikidot.com/lineage:giff" || src.Published != "2014-08-19" {
+	if src := pageSource(
+		Page{Site: wikidotSite, ID: "lineage:giff", Book: book},
+	); src.Key != "wikidot:lineage:giff" || src.Attribution != "Some Book via https://dnd5e.wikidot.com/lineage:giff" ||
+		src.Published != "2014-08-19" {
 		t.Errorf("%+v", src)
 	}
 }
@@ -117,11 +136,19 @@ func TestParseWikidotTitle(t *testing.T) {
 		`<html><body><div class="page-title page-header"><span>Mobile</span></div>` + content + `</body></html>`,
 		`<html><head><title>Mobile - DND 5th Edition</title></head><body>` + content + `</body></html>`,
 	} {
-		if _, e, err := ParseWikidot("feat:mobile", []byte(body)); err != nil || e.Name != "Mobile" {
+		if _, e, err := ParseWikidot(
+			"feat:mobile",
+			[]byte(body),
+		); err != nil ||
+			e.Name != "Mobile" {
 			t.Errorf("%q %v", e.Name, err)
 		}
 	}
-	if _, _, err := ParseWikidot("feat:mobile", []byte(`<html><title>Mobile</title></html>`)); err == nil || !strings.Contains(err.Error(), "#page-content") {
+	if _, _, err := ParseWikidot(
+		"feat:mobile",
+		[]byte(`<html><title>Mobile</title></html>`),
+	); err == nil ||
+		!strings.Contains(err.Error(), "#page-content") {
 		t.Errorf("want a missing content error, got %v", err)
 	}
 }
@@ -155,7 +182,8 @@ func TestParseWikidotFeatAndBackground(t *testing.T) {
 		{Name: "Equipment", Desc: "A staff"},
 		{Name: "Wanderer", Desc: "You remember maps."},
 	}
-	if d := e.Data.(TextData); d.Desc != "You grew up in the wilds." || !reflect.DeepEqual(d.Parts, want) {
+	if d := e.Data.(TextData); d.Desc != "You grew up in the wilds." ||
+		!reflect.DeepEqual(d.Parts, want) {
 		t.Errorf("%+v", d)
 	}
 	roundTrip(t, e)
@@ -174,10 +202,21 @@ func TestParseWikidotSubclass(t *testing.T) {
 	}
 	d := e.Data.(ClassData)
 	want := []ClassFeature{
-		{Name: "Hands of Healing", Desc: "At 3rd level, your touch can mend wounds.", Levels: []int{3}},
-		{Name: "Physician's Touch", Desc: "Starting at 6th level, you cure more.", Levels: []int{6}},
+		{
+			Name:   "Hands of Healing",
+			Desc:   "At 3rd level, your touch can mend wounds.",
+			Levels: []int{3},
+		},
+		{
+			Name:   "Physician's Touch",
+			Desc:   "Starting at 6th level, you cure more.",
+			Levels: []int{6},
+		},
 	}
-	if e.Kind != enum.KindSubclass || e.Name != "Way of Mercy" || e.Slug != "mercy" || d.SubclassOf != "monk" || d.Caster != "none" || !reflect.DeepEqual(d.Features, want) {
+	if e.Kind != enum.KindSubclass || e.Name != "Way of Mercy" || e.Slug != "mercy" ||
+		d.SubclassOf != "monk" ||
+		d.Caster != "none" ||
+		!reflect.DeepEqual(d.Features, want) {
 		t.Errorf("%+v %+v", e, d)
 	}
 	roundTrip(t, e)
@@ -194,8 +233,11 @@ func TestParseWikidotSubclassCaster(t *testing.T) {
 		{"spell list", `<tr><th>Cleric Level</th><th>Spells</th></tr><tr><td>1st</td><td>bless, cure wounds</td></tr>`, "none"},
 		{"no slots filled", `<tr><th>Level</th><th>1st</th></tr><tr><td>3rd</td><td>-</td></tr>`, "none"},
 	} {
-		_, e, err := ParseWikidot("fighter:eldritch-knight", wikiPage("Fighter: Eldritch Knight", `<p>Source: Some Book</p>
-<h3>Spellcasting</h3><p>At 3rd level, you cast spells.</p><table>`+tt.table+`</table>`))
+		_, e, err := ParseWikidot(
+			"fighter:eldritch-knight",
+			wikiPage("Fighter: Eldritch Knight", `<p>Source: Some Book</p>
+<h3>Spellcasting</h3><p>At 3rd level, you cast spells.</p><table>`+tt.table+`</table>`),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -213,7 +255,8 @@ func TestWikidotNestedList(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []NameDesc{{Name: "Option", Desc: "Choose one:"}}
-	if d := e.Data.(TextData); !reflect.DeepEqual(d.Parts, want) || d.Desc != "- Fire\n\n- Cold\n\n- Plain item" {
+	if d := e.Data.(TextData); !reflect.DeepEqual(d.Parts, want) ||
+		d.Desc != "- Fire\n\n- Cold\n\n- Plain item" {
 		t.Errorf("%+v", d)
 	}
 }
@@ -254,23 +297,36 @@ func TestParseWikidotClass(t *testing.T) {
 	if d.HitDie != 8 || d.Caster != "half" || !reflect.DeepEqual(d.Saves, []string{"con", "int"}) {
 		t.Errorf("%+v", d)
 	}
-	if got := CoreTraits(d.Desc); got["Skill Proficiencies"] != "Choose 2: Arcana, History, and Investigation" || got["Armor Training"] != "Light armor" {
+	got := CoreTraits(d.Desc)
+	if got["Skill Proficiencies"] != "Choose 2: Arcana, History, and Investigation" ||
+		got["Armor Training"] != "Light armor" {
 		t.Errorf("%v", got)
 	}
-	if !reflect.DeepEqual(d.Table, map[string]map[int]string{"Infusions Known": {2: "4", 3: "4", 17: "12"}, "Cantrips Known": {1: "2", 2: "2", 3: "2", 17: "4"}}) {
+	if !reflect.DeepEqual(
+		d.Table,
+		map[string]map[int]string{
+			"Infusions Known": {2: "4", 3: "4", 17: "12"},
+			"Cantrips Known":  {1: "2", 2: "2", 3: "2", 17: "4"},
+		},
+	) {
 		t.Errorf("%v", d.Table)
 	}
 	var names []string
 	for _, f := range d.Features {
 		names = append(names, f.Name)
 	}
-	if !reflect.DeepEqual(names, []string{"Magical Tinkering", "Spellcasting", "Infuse Item", "Artificer Specialist"}) {
+	if !reflect.DeepEqual(
+		names,
+		[]string{"Magical Tinkering", "Spellcasting", "Infuse Item", "Artificer Specialist"},
+	) {
 		t.Fatalf("%q", names)
 	}
-	if f := d.Features[1]; !reflect.DeepEqual(f.Levels, []int{1}) || !strings.Contains(f.Desc, "**Tools Required.** You need a tool.") {
+	if f := d.Features[1]; !reflect.DeepEqual(f.Levels, []int{1}) ||
+		!strings.Contains(f.Desc, "**Tools Required.** You need a tool.") {
 		t.Errorf("%+v", f)
 	}
-	if f := d.Features[3]; !f.Subclass || !reflect.DeepEqual(f.Levels, []int{3}) || d.Features[2].Subclass {
+	if f := d.Features[3]; !f.Subclass || !reflect.DeepEqual(f.Levels, []int{3}) ||
+		d.Features[2].Subclass {
 		t.Errorf("%+v", d.Features)
 	}
 	roundTrip(t, e)
@@ -278,8 +334,13 @@ func TestParseWikidotClass(t *testing.T) {
 
 func TestHomebrewTextRoundTrip(t *testing.T) {
 	in := HomebrewInput{
-		Kind: enum.KindClass, Name: "Tinkerer", HitDie: 10, Caster: "half", Saves: []string{"con", "int"},
-		Skills: "Choose 2: Arcana, History", Desc: "Makes things.",
+		Kind:     enum.KindClass,
+		Name:     "Tinkerer",
+		HitDie:   10,
+		Caster:   "half",
+		Saves:    []string{"con", "int"},
+		Skills:   "Choose 2: Arcana, History",
+		Desc:     "Makes things.",
 		Features: "Level 1: Tinkering\nYou tinker.\n\nLevel 3: Specialist (subclass)\nPick one.",
 		Table:    "Focus Points: -, 2, 3",
 	}
@@ -288,28 +349,52 @@ func TestHomebrewTextRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := e.Data.(ClassData)
-	if len(d.Features) != 2 || !d.Features[1].Subclass || !reflect.DeepEqual(d.Features[1].Levels, []int{3}) || d.Table["Focus Points"][3] != "3" {
+	if len(d.Features) != 2 || !d.Features[1].Subclass ||
+		!reflect.DeepEqual(d.Features[1].Levels, []int{3}) ||
+		d.Table["Focus Points"][3] != "3" {
 		t.Fatalf("%+v", d)
 	}
 	back := HomebrewInputFor(in.Kind, in.Name, "", &d)
-	if back.Features != in.Features || back.Skills != in.Skills || back.Desc != in.Desc || back.HitDie != 10 {
+	if back.Features != in.Features || back.Skills != in.Skills || back.Desc != in.Desc ||
+		back.HitDie != 10 {
 		t.Errorf("%+v", back)
 	}
 
-	sp := HomebrewInput{Kind: enum.KindSpecies, Name: "Giff", Speed: 30, Size: "Medium", Traits: "Hippo Build. You are strong.\n\n**Astral Spark.** Extra damage.\nMore lines."}
+	sp := HomebrewInput{
+		Kind:   enum.KindSpecies,
+		Name:   "Giff",
+		Speed:  30,
+		Size:   "Medium",
+		Traits: "Hippo Build. You are strong.\n\n**Astral Spark.** Extra damage.\nMore lines.",
+	}
 	e, err = sp.Entry()
 	if err != nil {
 		t.Fatal(err)
 	}
 	td := e.Data.(TextData)
 	want := []NameDesc{
-		{Name: "Size", Desc: "Medium", Type: PartSize}, {Name: "Speed", Desc: "30 feet", Type: PartSpeed},
-		{Name: "Hippo Build", Desc: "You are strong."}, {Name: "Astral Spark", Desc: "Extra damage.\nMore lines."},
+		{
+			Name: "Size",
+			Desc: "Medium",
+			Type: PartSize,
+		},
+		{Name: "Speed", Desc: "30 feet", Type: PartSpeed},
+		{
+			Name: "Hippo Build",
+			Desc: "You are strong.",
+		},
+		{Name: "Astral Spark", Desc: "Extra damage.\nMore lines."},
 	}
 	if !reflect.DeepEqual(td.Parts, want) {
 		t.Errorf("%+v", td.Parts)
 	}
-	if back := HomebrewInputFor(sp.Kind, sp.Name, "", &td); back.Speed != 30 || back.Size != "Medium" || back.Traits != "Hippo Build. You are strong.\n\nAstral Spark. Extra damage.\nMore lines." {
+	if back := HomebrewInputFor(
+		sp.Kind,
+		sp.Name,
+		"",
+		&td,
+	); back.Speed != 30 || back.Size != "Medium" ||
+		back.Traits != "Hippo Build. You are strong.\n\nAstral Spark. Extra damage.\nMore lines." {
 		t.Errorf("%+v", back)
 	}
 }

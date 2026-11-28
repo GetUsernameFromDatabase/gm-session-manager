@@ -179,14 +179,17 @@ func TestCloseSessionAndCharacter(t *testing.T) {
 // Decide, only by adding its character; denying works either way.
 func TestPendingNewCharacter(t *testing.T) {
 	h := New(fakeHandler{})
-	p, _ := h.AddPending(Pending{CampaignID: 1, Kind: PendingNewCharacter, Name: "Bryn", FileID: "f1"})
+	p, _ := h.AddPending(
+		Pending{CampaignID: 1, Kind: PendingNewCharacter, Name: "Bryn", FileID: "f1"},
+	)
 	if h.Decide(1, p.ID, true) {
 		t.Error("Decide approved a new-character request")
 	}
 	if h.ApproveNewCharacter(2, "f1", 9) || h.ApproveNewCharacter(1, "other", 9) {
 		t.Error("approved another campaign's or file's request")
 	}
-	if !h.FileRequestWaiting(1, "f1") || h.FileRequestWaiting(2, "f1") || h.FileRequestWaiting(1, "other") {
+	if !h.FileRequestWaiting(1, "f1") || h.FileRequestWaiting(2, "f1") ||
+		h.FileRequestWaiting(1, "other") {
 		t.Error("FileRequestWaiting does not find only the waiting request of the file")
 	}
 	if !h.ApproveNewCharacter(1, "f1", 9) {
@@ -211,7 +214,15 @@ func TestPendingNewCharacter(t *testing.T) {
 
 func TestPendingFlow(t *testing.T) {
 	h := New(fakeHandler{})
-	p, _ := h.AddPending(Pending{CampaignID: 1, CampaignName: "Camp", Kind: PendingClaim, CharacterID: 5, Name: "Alice"})
+	p, _ := h.AddPending(
+		Pending{
+			CampaignID:   1,
+			CampaignName: "Camp",
+			Kind:         PendingClaim,
+			CharacterID:  5,
+			Name:         "Alice",
+		},
+	)
 	visitor := NewClient(1, perm.Viewer{}, 0, "phone")
 	pp, ok := h.PendingBySecret(p.Secret)
 	if !ok {
@@ -255,7 +266,9 @@ func TestPendingFlow(t *testing.T) {
 
 func TestDisconnectDropsRequest(t *testing.T) {
 	h := New(fakeHandler{})
-	p, _ := h.AddPending(Pending{CampaignID: 1, CampaignName: "Camp", Kind: PendingCreate, Name: "Newbie"})
+	p, _ := h.AddPending(
+		Pending{CampaignID: 1, CampaignName: "Camp", Kind: PendingCreate, Name: "Newbie"},
+	)
 	visitor := NewClient(1, perm.Viewer{}, 0, "phone")
 	visitor.Pending, _ = h.PendingBySecret(p.Secret)
 	h.register(visitor)
@@ -293,14 +306,20 @@ func TestApprovedSurvivesDisconnect(t *testing.T) {
 func TestPendingCapPerAddr(t *testing.T) {
 	h := New(fakeHandler{})
 	for i := range MaxPendingPerAddr {
-		if _, ok := h.AddPending(Pending{CampaignID: 1, Kind: PendingCreate, Name: "N", Addr: "10.0.0.5"}); !ok {
+		if _, ok := h.AddPending(
+			Pending{CampaignID: 1, Kind: PendingCreate, Name: "N", Addr: "10.0.0.5"},
+		); !ok {
 			t.Fatalf("request %d refused", i)
 		}
 	}
-	if _, ok := h.AddPending(Pending{CampaignID: 1, Kind: PendingCreate, Name: "N", Addr: "10.0.0.5"}); ok {
+	if _, ok := h.AddPending(
+		Pending{CampaignID: 1, Kind: PendingCreate, Name: "N", Addr: "10.0.0.5"},
+	); ok {
 		t.Fatal("request over the per-address cap accepted")
 	}
-	if _, ok := h.AddPending(Pending{CampaignID: 1, Kind: PendingCreate, Name: "N", Addr: "10.0.0.6"}); !ok {
+	if _, ok := h.AddPending(
+		Pending{CampaignID: 1, Kind: PendingCreate, Name: "N", Addr: "10.0.0.6"},
+	); !ok {
 		t.Fatal("another address refused")
 	}
 }
@@ -313,7 +332,10 @@ func TestDeviceAnnouncements(t *testing.T) {
 	h.sync(gm, h.epoch, 0, true)
 	drain(gm)
 	listed := func() bool {
-		return slices.ContainsFunc(h.Connected(1), func(ci ClientInfo) bool { return ci.SessionID == 100 })
+		return slices.ContainsFunc(
+			h.Connected(1),
+			func(ci ClientInfo) bool { return ci.SessionID == 100 },
+		)
 	}
 
 	phone := NewClient(1, perm.Player(7), 100, "phone")
@@ -456,9 +478,12 @@ func TestSubCapsBlocks(t *testing.T) {
 	ch := &countingHandler{}
 	h := New(ch)
 	c := NewClient(1, perm.Viewer{}, 1, "")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.Serve(w, r, c) }))
+	srv := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.Serve(w, r, c) }),
+	)
 	t.Cleanup(srv.Close)
-	conn, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(srv.URL, "http"), nil) //nolint:bodyclose // the library owns the upgraded body
+	//nolint:bodyclose // the library owns the upgraded body
+	conn, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

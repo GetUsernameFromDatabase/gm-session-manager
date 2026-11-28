@@ -23,11 +23,30 @@ func TestAttachmentRefs(t *testing.T) {
 		text string
 		want []int64
 	}{
-		{"attached picture", `{"type":"mention","attrs":{"id":"attachment:7","label":"map"}}`, []int64{7}},
-		{"older picture", `{"type":"image","attrs":{"src":"` + route.Path(route.Attachment, 8) + `","alt":"map"}}`, []int64{8}},
-		{"file link", `{"type":"link","attrs":{"href":"` + route.Path(route.Attachment, 9) + `"}}`, []int64{9}},
+		{
+			"attached picture",
+			`{"type":"mention","attrs":{"id":"attachment:7","label":"map"}}`,
+			[]int64{7},
+		},
+		{
+			"older picture",
+			`{"type":"image","attrs":{"src":"` + route.Path(
+				route.Attachment,
+				8,
+			) + `","alt":"map"}}`,
+			[]int64{8},
+		},
+		{
+			"file link",
+			`{"type":"link","attrs":{"href":"` + route.Path(route.Attachment, 9) + `"}}`,
+			[]int64{9},
+		},
 		{"several", `"attachment:1" "` + route.Path(route.Attachment, 2) + `"`, []int64{1, 2}},
-		{"other links", `{"id":"image:7"} {"id":"note:8"} "` + route.Path(route.ImageFile, 9) + `"`, nil},
+		{
+			"other links",
+			`{"id":"image:7"} {"id":"note:8"} "` + route.Path(route.ImageFile, 9) + `"`,
+			nil,
+		},
 		{"longer number is another file", `"attachment:70"`, []int64{70}},
 	}
 	for _, tt := range tests {
@@ -45,7 +64,13 @@ const pngHead = "\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR"
 // attachFile stores a picture on a block, as an upload would.
 func (e testEnv) attachFile(t *testing.T, blockID int64, name string) sqlc.Attachment {
 	t.Helper()
-	att, err := e.app.storeFile(t.Context(), e.campaignID, nullID(blockID), name, strings.NewReader(pngHead))
+	att, err := e.app.storeFile(
+		t.Context(),
+		e.campaignID,
+		nullID(blockID),
+		name,
+		strings.NewReader(pngHead),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,18 +81,24 @@ func (e testEnv) attachFile(t *testing.T, blockID int64, name string) sqlc.Attac
 // ageFile dates an attachment's upload past freshFile, so cleanups may take it.
 func (e testEnv) ageFile(t *testing.T, id int64) {
 	t.Helper()
-	if _, err := e.conn.ExecContext(t.Context(), `UPDATE attachments SET created_at = datetime('now', '-1 hour') WHERE id = ?`, id); err != nil {
+	if _, err := e.conn.ExecContext(
+		t.Context(),
+		`UPDATE attachments SET created_at = datetime('now', '-1 hour') WHERE id = ?`,
+		id,
+	); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func (e testEnv) playersBlock(t *testing.T) int64 {
 	t.Helper()
-	note, err := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Maps"})
+	note, err := e.q().
+		CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Maps"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := e.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players"})
+	b, err := e.q().
+		CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,20 +113,38 @@ func TestDeleteRemovesFiles(t *testing.T) {
 		player bool
 		route  func(e testEnv, note, block int64) string
 	}{
-		{"owner block", true, func(_ testEnv, _, block int64) string { return route.Path(route.BlockDelete, block) }},
-		{"owner note", true, func(_ testEnv, note, _ int64) string { return route.Path(route.NoteDelete, note) }},
-		{"character", false, func(e testEnv, _, _ int64) string { return route.Path(route.CharacterDelete, e.characterID) }},
-		{"campaign", false, func(e testEnv, _, _ int64) string { return route.Path(route.CampaignDelete, e.campaignID) }},
+		{
+			"owner block",
+			true,
+			func(_ testEnv, _, block int64) string { return route.Path(route.BlockDelete, block) },
+		},
+		{
+			"owner note",
+			true,
+			func(_ testEnv, note, _ int64) string { return route.Path(route.NoteDelete, note) },
+		},
+		{
+			"character",
+			false,
+			func(e testEnv, _, _ int64) string { return route.Path(route.CharacterDelete, e.characterID) },
+		},
+		{
+			"campaign",
+			false,
+			func(e testEnv, _, _ int64) string { return route.Path(route.CampaignDelete, e.campaignID) },
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEnv(t)
 			ctx := t.Context()
-			note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Mine", OwnerCharacterID: nullID(e.characterID)})
+			note, err := e.q().
+				CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Mine", OwnerCharacterID: nullID(e.characterID)})
 			if err != nil {
 				t.Fatal(err)
 			}
-			b, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisOwner})
+			b, err := e.q().
+				CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisOwner})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -113,7 +162,14 @@ func TestDeleteRemovesFiles(t *testing.T) {
 			if tt.player {
 				role = enum.RolePlayer
 			}
-			if w := e.do(t, http.MethodPost, tt.route(e, note.ID, b.ID), e.token(t, role), nil, true); w.Code >= http.StatusMultipleChoices {
+			if w := e.do(
+				t,
+				http.MethodPost,
+				tt.route(e, note.ID, b.ID),
+				e.token(t, role),
+				nil,
+				true,
+			); w.Code >= http.StatusMultipleChoices {
 				t.Fatalf("delete: %d %s", w.Code, w.Body)
 			}
 			if _, err := os.Stat(file); !os.IsNotExist(err) {
@@ -131,13 +187,23 @@ func TestFilesCleanup(t *testing.T) {
 	block := e.playersBlock(t)
 	kept, stray := e.attachFile(t, block, "kept.png"), e.attachFile(t, block, "stray.png")
 	// Just uploaded: the edit that uses it has not arrived yet.
-	justIn, err := e.app.storeFile(t.Context(), e.campaignID, nullID(block), "fresh.png", strings.NewReader(pngHead))
+	justIn, err := e.app.storeFile(
+		t.Context(),
+		e.campaignID,
+		nullID(block),
+		"fresh.png",
+		strings.NewReader(pngHead),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Kept is in an edit not yet in the block's snapshot.
-	step := fmt.Sprintf(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"mention","attrs":{"id":"attachment:%d"}}]}}`, kept.ID)
-	if err := e.q().InsertBlockStep(t.Context(), sqlc.InsertBlockStepParams{BlockID: block, Version: 1, ClientID: "c", StepJson: step}); err != nil {
+	step := fmt.Sprintf(
+		`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"mention","attrs":{"id":"attachment:%d"}}]}}`,
+		kept.ID,
+	)
+	if err := e.q().
+		InsertBlockStep(t.Context(), sqlc.InsertBlockStepParams{BlockID: block, Version: 1, ClientID: "c", StepJson: step}); err != nil {
 		t.Fatal(err)
 	}
 	gm, player := e.token(t, enum.RoleAdmin), e.token(t, enum.RolePlayer)
@@ -153,7 +219,8 @@ func TestFilesCleanup(t *testing.T) {
 		t.Errorf("uses of kept %v, of stray %v", got, uses[stray.ID])
 	}
 	page := e.do(t, http.MethodGet, route.Files, gm, nil, false).Body.String()
-	if !strings.Contains(page, "stray.png") || !strings.Contains(page, "kept.png") || !strings.Contains(page, ">Maps<") {
+	if !strings.Contains(page, "stray.png") || !strings.Contains(page, "kept.png") ||
+		!strings.Contains(page, ">Maps<") {
 		t.Errorf("Files page should list every file and the note using it")
 	}
 	if !strings.Contains(page, "Just uploaded") {
@@ -181,12 +248,19 @@ func TestFilesCleanup(t *testing.T) {
 func TestCampaignFiles(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	other, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
+	other, err := e.q().
+		CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	mine := e.attachFile(t, 0, "mine.png")
-	theirs, err := e.app.storeFile(ctx, other.ID, nullID(0), "theirs.png", strings.NewReader(pngHead))
+	theirs, err := e.app.storeFile(
+		ctx,
+		other.ID,
+		nullID(0),
+		"theirs.png",
+		strings.NewReader(pngHead),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,13 +272,28 @@ func TestCampaignFiles(t *testing.T) {
 	if !strings.Contains(page, "mine.png") || strings.Contains(page, "theirs.png") {
 		t.Error("a campaign's Files page should list its own files only")
 	}
-	if page := e.do(t, http.MethodGet, route.Files, gm, nil, false).Body.String(); !strings.Contains(page, "mine.png") || !strings.Contains(page, "theirs.png") {
+	if page := e.do(
+		t,
+		http.MethodGet,
+		route.Files,
+		gm,
+		nil,
+		false,
+	).Body.String(); !strings.Contains(page, "mine.png") ||
+		!strings.Contains(page, "theirs.png") {
 		t.Error("the all-campaigns files page should list every campaign's files")
 	}
 	if w := e.do(t, http.MethodGet, base, player, nil, false); w.Code == http.StatusOK {
 		t.Error("a player may not open a campaign's Files page")
 	}
-	if w := e.do(t, http.MethodGet, views.FilesBase(other.ID+100), gm, nil, false); w.Code != http.StatusNotFound {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		views.FilesBase(other.ID+100),
+		gm,
+		nil,
+		false,
+	); w.Code != http.StatusNotFound {
 		t.Errorf("unknown campaign: status %d, want 404", w.Code)
 	}
 
@@ -222,7 +311,14 @@ func TestAttachmentToImage(t *testing.T) {
 	e := newTestEnv(t)
 	att := e.attachFile(t, e.playersBlock(t), "Harbour map.png")
 	path := route.Path(route.AttachmentToImage, att.ID)
-	if w := e.do(t, http.MethodPost, path, e.token(t, enum.RolePlayer), nil, true); w.Code == http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		path,
+		e.token(t, enum.RolePlayer),
+		nil,
+		true,
+	); w.Code == http.StatusOK {
 		t.Fatal("a player may not add campaign images")
 	}
 	w := e.do(t, http.MethodPost, path, e.token(t, enum.RoleAdmin), nil, true)
@@ -237,7 +333,8 @@ func TestAttachmentToImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	img, err := e.q().GetImage(t.Context(), got.ID)
-	if err != nil || img.Name != "Harbour map" || got.Name != img.Name || img.CampaignID != e.campaignID {
+	if err != nil || img.Name != "Harbour map" || got.Name != img.Name ||
+		img.CampaignID != e.campaignID {
 		t.Fatalf("image %+v (%v), reply %+v", img, err, got)
 	}
 	// The image has its own copy: other notes may still show the attachment.
@@ -248,7 +345,14 @@ func TestAttachmentToImage(t *testing.T) {
 		t.Error("the note's attachment is gone")
 	}
 	// Players of the block see the new image before the editor's next snapshot links it.
-	if w := e.do(t, http.MethodGet, route.Path(route.ImageFile, img.ID), e.token(t, enum.RolePlayer), nil, false); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.ImageFile, img.ID),
+		e.token(t, enum.RolePlayer),
+		nil,
+		false,
+	); w.Code != http.StatusOK {
 		t.Errorf("player reading the converted image: %d", w.Code)
 	}
 }
@@ -258,7 +362,15 @@ func TestAttachmentToImage(t *testing.T) {
 func TestUploadAttachmentURL(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
-	w := e.doFile(t, route.Path(route.BlockAttachments, e.playersBlock(t)), gm, nil, "file", "map.png", pngHead)
+	w := e.doFile(
+		t,
+		route.Path(route.BlockAttachments, e.playersBlock(t)),
+		gm,
+		nil,
+		"file",
+		"map.png",
+		pngHead,
+	)
 	if w.Code != http.StatusOK {
 		t.Fatalf("upload: %d %s", w.Code, w.Body)
 	}
@@ -287,7 +399,14 @@ func TestAttachmentFileMissing(t *testing.T) {
 	if err := os.Remove(filepath.Join(e.app.attachmentsDir(), att.Path)); err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodGet, route.Path(route.Attachment, att.ID), gm, nil, false); w.Code != http.StatusNotFound {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.Attachment, att.ID),
+		gm,
+		nil,
+		false,
+	); w.Code != http.StatusNotFound {
 		t.Errorf("GET a missing file: %d, want 404", w.Code)
 	}
 }
@@ -299,7 +418,8 @@ func TestAttachmentAccess(t *testing.T) {
 	ctx := t.Context()
 	player := func(campaignID int64, name string) string {
 		t.Helper()
-		ch, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: campaignID, Name: name, System: "dnd5e", SheetJson: "{}"})
+		ch, err := e.q().
+			CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: campaignID, Name: name, System: "dnd5e", SheetJson: "{}"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -309,7 +429,8 @@ func TestAttachmentAccess(t *testing.T) {
 		}
 		return tok
 	}
-	other, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
+	other, err := e.q().
+		CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +440,8 @@ func TestAttachmentAccess(t *testing.T) {
 	}
 	block := func(owner int64, vis enum.Visibility) int64 {
 		t.Helper()
-		note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: string(vis), OwnerCharacterID: nullID(owner)})
+		note, err := e.q().
+			CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: string(vis), OwnerCharacterID: nullID(owner)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -330,7 +452,8 @@ func TestAttachmentAccess(t *testing.T) {
 		return b.ID
 	}
 	listed := block(0, "listed")
-	if err := e.q().AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: listed, CharacterID: e.characterID}); err != nil {
+	if err := e.q().
+		AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: listed, CharacterID: e.characterID}); err != nil {
 		t.Fatal(err)
 	}
 	gone := block(0, "players")
@@ -350,8 +473,16 @@ func TestAttachmentAccess(t *testing.T) {
 	}{
 		{"gm block", e.attachFile(t, block(0, "gm"), "a.png"), []string{"gm"}},
 		{"listed for alice", e.attachFile(t, listed, "b.png"), []string{"gm", "alice"}},
-		{"players block", e.attachFile(t, block(0, "players"), "c.png"), []string{"gm", "alice", "bob"}},
-		{"alice's own block", e.attachFile(t, block(e.characterID, "owner"), "d.png"), []string{"alice"}},
+		{
+			"players block",
+			e.attachFile(t, block(0, "players"), "c.png"),
+			[]string{"gm", "alice", "bob"},
+		},
+		{
+			"alice's own block",
+			e.attachFile(t, block(e.characterID, "owner"), "d.png"),
+			[]string{"alice"},
+		},
 		{"block deleted", orphan, []string{"gm"}},
 	}
 	for _, tt := range tests {
@@ -360,7 +491,14 @@ func TestAttachmentAccess(t *testing.T) {
 			if slices.Contains(tt.readers, who) {
 				want = http.StatusOK
 			}
-			if w := e.do(t, http.MethodGet, route.Path(route.Attachment, tt.att.ID), tok, nil, false); w.Code != want {
+			if w := e.do(
+				t,
+				http.MethodGet,
+				route.Path(route.Attachment, tt.att.ID),
+				tok,
+				nil,
+				false,
+			); w.Code != want {
 				t.Errorf("%s, %s: %d, want %d", tt.name, who, w.Code, want)
 			}
 		}
@@ -383,18 +521,24 @@ func TestFileUsePrivacy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.vis), func(t *testing.T) {
-			note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Secret plans", OwnerCharacterID: nullID(tt.owner)})
+			note, err := e.q().
+				CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Secret plans", OwnerCharacterID: nullID(tt.owner)})
 			if err != nil {
 				t.Fatal(err)
 			}
-			b, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: tt.vis})
+			b, err := e.q().
+				CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: tt.vis})
 			if err != nil {
 				t.Fatal(err)
 			}
 			name := string(tt.vis) + "-plan.png"
 			att := e.attachFile(t, b.ID, name)
-			step := fmt.Sprintf(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"mention","attrs":{"id":"attachment:%d"}}]}}`, att.ID)
-			if err := e.q().InsertBlockStep(ctx, sqlc.InsertBlockStepParams{BlockID: b.ID, Version: 1, ClientID: "c", StepJson: step}); err != nil {
+			step := fmt.Sprintf(
+				`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"mention","attrs":{"id":"attachment:%d"}}]}}`,
+				att.ID,
+			)
+			if err := e.q().
+				InsertBlockStep(ctx, sqlc.InsertBlockStepParams{BlockID: b.ID, Version: 1, ClientID: "c", StepJson: step}); err != nil {
 				t.Fatal(err)
 			}
 			uses, err := e.app.attachmentUses(ctx)
@@ -408,7 +552,14 @@ func TestFileUsePrivacy(t *testing.T) {
 				t.Errorf("uses %v, want %v", got, tt.want)
 			}
 			// The file's own name stays off the page too.
-			page := e.do(t, http.MethodGet, route.Files, e.token(t, enum.RoleAdmin), nil, false).Body.String()
+			page := e.do(
+				t,
+				http.MethodGet,
+				route.Files,
+				e.token(t, enum.RoleAdmin),
+				nil,
+				false,
+			).Body.String()
 			if shown := strings.Contains(page, name); shown == tt.want.Private {
 				t.Errorf("file name shown %v, want %v", shown, !tt.want.Private)
 			}

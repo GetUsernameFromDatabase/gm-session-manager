@@ -21,9 +21,27 @@ func TestDiff(t *testing.T) {
 	}{
 		{"unchanged", State{"hp": "5", "#": "a"}, State{"hp": "5", "#": "a"}, nil, nil},
 		{"changed value", State{"hp": "5"}, State{"hp": "3"}, State{"hp": "3"}, nil},
-		{"new key", State{"hp": "5"}, State{"hp": "5", "temp": "+2 temp"}, State{"temp": "+2 temp"}, nil},
-		{"dropped keys sorted", State{"b": 1, "a": true, "c": 2}, State{"c": 2}, nil, []string{"a", "b"}},
-		{"bool flip", State{"cond.prone": false}, State{"cond.prone": true}, State{"cond.prone": true}, nil},
+		{
+			"new key",
+			State{"hp": "5"},
+			State{"hp": "5", "temp": "+2 temp"},
+			State{"temp": "+2 temp"},
+			nil,
+		},
+		{
+			"dropped keys sorted",
+			State{"b": 1, "a": true, "c": 2},
+			State{"c": 2},
+			nil,
+			[]string{"a", "b"},
+		},
+		{
+			"bool flip",
+			State{"cond.prone": false},
+			State{"cond.prone": true},
+			State{"cond.prone": true},
+			nil,
+		},
 		{"from nothing", nil, State{"x": 1}, State{"x": 1}, nil},
 	}
 	for _, tt := range tests {
@@ -65,7 +83,10 @@ func manyKeys(v int) State {
 func TestPatch(t *testing.T) {
 	ch := func(id int64) Topic { return Topic{Kind: TopicCharacter, ID: id} }
 	byID := func(view string, topics []Topic) bool {
-		return slices.ContainsFunc(topics, func(t Topic) bool { return fmt.Sprintf("character:%d", t.ID) == view })
+		return slices.ContainsFunc(
+			topics,
+			func(t Topic) bool { return fmt.Sprintf("character:%d", t.ID) == view },
+		)
 	}
 	type step struct {
 		states map[string]State
@@ -81,17 +102,37 @@ func TestPatch(t *testing.T) {
 			name:  "hello baselines quietly, then only changes are sent",
 			watch: []string{"character:1"},
 			steps: []step{
-				{map[string]State{"character:1": {"hp": "5", "#": "a"}}, message{hello: true}, []viewPatch{}},
-				{map[string]State{"character:1": {"hp": "3", "#": "a"}}, message{topics: []Topic{ch(1)}}, []viewPatch{{View: "character:1", Set: State{"hp": "3"}}}},
-				{map[string]State{"character:1": {"hp": "3", "#": "a"}}, message{topics: []Topic{ch(1)}}, nil},
+				{
+					map[string]State{"character:1": {"hp": "5", "#": "a"}},
+					message{hello: true},
+					[]viewPatch{},
+				},
+				{
+					map[string]State{"character:1": {"hp": "3", "#": "a"}},
+					message{topics: []Topic{ch(1)}},
+					[]viewPatch{{View: "character:1", Set: State{"hp": "3"}}},
+				},
+				{
+					map[string]State{"character:1": {"hp": "3", "#": "a"}},
+					message{topics: []Topic{ch(1)}},
+					nil,
+				},
 			},
 		},
 		{
 			name:  "a changed shape hash orders a refetch, not values",
 			watch: []string{"character:1"},
 			steps: []step{
-				{map[string]State{"character:1": {"hp": "5", "#": "a"}}, message{hello: true}, []viewPatch{}},
-				{map[string]State{"character:1": {"hp": "3", "#": "b"}}, message{topics: []Topic{ch(1)}}, []viewPatch{{View: "character:1", Refetch: true}}},
+				{
+					map[string]State{"character:1": {"hp": "5", "#": "a"}},
+					message{hello: true},
+					[]viewPatch{},
+				},
+				{
+					map[string]State{"character:1": {"hp": "3", "#": "b"}},
+					message{topics: []Topic{ch(1)}},
+					[]viewPatch{{View: "character:1", Refetch: true}},
+				},
 			},
 		},
 		{
@@ -99,14 +140,22 @@ func TestPatch(t *testing.T) {
 			watch: []string{"character:1"},
 			steps: []step{
 				{map[string]State{"character:1": manyKeys(0)}, message{hello: true}, []viewPatch{}},
-				{map[string]State{"character:1": manyKeys(1)}, message{topics: []Topic{ch(1)}}, []viewPatch{{View: "character:1", Refetch: true}}},
+				{
+					map[string]State{"character:1": manyKeys(1)},
+					message{topics: []Topic{ch(1)}},
+					[]viewPatch{{View: "character:1", Refetch: true}},
+				},
 			},
 		},
 		{
 			name:  "views missed during catch-up are refetched",
 			watch: []string{"character:1", "character:2"},
 			steps: []step{
-				{map[string]State{"character:1": {"#": "a"}, "character:2": {"#": "b"}}, message{hello: true, topics: []Topic{ch(2)}}, []viewPatch{{View: "character:2", Refetch: true}}},
+				{
+					map[string]State{"character:1": {"#": "a"}, "character:2": {"#": "b"}},
+					message{hello: true, topics: []Topic{ch(2)}},
+					[]viewPatch{{View: "character:2", Refetch: true}},
+				},
 			},
 		},
 		{
@@ -114,17 +163,33 @@ func TestPatch(t *testing.T) {
 			watch: []string{"character:1"},
 			steps: []step{
 				{map[string]State{"character:1": {"#": "a"}}, message{hello: true}, []viewPatch{}},
-				{map[string]State{"character:1": {"#": "z"}, "character:2": {"#": "q"}}, message{topics: []Topic{ch(2)}}, nil},
+				{
+					map[string]State{"character:1": {"#": "z"}, "character:2": {"#": "q"}},
+					message{topics: []Topic{ch(2)}},
+					nil,
+				},
 			},
 		},
 		{
 			name:  "a view becoming hidden or visible is refetched, never diffed",
 			watch: []string{"character:1"},
 			steps: []step{
-				{map[string]State{"character:1": {"secret": "x"}}, message{hello: true}, []viewPatch{}},
-				{map[string]State{}, message{topics: []Topic{ch(1)}}, []viewPatch{{View: "character:1", Refetch: true}}},
+				{
+					map[string]State{"character:1": {"secret": "x"}},
+					message{hello: true},
+					[]viewPatch{},
+				},
+				{
+					map[string]State{},
+					message{topics: []Topic{ch(1)}},
+					[]viewPatch{{View: "character:1", Refetch: true}},
+				},
 				{map[string]State{}, message{topics: []Topic{ch(1)}}, nil},
-				{map[string]State{"character:1": {"secret": "y"}}, message{topics: []Topic{ch(1)}}, []viewPatch{{View: "character:1", Refetch: true}}},
+				{
+					map[string]State{"character:1": {"secret": "y"}},
+					message{topics: []Topic{ch(1)}},
+					[]viewPatch{{View: "character:1", Refetch: true}},
+				},
 			},
 		},
 	}
@@ -211,7 +276,9 @@ func TestFailedViewRefetches(t *testing.T) {
 	sh.states = map[string]State{"character:1": {"hp": "3"}, "character:2": {"hp": "7"}}
 	sh.fail = "character:2"
 	got := patchViews()
-	if len(got) != 2 || got[0].View != "character:1" || got[0].Set["hp"] != "3" || got[1].View != "character:2" || !got[1].Refetch {
+	if len(got) != 2 || got[0].View != "character:1" || got[0].Set["hp"] != "3" ||
+		got[1].View != "character:2" ||
+		!got[1].Refetch {
 		t.Errorf("views %+v, want character:1 hp 3 and a character:2 refetch", got)
 	}
 

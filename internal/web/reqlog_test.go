@@ -46,7 +46,8 @@ func TestRequestLog(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("got %d entries, want 2: %+v", len(got), got)
 	}
-	if got[0].Path != route.Path(route.Note, 9999) || got[0].Status != http.StatusNotFound || got[0].Error != "Not found." {
+	if got[0].Path != route.Path(route.Note, 9999) || got[0].Status != http.StatusNotFound ||
+		got[0].Error != "Not found." {
 		t.Errorf("newest = %+v, want the 404 with its message", got[0])
 	}
 	if got[1].Path != charPath || got[1].Status != http.StatusOK || got[1].Error != "" {
@@ -82,7 +83,8 @@ func TestRequestLogReusedID(t *testing.T) {
 	old := e.token(t, enum.RolePlayer)
 	oldSession := e.session(t, old)
 	e.do(t, http.MethodGet, route.Path(route.Note, 9999), old, nil, true)
-	if err := e.q().DeleteCharacterSessions(ctx, sql.NullInt64{Int64: e.characterID, Valid: true}); err != nil {
+	if err := e.q().
+		DeleteCharacterSessions(ctx, sql.NullInt64{Int64: e.characterID, Valid: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,9 +136,27 @@ func TestErrorText(t *testing.T) {
 			c.Set(serverErrKey, "UNIQUE constraint failed")
 			c.Set(failMsgKey, "Something went wrong")
 		}, "text/html", "<div>", "UNIQUE constraint failed"},
-		{"fail message", func(c *gin.Context) { c.Set(failMsgKey, "Not found.") }, "text/html", "<div>Not found.</div>", "Not found."},
-		{"JSON body", func(*gin.Context) {}, "application/json", `{"error":"stale"}`, `{"error":"stale"}`},
-		{"long body cut", func(*gin.Context) {}, "text/plain", strings.Repeat("x", 1000), strings.Repeat("x", maxErrBody)},
+		{
+			"fail message",
+			func(c *gin.Context) { c.Set(failMsgKey, "Not found.") },
+			"text/html",
+			"<div>Not found.</div>",
+			"Not found.",
+		},
+		{
+			"JSON body",
+			func(*gin.Context) {},
+			"application/json",
+			`{"error":"stale"}`,
+			`{"error":"stale"}`,
+		},
+		{
+			"long body cut",
+			func(*gin.Context) {},
+			"text/plain",
+			strings.Repeat("x", 1000),
+			strings.Repeat("x", maxErrBody),
+		},
 		{"HTML body dropped", func(*gin.Context) {}, "text/html", "<html>…</html>", ""},
 	}
 	for _, tt := range tests {
@@ -160,21 +180,51 @@ func TestRequestSent(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
 	cmd := route.Path(route.CharacterCmd, e.characterID)
-	e.do(t, http.MethodPost, cmd, player, url.Values{"hp_op": {"damage"}, "hp_amount": {"five"}}, true)
-	note, err := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Maps"})
+	e.do(
+		t,
+		http.MethodPost,
+		cmd,
+		player,
+		url.Values{"hp_op": {"damage"}, "hp_amount": {"five"}},
+		true,
+	)
+	note, err := e.q().
+		CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Maps"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// One the player may edit, so its handler reads the body.
-	block, err := e.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisPlayers, PlayersCanEdit: true})
+	block, err := e.q().
+		CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisPlayers, PlayersCanEdit: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Paths from the route constants, so a renamed route stays covered.
-	e.do(t, http.MethodPost, route.Path(route.BlockSteps, block.ID), player, url.Values{"text": {"my secret"}}, true)
+	e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.BlockSteps, block.ID),
+		player,
+		url.Values{"text": {"my secret"}},
+		true,
+	)
 	e.do(t, http.MethodGet, cmd+"?x=1", player, nil, true)
-	e.do(t, http.MethodPost, route.Path(route.CampaignNotes, e.campaignID), player, url.Values{"title": {"secret plot"}}, true)
-	e.do(t, http.MethodPost, route.Path(route.NoteRename, note.ID), player, url.Values{"title": {"secret plot"}}, true)
+	e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignNotes, e.campaignID),
+		player,
+		url.Values{"title": {"secret plot"}},
+		true,
+	)
+	e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.NoteRename, note.ID),
+		player,
+		url.Values{"title": {"secret plot"}},
+		true,
+	)
 
 	got := e.app.reqs.recent(e.device(t, player))
 	if len(got) != 5 {
@@ -195,7 +245,12 @@ func TestRequestSent(t *testing.T) {
 func TestSentText(t *testing.T) {
 	tests := []struct{ name, ctype, body, want string }{
 		{"form", "application/x-www-form-urlencoded", "b=2&a=1+1", "a=1 1 b=2"},
-		{"password", "application/x-www-form-urlencoded", "username=gm&password=hunter2", "password=… username=gm"},
+		{
+			"password",
+			"application/x-www-form-urlencoded",
+			"username=gm&password=hunter2",
+			"password=… username=gm",
+		},
 		{"JSON", "application/json", "{\n  \"steps\": [1]\n}", `{ "steps": [1] }`},
 		{"upload", "multipart/form-data", "--x\r\n...", "(file upload)"},
 		{"long", "text/plain", strings.Repeat("é", maxSent+5), strings.Repeat("é", maxSent) + "…"},
@@ -216,7 +271,8 @@ func TestAdminLoginNotKept(t *testing.T) {
 	e.post(t, route.AdminLogin, loopbackAddr, adminCreds, "")
 	for _, log := range e.app.reqs.devices {
 		for _, en := range log {
-			if strings.Contains(en.Sent, testAdminPass) || en.Sent != "" && en.Path == route.AdminLogin {
+			if strings.Contains(en.Sent, testAdminPass) ||
+				en.Sent != "" && en.Path == route.AdminLogin {
 				t.Errorf("login kept: %+v", en)
 			}
 		}

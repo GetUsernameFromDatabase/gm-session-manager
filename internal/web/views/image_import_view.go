@@ -153,7 +153,10 @@ func (v ImportView) columnItems(optional bool) []selectcomp.ItemData {
 
 // filterItems filter the rows by the categories they will go into.
 func (v ImportView) filterItems() []selectcomp.ItemData {
-	items := []selectcomp.ItemData{{Value: ImportFilterAll, Label: "All categories"}, {Value: ImportFilterNone, Label: "No category"}}
+	items := []selectcomp.ItemData{
+		{Value: ImportFilterAll, Label: "All categories"},
+		{Value: ImportFilterNone, Label: "No category"},
+	}
 	var seen []string
 	for _, c := range v.Cats {
 		if c.Target != "" && !slices.Contains(seen, c.Target) {
@@ -161,7 +164,13 @@ func (v ImportView) filterItems() []selectcomp.ItemData {
 		}
 	}
 	slices.Sort(seen)
-	return append(items, selectItems(seen, func(s string) string { return ImportFilterCatPrefix + s }, func(s string) string { return s })...)
+	return append(
+		items,
+		selectItems(
+			seen,
+			func(s string) string { return ImportFilterCatPrefix + s },
+			func(s string) string { return s },
+		)...)
 }
 
 // catGroups groups the category values by target, so values merged into

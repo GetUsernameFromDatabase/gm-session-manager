@@ -69,17 +69,30 @@ func (f *imageForm) mergeEditor(img sqlc.GetImageRow, newFile bool) error {
 	if !newLink {
 		f.URL = ""
 	}
-	if (newLink || newFile) && img.ID != 0 && f.WasSource != imageVersion(img.Url, img.AttachmentID) {
+	if (newLink || newFile) && img.ID != 0 &&
+		f.WasSource != imageVersion(img.Url, img.AttachmentID) {
 		conflicts = append(conflicts, "picture")
 	}
 	if len(conflicts) > 0 {
-		return userError{fmt.Errorf("another device changed the %s since this page opened: reload it to see the change, then edit again", strings.Join(conflicts, " and "))}
+		return userError{
+			fmt.Errorf(
+				"another device changed the %s since this page opened: reload it to see the change, then edit again",
+				strings.Join(conflicts, " and "),
+			),
+		}
 	}
 	return nil
 }
 
 func imageItem(r sqlc.GetImageRow) views.ImageItem {
-	return views.ImageItem{ID: r.ID, Name: r.Name, Category: r.Category, Description: r.Description, URL: r.Url.String, Version: imageVersion(r.Url, r.AttachmentID)}
+	return views.ImageItem{
+		ID:          r.ID,
+		Name:        r.Name,
+		Category:    r.Category,
+		Description: r.Description,
+		URL:         r.Url.String,
+		Version:     imageVersion(r.Url, r.AttachmentID),
+	}
 }
 
 // cacheForever is the Cache-Control of a versioned image file: a new link
@@ -106,7 +119,10 @@ func (a *App) imagesPage(c *gin.Context) error {
 	v := views.ImagesView{CampaignID: id, Query: strings.TrimSpace(c.Query("q"))}
 	v.CategoryID = formIntQuery(c, "category")
 	v.Imported, _ = strconv.Atoi(c.Query("imported"))
-	rows, err := a.Store.ListImages(ctx, sqlc.ListImagesParams{CampaignID: id, Q: v.Query, CategoryID: v.CategoryID})
+	rows, err := a.Store.ListImages(
+		ctx,
+		sqlc.ListImagesParams{CampaignID: id, Q: v.Query, CategoryID: v.CategoryID},
+	)
 	if err != nil {
 		return err
 	}
@@ -130,7 +146,11 @@ func (a *App) imagesPage(c *gin.Context) error {
 	if v.Categories, err = a.Store.ListImageCategories(ctx, id); err != nil {
 		return err
 	}
-	a.render(c, http.StatusOK, views.ImagesPage(a.layout(w, "Images", views.NavImages, &camp, false), v))
+	a.render(
+		c,
+		http.StatusOK,
+		views.ImagesPage(a.layout(w, "Images", views.NavImages, &camp, false), v),
+	)
 	return nil
 }
 
@@ -148,7 +168,11 @@ func (a *App) newImagePage(c *gin.Context) error {
 		return err
 	}
 	v := views.ImageView{CampaignID: id, IsGM: true, Categories: cats}
-	a.render(c, http.StatusOK, views.ImagePage(a.layout(w, "New image", views.NavImages, &camp, false), v))
+	a.render(
+		c,
+		http.StatusOK,
+		views.ImagePage(a.layout(w, "New image", views.NavImages, &camp, false), v),
+	)
 	return nil
 }
 
@@ -214,13 +238,23 @@ func (a *App) saveImage(c *gin.Context, img sqlc.GetImageRow) error {
 		name, desc := form.Name, form.Description
 		if img.ID == 0 {
 			created, err := q.CreateImage(ctx, sqlc.CreateImageParams{
-				CampaignID: img.CampaignID, Name: name, Url: url, AttachmentID: attachment, CategoryID: category, Description: desc,
+				CampaignID:   img.CampaignID,
+				Name:         name,
+				Url:          url,
+				AttachmentID: attachment,
+				CategoryID:   category,
+				Description:  desc,
 			})
 			img.ID = created.ID
 			return err
 		}
 		if err := q.UpdateImage(ctx, sqlc.UpdateImageParams{
-			ID: img.ID, Name: name, Url: url, AttachmentID: attachment, CategoryID: category, Description: desc,
+			ID:           img.ID,
+			Name:         name,
+			Url:          url,
+			AttachmentID: attachment,
+			CategoryID:   category,
+			Description:  desc,
 		}); err != nil {
 			return err
 		}
@@ -279,7 +313,11 @@ func (a *App) imageUpload(c *gin.Context, campaignID int64) (sql.NullInt64, bool
 		return sql.NullInt64{}, true
 	}
 	if err != nil {
-		a.fail(c, http.StatusUnprocessableEntity, "The file could not be read (files are limited to 20 MB).")
+		a.fail(
+			c,
+			http.StatusUnprocessableEntity,
+			"The file could not be read (files are limited to 20 MB).",
+		)
 		return sql.NullInt64{}, false
 	}
 	att, ok := a.storeImageFile(c, campaignID, fh)
@@ -289,7 +327,11 @@ func (a *App) imageUpload(c *gin.Context, campaignID int64) (sql.NullInt64, bool
 // imageSource is the link and file img gets from the editor (zero ID for a
 // new image). A new file (upload) replaces the link and the old file; a link
 // replaces the old file; neither keeps what img has.
-func imageSource(link string, upload sql.NullInt64, img sqlc.GetImageRow) (sql.NullString, sql.NullInt64, error) {
+func imageSource(
+	link string,
+	upload sql.NullInt64,
+	img sqlc.GetImageRow,
+) (sql.NullString, sql.NullInt64, error) {
 	url, attachment := nullString(strings.TrimSpace(link)), img.AttachmentID
 	switch {
 	case upload.Valid:
@@ -307,7 +349,11 @@ func imageSource(link string, upload sql.NullInt64, img sqlc.GetImageRow) (sql.N
 
 // storeImageFile saves an uploaded image with no block, so only the GM and
 // the image handlers can reach it. Anything but a picture is refused.
-func (a *App) storeImageFile(c *gin.Context, campaignID int64, fh *multipart.FileHeader) (sqlc.Attachment, bool) {
+func (a *App) storeImageFile(
+	c *gin.Context,
+	campaignID int64,
+	fh *multipart.FileHeader,
+) (sqlc.Attachment, bool) {
 	if fh.Size > maxAttachmentBytes {
 		a.fail(c, http.StatusRequestEntityTooLarge, "Files are limited to 20 MB.")
 		return sqlc.Attachment{}, false
@@ -364,15 +410,30 @@ func (a *App) attachmentToImage(c *gin.Context) error {
 		return err
 	}
 	name := cmp.Or(strings.TrimSuffix(att.Name, filepath.Ext(att.Name)), att.Name, "Picture")
-	img, err := a.Store.CreateImage(ctx, sqlc.CreateImageParams{CampaignID: att.CampaignID, Name: name, AttachmentID: nullID(file.ID)})
+	img, err := a.Store.CreateImage(
+		ctx,
+		sqlc.CreateImageParams{
+			CampaignID:   att.CampaignID,
+			Name:         name,
+			AttachmentID: nullID(file.ID),
+		},
+	)
 	if err != nil {
 		return err
 	}
-	// The block links the image now, not at its next snapshot, so its readers can load it as soon as the link shows.
+	// The block links the image now, not at its next snapshot, so its readers can load it as soon
+	// as the link shows.
 	if att.BlockID.Valid {
 		b, _, err := a.loadBlock(ctx, att.BlockID.Int64)
 		if err == nil {
-			err = a.Store.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: b.NoteID, SourceBlockID: b.ID, TargetImageID: nullID(img.ID)})
+			err = a.Store.AddBlockLink(
+				ctx,
+				sqlc.AddBlockLinkParams{
+					SourceNoteID:  b.NoteID,
+					SourceBlockID: b.ID,
+					TargetImageID: nullID(img.ID),
+				},
+			)
 		}
 		if err != nil {
 			return err
@@ -384,12 +445,20 @@ func (a *App) attachmentToImage(c *gin.Context) error {
 
 // ensureCategory returns the category named name exactly, creating it,
 // or no category for an empty name.
-func ensureCategory(ctx context.Context, q *sqlc.Queries, campaignID int64, name string) (sql.NullInt64, error) {
+func ensureCategory(
+	ctx context.Context,
+	q *sqlc.Queries,
+	campaignID int64,
+	name string,
+) (sql.NullInt64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return sql.NullInt64{}, nil
 	}
-	id, err := q.EnsureImageCategory(ctx, sqlc.EnsureImageCategoryParams{CampaignID: campaignID, Name: name})
+	id, err := q.EnsureImageCategory(
+		ctx,
+		sqlc.EnsureImageCategoryParams{CampaignID: campaignID, Name: name},
+	)
 	return nullID(id), err
 }
 
@@ -447,22 +516,36 @@ type imageGate struct {
 
 // imageGates loads the gates of a campaign's images (one image, or every
 // one for imageID 0) in three queries, however many blocks link them.
-func (a *App) imageGates(ctx context.Context, campaignID, imageID int64) (map[int64]imageGate, error) {
-	looks, err := a.Store.ListImageLookAccess(ctx, sqlc.ListImageLookAccessParams{CampaignID: campaignID, ImageID: imageID})
+func (a *App) imageGates(
+	ctx context.Context,
+	campaignID, imageID int64,
+) (map[int64]imageGate, error) {
+	looks, err := a.Store.ListImageLookAccess(
+		ctx,
+		sqlc.ListImageLookAccessParams{CampaignID: campaignID, ImageID: imageID},
+	)
 	if err != nil {
 		return nil, err
 	}
-	links, err := a.Store.ListImageLinkBlocks(ctx, sqlc.ListImageLinkBlocksParams{CampaignID: campaignID, ImageID: imageID})
+	links, err := a.Store.ListImageLinkBlocks(
+		ctx,
+		sqlc.ListImageLinkBlocksParams{CampaignID: campaignID, ImageID: imageID},
+	)
 	if err != nil {
 		return nil, err
 	}
-	audience, err := a.Store.ListImageLinkAudience(ctx, sqlc.ListImageLinkAudienceParams{CampaignID: campaignID, ImageID: imageID})
+	audience, err := a.Store.ListImageLinkAudience(
+		ctx,
+		sqlc.ListImageLinkAudienceParams{CampaignID: campaignID, ImageID: imageID},
+	)
 	if err != nil {
 		return nil, err
 	}
 	gates := make(map[int64]imageGate, len(looks))
 	for _, l := range looks {
-		gates[l.ID] = imageGate{look: perm.ImageLook{Revealed: l.Revealed, Owner: l.OwnerCharacterID}}
+		gates[l.ID] = imageGate{
+			look: perm.ImageLook{Revealed: l.Revealed, Owner: l.OwnerCharacterID},
+		}
 	}
 	members := map[int64][]int64{}
 	for _, m := range audience {
@@ -471,7 +554,14 @@ func (a *App) imageGates(ctx context.Context, campaignID, imageID int64) (map[in
 	for _, l := range links {
 		g := gates[l.ImageID]
 		// The read rule needs only these three; edit fields stay empty.
-		g.blocks = append(g.blocks, perm.Block{Visibility: l.Visibility, NoteOwnerID: l.OwnerCharacterID.Int64, Audience: members[l.BlockID]})
+		g.blocks = append(
+			g.blocks,
+			perm.Block{
+				Visibility:  l.Visibility,
+				NoteOwnerID: l.OwnerCharacterID.Int64,
+				Audience:    members[l.BlockID],
+			},
+		)
 		gates[l.ImageID] = g
 	}
 	return gates, nil
@@ -480,7 +570,10 @@ func (a *App) imageGates(ctx context.Context, campaignID, imageID int64) (map[in
 // seenBy lists the characters who can see an image through its gate, for
 // the GM: a player's own blocks are left out, as the GM never learns of them.
 func seenBy(g imageGate, chars []sqlc.Character) []sqlc.Character {
-	blocks := slices.DeleteFunc(slices.Clone(g.blocks), func(b perm.Block) bool { return b.Visibility == enum.VisOwner })
+	blocks := slices.DeleteFunc(
+		slices.Clone(g.blocks),
+		func(b perm.Block) bool { return b.Visibility == enum.VisOwner },
+	)
 	return slices.DeleteFunc(slices.Clone(chars), func(ch sqlc.Character) bool {
 		return !perm.CanReadImage(perm.Player(ch.ID), blocks, g.look)
 	})
@@ -531,8 +624,16 @@ func (a *App) imagePage(c *gin.Context) error {
 	v := views.ImageView{CampaignID: img.CampaignID, IsGM: w.isGM()}
 	if !v.IsGM {
 		// Players get the picture and its name, nothing else.
-		v.Image = views.ImageItem{ID: img.ID, Name: img.Name, Version: imageVersion(img.Url, img.AttachmentID)}
-		a.render(c, http.StatusOK, views.ImagePage(a.layout(w, img.Name, views.NavNotes, &camp, false), v))
+		v.Image = views.ImageItem{
+			ID:      img.ID,
+			Name:    img.Name,
+			Version: imageVersion(img.Url, img.AttachmentID),
+		}
+		a.render(
+			c,
+			http.StatusOK,
+			views.ImagePage(a.layout(w, img.Name, views.NavNotes, &camp, false), v),
+		)
 		return nil
 	}
 	v.Image = imageItem(img)
@@ -542,7 +643,13 @@ func (a *App) imagePage(c *gin.Context) error {
 	if v.Backlinks, err = a.backlinks(ctx, w, img.CampaignID, enum.LinkImage, img.ID); err != nil {
 		return err
 	}
-	if v.EntityLinks, err = a.entityMentions(ctx, w, img.CampaignID, enum.LinkImage, img.ID); err != nil {
+	if v.EntityLinks, err = a.entityMentions(
+		ctx,
+		w,
+		img.CampaignID,
+		enum.LinkImage,
+		img.ID,
+	); err != nil {
 		return err
 	}
 	if v.NPCs, err = a.Store.ListImageEntities(ctx, img.ID); err != nil {
@@ -553,7 +660,10 @@ func (a *App) imagePage(c *gin.Context) error {
 		return err
 	}
 	v.NPCChoices = slices.DeleteFunc(all, func(e sqlc.Entity) bool {
-		return slices.ContainsFunc(v.NPCs, func(n sqlc.ListImageEntitiesRow) bool { return n.ID == e.ID })
+		return slices.ContainsFunc(
+			v.NPCs,
+			func(n sqlc.ListImageEntitiesRow) bool { return n.ID == e.ID },
+		)
 	})
 	if v.Characters, err = a.Store.ListImageCharacters(ctx, img.ID); err != nil {
 		return err
@@ -570,7 +680,11 @@ func (a *App) imagePage(c *gin.Context) error {
 		v.SeenBy = append(v.SeenBy, ch.Name)
 	}
 	v.SeenByAll = len(seen) > 0 && len(seen) == len(v.CharacterChoices)
-	a.render(c, http.StatusOK, views.ImagePage(a.layout(w, img.Name, views.NavImages, &camp, false), v))
+	a.render(
+		c,
+		http.StatusOK,
+		views.ImagePage(a.layout(w, img.Name, views.NavImages, &camp, false), v),
+	)
 	return nil
 }
 

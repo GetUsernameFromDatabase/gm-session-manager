@@ -73,8 +73,16 @@ var modules = map[string]string{
 var npmImport = regexp.MustCompile(`["'](/npm/[^"'\s]+?/\+esm)["']`)
 
 func main() {
-	checkOnly := flag.Bool("check", false, "list pinned packages with newer releases instead of downloading")
-	update := flag.Bool("update", false, "accept downloads that differ from "+sumFile+" and rewrite it")
+	checkOnly := flag.Bool(
+		"check",
+		false,
+		"list pinned packages with newer releases instead of downloading",
+	)
+	update := flag.Bool(
+		"update",
+		false,
+		"accept downloads that differ from "+sumFile+" and rewrite it",
+	)
 	flag.Parse()
 	do := func(ctx context.Context) error { return run(ctx, *update) }
 	if *checkOnly {
@@ -124,7 +132,11 @@ func run(ctx context.Context, update bool) error {
 		files[localPath(src)] = []byte(rewritten)
 	}
 	for alias, src := range modules {
-		files[alias] = fmt.Appendf(nil, "export * from %q;\n", "./"+localPath(canonical(src, canon)))
+		files[alias] = fmt.Appendf(
+			nil,
+			"export * from %q;\n",
+			"./"+localPath(canonical(src, canon)),
+		)
 	}
 	if err := checkSums(files, update); err != nil {
 		return err
@@ -155,7 +167,11 @@ func checkSums(files map[string][]byte, update bool) error {
 		return fmt.Errorf("%w (create it with go run ./cmd/vendorjs -update)", err)
 	}
 	if changed := changedPaths(got, string(raw)); len(changed) > 0 {
-		return fmt.Errorf("downloads differ from %s (nothing written): %s\nIf that is expected (a version change, or jsDelivr rebuilt its +esm files), check it and run go run ./cmd/vendorjs -update", sumFile, strings.Join(changed, ", "))
+		return fmt.Errorf(
+			"downloads differ from %s (nothing written): %s\nIf that is expected (a version change, or jsDelivr rebuilt its +esm files), check it and run go run ./cmd/vendorjs -update",
+			sumFile,
+			strings.Join(changed, ", "),
+		)
 	}
 	return nil
 }
@@ -185,9 +201,11 @@ func changedPaths(got map[string]string, sumText string) []string {
 	return changed
 }
 
-// install replaces outDir with files at once: a failed write or swap leaves the old folder in place.
+// install replaces outDir with files at once:
+// a failed write or swap leaves the old folder in place.
 func install(files map[string][]byte) error {
-	// In the gitignored build/: a leftover from a killed run is never embedded, linted or watched; same volume for the rename.
+	// In the gitignored build/: a leftover from a killed run is never embedded, linted or watched;
+	// same volume for the rename.
 	if err := os.MkdirAll(scratchDir, 0o750); err != nil {
 		return err
 	}
@@ -253,7 +271,9 @@ func check(ctx context.Context) error {
 		}
 	}
 	if outdated > 0 {
-		fmt.Println("\nTo update: edit the versions in cmd/vendorjs/main.go (scripts, modules; the @tiptap packages move together),")
+		fmt.Println(
+			"\nTo update: edit the versions in cmd/vendorjs/main.go (scripts, modules; the @tiptap packages move together),",
+		)
 		fmt.Println("then run go run ./cmd/vendorjs -update and go test ./internal/web.")
 	}
 	return nil
@@ -261,7 +281,11 @@ func check(ctx context.Context) error {
 
 // crawl fetches the module graph from the entry points, mapping every
 // specifier through canon first. cache avoids refetching across rounds.
-func crawl(ctx context.Context, cache map[string][]byte, canon map[string]string) (map[string][]byte, error) {
+func crawl(
+	ctx context.Context,
+	cache map[string][]byte,
+	canon map[string]string,
+) (map[string][]byte, error) {
 	mods := map[string][]byte{}
 	queue := slices.Collect(maps.Values(modules))
 	for len(queue) > 0 {

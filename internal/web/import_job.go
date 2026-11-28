@@ -60,31 +60,54 @@ func (j *fiveToolsJob) update(f func(*views.FiveToolsJob)) {
 
 // runFiveTools downloads the books, then imports every folder (runImport).
 // A campaign (0 for none) gets the books' sources ticked.
-func (a *App) runFiveTools(ctx context.Context, dir string, books []compendium.Book, campaign int64) {
+func (a *App) runFiveTools(
+	ctx context.Context,
+	dir string,
+	books []compendium.Book,
+	campaign int64,
+) {
 	keys := make([]string, len(books))
 	for i, b := range books {
 		keys[i] = fiveToolsKey(b.ID)
 	}
-	a.runImport(ctx, dir, campaign, keys, func(progress func(done, total int, current string)) error {
-		return compendium.DownloadFiveTools(ctx, dir, books, func(done int, b compendium.Book) {
-			progress(done, len(books), b.Name)
-		})
-	})
+	a.runImport(
+		ctx,
+		dir,
+		campaign,
+		keys,
+		func(progress func(done, total int, current string)) error {
+			return compendium.DownloadFiveTools(ctx, dir, books, func(done int, b compendium.Book) {
+				progress(done, len(books), b.Name)
+			})
+		},
+	)
 }
 
 // runOpen5e downloads an SRD (doc), then imports every folder (runImport).
 // A campaign (0 for none) gets it ticked.
 func (a *App) runOpen5e(ctx context.Context, dir, doc string, campaign int64) {
-	a.runImport(ctx, dir, campaign, []string{doc}, func(progress func(done, total int, current string)) error {
-		return compendium.DownloadOpen5e(ctx, dir, doc, progress)
-	})
+	a.runImport(
+		ctx,
+		dir,
+		campaign,
+		[]string{doc},
+		func(progress func(done, total int, current string)) error {
+			return compendium.DownloadOpen5e(ctx, dir, doc, progress)
+		},
+	)
 }
 
 // runImport runs download, imports every folder and leaves the summary on
 // the job, telling the GM's pages at each step. A campaign compendium shows
 // only its ticked sources, so a starting set posted from one (campaign > 0)
 // ticks its keys there.
-func (a *App) runImport(ctx context.Context, dir string, campaign int64, keys []string, download func(progress func(done, total int, current string)) error) {
+func (a *App) runImport(
+	ctx context.Context,
+	dir string,
+	campaign int64,
+	keys []string,
+	download func(progress func(done, total int, current string)) error,
+) {
 	tell := func(f func(*views.FiveToolsJob)) {
 		a.fiveTools.update(f)
 		a.Hub.Publish(0, hub.Topic{Kind: hub.TopicImport})
@@ -122,9 +145,17 @@ func (a *App) runImport(ctx context.Context, dir string, campaign int64, keys []
 		tick()
 		return
 	}
-	reports, err := compendium.ImportProgress(ctx, a.Store, dir, func(done, total int, source string) {
-		tell(func(j *views.FiveToolsJob) { j.Importing, j.Done, j.Total, j.Current = true, done, total, source })
-	}, nil)
+	reports, err := compendium.ImportProgress(
+		ctx,
+		a.Store,
+		dir,
+		func(done, total int, source string) {
+			tell(
+				func(j *views.FiveToolsJob) { j.Importing, j.Done, j.Total, j.Current = true, done, total, source },
+			)
+		},
+		nil,
+	)
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
 	if err != nil {
 		slog.Error("compendium import", "err", err)
@@ -162,7 +193,10 @@ func (a *App) allowSources(ctx context.Context, campaign int64, keys []string) e
 	}
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		for _, k := range keys {
-			if _, err := q.AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: campaign, SourceKey: k}); err != nil {
+			if _, err := q.AllowCampaignSource(
+				ctx,
+				sqlc.AllowCampaignSourceParams{CampaignID: campaign, SourceKey: k},
+			); err != nil {
 				return err
 			}
 		}

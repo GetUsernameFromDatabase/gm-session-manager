@@ -19,25 +19,55 @@ func TestConditionExpiresOnTurn(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
-	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	enc, _ := e.q().
+		CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
 	for _, name := range []string{"Ana", "Bo"} {
-		ent, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: name, FieldsJson: "{}"})
-		if w := e.do(t, http.MethodPost, route.Path(route.EncounterCombatants, enc.ID), gm, url.Values{"kind": {"entity"}, "id": {fmt.Sprint(ent.ID)}}, true); w.Code != http.StatusOK {
+		ent, _ := e.q().
+			CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: name, FieldsJson: "{}"})
+		if w := e.do(
+			t,
+			http.MethodPost,
+			route.Path(route.EncounterCombatants, enc.ID),
+			gm,
+			url.Values{"kind": {"entity"}, "id": {fmt.Sprint(ent.ID)}},
+			true,
+		); w.Code != http.StatusOK {
 			t.Fatalf("add %s: %d %s", name, w.Code, w.Body)
 		}
 	}
 	rows, _ := e.q().ListCombatants(ctx, enc.ID)
 	for i, r := range rows { // Ana goes first
-		e.do(t, http.MethodPost, route.Path(route.CombatantAction, r.ID, "initiative"), gm, url.Values{"initiative": {fmt.Sprint(20 - i)}}, true)
+		e.do(
+			t,
+			http.MethodPost,
+			route.Path(route.CombatantAction, r.ID, "initiative"),
+			gm,
+			url.Values{"initiative": {fmt.Sprint(20 - i)}},
+			true,
+		)
 	}
 	bo := rows[1].ID
 	e.do(t, http.MethodPost, route.Path(route.EncounterAction, enc.ID, "start"), gm, nil, true)
-	if w := e.do(t, http.MethodPost, route.Path(route.CombatantAction, bo, "condition"), gm, url.Values{"slug": {"prone"}, "rounds": {"1"}}, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CombatantAction, bo, "condition"),
+		gm,
+		url.Values{"slug": {"prone"}, "rounds": {"1"}},
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("condition: %d %s", w.Code, w.Body)
 	}
 	// Turns after start: Bo r1, Ana r2, Bo r2.
 	for i, want := range []bool{true, true, false} {
-		if w := e.do(t, http.MethodPost, route.Path(route.EncounterAction, enc.ID, "next"), gm, nil, true); w.Code != http.StatusOK {
+		if w := e.do(
+			t,
+			http.MethodPost,
+			route.Path(route.EncounterAction, enc.ID, "next"),
+			gm,
+			nil,
+			true,
+		); w.Code != http.StatusOK {
 			t.Fatalf("next: %d %s", w.Code, w.Body)
 		}
 		conds, _ := e.q().ListConditionsByEncounter(ctx, enc.ID)
@@ -67,12 +97,22 @@ func TestEncounterTransitions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.from)+" "+tt.action, func(t *testing.T) {
-			enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
-			ana, _ := e.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, Name: "Ana", Initiative: sql.NullInt64{Int64: 12, Valid: true}})
-			if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: tt.from, Round: 3, ActiveCombatantID: nullID(ana.ID)}); err != nil {
+			enc, _ := e.q().
+				CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+			ana, _ := e.q().
+				CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, Name: "Ana", Initiative: sql.NullInt64{Int64: 12, Valid: true}})
+			if err := e.q().
+				UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: tt.from, Round: 3, ActiveCombatantID: nullID(ana.ID)}); err != nil {
 				t.Fatal(err)
 			}
-			w := e.do(t, http.MethodPost, route.Path(route.EncounterAction, enc.ID, tt.action), gm, nil, true)
+			w := e.do(
+				t,
+				http.MethodPost,
+				route.Path(route.EncounterAction, enc.ID, tt.action),
+				gm,
+				nil,
+				true,
+			)
 			got, _ := e.q().GetEncounter(ctx, enc.ID)
 			switch {
 			case tt.want == "" && (w.Code == http.StatusOK || got.Status != tt.from || got.Round != 3):
@@ -89,9 +129,11 @@ func TestEncounterTransitions(t *testing.T) {
 func TestCombatantNamesFollowSource(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	enc, _ := e.q().
+		CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
 	ch, _ := e.q().GetCharacter(ctx, e.characterID)
-	ent, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Ana", FieldsJson: "{}"})
+	ent, _ := e.q().
+		CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Ana", FieldsJson: "{}"})
 	for _, p := range []sqlc.CreateCombatantParams{
 		{EncounterID: enc.ID, CharacterID: nullID(ch.ID), Name: ch.Name},
 		{EncounterID: enc.ID, EntityID: nullID(ent.ID), Name: ent.Name},
@@ -101,10 +143,12 @@ func TestCombatantNamesFollowSource(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := e.q().UpdateCharacter(ctx, sqlc.UpdateCharacterParams{Name: "Renamed PC", Hp: ch.Hp, MaxHp: ch.MaxHp, TempHp: ch.TempHp, SheetJson: ch.SheetJson, ID: ch.ID}); err != nil {
+	if err := e.q().
+		UpdateCharacter(ctx, sqlc.UpdateCharacterParams{Name: "Renamed PC", Hp: ch.Hp, MaxHp: ch.MaxHp, TempHp: ch.TempHp, SheetJson: ch.SheetJson, ID: ch.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.q().UpdateEntity(ctx, sqlc.UpdateEntityParams{Name: "Renamed NPC", FieldsJson: "{}", ID: ent.ID}); err != nil {
+	if err := e.q().
+		UpdateEntity(ctx, sqlc.UpdateEntityParams{Name: "Renamed NPC", FieldsJson: "{}", ID: ent.ID}); err != nil {
 		t.Fatal(err)
 	}
 	rows, _ := e.q().ListCombatants(ctx, enc.ID)
@@ -125,14 +169,26 @@ func TestMonsterPortrait(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	const pic = "https://example.com/goblin.png"
-	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "goblin", Name: "Goblin", SourceKey: "test", DataJson: "{}"}); err != nil {
+	if err := e.upsertEntry(
+		ctx,
+		sqlc.UpsertCompendiumEntryParams{
+			Kind:      "monster",
+			Slug:      "goblin",
+			Name:      "Goblin",
+			SourceKey: "test",
+			DataJson:  "{}",
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
-	m, _ := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin"})
-	if _, err := e.q().SetCompendiumImage(ctx, sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: pic, Valid: true}, ID: m.ID}); err != nil {
+	m, _ := e.q().
+		GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin"})
+	if _, err := e.q().
+		SetCompendiumImage(ctx, sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: pic, Valid: true}, ID: m.ID}); err != nil {
 		t.Fatal(err)
 	}
-	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	enc, _ := e.q().
+		CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
 	for _, p := range []sqlc.CreateCombatantParams{
 		{EncounterID: enc.ID, CharacterID: nullID(e.characterID), Name: "pc"},
 		{EncounterID: enc.ID, MonsterRef: nullID(m.ID), Name: "Goblin"},
@@ -141,12 +197,23 @@ func TestMonsterPortrait(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
+	if err := e.q().
+		UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
 		t.Fatal(err)
 	}
 	combat := route.Path(route.CampaignCombat, e.campaignID)
 	for _, role := range []enum.Role{enum.RoleAdmin, enum.RolePlayer} {
-		if body := e.do(t, http.MethodGet, combat, e.token(t, role), nil, false).Body.String(); !strings.Contains(body, pic) {
+		if body := e.do(
+			t,
+			http.MethodGet,
+			combat,
+			e.token(t, role),
+			nil,
+			false,
+		).Body.String(); !strings.Contains(
+			body,
+			pic,
+		) {
 			t.Errorf("%v: combat misses the monster picture", role)
 		}
 	}
@@ -155,12 +222,22 @@ func TestMonsterPortrait(t *testing.T) {
 // activeFight starts an encounter of n combatants with distinct initiative
 // and walks it to the turn of number turn (1-based). The test character is
 // combatant number pc (1-based), or none for 0.
-func activeFight(t *testing.T, e testEnv, gm string, n, turn, pc int) (sqlc.Encounter, []sqlc.ListCombatantsRow) {
+func activeFight(
+	t *testing.T,
+	e testEnv,
+	gm string,
+	n, turn, pc int,
+) (sqlc.Encounter, []sqlc.ListCombatantsRow) {
 	t.Helper()
 	ctx := t.Context()
-	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	enc, _ := e.q().
+		CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
 	for i := range n {
-		p := sqlc.CreateCombatantParams{EncounterID: enc.ID, Name: fmt.Sprint("C", i+1), Initiative: sql.NullInt64{Int64: int64(100 - i), Valid: true}}
+		p := sqlc.CreateCombatantParams{
+			EncounterID: enc.ID,
+			Name:        fmt.Sprint("C", i+1),
+			Initiative:  sql.NullInt64{Int64: int64(100 - i), Valid: true},
+		}
 		if i+1 == pc {
 			p.CharacterID = nullID(e.characterID)
 		}
@@ -186,12 +263,22 @@ func TestDeleteActiveCombatant(t *testing.T) {
 	e.do(t, http.MethodPost, route.Path(route.CombatantAction, rows[3].ID, "delete"), gm, nil, true)
 	got, _ := e.q().GetEncounter(ctx, enc.ID)
 	if got.ActiveCombatantID.Int64 != rows[4].ID || got.Round != 1 {
-		t.Fatalf("after delete: active %d round %d, want %d round 1", got.ActiveCombatantID.Int64, got.Round, rows[4].ID)
+		t.Fatalf(
+			"after delete: active %d round %d, want %d round 1",
+			got.ActiveCombatantID.Int64,
+			got.Round,
+			rows[4].ID,
+		)
 	}
 	e.do(t, http.MethodPost, route.Path(route.EncounterAction, enc.ID, "next"), gm, nil, true)
 	got, _ = e.q().GetEncounter(ctx, enc.ID)
 	if got.ActiveCombatantID.Int64 != rows[5].ID || got.Round != 1 {
-		t.Errorf("next: active %d round %d, want %d round 1", got.ActiveCombatantID.Int64, got.Round, rows[5].ID)
+		t.Errorf(
+			"next: active %d round %d, want %d round 1",
+			got.ActiveCombatantID.Int64,
+			got.Round,
+			rows[5].ID,
+		)
 	}
 }
 
@@ -201,13 +288,19 @@ func TestDeleteActiveCombatantSkipsOut(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
 	enc, rows := activeFight(t, e, gm, 4, 2, 0)
-	if err := e.q().SetCombatantHP(t.Context(), sqlc.SetCombatantHPParams{ID: rows[2].ID, Hp: 0, MaxHp: 7}); err != nil {
+	if err := e.q().
+		SetCombatantHP(t.Context(), sqlc.SetCombatantHPParams{ID: rows[2].ID, Hp: 0, MaxHp: 7}); err != nil {
 		t.Fatal(err)
 	}
 	e.do(t, http.MethodPost, route.Path(route.CombatantAction, rows[1].ID, "delete"), gm, nil, true)
 	got, _ := e.q().GetEncounter(t.Context(), enc.ID)
 	if got.ActiveCombatantID.Int64 != rows[3].ID || got.Round != 1 {
-		t.Errorf("active %d round %d, want %d round 1", got.ActiveCombatantID.Int64, got.Round, rows[3].ID)
+		t.Errorf(
+			"active %d round %d, want %d round 1",
+			got.ActiveCombatantID.Int64,
+			got.Round,
+			rows[3].ID,
+		)
 	}
 }
 
@@ -220,7 +313,12 @@ func TestDeleteActiveCombatantLast(t *testing.T) {
 	e.do(t, http.MethodPost, route.Path(route.CombatantAction, rows[2].ID, "delete"), gm, nil, true)
 	got, _ := e.q().GetEncounter(t.Context(), enc.ID)
 	if got.ActiveCombatantID.Int64 != rows[0].ID || got.Round != 2 {
-		t.Errorf("active %d round %d, want %d round 2", got.ActiveCombatantID.Int64, got.Round, rows[0].ID)
+		t.Errorf(
+			"active %d round %d, want %d round 2",
+			got.ActiveCombatantID.Int64,
+			got.Round,
+			rows[0].ID,
+		)
 	}
 }
 
@@ -233,7 +331,12 @@ func TestDeleteCharacterActiveCombatant(t *testing.T) {
 	e.do(t, http.MethodPost, route.Path(route.CharacterRemove, e.characterID), gm, nil, true)
 	got, _ := e.q().GetEncounter(t.Context(), enc.ID)
 	if got.ActiveCombatantID.Int64 != rows[2].ID || got.Round != 1 {
-		t.Errorf("active %d round %d, want %d round 1", got.ActiveCombatantID.Int64, got.Round, rows[2].ID)
+		t.Errorf(
+			"active %d round %d, want %d round 1",
+			got.ActiveCombatantID.Int64,
+			got.Round,
+			rows[2].ID,
+		)
 	}
 }
 

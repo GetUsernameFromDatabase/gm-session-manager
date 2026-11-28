@@ -153,7 +153,9 @@ func parseProf(args []string) (Command, error) {
 	if len(args) < 3 {
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
-	op, kind, value := strings.ToLower(args[0]), strings.ToLower(args[1]), strings.Join(args[2:], " ")
+	op := strings.ToLower(args[0])
+	kind := strings.ToLower(args[1])
+	value := strings.Join(args[2:], " ")
 	if op == verbSet {
 		return parseProfSet(args)
 	}
@@ -183,7 +185,10 @@ func parseProf(args []string) (Command, error) {
 		pick = func(s *Sheet) *[]string { return &s.Languages }
 	case profKindArmor:
 		if value = ArmorKindNamed(value); value == "" {
-			return Command{}, fmt.Errorf("armor training is light, medium, heavy or shield, not %q", strings.Join(args[2:], " "))
+			return Command{}, fmt.Errorf(
+				"armor training is light, medium, heavy or shield, not %q",
+				strings.Join(args[2:], " "),
+			)
 		}
 		pick = func(s *Sheet) *[]string { return &s.ArmorTraining }
 	case profKindResistance, profKindImmunity, profKindVulnerability:
@@ -267,7 +272,8 @@ func parseSpell(args []string) (Command, error) {
 // spells as caps allows. Cantrips, lineage and feat spells are never capped.
 func (s Sheet) checkPrepareCap(sp Spell, caps map[string]int) error {
 	counted := func(sp Spell) bool { return sp.Level > 0 && sp.Feat == "" && sp.Ability == "" }
-	// shortcut: untagged spells on a multiclass sheet are not capped, tag them by class if that matters.
+	// shortcut: untagged spells on a multiclass sheet are not capped,
+	// tag them by class if that matters.
 	classOf := func(sp Spell) string {
 		if sp.Class == "" && len(s.Classes) == 1 {
 			return s.Classes[0].Slug
@@ -289,7 +295,10 @@ func (s Sheet) checkPrepareCap(sp Spell, caps map[string]int) error {
 		return nil
 	}
 	name := class
-	if i := slices.IndexFunc(s.Classes, func(cl ClassLevel) bool { return cl.Slug == class }); i >= 0 {
+	if i := slices.IndexFunc(
+		s.Classes,
+		func(cl ClassLevel) bool { return cl.Slug == class },
+	); i >= 0 {
 		name = s.Classes[i].Name
 	}
 	noun := "spells"
@@ -306,7 +315,10 @@ func parseFeature(args []string) (Command, error) {
 	}
 	op, name := strings.ToLower(args[0]), args[1]
 	find := func(c *Character) int {
-		return slices.IndexFunc(c.Sheet.Features, func(f Feature) bool { return strings.EqualFold(f.Name, name) })
+		return slices.IndexFunc(
+			c.Sheet.Features,
+			func(f Feature) bool { return strings.EqualFold(f.Name, name) },
+		)
 	}
 	switch op {
 	case verbAdd:
@@ -324,7 +336,10 @@ func parseFeature(args []string) (Command, error) {
 			if i := find(c); i >= 0 {
 				name := c.Sheet.Features[i].Name
 				c.Sheet.Features = slices.Delete(c.Sheet.Features, i, i+1)
-				c.Sheet.Modifiers = slices.DeleteFunc(c.Sheet.Modifiers, func(m CustomMod) bool { return m.Source == name })
+				c.Sheet.Modifiers = slices.DeleteFunc(
+					c.Sheet.Modifiers,
+					func(m CustomMod) bool { return m.Source == name },
+				)
 				c.Sheet.dropFeat(name)
 			}
 			return nil
@@ -352,7 +367,11 @@ func (s *Sheet) dropFeat(name string) {
 	before := len(s.Feats)
 	s.Feats = slices.DeleteFunc(s.Feats, func(n string) bool { return strings.EqualFold(n, name) })
 	base, _, _ := strings.Cut(name, " (")
-	if len(s.Feats) == before || slices.ContainsFunc(s.Feats, func(n string) bool { b, _, _ := strings.Cut(n, " ("); return sameSlug(b, base) }) {
+	if len(s.Feats) == before ||
+		slices.ContainsFunc(
+			s.Feats,
+			func(n string) bool { b, _, _ := strings.Cut(n, " ("); return sameSlug(b, base) },
+		) {
 		return
 	}
 	maps.DeleteFunc(s.FeatSources, func(k, _ string) bool { return sameSlug(base, k) })

@@ -23,7 +23,9 @@ func TestWithEffects(t *testing.T) {
 	stored.Modifiers[0] = CustomMod{Target: ModAC, Value: 1, Note: "Ring"}
 	base := stored.ArmorClass()
 
-	shown := stored.WithEffects(EffectMods("Shield of Faith", []CustomMod{{Target: ModAC, Value: 2}}))
+	shown := stored.WithEffects(
+		EffectMods("Shield of Faith", []CustomMod{{Target: ModAC, Value: 2}}),
+	)
 	if got := shown.ArmorClass(); got != base+2 {
 		t.Errorf("AC with the effect %d, want %d", got, base+2)
 	}
@@ -73,7 +75,10 @@ func TestValidateEffectMods(t *testing.T) {
 			}
 		})
 	}
-	if err := ValidateEffectMods(strings.Repeat("x", 201), []CustomMod{{Target: ModAC, Value: 1}}); err == nil {
+	if err := ValidateEffectMods(
+		strings.Repeat("x", 201),
+		[]CustomMod{{Target: ModAC, Value: 1}},
+	); err == nil {
 		t.Error("a name over 200 characters must be refused")
 	}
 }
@@ -86,7 +91,13 @@ func TestRestEndsEffects(t *testing.T) {
 		want []CondOp
 	}{
 		{"rest short", []CondOp{{Op: CondEndRest, Rest: ResetShort}}},
-		{"rest long", []CondOp{{Op: CondExhaustion, Slug: Exhaustion, Delta: -1}, {Op: CondEndRest, Rest: ResetLong}}},
+		{
+			"rest long",
+			[]CondOp{
+				{Op: CondExhaustion, Slug: Exhaustion, Delta: -1},
+				{Op: CondEndRest, Rest: ResetLong},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.line, func(t *testing.T) {

@@ -166,7 +166,12 @@ type bringBack struct {
 // loadBringBack reads the zip at path and checks it against the table: its
 // kind, server, character, open take-out and content. The review repeats it on
 // every request, and Accept inside its transaction.
-func (a *App) loadBringBack(ctx context.Context, q *sqlc.Queries, path string, characterID int64) (bringBack, error) {
+func (a *App) loadBringBack(
+	ctx context.Context,
+	q *sqlc.Queries,
+	path string,
+	characterID int64,
+) (bringBack, error) {
 	var bb bringBack
 	f, err := os.Open(path) //nolint:gosec // a random name inside our own folder
 	if err != nil {
@@ -195,7 +200,11 @@ func (a *App) loadBringBack(ctx context.Context, q *sqlc.Queries, path string, c
 	if bb.ch, err = q.GetCharacter(ctx, characterID); err != nil {
 		return bb, err
 	}
-	if bb.take, err = q.GetTakeHomeByToken(ctx, m.Token); errors.Is(err, sql.ErrNoRows) || err == nil && bb.take.CharacterID != characterID {
+	if bb.take, err = q.GetTakeHomeByToken(
+		ctx,
+		m.Token,
+	); errors.Is(err, sql.ErrNoRows) ||
+		err == nil && bb.take.CharacterID != characterID {
 		return bb, userf("This file's take-out is unknown here.")
 	} else if err != nil {
 		return bb, err
@@ -208,7 +217,11 @@ func (a *App) loadBringBack(ctx context.Context, q *sqlc.Queries, path string, c
 	}
 	switch bb.cf, err = checkFileContent(file); {
 	case errors.Is(err, errNewerSheet):
-		return bb, userf("This file comes from a newer player app (%s); this server is %s and needs updating.", m.AppVersion, a.Version)
+		return bb, userf(
+			"This file comes from a newer player app (%s); this server is %s and needs updating.",
+			m.AppVersion,
+			a.Version,
+		)
 	case err != nil:
 		return bb, err
 	}
@@ -225,7 +238,11 @@ func (a *App) bringBackDialog(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
-	a.render(c, http.StatusOK, views.BringBackBody(views.BringBackView{CharacterID: ch.ID, Name: ch.Name, ByGM: w.isGM()}))
+	a.render(
+		c,
+		http.StatusOK,
+		views.BringBackBody(views.BringBackView{CharacterID: ch.ID, Name: ch.Name, ByGM: w.isGM()}),
+	)
 	return nil
 }
 
@@ -257,8 +274,15 @@ func (a *App) bringBackUpload(c *gin.Context) error {
 		return err
 	}
 	f := homeFile{
-		kind: export.KindBringBack, campaignID: ch.CampaignID, campaignName: camp.Name, characterID: ch.ID,
-		characterName: ch.Name, byPlayer: !w.isGM(), savedAt: bb.file.Manifest.SavedAt, path: path, size: size,
+		kind:          export.KindBringBack,
+		campaignID:    ch.CampaignID,
+		campaignName:  camp.Name,
+		characterID:   ch.ID,
+		characterName: ch.Name,
+		byPlayer:      !w.isGM(),
+		savedAt:       bb.file.Manifest.SavedAt,
+		path:          path,
+		size:          size,
 	}
 	id, err := a.homeFiles.put(f)
 	if err != nil {
@@ -294,7 +318,8 @@ func (a *App) receiveHomeFile(c *gin.Context, what string) (string, int64, error
 		return "", 0, err
 	}
 	path := filepath.Join(dir, rand.Text()+".zip")
-	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // a random name inside our own folder
+	//nolint:gosec // a random name inside our own folder
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return "", 0, err
 	}
@@ -348,7 +373,12 @@ type homeReview struct {
 }
 
 // reviewHomeFile reviews a waiting file of either kind.
-func (a *App) reviewHomeFile(ctx context.Context, q *sqlc.Queries, f homeFile, form func(string) string) (homeReview, error) {
+func (a *App) reviewHomeFile(
+	ctx context.Context,
+	q *sqlc.Queries,
+	f homeFile,
+	form func(string) string,
+) (homeReview, error) {
 	if f.kind == export.KindNewCharacter {
 		return a.reviewNewCharacter(ctx, q, f, form)
 	}
@@ -356,7 +386,12 @@ func (a *App) reviewHomeFile(ctx context.Context, q *sqlc.Queries, f homeFile, f
 }
 
 // reviewBringBack re-reads the file and makes the plan for the picks form reads.
-func (a *App) reviewBringBack(ctx context.Context, q *sqlc.Queries, f homeFile, form func(string) string) (homeReview, error) {
+func (a *App) reviewBringBack(
+	ctx context.Context,
+	q *sqlc.Queries,
+	f homeFile,
+	form func(string) string,
+) (homeReview, error) {
 	var rv homeReview
 	var err error
 	if rv.bb, err = a.loadBringBack(ctx, q, f.path, f.characterID); err != nil {
@@ -374,7 +409,15 @@ func (a *App) reviewBringBack(ctx context.Context, q *sqlc.Queries, f homeFile, 
 	if rv.levelUps, err = q.ListLevelUps(ctx, rv.bb.ch.ID); err != nil {
 		return rv, err
 	}
-	if rv.x, err = planExtras(ctx, q, rv.bb.ch.CampaignID, rv.bb.ch.ID, rv.file, base, form); err != nil {
+	if rv.x, err = planExtras(
+		ctx,
+		q,
+		rv.bb.ch.CampaignID,
+		rv.bb.ch.ID,
+		rv.file,
+		base,
+		form,
+	); err != nil {
 		return rv, err
 	}
 	if err := applyRenames(rv.x.hb.Renames, &rv.cf, rv.file); err != nil {
@@ -382,10 +425,28 @@ func (a *App) reviewBringBack(ctx context.Context, q *sqlc.Queries, f homeFile, 
 	}
 	ch, cf := rv.bb.ch, rv.cf
 	in := bringBackIn{
-		Base:  charState{Name: cmp.Or(base.Character.Name, ch.Name), HP: base.Character.HP, MaxHP: base.Character.MaxHP, TempHP: base.Character.TempHP, Sheet: string(base.Character.Sheet)},
-		Table: charState{Name: ch.Name, HP: ch.Hp, MaxHP: ch.MaxHp, TempHP: ch.TempHp, Sheet: ch.SheetJson},
-		Home:  charState{Name: cf.Name, HP: cf.HP, MaxHP: cf.MaxHP, TempHP: cf.TempHP, Sheet: string(cf.Sheet)},
-		Form:  form,
+		Base: charState{
+			Name:   cmp.Or(base.Character.Name, ch.Name),
+			HP:     base.Character.HP,
+			MaxHP:  base.Character.MaxHP,
+			TempHP: base.Character.TempHP,
+			Sheet:  string(base.Character.Sheet),
+		},
+		Table: charState{
+			Name:   ch.Name,
+			HP:     ch.Hp,
+			MaxHP:  ch.MaxHp,
+			TempHP: ch.TempHp,
+			Sheet:  ch.SheetJson,
+		},
+		Home: charState{
+			Name:   cf.Name,
+			HP:     cf.HP,
+			MaxHP:  cf.MaxHP,
+			TempHP: cf.TempHP,
+			Sheet:  string(cf.Sheet),
+		},
+		Form: form,
 	}
 	if fb := rv.file.Fallback; fb != nil {
 		in.Fallback = &charState{Name: cf.Name, MaxHP: fb.MaxHP, Sheet: string(fb.Sheet)}
@@ -404,7 +465,19 @@ func (a *App) reviewBringBack(ctx context.Context, q *sqlc.Queries, f homeFile, 
 	for i, l := range rv.levelUps {
 		ids[i] = l.ID
 	}
-	sum := sha256.Sum256(fmt.Appendf(nil, "%q|%d|%d|%d|%q|%v|%s", ch.Name, ch.Hp, ch.MaxHp, ch.TempHp, ch.SheetJson, ids, rv.x.table.stamp()))
+	sum := sha256.Sum256(
+		fmt.Appendf(
+			nil,
+			"%q|%d|%d|%d|%q|%v|%s",
+			ch.Name,
+			ch.Hp,
+			ch.MaxHp,
+			ch.TempHp,
+			ch.SheetJson,
+			ids,
+			rv.x.table.stamp(),
+		),
+	)
 	rv.was = hex.EncodeToString(sum[:])
 	return rv, nil
 }
@@ -414,14 +487,34 @@ func (rv homeReview) view(f homeFile) views.HomeFileView {
 	p := rv.plan
 	if f.kind == export.KindNewCharacter {
 		return views.HomeFileView{
-			CampaignID: f.campaignID, FileID: f.id, Name: rv.cf.Name, NewCharacter: true, LevelTo: p.LevelTo, ByGM: !f.byPlayer,
-			Sources: p.Sources, Groups: p.Groups, Block: p.Block, Error: p.Error, Was: rv.was,
+			CampaignID:   f.campaignID,
+			FileID:       f.id,
+			Name:         rv.cf.Name,
+			NewCharacter: true,
+			LevelTo:      p.LevelTo,
+			ByGM:         !f.byPlayer,
+			Sources:      p.Sources,
+			Groups:       p.Groups,
+			Block:        p.Block,
+			Error:        p.Error,
+			Was:          rv.was,
 		}
 	}
 	return views.HomeFileView{
-		CampaignID: f.campaignID, FileID: f.id, CharacterID: rv.bb.ch.ID, Name: rv.bb.ch.Name, TakenAt: rv.bb.take.CreatedAt,
-		LevelFrom: p.LevelFrom, LevelTo: p.LevelTo, ByGM: !f.byPlayer,
-		Sources: p.Sources, Groups: p.Groups, Removed: p.Removed, Block: p.Block, Error: p.Error, Was: rv.was,
+		CampaignID:  f.campaignID,
+		FileID:      f.id,
+		CharacterID: rv.bb.ch.ID,
+		Name:        rv.bb.ch.Name,
+		TakenAt:     rv.bb.take.CreatedAt,
+		LevelFrom:   p.LevelFrom,
+		LevelTo:     p.LevelTo,
+		ByGM:        !f.byPlayer,
+		Sources:     p.Sources,
+		Groups:      p.Groups,
+		Removed:     p.Removed,
+		Block:       p.Block,
+		Error:       p.Error,
+		Was:         rv.was,
 	}
 }
 
@@ -478,7 +571,11 @@ func (a *App) homeFileAccept(c *gin.Context) error {
 	preSaved := pre.was == c.PostForm(formWas) && pre.plan.Block == "" && pre.plan.Error == ""
 	if preSaved {
 		m := mapsOf(pre.file)
-		if lookFiles, blockFiles, err = a.saveZipFiles(f, pre.x.saveContent(pre.file, m.Attachments), &saved); err != nil {
+		if lookFiles, blockFiles, err = a.saveZipFiles(
+			f,
+			pre.x.saveContent(pre.file, m.Attachments),
+			&saved,
+		); err != nil {
 			return err
 		}
 	}
@@ -528,7 +625,10 @@ func (a *App) homeFileAccept(c *gin.Context) error {
 		if n == 0 {
 			return userf("This file was already brought back.")
 		}
-		return q.ReturnOlderTakeHomes(ctx, sqlc.ReturnOlderTakeHomesParams{CharacterID: rv.bb.ch.ID, ID: rv.bb.take.ID})
+		return q.ReturnOlderTakeHomes(
+			ctx,
+			sqlc.ReturnOlderTakeHomesParams{CharacterID: rv.bb.ch.ID, ID: rv.bb.take.ID},
+		)
 	})
 	if err != nil {
 		return err
@@ -549,7 +649,11 @@ func (a *App) homeFileAccept(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	topics = append(topics, hub.Topic{Kind: hub.TopicCampaign, ID: camp.ID}, hub.Topic{Kind: hub.TopicPending, ID: camp.ID})
+	topics = append(
+		topics,
+		hub.Topic{Kind: hub.TopicCampaign, ID: camp.ID},
+		hub.Topic{Kind: hub.TopicPending, ID: camp.ID},
+	)
 	if allowedAny || res.compendium {
 		topics = append(topics, hub.Topic{Kind: hub.TopicCompendium})
 	}
@@ -561,15 +665,26 @@ func (a *App) homeFileAccept(c *gin.Context) error {
 
 // allowSource ticks a source for the campaign; one the table does not have yet
 // is first created from the file, with its entries.
-func allowSource(ctx context.Context, q *sqlc.Queries, campaignID int64, s export.TakeHomeSource, entries []export.TakeHomeEntry) error {
+func allowSource(
+	ctx context.Context,
+	q *sqlc.Queries,
+	campaignID int64,
+	s export.TakeHomeSource,
+	entries []export.TakeHomeEntry,
+) error {
 	if _, err := q.GetCompendiumSource(ctx, s.SourceKey); errors.Is(err, sql.ErrNoRows) {
 		prio, err := appendedSourcePriority(ctx, q, s.SourceKey, s.Edition)
 		if err != nil {
 			return err
 		}
 		if err := q.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{
-			SourceKey: s.SourceKey, Path: bringBackSourcePath, Edition: s.Edition, License: s.License, Attribution: s.Attribution, Published: s.Published,
-			Priority: prio,
+			SourceKey:   s.SourceKey,
+			Path:        bringBackSourcePath,
+			Edition:     s.Edition,
+			License:     s.License,
+			Attribution: s.Attribution,
+			Published:   s.Published,
+			Priority:    prio,
 		}); err != nil {
 			return err
 		}
@@ -578,7 +693,13 @@ func allowSource(ctx context.Context, q *sqlc.Queries, campaignID int64, s expor
 				continue
 			}
 			if err := q.UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{
-				Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: e.SourceKey, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash,
+				Kind:        e.Kind,
+				Slug:        e.Slug,
+				Name:        e.Name,
+				SourceKey:   e.SourceKey,
+				DataJson:    string(e.Data),
+				BodyText:    e.BodyText,
+				ContentHash: e.ContentHash,
 			}); err != nil {
 				return err
 			}
@@ -586,7 +707,10 @@ func allowSource(ctx context.Context, q *sqlc.Queries, campaignID int64, s expor
 	} else if err != nil {
 		return err
 	}
-	n, err := q.AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: campaignID, SourceKey: s.SourceKey})
+	n, err := q.AllowCampaignSource(
+		ctx,
+		sqlc.AllowCampaignSourceParams{CampaignID: campaignID, SourceKey: s.SourceKey},
+	)
 	if err != nil {
 		return err
 	}
@@ -598,7 +722,13 @@ func allowSource(ctx context.Context, q *sqlc.Queries, campaignID int64, s expor
 
 // replaceLevelUps gives the character the revert history of the build it now has:
 // the home's, the fallback's, or (the table's build) the one it already has.
-func replaceLevelUps(ctx context.Context, q *sqlc.Queries, characterID int64, buildFrom string, file *export.TakeHomeFile) error {
+func replaceLevelUps(
+	ctx context.Context,
+	q *sqlc.Queries,
+	characterID int64,
+	buildFrom string,
+	file *export.TakeHomeFile,
+) error {
 	var from []export.TakeHomeLevelUp
 	switch buildFrom {
 	case buildFromHome:
@@ -612,7 +742,15 @@ func replaceLevelUps(ctx context.Context, q *sqlc.Queries, characterID int64, bu
 		return err
 	}
 	for _, l := range from {
-		if _, err := q.CreateLevelUpAt(ctx, sqlc.CreateLevelUpAtParams{CharacterID: characterID, MaxHp: l.MaxHP, SheetJson: string(l.Sheet), CreatedAt: l.CreatedAt}); err != nil {
+		if _, err := q.CreateLevelUpAt(
+			ctx,
+			sqlc.CreateLevelUpAtParams{
+				CharacterID: characterID,
+				MaxHp:       l.MaxHP,
+				SheetJson:   string(l.Sheet),
+				CreatedAt:   l.CreatedAt,
+			},
+		); err != nil {
 			return err
 		}
 	}
@@ -621,7 +759,11 @@ func replaceLevelUps(ctx context.Context, q *sqlc.Queries, characterID int64, bu
 
 // saveZipFiles saves the attached files th names, read from the waiting zip f:
 // opened again, since the review that planned them has closed its reader.
-func (a *App) saveZipFiles(f homeFile, th export.TakeHome, saved *[]string) ([]savedFile, map[int64][]savedFile, error) {
+func (a *App) saveZipFiles(
+	f homeFile,
+	th export.TakeHome,
+	saved *[]string,
+) ([]savedFile, map[int64][]savedFile, error) {
 	zf, err := os.Open(f.path) //nolint:gosec // a random name inside our own folder
 	if err != nil {
 		return nil, nil, userf("The file is gone. Ask for it again.")

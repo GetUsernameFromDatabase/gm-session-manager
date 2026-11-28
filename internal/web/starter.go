@@ -51,16 +51,34 @@ func (a *App) writeStarter(c *gin.Context, camp sqlc.Campaign) error {
 	}
 	var th export.TakeHome
 	// No character id: takeHomeCompendium then leaves out every owned homebrew entry.
-	if err := takeHomeCompendium(ctx, a.Store.Queries, sqlc.Character{CampaignID: camp.ID}, &th, nil); err != nil {
+	if err := takeHomeCompendium(
+		ctx,
+		a.Store.Queries,
+		sqlc.Character{CampaignID: camp.ID},
+		&th,
+		nil,
+	); err != nil {
 		return err
 	}
 	now := time.Now().UTC()
 	th.Manifest = export.TakeHomeManifest{
-		Format: export.TakeHomeFormat, Kind: export.KindStarter, AppVersion: a.Version, ServerID: serverID,
-		Campaign: export.TakeHomeCampaign{ID: camp.ID, Name: camp.Name, System: camp.System, Edition: camp.Edition}, CreatedAt: now,
+		Format:     export.TakeHomeFormat,
+		Kind:       export.KindStarter,
+		AppVersion: a.Version,
+		ServerID:   serverID,
+		Campaign: export.TakeHomeCampaign{
+			ID:      camp.ID,
+			Name:    camp.Name,
+			System:  camp.System,
+			Edition: camp.Edition,
+		},
+		CreatedAt: now,
 	}
 	c.Header("Content-Type", "application/zip")
-	c.Header("Content-Disposition", `attachment; filename="`+export.ZipFileName(export.KindStarter, camp.Name, now)+`"`)
+	c.Header(
+		"Content-Disposition",
+		`attachment; filename="`+export.ZipFileName(export.KindStarter, camp.Name, now)+`"`,
+	)
 	if err := export.WriteTakeHome(c.Writer, th, a.attachmentsDir()); err != nil {
 		// Headers are gone; the truncated zip tells the browser it failed.
 		a.serverError(c, err)

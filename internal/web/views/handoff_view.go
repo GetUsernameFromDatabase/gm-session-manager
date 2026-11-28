@@ -25,7 +25,10 @@ const (
 
 // pollURL asks whether the handoff the page shows has changed.
 func (v HandoffView) pollURL() string {
-	return route.AtHomeHandoff + "?" + url.Values{HandoffStateParam: {v.State}, HandoffIDParam: {v.ID}}.Encode()
+	return route.AtHomeHandoff + "?" + url.Values{
+		HandoffStateParam: {v.State},
+		HandoffIDParam:    {v.ID},
+	}.Encode()
 }
 
 // closesAt is the clock time the handoff closes. Formatted here, not by

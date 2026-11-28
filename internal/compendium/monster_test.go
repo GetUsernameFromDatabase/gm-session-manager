@@ -10,13 +10,24 @@ import (
 // TestMonsterFormRoundTrip: a statblock survives the homebrew form.
 func TestMonsterFormRoundTrip(t *testing.T) {
 	d := MonsterData{
-		Size: "Large", Type: "fiend", Alignment: "chaotic evil", AC: 16, ACDetail: "natural armor", HP: 90, HitDice: "12d10 + 24", Initiative: 3,
-		Speed:     map[string]int{"walk": 40, "fly": 60},
-		Abilities: map[string]int{"str": 17, "dex": 16, "con": 15, "int": 5, "wis": 20, "cha": 6},
-		Saves:     map[string]int{"dex": 6, "wis": 8},
-		Skills:    map[string]int{"perception": 5, "sleight-of-hand": -1},
-		CR:        "8", Senses: "Darkvision 60 ft., Passive Perception 15", Languages: "understands Abyssal", Resistance: "cold, fire", Immunity: "frightened",
-		Traits: []NameDesc{{Name: "Pack Tactics", Desc: "Advantage when an ally is near."}},
+		Size:       "Large",
+		Type:       "fiend",
+		Alignment:  "chaotic evil",
+		AC:         16,
+		ACDetail:   "natural armor",
+		HP:         90,
+		HitDice:    "12d10 + 24",
+		Initiative: 3,
+		Speed:      map[string]int{"walk": 40, "fly": 60},
+		Abilities:  map[string]int{"str": 17, "dex": 16, "con": 15, "int": 5, "wis": 20, "cha": 6},
+		Saves:      map[string]int{"dex": 6, "wis": 8},
+		Skills:     map[string]int{"perception": 5, "sleight-of-hand": -1},
+		CR:         "8",
+		Senses:     "Darkvision 60 ft., Passive Perception 15",
+		Languages:  "understands Abyssal",
+		Resistance: "cold, fire",
+		Immunity:   "frightened",
+		Traits:     []NameDesc{{Name: "Pack Tactics", Desc: "Advantage when an ally is near."}},
 		Actions: []MonsterAction{
 			{Name: "Multiattack", Desc: "Two bites.", Type: "action"},
 			{Name: "Rending Bite", Desc: "*Melee Attack Roll:* +6.", Type: "action"},
@@ -26,6 +37,10 @@ func TestMonsterFormRoundTrip(t *testing.T) {
 		Desc: "Howls.",
 	}
 	in := InputForEntry(Entry{Kind: enum.KindMonster, Name: "Howler", Data: d})
+	// The round trip alone misses a swapped field: both ways share abilityFields.
+	if in.Str != 17 || in.Dex != 16 || in.Con != 15 || in.Int != 5 || in.Wis != 20 || in.Cha != 6 {
+		t.Errorf("form scores %d %d %d %d %d %d", in.Str, in.Dex, in.Con, in.Int, in.Wis, in.Cha)
+	}
 	e, err := in.Entry()
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +70,11 @@ func TestMonsterFormParsers(t *testing.T) {
 		want  map[string]int
 	}{
 		{"Dexterity +5, Wis −1", true, map[string]int{"dex": 5, "wis": -1}},
-		{"Perception +5, Sleight of Hand +4, junk", false, map[string]int{"perception": 5, "sleight-of-hand": 4}},
+		{
+			"Perception +5, Sleight of Hand +4, junk",
+			false,
+			map[string]int{"perception": 5, "sleight-of-hand": 4},
+		},
 		{"Luck +2", true, map[string]int{}},
 	}
 	for _, tt := range bonus {

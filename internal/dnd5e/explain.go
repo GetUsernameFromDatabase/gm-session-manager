@@ -54,13 +54,18 @@ func (s Sheet) Explain(target string) []Part {
 		// The 2024 Alert feat's bonus grows with level, which a fixed modifier
 		// cannot; 2014 Alert's flat +5 is a modifier like any other.
 		if slices.ContainsFunc(s.Features, func(f Feature) bool {
-			return strings.EqualFold(f.Name, "Alert") && strings.Contains(strings.ToLower(f.Description), "add your proficiency bonus")
+			return strings.EqualFold(f.Name, "Alert") &&
+				strings.Contains(strings.ToLower(f.Description), "add your proficiency bonus")
 		}) {
 			parts = append(parts, Part{Label: labelAlert, Value: s.ProficiencyBonus()})
 		}
 		return append(parts, s.modParts(ModInit)...)
 	case target == ModPassive:
-		return append(append([]Part{{Label: labelBase, Value: 10}}, s.skillParts(skillByKey("perception"))...), s.modParts(ModPassive)...)
+		return append(
+			append(
+				[]Part{{Label: labelBase, Value: 10}},
+				s.skillParts(skillByKey("perception"))...),
+			s.modParts(ModPassive)...)
 	case kind == ModSave:
 		parts := []Part{s.abilityPart(rest)}
 		if slices.Contains(s.SaveProfs, rest) {
@@ -122,12 +127,21 @@ func (s Sheet) acBase() []Part {
 		if a.AddDex {
 			label := "Dexterity modifier"
 			if a.DexCap > 0 && dex > a.DexCap {
-				dex, label = a.DexCap, fmt.Sprintf("Dexterity modifier (at most %d in %s)", a.DexCap, a.Type)
+				dex, label = a.DexCap, fmt.Sprintf(
+					"Dexterity modifier (at most %d in %s)",
+					a.DexCap,
+					a.Type,
+				)
 			}
 			parts = append(parts, Part{Label: label, Value: dex})
 		}
 	} else if f := s.unarmoredDefense(); f != nil {
-		parts = append(parts, Part{Label: f.Name, Value: 10}, s.abilityPart(Dex), s.abilityPart(f.Unarmored))
+		parts = append(
+			parts,
+			Part{Label: f.Name, Value: 10},
+			s.abilityPart(Dex),
+			s.abilityPart(f.Unarmored),
+		)
 	} else {
 		parts = append(parts, Part{Label: labelUnarmored, Value: 10}, s.abilityPart(Dex))
 	}
@@ -147,7 +161,12 @@ func ArmorEffect(a WornArmor, dex int) string {
 	case !a.AddDex:
 		return fmt.Sprintf("AC %d, no Dex", a.Base)
 	case a.DexCap > 0:
-		return fmt.Sprintf("AC %d + Dex, at most +%d (%s)", a.Base, a.DexCap, Signed(min(dex, a.DexCap)))
+		return fmt.Sprintf(
+			"AC %d + Dex, at most +%d (%s)",
+			a.Base,
+			a.DexCap,
+			Signed(min(dex, a.DexCap)),
+		)
 	}
 	return fmt.Sprintf("AC %d + Dex (%s)", a.Base, Signed(dex))
 }
@@ -192,7 +211,13 @@ func (s Sheet) ArmorUntrained() []string {
 func (s Sheet) speedBase() []Part {
 	parts := []Part{{Label: labelBaseSpeed, Value: s.Speed}}
 	if s.ArmorTooHeavy() {
-		parts = append(parts, Part{Label: fmt.Sprintf("%s needs Strength %d", s.Armor.Name, s.Armor.StrReq), Value: -10})
+		parts = append(
+			parts,
+			Part{
+				Label: fmt.Sprintf("%s needs Strength %d", s.Armor.Name, s.Armor.StrReq),
+				Value: -10,
+			},
+		)
 	}
 	return parts
 }
@@ -206,7 +231,10 @@ func (s Sheet) skillParts(sk Skill) []Part {
 	case slices.Contains(s.Expertise, sk.Key):
 		parts = append(parts, Part{Label: labelExpertise, Value: 2 * s.ProficiencyBonus()})
 	case slices.Contains(s.SkillProfs, sk.Key):
-		parts = append(parts, Part{Label: s.ProfLabel(labelProficiency, sk.Key), Value: s.ProficiencyBonus()})
+		parts = append(
+			parts,
+			Part{Label: s.ProfLabel(labelProficiency, sk.Key), Value: s.ProficiencyBonus()},
+		)
 	}
 	return append(parts, s.modParts("skill."+sk.Key)...)
 }
@@ -265,7 +293,10 @@ func (s Sheet) offHandParts(w Weapon) []Part {
 }
 
 func (s Sheet) hasFeature(name string) bool {
-	return slices.ContainsFunc(s.Features, func(f Feature) bool { return strings.EqualFold(f.Name, name) })
+	return slices.ContainsFunc(
+		s.Features,
+		func(f Feature) bool { return strings.EqualFold(f.Name, name) },
+	)
 }
 
 // LightWeapons are the ready weapons with the Light property.

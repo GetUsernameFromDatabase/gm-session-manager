@@ -27,7 +27,16 @@ func classInfo(row sqlc.CompendiumEntry) (dnd5e.ClassInfo, error) {
 	if err != nil {
 		return dnd5e.ClassInfo{}, err
 	}
-	info := dnd5e.ClassInfo{Slug: row.Slug, Name: row.Name, Source: row.SourceKey, HitDie: cd.HitDie, Caster: cd.Caster, Saves: cd.Saves, Table: cd.Table, Features: classFeatures(cd)}
+	info := dnd5e.ClassInfo{
+		Slug:     row.Slug,
+		Name:     row.Name,
+		Source:   row.SourceKey,
+		HitDie:   cd.HitDie,
+		Caster:   cd.Caster,
+		Saves:    cd.Saves,
+		Table:    cd.Table,
+		Features: classFeatures(cd),
+	}
 	if info.HitDie == 0 {
 		info.HitDie = 8 // homebrew classes without a hit die
 	}
@@ -37,14 +46,27 @@ func classInfo(row sqlc.CompendiumEntry) (dnd5e.ClassInfo, error) {
 func classFeatures(cd *compendium.ClassData) []dnd5e.ClassFeature {
 	out := make([]dnd5e.ClassFeature, 0, len(cd.Features))
 	for _, f := range cd.Features {
-		out = append(out, dnd5e.ClassFeature{Name: f.Name, Description: f.Desc, Levels: f.Levels, Subclass: f.Subclass})
+		out = append(
+			out,
+			dnd5e.ClassFeature{
+				Name:        f.Name,
+				Description: f.Desc,
+				Levels:      f.Levels,
+				Subclass:    f.Subclass,
+			},
+		)
 	}
 	return out
 }
 
 // levelUpView previews a level in classSlug; with pickDefault it picks the
 // class the character would most likely level instead.
-func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug string, pickDefault bool) (views.LevelUpView, error) {
+func (a *App) levelUpView(
+	ctx context.Context,
+	ch sqlc.Character,
+	classSlug string,
+	pickDefault bool,
+) (views.LevelUpView, error) {
 	sheet, err := dnd5e.ParseSheet(ch.SheetJson)
 	if err != nil {
 		return views.LevelUpView{}, err
@@ -52,13 +74,25 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if pickDefault {
 		classSlug = sheet.DefaultClass()
 	}
-	v := views.LevelUpView{CharacterID: ch.ID, Name: ch.Name, Level: sheet.Level(), Selected: classSlug, Sheet: sheet}
-	classes, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: enum.KindClass, CampaignID: ch.CampaignID})
+	v := views.LevelUpView{
+		CharacterID: ch.ID,
+		Name:        ch.Name,
+		Level:       sheet.Level(),
+		Selected:    classSlug,
+		Sheet:       sheet,
+	}
+	classes, err := a.Store.ListCompendiumNames(
+		ctx,
+		sqlc.ListCompendiumNamesParams{Kind: enum.KindClass, CampaignID: ch.CampaignID},
+	)
 	if err != nil {
 		return v, err
 	}
 	for _, cl := range classes {
-		v.Classes = append(v.Classes, views.Option{Slug: cl.Slug, Name: cl.Name, Source: cl.SourceKey})
+		v.Classes = append(
+			v.Classes,
+			views.Option{Slug: cl.Slug, Name: cl.Name, Source: cl.SourceKey},
+		)
 	}
 	if classSlug == "" {
 		return v, nil
@@ -79,7 +113,10 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		return v, nil
 	}
 	v.Plan = &offer.plan
-	subs, err := a.Store.ListSubclassesOf(ctx, sqlc.ListSubclassesOfParams{ClassSlug: classSlug, CampaignID: ch.CampaignID})
+	subs, err := a.Store.ListSubclassesOf(
+		ctx,
+		sqlc.ListSubclassesOfParams{ClassSlug: classSlug, CampaignID: ch.CampaignID},
+	)
 	if err != nil {
 		return v, err
 	}
@@ -87,7 +124,10 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 	if v.SubclassPanels, err = subclassPanels(subs); err != nil {
 		return v, err
 	}
-	feats, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: enum.KindFeat, CampaignID: ch.CampaignID})
+	feats, err := a.Store.ListCompendiumNames(
+		ctx,
+		sqlc.ListCompendiumNamesParams{Kind: enum.KindFeat, CampaignID: ch.CampaignID},
+	)
 	if err != nil {
 		return v, err
 	}
@@ -100,7 +140,15 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 		if err != nil {
 			return v, err
 		}
-		if td == nil || !dnd5e.MeetsPrerequisite(td.Prerequisite, sheet, offer.plan.NewLevel, nil, compendium.Slugify) || takenFeat(sheet, f.Name, td) {
+		if td == nil ||
+			!dnd5e.MeetsPrerequisite(
+				td.Prerequisite,
+				sheet,
+				offer.plan.NewLevel,
+				nil,
+				compendium.Slugify,
+			) ||
+			takenFeat(sheet, f.Name, td) {
 			continue
 		}
 		v.Feats = append(v.Feats, views.Option{Slug: f.Slug, Name: f.Name, Source: f.SourceKey})
@@ -112,19 +160,30 @@ func (a *App) levelUpView(ctx context.Context, ch sqlc.Character, classSlug stri
 			v.FeatChoices[f.Slug] = groupViews(groups)
 		}
 	}
-	v.LineageSpells, v.Groups, v.Spells, v.SpellNeed = offer.lineage, groupViews(offer.groups), offer.spells, offer.need
+	v.LineageSpells = offer.lineage
+	v.Groups = groupViews(offer.groups)
+	v.Spells = offer.spells
+	v.SpellNeed = offer.need
 	return v, nil
 }
 
 // takenFeat reports whether sheet has the feat already and it is not Repeatable.
 func takenFeat(sheet dnd5e.Sheet, name string, td *compendium.TextData) bool {
-	return slices.ContainsFunc(sheet.Feats, func(f string) bool { return strings.EqualFold(f, name) }) &&
+	return slices.ContainsFunc(
+		sheet.Feats,
+		func(f string) bool { return strings.EqualFold(f, name) },
+	) &&
 		!isRepeatable(compendium.NameDesc{Desc: textMarkdown(td)})
 }
 
 // levelUpClass is classSlug's class for the sheet: its pinned copy, or for
 // a new class one campaignID may see (the slug comes from the request).
-func (a *App) levelUpClass(ctx context.Context, sheet dnd5e.Sheet, classSlug string, campaignID int64) (dnd5e.ClassInfo, error) {
+func (a *App) levelUpClass(
+	ctx context.Context,
+	sheet dnd5e.Sheet,
+	classSlug string,
+	campaignID int64,
+) (dnd5e.ClassInfo, error) {
 	if classPin(sheet, classSlug) == "" {
 		if _, err := a.entryBySlug(ctx, enum.KindClass, classSlug, campaignID); err != nil {
 			return dnd5e.ClassInfo{}, err
@@ -151,7 +210,12 @@ type levelUpOffer struct {
 
 // levelUpOffer builds the offer of a level in info (with the subclass it
 // would have) for sheet.
-func (a *App) levelUpOffer(ctx context.Context, sheet dnd5e.Sheet, info dnd5e.ClassInfo, campaignID int64) (levelUpOffer, error) {
+func (a *App) levelUpOffer(
+	ctx context.Context,
+	sheet dnd5e.Sheet,
+	info dnd5e.ClassInfo,
+	campaignID int64,
+) (levelUpOffer, error) {
 	var o levelUpOffer
 	var err error
 	o.plan, o.planErr = sheet.Plan(info)
@@ -159,7 +223,15 @@ func (a *App) levelUpOffer(ctx context.Context, sheet dnd5e.Sheet, info dnd5e.Cl
 		return o, err
 	}
 	if o.planErr == nil {
-		if o.spells, err = a.classSpellOptions(ctx, info.Slug, o.plan.Slots, o.plan.PactLevel, sheet, o.lineage, campaignID); err != nil {
+		if o.spells, err = a.classSpellOptions(
+			ctx,
+			info.Slug,
+			o.plan.Slots,
+			o.plan.PactLevel,
+			sheet,
+			o.lineage,
+			campaignID,
+		); err != nil {
 			return o, err
 		}
 		o.need = spellNeed(info, o.plan.ClassLevel, sheet, o.spells)
@@ -176,21 +248,40 @@ func (a *App) levelUpOffer(ctx context.Context, sheet dnd5e.Sheet, info dnd5e.Cl
 	if err != nil {
 		return o, err
 	}
-	o.groups = slices.Concat(classOptionGroups(info, o.plan.ClassLevel, o.plan.ClassLevel-1, sheet, cantrips), mastery, changes)
+	o.groups = slices.Concat(
+		classOptionGroups(info, o.plan.ClassLevel, o.plan.ClassLevel-1, sheet, cantrips),
+		mastery,
+		changes,
+	)
 	return o, nil
 }
 
 // classSpellOptions are the class's spells the slots (and pact slots) can
 // cast that the sheet does not have yet, nor learns in this step (taught:
 // lineage spells, which AddSpell would keep over the class pick).
-func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]int, pactLevel int, sheet dnd5e.Sheet, taught []dnd5e.Spell, campaignID int64) ([]views.Option, error) {
+func (a *App) classSpellOptions(
+	ctx context.Context,
+	classSlug string,
+	slots [9]int,
+	pactLevel int,
+	sheet dnd5e.Sheet,
+	taught []dnd5e.Spell,
+	campaignID int64,
+) ([]views.Option, error) {
 	maxLevel := pactLevel
 	for i, n := range slots {
 		if n > 0 {
 			maxLevel = max(maxLevel, i+1)
 		}
 	}
-	spells, err := a.Store.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{ClassSlug: classSlug, MaxLevel: int64(maxLevel), CampaignID: campaignID})
+	spells, err := a.Store.ListSpellsForClass(
+		ctx,
+		sqlc.ListSpellsForClassParams{
+			ClassSlug:  classSlug,
+			MaxLevel:   int64(maxLevel),
+			CampaignID: campaignID,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +289,10 @@ func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]
 	var out []views.Option
 	for _, s := range spells {
 		if !slices.ContainsFunc(known, func(have dnd5e.Spell) bool { return have.Slug == s.Slug }) {
-			out = append(out, views.Option{Slug: s.Slug, Name: s.Name, Level: int(s.Level), Source: s.SourceKey})
+			out = append(
+				out,
+				views.Option{Slug: s.Slug, Name: s.Name, Level: int(s.Level), Source: s.SourceKey},
+			)
 		}
 	}
 	return out, nil
@@ -210,9 +304,17 @@ func (a *App) classSpellOptions(ctx context.Context, classSlug string, slots [9]
 // total, exactly: its list is prepared from the book. Lineage and feat spells
 // (their own ability or feat) do not count; untagged spells of older sheets
 // count while the sheet has this class only.
-func spellNeed(info dnd5e.ClassInfo, level int, sheet dnd5e.Sheet, offered []views.Option) views.SpellNeed {
+func spellNeed(
+	info dnd5e.ClassInfo,
+	level int,
+	sheet dnd5e.Sheet,
+	offered []views.Option,
+) views.SpellNeed {
 	class, book := info.Slug, dnd5e.Spellbook(info, level)
-	has := slices.ContainsFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == class })
+	has := slices.ContainsFunc(
+		sheet.Classes,
+		func(cl dnd5e.ClassLevel) bool { return cl.Slug == class },
+	)
 	only := has && len(sheet.Classes) == 1
 	var have, avail [2]int // cantrips, level 1+
 	unsure := false        // untagged spells that may be this class's
@@ -240,7 +342,8 @@ func spellNeed(info dnd5e.ClassInfo, level int, sheet dnd5e.Sheet, offered []vie
 	}
 	if book > 0 {
 		need.Spells, need.SpellsUpTo, need.Book = min(max(book-have[1], 0), avail[1]), unsure, true
-		// Only a book known to be short earlier gets the hint, never a new one (creation, a new class).
+		// Only a book known to be short earlier gets the hint,
+		// never a new one (creation, a new class).
 		need.BookShort = level > 1 && !unsure && have[1] < dnd5e.Spellbook(info, level-1)
 		need.BookHave, need.BookSize = have[1], book
 	}
@@ -249,12 +352,22 @@ func spellNeed(info dnd5e.ClassInfo, level int, sheet dnd5e.Sheet, offered []vie
 
 // classSpellPicks are the spells ticked in the form for class, refused
 // unless offered and as many as need asks.
-func (a *App) classSpellPicks(c *gin.Context, class string, offered []views.Option, need views.SpellNeed, campaignID int64) ([]dnd5e.Spell, error) {
+func (a *App) classSpellPicks(
+	c *gin.Context,
+	class string,
+	offered []views.Option,
+	need views.SpellNeed,
+	campaignID int64,
+) ([]dnd5e.Spell, error) {
 	var spells []dnd5e.Spell
 	var got [2]int
 	for _, slug := range c.PostFormArray("spell") {
-		if !slices.ContainsFunc(offered, func(o views.Option) bool { return o.Slug == slug }) || slices.ContainsFunc(spells, func(sp dnd5e.Spell) bool { return sp.Slug == slug }) {
-			return nil, fieldError{userError{errors.New("choose spells from the list")}, views.FieldSpell}
+		if !slices.ContainsFunc(offered, func(o views.Option) bool { return o.Slug == slug }) ||
+			slices.ContainsFunc(spells, func(sp dnd5e.Spell) bool { return sp.Slug == slug }) {
+			return nil, fieldError{
+				userError{errors.New("choose spells from the list")},
+				views.FieldSpell,
+			}
 		}
 		sp, err := a.compendiumSpell(c.Request.Context(), slug, campaignID)
 		if err != nil {
@@ -266,7 +379,17 @@ func (a *App) classSpellPicks(c *gin.Context, class string, offered []views.Opti
 	}
 	off := func(n, got int, upTo bool) bool { return n >= 0 && (got > n || !upTo && got < n) }
 	if off(need.Cantrips, got[0], need.CantripsUpTo) || off(need.Spells, got[1], need.SpellsUpTo) {
-		return nil, fieldError{userError{fmt.Errorf("choose %s: you ticked %s and %s", cmp.Or(need.String(), "no spells here"), views.Plural(got[0], "cantrip"), views.Plural(got[1], "level 1+ spell"))}, views.FieldSpell}
+		return nil, fieldError{
+			userError{
+				fmt.Errorf(
+					"choose %s: you ticked %s and %s",
+					cmp.Or(need.String(), "no spells here"),
+					views.Plural(got[0], "cantrip"),
+					views.Plural(got[1], "level 1+ spell"),
+				),
+			},
+			views.FieldSpell,
+		}
 	}
 	return spells, nil
 }
@@ -276,8 +399,19 @@ func (a *App) classSpellPicks(c *gin.Context, class string, offered []views.Opti
 // a class pick.
 func addClassSpells(s *dnd5e.Sheet, spells []dnd5e.Spell) error {
 	for _, sp := range spells {
-		if slices.ContainsFunc(s.Spells, func(have dnd5e.Spell) bool { return have.Slug == sp.Slug }) {
-			return fieldError{userError{fmt.Errorf("%s comes from your species or feat already: choose another spell", sp.Name)}, views.FieldSpell}
+		if slices.ContainsFunc(
+			s.Spells,
+			func(have dnd5e.Spell) bool { return have.Slug == sp.Slug },
+		) {
+			return fieldError{
+				userError{
+					fmt.Errorf(
+						"%s comes from your species or feat already: choose another spell",
+						sp.Name,
+					),
+				},
+				views.FieldSpell,
+			}
 		}
 		s.AddSpell(sp)
 	}
@@ -305,7 +439,11 @@ func (a *App) levelUpForm(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.render(c, http.StatusOK, views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v))
+	a.render(
+		c,
+		http.StatusOK,
+		views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v),
+	)
 	return nil
 }
 
@@ -334,11 +472,21 @@ func (a *App) levelUp(c *gin.Context) error {
 	if !hasLevel {
 		return userError{errors.New("reload the page and try again")}
 	}
-	if err := a.withSubclass(ctx, &choice.Class, sheet, choice.Subclass, ch.CampaignID); err != nil {
+	if err := a.withSubclass(
+		ctx,
+		&choice.Class,
+		sheet,
+		choice.Subclass,
+		ch.CampaignID,
+	); err != nil {
 		return err
 	}
 	if choice.Subclass != "" && choice.Class.SubclassName == "" {
-		a.fail(c, http.StatusUnprocessableEntity, "Choose a subclass from the list.") // gone since the form loaded
+		a.fail(
+			c,
+			http.StatusUnprocessableEntity,
+			"Choose a subclass from the list.",
+		) // gone since the form loaded
 		return nil
 	}
 	choice.Subclass = choice.Class.SubclassName // the sheet keeps the name, not the picked slug
@@ -356,7 +504,10 @@ func (a *App) levelUp(c *gin.Context) error {
 		feat, err := a.entryBySlug(ctx, enum.KindFeat, slug, ch.CampaignID)
 		switch {
 		case errors.Is(err, sql.ErrNoRows): // crafted, another campaign's, or a homebrew feat deleted since the form loaded
-			featErr = fieldError{userError{errors.New("choose a feat from the list")}, views.FieldASI}
+			featErr = fieldError{
+				userError{errors.New("choose a feat from the list")},
+				views.FieldASI,
+			}
 		case err != nil:
 			return err
 		default:
@@ -402,9 +553,15 @@ func (a *App) levelUp(c *gin.Context) error {
 			return err
 		}
 		if takenFeat(sheet, choice.Feat, td) {
-			featErr = fieldError{userError{fmt.Errorf("you have %s already", choice.Feat)}, views.FieldASI}
+			featErr = fieldError{
+				userError{fmt.Errorf("you have %s already", choice.Feat)},
+				views.FieldASI,
+			}
 		} else if planErr == nil && !dnd5e.MeetsPrerequisite(td.Prerequisite, sheet, plan.NewLevel, nil, compendium.Slugify) {
-			featErr = fieldError{userError{fmt.Errorf("%s needs %s", choice.Feat, td.Prerequisite)}, views.FieldASI}
+			featErr = fieldError{
+				userError{fmt.Errorf("%s needs %s", choice.Feat, td.Prerequisite)},
+				views.FieldASI,
+			}
 		}
 		fg, err := a.featChoices(ctx, "feat_"+slug, choice.Feat, td, "", sheet, ch.CampaignID)
 		if err != nil {
@@ -443,13 +600,26 @@ func (a *App) levelUp(c *gin.Context) error {
 			if err := addClassSpells(&dc.Sheet, spells); err != nil {
 				return err
 			}
-			if err := checkNewOptions(choice.Class, sheet, dc.Sheet, plan.ClassLevel, learned); err != nil {
+			if err := checkNewOptions(
+				choice.Class,
+				sheet,
+				dc.Sheet,
+				plan.ClassLevel,
+				learned,
+			); err != nil {
 				return err
 			}
 			for _, sp := range lineage {
 				dc.Sheet.PutFeature(dnd5e.FreeCast(sp, sheet.Species), nil)
 			}
-			return q.CreateLevelUp(ctx, sqlc.CreateLevelUpParams{CharacterID: ch.ID, MaxHp: int64(maxHP), SheetJson: before})
+			return q.CreateLevelUp(
+				ctx,
+				sqlc.CreateLevelUpParams{
+					CharacterID: ch.ID,
+					MaxHp:       int64(maxHP),
+					SheetJson:   before,
+				},
+			)
 		})
 	}
 	if errors.As(err, &ue) {
@@ -463,7 +633,11 @@ func (a *App) levelUp(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		a.render(c, http.StatusUnprocessableEntity, views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v))
+		a.render(
+			c,
+			http.StatusUnprocessableEntity,
+			views.LevelUpPage(a.layout(w, "Level up", views.NavCharacter, &camp, false), v),
+		)
 		return nil
 	}
 	if err != nil {
@@ -504,8 +678,10 @@ func (a *App) revertLevelUp(c *gin.Context) error {
 			return err
 		}
 		dc.Sheet = dnd5e.RevertSheet(parsed, dc.Sheet)
-		// The saved max follows the old sheet's Constitution; kept hand-added modifiers may change it.
-		dc.MaxHP = int(snap.MaxHp) + (dc.Sheet.Mod(dnd5e.Con)-parsed.Mod(dnd5e.Con))*dc.Sheet.Level()
+		// The saved max follows the old sheet's Constitution;
+		// kept hand-added modifiers may change it.
+		conShift := (dc.Sheet.Mod(dnd5e.Con) - parsed.Mod(dnd5e.Con)) * dc.Sheet.Level()
+		dc.MaxHP = int(snap.MaxHp) + conShift
 		dc.HP = min(dc.HP, dc.MaxHP)
 		return q.DeleteLevelUp(ctx, snap.ID)
 	})

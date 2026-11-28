@@ -47,7 +47,8 @@ func homeEnv(t *testing.T) (e testEnv, cookie string, campaign int64) {
 // homeBook adds a source the way a download at home does (not the take-home's path).
 func (e testEnv) homeBook(t *testing.T, key, edition string) {
 	t.Helper()
-	if err := e.q().UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: key, Path: "downloads/" + key, Hash: "h-" + key, Edition: edition, Priority: compendium.DefaultRank(key, edition)}); err != nil {
+	if err := e.q().
+		UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: key, Path: "downloads/" + key, Hash: "h-" + key, Edition: edition, Priority: compendium.DefaultRank(key, edition)}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -66,9 +67,18 @@ func (e testEnv) priorities(t *testing.T) map[string]int64 {
 }
 
 // homeDo sends a request to the player app as the browser at home (cookie "": a visitor).
-func (e testEnv) homeDo(t *testing.T, method, path, cookie string, form url.Values) *httptest.ResponseRecorder {
+func (e testEnv) homeDo(
+	t *testing.T,
+	method, path, cookie string,
+	form url.Values,
+) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequestWithContext(t.Context(), method, path, strings.NewReader(form.Encode()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		method,
+		path,
+		strings.NewReader(form.Encode()),
+	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if method != http.MethodGet { // an htmx GET of the 5etools picker would fetch the book list
 		req.Header.Set("HX-Request", "true")
@@ -117,7 +127,14 @@ func TestSourceRoutesGMOnlyAtTable(t *testing.T) {
 			t.Errorf("%s %s: status %d, want 403", r.method, r.path, w.Code)
 		}
 	}
-	w := e.do(t, http.MethodPost, route.Path(route.CampaignSources, e.campaignID), player, url.Values{"key": {"x"}, "on": {"true"}}, true)
+	w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignSources, e.campaignID),
+		player,
+		url.Values{"key": {"x"}, "on": {"true"}},
+		true,
+	)
 	if w.Code != http.StatusForbidden {
 		t.Errorf("campaign sources: status %d, want 403", w.Code)
 	}
@@ -130,21 +147,46 @@ func TestSourceRoutesHomePlayer(t *testing.T) {
 
 	// A plain GET of the picker redirects to the page: past the guard, and no download.
 	picker := sourceRoutePath(camp, route.CompendiumFiveTools)
-	if w := e.homeDo(t, http.MethodGet, picker, cookie, nil); w.Code == http.StatusForbidden || w.Code == http.StatusNotFound {
+	if w := e.homeDo(
+		t,
+		http.MethodGet,
+		picker,
+		cookie,
+		nil,
+	); w.Code == http.StatusForbidden ||
+		w.Code == http.StatusNotFound {
 		t.Errorf("home player GET 5etools: status %d", w.Code)
 	}
 	for _, r := range sourceRoutes {
 		// The campaign's own check or the sources guard: a refusal either way.
-		if w := e.homeDo(t, r.method, sourceRoutePath(camp, r.path), "", nil); w.Code < http.StatusBadRequest {
+		if w := e.homeDo(
+			t,
+			r.method,
+			sourceRoutePath(camp, r.path),
+			"",
+			nil,
+		); w.Code < http.StatusBadRequest {
 			t.Errorf("visitor %s %s: status %d, want a refusal", r.method, r.path, w.Code)
 		}
 	}
 
-	w := e.homeDo(t, http.MethodPost, sourceRoutePath(camp, route.CompendiumSourceOrder), cookie, url.Values{"key": e.sourceKeys(t)})
+	w := e.homeDo(
+		t,
+		http.MethodPost,
+		sourceRoutePath(camp, route.CompendiumSourceOrder),
+		cookie,
+		url.Values{"key": e.sourceKeys(t)},
+	)
 	if w.Code != http.StatusOK {
 		t.Fatalf("source order: status %d: %s", w.Code, w.Body)
 	}
-	w = e.homeDo(t, http.MethodPost, route.Path(route.CampaignSources, camp), cookie, url.Values{"key": {"homebook"}, "on": {"true"}})
+	w = e.homeDo(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignSources, camp),
+		cookie,
+		url.Values{"key": {"homebook"}, "on": {"true"}},
+	)
 	if w.Code != http.StatusOK {
 		t.Fatalf("campaign sources: status %d: %s", w.Code, w.Body)
 	}
@@ -183,7 +225,12 @@ func TestSinkHomeSources(t *testing.T) {
 		t.Errorf("the table's and homebrew's priorities changed: %v -> %v", before, after)
 	}
 	if after["home-a"] <= table || after["home-b"] <= after["home-a"] {
-		t.Errorf("home sources %d, %d must rank below the table's %d, keeping their order", after["home-a"], after["home-b"], table)
+		t.Errorf(
+			"home sources %d, %d must rank below the table's %d, keeping their order",
+			after["home-a"],
+			after["home-b"],
+			table,
+		)
 	}
 	if after["home-b"]-after["home-a"] != before["home-b"]-before["home-a"] {
 		t.Errorf("the gap between home sources changed: %v -> %v", before, after)
@@ -201,7 +248,17 @@ func TestTakeHomeKeepsHomeSource(t *testing.T) {
 	e := newPlayerEnv(t)
 	ctx := t.Context()
 	e.homeBook(t, "src1", "2024")
-	if err := e.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: enum.KindSpell, Slug: "bolt", Name: "Home bolt", SourceKey: "src1", DataJson: "{}", ContentHash: "home"}); err != nil {
+	if err := e.upsertEntry(
+		ctx,
+		sqlc.UpsertCompendiumEntryParams{
+			Kind:        enum.KindSpell,
+			Slug:        "bolt",
+			Name:        "Home bolt",
+			SourceKey:   "src1",
+			DataJson:    "{}",
+			ContentHash: "home",
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	w := e.importRequest(t, sampleTakeHome(t, nil), "", nil)
@@ -215,7 +272,8 @@ func TestTakeHomeKeepsHomeSource(t *testing.T) {
 	if src.Path != "downloads/src1" || src.Hash != "h-src1" || src.Priority != 100 {
 		t.Errorf("the home source was rewritten: %+v", src)
 	}
-	entry, err := e.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: enum.KindSpell, Slug: "bolt"})
+	entry, err := e.q().
+		GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: enum.KindSpell, Slug: "bolt"})
 	if err != nil || entry.Name != "Home bolt" || entry.ContentHash != "home" {
 		t.Errorf("the home copy of the entry was rewritten: %+v, %v", entry, err)
 	}
@@ -227,7 +285,9 @@ func TestTakeHomeKeepsHomeSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if on, err := e.q().ListCampaignSources(ctx, ch.CampaignID); err != nil || !slices.Contains(on, "src1") {
+	if on, err := e.q().
+		ListCampaignSources(ctx, ch.CampaignID); err != nil ||
+		!slices.Contains(on, "src1") {
 		t.Errorf("the new campaign allows %v (%v), want src1", on, err)
 	}
 }
@@ -248,7 +308,8 @@ func TestBringBackCarriesHomeSources(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := e.q().AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: camp, SourceKey: "homebook"}); err != nil {
+	if _, err := e.q().
+		AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: camp, SourceKey: "homebook"}); err != nil {
 		t.Fatal(err)
 	}
 	copies, err := e.q().ListHomeCopies(ctx)
@@ -266,7 +327,8 @@ func TestBringBackCarriesHomeSources(t *testing.T) {
 	for _, en := range th.Entries {
 		entries = append(entries, en.SourceKey+"/"+en.Slug)
 	}
-	if !slices.Equal(sources, []string{"homebook"}) || !slices.Equal(entries, []string{"homebook/hspell"}) {
+	if !slices.Equal(sources, []string{"homebook"}) ||
+		!slices.Equal(entries, []string{"homebook/hspell"}) {
 		t.Errorf("sources %v, entries %v; want only homebook and its spell", sources, entries)
 	}
 
@@ -275,7 +337,11 @@ func TestBringBackCarriesHomeSources(t *testing.T) {
 	if err := export.WriteTakeHome(&buf, th, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	f, err := export.ReadTakeHome(bytes.NewReader(buf.Bytes()), int64(buf.Len()), export.KindBringBack)
+	f, err := export.ReadTakeHome(
+		bytes.NewReader(buf.Bytes()),
+		int64(buf.Len()),
+		export.KindBringBack,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +352,13 @@ func TestBringBackCarriesHomeSources(t *testing.T) {
 
 func TestCheckFileSources(t *testing.T) {
 	entry := func(source string) export.TakeHomeEntry {
-		return export.TakeHomeEntry{Kind: enum.KindSpell, Slug: "s", Name: "S", SourceKey: source, Data: json.RawMessage(`{}`)}
+		return export.TakeHomeEntry{
+			Kind:      enum.KindSpell,
+			Slug:      "s",
+			Name:      "S",
+			SourceKey: source,
+			Data:      json.RawMessage(`{}`),
+		}
 	}
 	file := func(kind export.Kind, sources []string, entries ...export.TakeHomeEntry) *export.TakeHomeFile {
 		f := &export.TakeHomeFile{}
@@ -307,7 +379,11 @@ func TestCheckFileSources(t *testing.T) {
 		{"empty source key", file(export.KindTakeHome, []string{""}), true},
 		{"homebrew as a source", file(export.KindTakeHome, []string{"homebrew"}), true},
 		{"homebrew entry in a take-home", file(export.KindTakeHome, nil, entry("homebrew")), false},
-		{"homebrew entry in a bring-back", file(export.KindBringBack, nil, entry("homebrew")), true},
+		{
+			"homebrew entry in a bring-back",
+			file(export.KindBringBack, nil, entry("homebrew")),
+			true,
+		},
 	}
 	for _, tc := range tests {
 		err := checkFileSources(tc.file)
@@ -341,11 +417,29 @@ func TestHomeSourceDelete(t *testing.T) {
 }
 
 func TestNetErrMsg(t *testing.T) {
-	dns := &url.Error{Op: "Get", URL: "https://example.test/x", Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "example.test"}}}
-	if got := netErrMsg("Download failed", dns); !strings.Contains(got, "No internet connection") || !strings.Contains(got, "no such host") {
+	dns := &url.Error{
+		Op:  "Get",
+		URL: "https://example.test/x",
+		Err: &net.OpError{
+			Op:  "dial",
+			Net: "tcp",
+			Err: &net.DNSError{Err: "no such host", Name: "example.test"},
+		},
+	}
+	if got := netErrMsg(
+		"Download failed",
+		dns,
+	); !strings.Contains(got, "No internet connection") ||
+		!strings.Contains(got, "no such host") {
 		t.Errorf("network error: %q", got)
 	}
-	if got := netErrMsg("x", fmt.Errorf("fetch %s: %w", "x", dns)); !strings.Contains(got, "No internet connection") {
+	if got := netErrMsg(
+		"x",
+		fmt.Errorf("fetch %s: %w", "x", dns),
+	); !strings.Contains(
+		got,
+		"No internet connection",
+	) {
 		t.Errorf("wrapped network error: %q", got)
 	}
 	// A real refused connection, as offline at home: the server is gone.
@@ -360,11 +454,21 @@ func TestNetErrMsg(t *testing.T) {
 		_ = res.Body.Close()
 		t.Fatal("the closed server answered")
 	}
-	if got := netErrMsg("Download failed", fmt.Errorf("fetch: %w", err)); !strings.Contains(got, "No internet connection") {
+	if got := netErrMsg(
+		"Download failed",
+		fmt.Errorf("fetch: %w", err),
+	); !strings.Contains(
+		got,
+		"No internet connection",
+	) {
 		t.Errorf("refused connection: %q", got)
 	}
 	// Not the network: a refused redirect is a *url.Error too.
-	redirect := &url.Error{Op: "Get", URL: "https://example.test/x", Err: errors.New("redirect off example.test")}
+	redirect := &url.Error{
+		Op:  "Get",
+		URL: "https://example.test/x",
+		Err: errors.New("redirect off example.test"),
+	}
 	for _, err := range []error{errors.New("boom"), redirect} {
 		if got := netErrMsg("Download failed", err); got != "Download failed: "+err.Error() {
 			t.Errorf("%v: %q", err, got)
@@ -379,7 +483,8 @@ func TestHomeReplaceNamesLostSources(t *testing.T) {
 	ctx := t.Context()
 	for _, k := range []string{"homebook", "listedbook"} {
 		e.homeBook(t, k, "2014")
-		if _, err := e.q().AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: campaign, SourceKey: k}); err != nil {
+		if _, err := e.q().
+			AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: campaign, SourceKey: k}); err != nil {
 			t.Fatal(err)
 		}
 	}

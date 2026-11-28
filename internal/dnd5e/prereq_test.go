@@ -70,10 +70,28 @@ func TestArmorTrainingPrerequisite(t *testing.T) {
 func TestMeetsPrerequisite(t *testing.T) {
 	style := []Feature{{Name: "Fighting Style"}}
 	blade := []Feature{{Name: "Eldritch Invocation: Pact of the Blade"}}
-	blast := []Cantrip{testCantrip("warlock", "120 feet", "Make a ranged spell attack. The target takes 1d10 Force damage.")}
-	toll := []Cantrip{testCantrip("warlock", "60 feet", "The target must succeed on a Wisdom saving throw or take 1d8 Necrotic damage.")}
+	blast := []Cantrip{
+		testCantrip(
+			"warlock",
+			"120 feet",
+			"Make a ranged spell attack. The target takes 1d10 Force damage.",
+		),
+	}
+	toll := []Cantrip{
+		testCantrip(
+			"warlock",
+			"60 feet",
+			"The target must succeed on a Wisdom saving throw or take 1d8 Necrotic damage.",
+		),
+	}
 	hand := []Cantrip{testCantrip("warlock", "30 feet", "A spectral hand appears.")}
-	frost := []Cantrip{testCantrip("wizard", "60 feet", "Make a ranged spell attack. The target takes 1d8 Cold damage.")}
+	frost := []Cantrip{
+		testCantrip(
+			"wizard",
+			"60 feet",
+			"Make a ranged spell attack. The target takes 1d8 Cold damage.",
+		),
+	}
 	const damage, attack = "Level 2+ Warlock, a Warlock Cantrip That Deals Damage", "Level 2+ Warlock, a Warlock Cantrip That Deals Damage via an Attack Roll"
 	for _, tc := range []struct {
 		name     string
@@ -111,7 +129,13 @@ func TestMeetsPrerequisite(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sh := Sheet{Scores: map[string]int{"str": tc.str, "dex": tc.dex}, Features: tc.features}
 			// strings.ToLower slugs the one-word class names used here.
-			if got := MeetsPrerequisite(tc.prereq, sh, tc.level, tc.cantrips, strings.ToLower); got != tc.want {
+			if got := MeetsPrerequisite(
+				tc.prereq,
+				sh,
+				tc.level,
+				tc.cantrips,
+				strings.ToLower,
+			); got != tc.want {
 				t.Errorf("MeetsPrerequisite(%q) = %v, want %v", tc.prereq, got, tc.want)
 			}
 		})

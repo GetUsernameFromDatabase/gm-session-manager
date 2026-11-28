@@ -37,7 +37,10 @@ func (a *App) homeStarterImport(c *gin.Context, f io.ReaderAt, size int64, fromP
 		return err
 	}
 	ctx := c.Request.Context()
-	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error { return importStarter(ctx, q, file, time.Now().UTC()) })
+	err = a.Store.InTx(
+		ctx,
+		func(q *sqlc.Queries) error { return importStarter(ctx, q, file, time.Now().UTC()) },
+	)
 	if err != nil {
 		return err
 	}
@@ -54,16 +57,27 @@ func (a *App) homeStarterImport(c *gin.Context, f io.ReaderAt, size int64, fromP
 // importStarter writes a starter as a home campaign, or refreshes the one made
 // from the same table campaign in place: name, books and entries follow the
 // file, and the homebrew it links is the file's, none left over.
-func importStarter(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeFile, now time.Time) error {
+func importStarter(
+	ctx context.Context,
+	q *sqlc.Queries,
+	file *export.TakeHomeFile,
+	now time.Time,
+) error {
 	m := file.Manifest
 	// One table per player app, checked again inside the transaction.
 	if err := oneTable(ctx, q, m.ServerID); err != nil {
 		return err
 	}
-	old, err := q.GetHomeStarterByTable(ctx, sqlc.GetHomeStarterByTableParams{ServerID: m.ServerID, TableCampaignID: m.Campaign.ID})
+	old, err := q.GetHomeStarterByTable(
+		ctx,
+		sqlc.GetHomeStarterByTableParams{ServerID: m.ServerID, TableCampaignID: m.Campaign.ID},
+	)
 	switch {
 	case err == nil:
-		if err := q.RenameCampaign(ctx, sqlc.RenameCampaignParams{Name: m.Campaign.Name, ID: old.CampaignID}); err != nil {
+		if err := q.RenameCampaign(
+			ctx,
+			sqlc.RenameCampaignParams{Name: m.Campaign.Name, ID: old.CampaignID},
+		); err != nil {
 			return err
 		}
 		if err := q.ClearCampaignSources(ctx, old.CampaignID); err != nil {
@@ -75,21 +89,42 @@ func importStarter(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeFi
 		if err := importHomeCompendium(ctx, q, file, old.CampaignID); err != nil {
 			return err
 		}
-		if err := q.SetHomeStarterSavedAt(ctx, sqlc.SetHomeStarterSavedAtParams{SavedAt: now, CampaignID: old.CampaignID}); err != nil {
+		if err := q.SetHomeStarterSavedAt(
+			ctx,
+			sqlc.SetHomeStarterSavedAtParams{SavedAt: now, CampaignID: old.CampaignID},
+		); err != nil {
 			return err
 		}
 	case errors.Is(err, sql.ErrNoRows):
-		camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: m.Campaign.Name, System: m.Campaign.System, Edition: m.Campaign.Edition})
+		camp, err := q.CreateCampaign(
+			ctx,
+			sqlc.CreateCampaignParams{
+				Name:    m.Campaign.Name,
+				System:  m.Campaign.System,
+				Edition: m.Campaign.Edition,
+			},
+		)
 		if err != nil {
 			return err
 		}
-		if err := q.SetCampaignOpenJoin(ctx, sqlc.SetCampaignOpenJoinParams{OpenJoin: false, ID: camp.ID}); err != nil {
+		if err := q.SetCampaignOpenJoin(
+			ctx,
+			sqlc.SetCampaignOpenJoinParams{OpenJoin: false, ID: camp.ID},
+		); err != nil {
 			return err
 		}
 		if err := importHomeCompendium(ctx, q, file, camp.ID); err != nil {
 			return err
 		}
-		if err := q.CreateHomeStarter(ctx, sqlc.CreateHomeStarterParams{CampaignID: camp.ID, ServerID: m.ServerID, TableCampaignID: m.Campaign.ID, SavedAt: now}); err != nil {
+		if err := q.CreateHomeStarter(
+			ctx,
+			sqlc.CreateHomeStarterParams{
+				CampaignID:      camp.ID,
+				ServerID:        m.ServerID,
+				TableCampaignID: m.Campaign.ID,
+				SavedAt:         now,
+			},
+		); err != nil {
 			return err
 		}
 	default:
@@ -136,7 +171,10 @@ func (a *App) homeStarters(ctx context.Context) ([]views.HomeStarterView, error)
 		if err != nil {
 			return nil, err
 		}
-		slices.SortStableFunc(sources, func(x, y sqlc.ListTakeHomeSourcesRow) int { return cmp.Compare(x.Priority, y.Priority) })
+		slices.SortStableFunc(
+			sources,
+			func(x, y sqlc.ListTakeHomeSourcesRow) int { return cmp.Compare(x.Priority, y.Priority) },
+		)
 		v := views.HomeStarterView{CampaignID: r.CampaignID, Name: r.Name, SavedAt: r.SavedAt}
 		for _, s := range sources {
 			v.Books = append(v.Books, views.SourceLabel(s.SourceKey, s.Edition))

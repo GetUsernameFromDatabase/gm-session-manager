@@ -101,7 +101,8 @@ func condMods(c sqlc.Condition) []dnd5e.CustomMod {
 // hasEffect is whether a condition row is more than a plain condition: it
 // has a name, a modifier or something that ends it.
 func hasEffect(c sqlc.Condition) bool {
-	return c.Slug != dnd5e.Exhaustion && (c.Note != "" || c.EndsOn != enum.EffectEndNone || c.HeldBy.Valid || c.ExpiresRound.Valid || len(condMods(c)) > 0)
+	return c.Slug != dnd5e.Exhaustion &&
+		(c.Note != "" || c.EndsOn != enum.EffectEndNone || c.HeldBy.Valid || c.ExpiresRound.Valid || len(condMods(c)) > 0)
 }
 
 // effectChip is whether the sheet shows a row as an effect chip, not only
@@ -198,8 +199,13 @@ func (f EffectFields) lastMod() int { return max(len(f.Mods), 1) - 1 }
 // presetItems are the saved presets a form can be filled from, after a
 // blank "choose" entry.
 func presetItems(presets []Named) []selectcomp.ItemData {
-	return append([]selectcomp.ItemData{{Value: " ", Label: "Choose a preset"}},
-		selectItems(presets, func(n Named) string { return strconv.FormatInt(n.ID, 10) }, func(n Named) string { return n.Name })...)
+	return append(
+		[]selectcomp.ItemData{{Value: " ", Label: "Choose a preset"}},
+		selectItems(
+			presets,
+			func(n Named) string { return strconv.FormatInt(n.ID, 10) },
+			func(n Named) string { return n.Name },
+		)...)
 }
 
 // EffectTarget is who an add-effect dialog adds to: a character, or a
@@ -224,7 +230,13 @@ func (t EffectTarget) presetsURL() string { return t.fieldsURL() + "&presets=1" 
 
 // EffectFieldsURL is where an add-effect form loads its fields and rows.
 func EffectFieldsURL(campaignID, characterID, combatantID int64) string {
-	return route.Path(route.CampaignEffectSpell, campaignID) + "?" + effectQuery(characterID, combatantID)
+	return route.Path(
+		route.CampaignEffectSpell,
+		campaignID,
+	) + "?" + effectQuery(
+		characterID,
+		combatantID,
+	)
 }
 
 // rowURL loads stat-change row i, with the button for the next.
@@ -253,7 +265,11 @@ func effectQuery(characterID, combatantID int64) string {
 
 // effectHeldItems are the concentrations an effect may hang off.
 func effectHeldItems(held []Named, needsHolder bool) []selectcomp.ItemData {
-	items := selectItems(held, func(n Named) string { return fmt.Sprint(n.ID) }, func(n Named) string { return n.Name })
+	items := selectItems(
+		held,
+		func(n Named) string { return fmt.Sprint(n.ID) },
+		func(n Named) string { return n.Name },
+	)
 	if needsHolder {
 		return items
 	}
@@ -262,7 +278,11 @@ func effectHeldItems(held []Named, needsHolder bool) []selectcomp.ItemData {
 
 // targetItems are the characters a player may add the effect to.
 func (f EffectFields) targetItems() []selectcomp.ItemData {
-	return selectItems(f.Targets, func(n Named) string { return fmt.Sprint(n.ID) }, func(n Named) string { return n.Name })
+	return selectItems(
+		f.Targets,
+		func(n Named) string { return fmt.Sprint(n.ID) },
+		func(n Named) string { return n.Name },
+	)
 }
 
 // effectEnds are the rests that end an effect.
@@ -363,7 +383,12 @@ const (
 )
 
 // statWhy are the stats with a breakdown (dnd5e.Sheet.Explain target).
-var statWhy = map[string]string{statAC: dnd5e.ModAC, statSpeed: dnd5e.ModSpeed, statInit: dnd5e.ModInit, statPassive: dnd5e.ModPassive}
+var statWhy = map[string]string{
+	statAC:      dnd5e.ModAC,
+	statSpeed:   dnd5e.ModSpeed,
+	statInit:    dnd5e.ModInit,
+	statPassive: dnd5e.ModPassive,
+}
 
 // plainTotals are the breakdown targets that are values, not bonuses.
 var plainTotals = []string{dnd5e.ModAC, dnd5e.ModSpeed, dnd5e.ModPassive}
@@ -407,7 +432,10 @@ func capitalized(keys []string) []string {
 
 // hasMods reports whether any custom modifier is on one of targets.
 func (s SheetView) hasMods(targets ...string) bool {
-	return slices.ContainsFunc(s.C.Sheet.Modifiers, func(m dnd5e.CustomMod) bool { return slices.Contains(targets, m.Target) })
+	return slices.ContainsFunc(
+		s.C.Sheet.Modifiers,
+		func(m dnd5e.CustomMod) bool { return slices.Contains(targets, m.Target) },
+	)
 }
 
 // commandsID is the palette that explains the commands and fills one in.
@@ -417,7 +445,11 @@ const commandsID = "command-help"
 var actionKinds = []struct{ key, title, tip string }{
 	{dnd5e.ActionMain, "Action", "One per turn: attack, cast a spell, Dash, Dodge, Help, Hide…"},
 	{dnd5e.ActionBonus, "Bonus Action", "One per turn, only for things that say so."},
-	{dnd5e.ActionReaction, "Reaction", "One per round, even on others' turns, when its trigger happens."},
+	{
+		dnd5e.ActionReaction,
+		"Reaction",
+		"One per round, even on others' turns, when its trigger happens.",
+	},
 	{actionOther, labelOther, "Limited features that take no action of their own."},
 }
 
@@ -451,7 +483,9 @@ type actionEntry struct {
 
 var (
 	reSpellAttack = regexp.MustCompile(`(?i)make an? (?:ranged|melee) spell attack`)
-	reSpellSave   = regexp.MustCompile(`(?i)\b(strength|dexterity|constitution|intelligence|wisdom|charisma) saving throw`)
+	reSpellSave   = regexp.MustCompile(
+		`(?i)\b(strength|dexterity|constitution|intelligence|wisdom|charisma) saving throw`,
+	)
 )
 
 // actions sorts what the character can do into sections: ready weapons,
@@ -460,13 +494,42 @@ func (s SheetView) actions() map[string][]actionEntry {
 	sh := s.C.Sheet
 	out := map[string][]actionEntry{}
 	for _, w := range sh.Weapons {
-		detail := fmt.Sprintf("%s to hit · %s · %s", dnd5e.Signed(sh.AttackBonus(w)), sh.DamageLabel(w), weaponReach(w))
-		out[sectionAttacks] = append(out[sectionAttacks], actionEntry{Name: w.Name, Detail: detail, Why: w.Properties, Kind: dnd5e.ActionMain, Weapon: w.Name})
+		detail := fmt.Sprintf(
+			"%s to hit · %s · %s",
+			dnd5e.Signed(sh.AttackBonus(w)),
+			sh.DamageLabel(w),
+			weaponReach(w),
+		)
+		out[sectionAttacks] = append(
+			out[sectionAttacks],
+			actionEntry{
+				Name:   w.Name,
+				Detail: detail,
+				Why:    w.Properties,
+				Kind:   dnd5e.ActionMain,
+				Weapon: w.Name,
+			},
+		)
 	}
 	if sh.CanDualWield() {
 		for _, w := range sh.LightWeapons() {
-			detail := fmt.Sprintf("%s to hit · %s · %s", dnd5e.Signed(sh.AttackBonus(w)), sh.OffHandDamage(w), weaponReach(w))
-			out[sectionAttacks] = append(out[sectionAttacks], actionEntry{Name: "Off-hand: " + w.Name, Detail: detail, Why: offHandRule, Kind: dnd5e.ActionBonus, Weapon: w.Name, OffHand: true})
+			detail := fmt.Sprintf(
+				"%s to hit · %s · %s",
+				dnd5e.Signed(sh.AttackBonus(w)),
+				sh.OffHandDamage(w),
+				weaponReach(w),
+			)
+			out[sectionAttacks] = append(
+				out[sectionAttacks],
+				actionEntry{
+					Name:    "Off-hand: " + w.Name,
+					Detail:  detail,
+					Why:     offHandRule,
+					Kind:    dnd5e.ActionBonus,
+					Weapon:  w.Name,
+					OffHand: true,
+				},
+			)
 		}
 	}
 	for _, sp := range sh.Spells {
@@ -487,7 +550,10 @@ func (s SheetView) actions() map[string][]actionEntry {
 		if sp.Level > 0 {
 			detail += fmt.Sprintf(" · level %d slot", sp.Level)
 		}
-		out[sectionSpells] = append(out[sectionSpells], actionEntry{Name: sp.Name, Detail: detail, SpellSlug: sp.Slug, Kind: kind})
+		out[sectionSpells] = append(
+			out[sectionSpells],
+			actionEntry{Name: sp.Name, Detail: detail, SpellSlug: sp.Slug, Kind: kind},
+		)
 	}
 	for i, f := range sh.Features {
 		if f.Action == "" {
@@ -504,10 +570,23 @@ func (s SheetView) actions() map[string][]actionEntry {
 			kind = actionOther
 		}
 		detail := strings.TrimSpace(dnd5e.ActionLabels[f.Action] + " · " + f.Source)
-		out[sectionFeatures] = append(out[sectionFeatures], actionEntry{Name: f.Name, Detail: strings.Trim(detail, " ·"), Why: f.Description, Kind: kind, FeatureIdx: i, Uses: f.Uses.Limited()})
+		out[sectionFeatures] = append(
+			out[sectionFeatures],
+			actionEntry{
+				Name:       f.Name,
+				Detail:     strings.Trim(detail, " ·"),
+				Why:        f.Description,
+				Kind:       kind,
+				FeatureIdx: i,
+				Uses:       f.Uses.Limited(),
+			},
+		)
 	}
 	for _, entries := range out {
-		slices.SortStableFunc(entries, func(a, b actionEntry) int { return kindOrder(a.Kind) - kindOrder(b.Kind) })
+		slices.SortStableFunc(
+			entries,
+			func(a, b actionEntry) int { return kindOrder(a.Kind) - kindOrder(b.Kind) },
+		)
 	}
 	return out
 }
@@ -523,11 +602,17 @@ func (s SheetView) freeCastAction(name string) string {
 	if i < 0 || s.SpellData[s.C.Sheet.Spells[i].Slug] == nil {
 		return ""
 	}
-	return strings.TrimPrefix(castingKind(s.SpellData[s.C.Sheet.Spells[i].Slug].CastingTime), actionOther)
+	return strings.TrimPrefix(
+		castingKind(s.SpellData[s.C.Sheet.Spells[i].Slug].CastingTime),
+		actionOther,
+	)
 }
 
 func kindOrder(kind string) int {
-	return slices.IndexFunc(actionKinds, func(k struct{ key, title, tip string }) bool { return k.key == kind })
+	return slices.IndexFunc(
+		actionKinds,
+		func(k struct{ key, title, tip string }) bool { return k.key == kind },
+	)
 }
 
 // offHandRule is the Light property's extra attack, paraphrased from the

@@ -117,7 +117,11 @@ func TestFiveToolsBooks(t *testing.T) {
 
 	// An old cache is past fresh, yet still answers while the mirror is down.
 	old := time.Now().Add(-2 * booksFresh)
-	if err := os.Chtimes(filepath.Join(dir, fiveToolsCacheDir, "books.json"), old, old); err != nil {
+	if err := os.Chtimes(
+		filepath.Join(dir, fiveToolsCacheDir, "books.json"),
+		old,
+		old,
+	); err != nil {
 		t.Fatal(err)
 	}
 	serveMirror(t, nil, true)
@@ -146,7 +150,10 @@ func readDoc(t *testing.T, path string) map[string][]map[string]any {
 func TestDownloadFiveTools(t *testing.T) {
 	serveMirror(t, fakeMirror, false)
 	dir := t.TempDir()
-	books := []Book{{ID: "XPHB", Name: "PHB", Group: GroupCore}, {ID: "TCE", Name: "Tasha", Group: GroupSupplement}}
+	books := []Book{
+		{ID: "XPHB", Name: "PHB", Group: GroupCore},
+		{ID: "TCE", Name: "Tasha", Group: GroupSupplement},
+	}
 	if err := DownloadFiveTools(context.Background(), dir, books, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -165,8 +172,29 @@ func TestDownloadFiveTools(t *testing.T) {
 		id   string
 		want []string
 	}{
-		{"xphb", []string{"bestiary.json", "book.json", "items-base.json", "items.json", "magicvariants.json", "races.json", "spell-classes.json", "spells.json"}},
-		{"tce", []string{"book.json", "class-wizard.json", "items-base.json", "items.json", "races.json"}},
+		{
+			"xphb",
+			[]string{
+				"bestiary.json",
+				"book.json",
+				"items-base.json",
+				"items.json",
+				"magicvariants.json",
+				"races.json",
+				"spell-classes.json",
+				"spells.json",
+			},
+		},
+		{
+			"tce",
+			[]string{
+				"book.json",
+				"class-wizard.json",
+				"items-base.json",
+				"items.json",
+				"races.json",
+			},
+		},
 	}
 	for _, tc := range tests {
 		if got := ls(tc.id); !slices.Equal(got, tc.want) {
@@ -177,14 +205,17 @@ func TestDownloadFiveTools(t *testing.T) {
 	if stale, err := StaleFiveTools(dir); err != nil || len(stale) != 0 {
 		t.Errorf("stale after download: %v %v", stale, err)
 	}
-	if items := readDoc(t, filepath.Join(dir, "5etools-tce", "items.json"))["item"]; len(items) != 1 || items[0]["name"] != "Cloak" {
+	items := readDoc(t, filepath.Join(dir, "5etools-tce", "items.json"))["item"]
+	if len(items) != 1 || items[0]["name"] != "Cloak" {
 		t.Errorf("items not filtered: %v", items)
 	}
-	if base := readDoc(t, filepath.Join(dir, "5etools-tce", "items-base.json"))["baseitem"]; len(base) != 1 {
+	base := readDoc(t, filepath.Join(dir, "5etools-tce", "items-base.json"))["baseitem"]
+	if len(base) != 1 {
 		t.Errorf("items-base must stay whole: %v", base)
 	}
 	// A variant belongs to the book named in inherits.source.
-	if mv := readDoc(t, filepath.Join(dir, "5etools-xphb", "magicvariants.json"))["magicvariant"]; len(mv) != 1 || mv[0]["name"] != "+1 Weapon" {
+	mv := readDoc(t, filepath.Join(dir, "5etools-xphb", "magicvariants.json"))["magicvariant"]
+	if len(mv) != 1 || mv[0]["name"] != "+1 Weapon" {
 		t.Errorf("variants not filtered on inherits.source: %v", mv)
 	}
 	// Subclass-only book keeps the parent class.
@@ -215,7 +246,10 @@ func TestDownloadFiveTools(t *testing.T) {
 			t.Errorf("%s targets %v, want %v", tc.file, got, tc.want)
 		}
 	}
-	_, entries, skipped, err := parseFiveToolsBookReport("k", readBook(t, filepath.Join(dir, "5etools-xphb")))
+	_, entries, skipped, err := parseFiveToolsBookReport(
+		"k",
+		readBook(t, filepath.Join(dir, "5etools-xphb")),
+	)
 	if err != nil || skipped != 0 {
 		t.Fatalf("parse: skipped %d, %v", skipped, err)
 	}
@@ -279,7 +313,11 @@ func TestStaleFiveTools(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(dir, FiveToolsPrefix+tc.id), 0o750); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, FiveToolsPrefix+tc.id, bookFile), body, 0o600); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(dir, FiveToolsPrefix+tc.id, bookFile),
+			body,
+			0o600,
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -307,17 +345,28 @@ func TestDownloadFiveToolsSubclassTwinsAndForeignFeatures(t *testing.T) {
 	for _, order := range [][]string{{phb, xphb}, {xphb, phb}} {
 		files := maps.Clone(fakeMirror)
 		files["class/index.json"] = `{"cleric":"class-cleric.json"}`
-		files["class/class-cleric.json"] = `{"class":[{"name":"Cleric","source":"PHB"}],"subclass":[` + strings.Join(order, ",") + `],` + features + `}`
+		files["class/class-cleric.json"] = `{"class":[{"name":"Cleric","source":"PHB"}],"subclass":[` + strings.Join(
+			order,
+			",",
+		) + `],` + features + `}`
 		serveMirror(t, files, false)
 		dir := t.TempDir()
-		if err := DownloadFiveTools(context.Background(), dir, []Book{{ID: "XGE", Name: "Xanathar", Group: GroupSupplement}}, nil); err != nil {
+		if err := DownloadFiveTools(
+			context.Background(),
+			dir,
+			[]Book{{ID: "XGE", Name: "Xanathar", Group: GroupSupplement}},
+			nil,
+		); err != nil {
 			t.Fatal(err)
 		}
 		doc := readDoc(t, filepath.Join(dir, "5etools-xge", "class-cleric.json"))
 		if len(doc["subclassFeature"]) != 3 {
 			t.Fatalf("bundled features: %v", doc["subclassFeature"])
 		}
-		_, entries, err := parseFiveToolsBook("5etools-xge", readBook(t, filepath.Join(dir, "5etools-xge")))
+		_, entries, err := parseFiveToolsBook(
+			"5etools-xge",
+			readBook(t, filepath.Join(dir, "5etools-xge")),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -388,12 +437,27 @@ func TestDownloadFiveToolsReplacesFolder(t *testing.T) {
 func TestFiveTools2024Set(t *testing.T) {
 	const wotc = defaultPublisher
 	in := map[string]Book{
-		"core 2024":       {ID: "XPHB", Group: GroupCore, Publisher: wotc, Published: "2024-09-17"},
-		"supplement 2024": {ID: "XSUP", Group: GroupSupplement, Publisher: wotc, Published: "2025-03-01"},
-		"adventure 2024":  {ID: "XADV", Group: GroupAdventure, Publisher: wotc, Published: "2025-01-01"},
-		"ua 2024":         {ID: "UAX", Group: GroupUA, Publisher: wotc, Published: "2025-01-01"},
-		"third party":     {ID: "HBT", Group: GroupSupplement, Publisher: "Someone", Published: "2025-01-01"},
-		"core 2014":       {ID: "PHB", Group: GroupCore, Publisher: wotc, Published: "2014-08-19"},
+		"core 2024": {ID: "XPHB", Group: GroupCore, Publisher: wotc, Published: "2024-09-17"},
+		"supplement 2024": {
+			ID:        "XSUP",
+			Group:     GroupSupplement,
+			Publisher: wotc,
+			Published: "2025-03-01",
+		},
+		"adventure 2024": {
+			ID:        "XADV",
+			Group:     GroupAdventure,
+			Publisher: wotc,
+			Published: "2025-01-01",
+		},
+		"ua 2024": {ID: "UAX", Group: GroupUA, Publisher: wotc, Published: "2025-01-01"},
+		"third party": {
+			ID:        "HBT",
+			Group:     GroupSupplement,
+			Publisher: "Someone",
+			Published: "2025-01-01",
+		},
+		"core 2014": {ID: "PHB", Group: GroupCore, Publisher: wotc, Published: "2014-08-19"},
 	}
 	want := []string{"core 2024", "supplement 2024"}
 	var books []Book
@@ -436,7 +500,14 @@ func TestCleanDownloads(t *testing.T) {
 	for _, e := range entries {
 		got = append(got, e.Name())
 	}
-	if want := []string{fiveToolsCacheDir, bookFolder("xphb"), "srd-2024"}; !slices.Equal(got, want) {
+	if want := []string{
+		fiveToolsCacheDir,
+		bookFolder("xphb"),
+		"srd-2024",
+	}; !slices.Equal(
+		got,
+		want,
+	) {
 		t.Errorf("left %v, want %v", got, want)
 	}
 }
@@ -451,7 +522,12 @@ func TestDownloadLinksReprints(t *testing.T) {
 	files["items.json"] = `{"item":[{"name":"Abacus","source":"PHB","reprintedAs":[{"uid":"Abacus|XPHB"}]},{"name":"Wand","source":"XPHB","entries":["{@item abacus|phb}"]}]}`
 	serveMirror(t, files, false)
 	dir := t.TempDir()
-	if err := DownloadFiveTools(context.Background(), dir, []Book{{ID: "XPHB", Name: "PHB", Group: GroupCore}}, nil); err != nil {
+	if err := DownloadFiveTools(
+		context.Background(),
+		dir,
+		[]Book{{ID: "XPHB", Name: "PHB", Group: GroupCore}},
+		nil,
+	); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ file, list, want string }{

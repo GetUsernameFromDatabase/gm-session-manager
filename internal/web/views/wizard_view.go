@@ -38,7 +38,11 @@ var standardArray = []int{15, 14, 13, 12, 10, 8}
 
 // fillStandardArrayJS puts standardArray in the score inputs in
 // dnd5e.Abilities order, then fires input so app.js updates the point cost.
-var fillStandardArrayJS = templ.JSUnsafeFuncCall("const f = this.form; " + toJSON(standardArray) + ".forEach((n, i) => f.elements[" + toJSON(dnd5e.Abilities) + "[i]].value = n); f.dispatchEvent(new Event('input', { bubbles: true }))")
+var fillStandardArrayJS = templ.JSUnsafeFuncCall(
+	"const f = this.form; " + toJSON(standardArray) + ".forEach((n, i) => f.elements[" +
+		toJSON(dnd5e.Abilities) +
+		"[i]].value = n); f.dispatchEvent(new Event('input', { bubbles: true }))",
+)
 
 // WizardView is one page of the creation wizard.
 type WizardView struct {
@@ -222,7 +226,8 @@ func (v WizardView) DrawsField(key string) bool {
 	case FieldMode:
 		return v.Step == StepAbilities && v.Choice != nil && len(v.Choice.Abilities) == 3
 	case FieldSkill:
-		return v.Choice != nil && (v.Step == StepClass && v.Choice.SkillCount > 0 || v.Step == StepBackground && v.Choice.SkillPick != nil)
+		return v.Choice != nil &&
+			(v.Step == StepClass && v.Choice.SkillCount > 0 || v.Step == StepBackground && v.Choice.SkillPick != nil)
 	case FieldSpell:
 		return v.Choices != nil && len(v.Choices.Spells) > 0
 	}
@@ -267,7 +272,8 @@ func (fe FieldErrors) radioAttrs(key, label string) templ.Attributes {
 // optionsGrid lays a long list of terse options (weapon masteries, skills)
 // out in columns; other lists get short, as feat texts need the width.
 func optionsGrid(opts []compendium.NameDesc, short string) string {
-	if len(opts) > 8 && !slices.ContainsFunc(opts, func(o compendium.NameDesc) bool { return len(o.Desc) > 40 }) {
+	if len(opts) > 8 &&
+		!slices.ContainsFunc(opts, func(o compendium.NameDesc) bool { return len(o.Desc) > 40 }) {
 		return "grid grid-cols-2 sm:grid-cols-3"
 	}
 	return short
@@ -277,7 +283,10 @@ func optionsGrid(opts []compendium.NameDesc, short string) string {
 func optionText(o compendium.EquipmentOption) string {
 	var items []string
 	for _, it := range o.Items {
-		items = append(items, strings.TrimSpace(utils.IfElse(it.Qty > 1, fmt.Sprint(it.Qty), "")+" "+it.Name))
+		items = append(
+			items,
+			strings.TrimSpace(utils.IfElse(it.Qty > 1, fmt.Sprint(it.Qty), "")+" "+it.Name),
+		)
 	}
 	if o.GP > 0 {
 		items = append(items, fmt.Sprint(o.GP, " GP"))

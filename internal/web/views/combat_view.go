@@ -92,11 +92,23 @@ const (
 
 // kindLabel and kindTint set the kinds apart, as visibility does note blocks.
 var (
-	kindLabel  = map[string]string{KindPC: "PC", KindNPC: "NPC", KindMonster: "Monster"}
-	kindTint   = map[string]string{KindPC: "border-l-sky-400/60", KindNPC: "border-l-amber-400/60", KindMonster: "border-l-rose-400/60"}
+	kindLabel = map[string]string{KindPC: "PC", KindNPC: "NPC", KindMonster: "Monster"}
+	kindTint  = map[string]string{
+		KindPC:      "border-l-sky-400/60",
+		KindNPC:     "border-l-amber-400/60",
+		KindMonster: "border-l-rose-400/60",
+	}
 	kindGroup  = map[string]string{KindPC: "PCs", KindNPC: "NPCs", KindMonster: "Monsters"}
-	kindBorder = map[string]string{KindPC: "border-sky-400/60", KindNPC: "border-amber-400/60", KindMonster: "border-rose-400/60"}
-	kindDot    = map[string]string{KindPC: "bg-sky-400/60", KindNPC: "bg-amber-400/60", KindMonster: "bg-rose-400/60"}
+	kindBorder = map[string]string{
+		KindPC:      "border-sky-400/60",
+		KindNPC:     "border-amber-400/60",
+		KindMonster: "border-rose-400/60",
+	}
+	kindDot = map[string]string{
+		KindPC:      "bg-sky-400/60",
+		KindNPC:     "bg-amber-400/60",
+		KindMonster: "bg-rose-400/60",
+	}
 )
 
 // CombatView is the combat page.
@@ -129,7 +141,13 @@ const (
 
 // turnVals is the htmx payload naming the turn this tracker shows.
 func (e EncounterView) turnVals() string {
-	return fmt.Sprintf(`{%q:%d,%q:%d}`, TurnActiveField, e.Encounter.ActiveCombatantID.Int64, TurnRoundField, e.Encounter.Round)
+	return fmt.Sprintf(
+		`{%q:%d,%q:%d}`,
+		TurnActiveField,
+		e.Encounter.ActiveCombatantID.Int64,
+		TurnRoundField,
+		e.Encounter.Round,
+	)
 }
 
 func (c CombatantView) hasMeter() bool { return c.ShowHP && c.MaxHP > 0 }
@@ -141,8 +159,19 @@ const uncheckCrit = "this.querySelector('[data-slot=checkbox][data-checked]')?.c
 // combatantState marks whose turn it is and who is down; live updates flip
 // these attributes.
 func combatantState(c CombatantView) templ.Attributes {
-	a := templ.Attributes{"data-active": fmt.Sprint(c.Active), "data-down": fmt.Sprint(c.down()), "data-dead": fmt.Sprint(c.Dead)}
-	return with(a, bind("data-active="+combatantKey(c, "on"), "data-down="+combatantKey(c, "down"), "data-dead="+combatantKey(c, "dead")))
+	a := templ.Attributes{
+		"data-active": fmt.Sprint(c.Active),
+		"data-down":   fmt.Sprint(c.down()),
+		"data-dead":   fmt.Sprint(c.Dead),
+	}
+	return with(
+		a,
+		bind(
+			"data-active="+combatantKey(c, "on"),
+			"data-down="+combatantKey(c, "down"),
+			"data-dead="+combatantKey(c, "dead"),
+		),
+	)
 }
 
 // initials is the first letter of the name's first two words ("Goblin 2" → "G2").
@@ -170,7 +199,10 @@ func (e EncounterView) initiativeSet() bool { return len(e.missingInitiative()) 
 
 // rollableMissing reports whether a monster or NPC still has no initiative: the GM rolls for those.
 func (e EncounterView) rollableMissing() bool {
-	return slices.ContainsFunc(e.Combatants, func(c CombatantView) bool { return c.Kind != KindPC && c.Initiative == "" })
+	return slices.ContainsFunc(
+		e.Combatants,
+		func(c CombatantView) bool { return c.Kind != KindPC && c.Initiative == "" },
+	)
 }
 
 // missingInitiative names the combatants without an initiative.
@@ -202,7 +234,8 @@ func (e EncounterView) turnNames() (prev, cur, next string) {
 	}
 	prev = near(-1)
 	// On the first turn of the fight nobody has acted yet.
-	if e.Encounter.Round <= 1 && !slices.ContainsFunc(e.Combatants[:i], func(c CombatantView) bool { return !c.Out }) {
+	if e.Encounter.Round <= 1 &&
+		!slices.ContainsFunc(e.Combatants[:i], func(c CombatantView) bool { return !c.Out }) {
 		prev = "—"
 	}
 	return prev, e.Combatants[i].Name, near(1)
@@ -291,7 +324,8 @@ func selectItems[T any](xs []T, value, label func(T) string) []selectcomp.ItemDa
 	return items
 }
 
-// wideList sizes a select's list to its longest label, never narrower than its button nor wider than the screen.
+// wideList sizes a select's list to its longest label, never narrower than its button nor wider
+// than the screen.
 const wideList = "w-auto min-w-(--anchor-width) max-w-[calc(100vw-2rem)]"
 
 func visibleTitle(on bool) string {

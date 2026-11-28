@@ -41,11 +41,31 @@ func conditionItems() []selectcomp.ItemData {
 // (damageChoice reads them back).
 func damageTypeItems(d Defenses) []selectcomp.ItemData {
 	d.ResistAll = false // Petrified has its own note
-	effect := map[int]string{0: "immune, none", 2: "resisted, half", 4: "resisted and vulnerable", 8: "vulnerable, double"}
-	items := []selectcomp.ItemData{{Value: " ", Label: "Other"}} //nolint:goconst // unrelated to the other "Other" labels
+	effect := map[int]string{
+		0: "immune, none",
+		2: "resisted, half",
+		4: "resisted and vulnerable",
+		8: "vulnerable, double",
+	}
+	items := []selectcomp.ItemData{
+		{Value: " ", Label: "Other"},
+	} //nolint:goconst // unrelated to the other "Other" labels
 	for _, t := range dnd5e.DamageTypes {
-		if slices.ContainsFunc(d.List, func(def dnd5e.Defense) bool { return def.When == "" && slices.Contains(def.Types, t) }) {
-			items = append(items, selectcomp.ItemData{Value: t, Label: fmt.Sprintf("%s (%s)", capitalized([]string{t})[0], effect[d.Taken(4, t, -1)])})
+		if slices.ContainsFunc(
+			d.List,
+			func(def dnd5e.Defense) bool { return def.When == "" && slices.Contains(def.Types, t) },
+		) {
+			items = append(
+				items,
+				selectcomp.ItemData{
+					Value: t,
+					Label: fmt.Sprintf(
+						"%s (%s)",
+						capitalized([]string{t})[0],
+						effect[d.Taken(4, t, -1)],
+					),
+				},
+			)
 		}
 	}
 	for i, def := range d.List {
@@ -53,7 +73,18 @@ func damageTypeItems(d Defenses) []selectcomp.ItemData {
 			continue
 		}
 		for _, t := range def.Types {
-			items = append(items, selectcomp.ItemData{Value: fmt.Sprintf("%s@%d", t, i), Label: fmt.Sprintf("%s %s (%s)", capitalized([]string{t})[0], def.When, effect[d.Taken(4, t, i)])})
+			items = append(
+				items,
+				selectcomp.ItemData{
+					Value: fmt.Sprintf("%s@%d", t, i),
+					Label: fmt.Sprintf(
+						"%s %s (%s)",
+						capitalized([]string{t})[0],
+						def.When,
+						effect[d.Taken(4, t, i)],
+					),
+				},
+			)
 		}
 	}
 	return items

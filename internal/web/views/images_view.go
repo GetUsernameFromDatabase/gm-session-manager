@@ -68,7 +68,13 @@ const ImageResultsID = "image-results"
 
 func categoryFilterItems(cats []sqlc.ImageCategory) []selectcomp.ItemData {
 	items := []selectcomp.ItemData{{Value: "0", Label: "All categories"}}
-	return append(items, selectItems(cats, func(c sqlc.ImageCategory) string { return fmt.Sprint(c.ID) }, func(c sqlc.ImageCategory) string { return c.Name })...)
+	return append(
+		items,
+		selectItems(
+			cats,
+			func(c sqlc.ImageCategory) string { return fmt.Sprint(c.ID) },
+			func(c sqlc.ImageCategory) string { return c.Name },
+		)...)
 }
 
 // showPressed marks a show button while its image is on the display.
@@ -76,7 +82,12 @@ const showPressed = "aria-pressed:bg-primary aria-pressed:text-primary-foregroun
 
 // showAttrs make a button put src on the display window (app.js).
 func showAttrs(src, name string) templ.Attributes {
-	return templ.Attributes{"data-show-image": "", "data-src": src, "data-name": name, attrAriaPressed: ariaFalse}
+	return templ.Attributes{
+		"data-show-image": "",
+		"data-src":        src,
+		"data-name":       name,
+		attrAriaPressed:   ariaFalse,
+	}
 }
 
 // ImageView is one image page: the GM's editor or a player's view.

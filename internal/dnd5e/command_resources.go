@@ -106,7 +106,11 @@ func parseRest(args []string) (Command, error) {
 				return ErrDead
 			}
 			c.LongRest()
-			fx.Conditions = append(fx.Conditions, CondOp{Op: CondExhaustion, Slug: Exhaustion, Delta: -1}, CondOp{Op: CondEndRest, Rest: ResetLong})
+			fx.Conditions = append(
+				fx.Conditions,
+				CondOp{Op: CondExhaustion, Slug: Exhaustion, Delta: -1},
+				CondOp{Op: CondEndRest, Rest: ResetLong},
+			)
 			return nil
 		}), nil
 	}
@@ -160,7 +164,10 @@ func parseUse(args []string, restore bool) (Command, error) {
 	}
 	name := args[0]
 	return Command{Scope: perm.ScopeSheet, apply: func(c *Character, _ Env, _ *Effects) error {
-		i := slices.IndexFunc(c.Sheet.Features, func(f Feature) bool { return strings.EqualFold(f.Name, name) })
+		i := slices.IndexFunc(
+			c.Sheet.Features,
+			func(f Feature) bool { return strings.EqualFold(f.Name, name) },
+		)
 		if i < 0 {
 			return fmt.Errorf("no feature %q", name)
 		}

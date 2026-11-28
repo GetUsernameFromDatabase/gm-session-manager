@@ -53,7 +53,12 @@ func (a *App) lookAction(ctx context.Context, action string, ops lookOps) error 
 
 // lookFree refuses an image of another campaign, or one the other kind of
 // owner wears: an image is an NPC's look or a character's, never both.
-func lookFree(ctx context.Context, q *sqlc.Queries, ownerCampaignID, imageCampaignID, imageID int64, forCharacter bool) error {
+func lookFree(
+	ctx context.Context,
+	q *sqlc.Queries,
+	ownerCampaignID, imageCampaignID, imageID int64,
+	forCharacter bool,
+) error {
 	if ownerCampaignID != imageCampaignID {
 		return userError{errors.New("the image belongs to another campaign")}
 	}
@@ -70,11 +75,19 @@ func lookFree(ctx context.Context, q *sqlc.Queries, ownerCampaignID, imageCampai
 }
 
 // linkCharacterLook links an image to a character of the same campaign.
-func linkCharacterLook(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, imageCampaignID, imageID int64) error {
+func linkCharacterLook(
+	ctx context.Context,
+	q *sqlc.Queries,
+	ch sqlc.Character,
+	imageCampaignID, imageID int64,
+) error {
 	if err := lookFree(ctx, q, ch.CampaignID, imageCampaignID, imageID, true); err != nil {
 		return err
 	}
-	return q.LinkCharacterImage(ctx, sqlc.LinkCharacterImageParams{CharacterID: ch.ID, ImageID: imageID})
+	return q.LinkCharacterImage(
+		ctx,
+		sqlc.LinkCharacterImageParams{CharacterID: ch.ID, ImageID: imageID},
+	)
 }
 
 // lookOwner loads :character for its player, who alone manages its looks.
@@ -103,7 +116,11 @@ func (a *App) addCharacterLook(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
-	url, attachment, err := imageSource(form.URL, upload, sqlc.GetImageRow{CampaignID: ch.CampaignID})
+	url, attachment, err := imageSource(
+		form.URL,
+		upload,
+		sqlc.GetImageRow{CampaignID: ch.CampaignID},
+	)
 	if err != nil {
 		return err
 	}
@@ -113,7 +130,15 @@ func (a *App) addCharacterLook(c *gin.Context) error {
 	}
 	ctx := c.Request.Context()
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
-		img, err := q.CreateImage(ctx, sqlc.CreateImageParams{CampaignID: ch.CampaignID, Name: name, Url: url, AttachmentID: attachment})
+		img, err := q.CreateImage(
+			ctx,
+			sqlc.CreateImageParams{
+				CampaignID:   ch.CampaignID,
+				Name:         name,
+				Url:          url,
+				AttachmentID: attachment,
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -159,6 +184,18 @@ func (a *App) characterLook(c *gin.Context) error {
 }
 
 // toLook converts a look row, an NPC's or a character's.
-func toLook(id int64, name string, url sql.NullString, attachment sql.NullInt64, revealed, current bool) perm.Look {
-	return perm.Look{ImageID: id, Name: name, Version: imageVersion(url, attachment), IsRevealed: revealed, IsCurrent: current}
+func toLook(
+	id int64,
+	name string,
+	url sql.NullString,
+	attachment sql.NullInt64,
+	revealed, current bool,
+) perm.Look {
+	return perm.Look{
+		ImageID:    id,
+		Name:       name,
+		Version:    imageVersion(url, attachment),
+		IsRevealed: revealed,
+		IsCurrent:  current,
+	}
 }

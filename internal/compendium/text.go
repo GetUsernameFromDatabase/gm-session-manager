@@ -21,7 +21,10 @@ func ParseTraits(text string) []NameDesc {
 	for _, para := range paragraphs(text) {
 		para = strings.TrimSpace(strings.TrimLeft(para, "-*• \t"))
 		if m := reTraitName.FindStringSubmatch(para); m != nil {
-			out = append(out, NameDesc{Name: strings.TrimSpace(m[1]), Desc: strings.TrimSpace(para[len(m[0]):])})
+			out = append(
+				out,
+				NameDesc{Name: strings.TrimSpace(m[1]), Desc: strings.TrimSpace(para[len(m[0]):])},
+			)
 		} else if n := len(out); n > 0 {
 			out[n-1].Desc += "\n\n" + para
 		} else {
@@ -56,7 +59,9 @@ func paragraphs(text string) []string {
 
 // reFeatureHead is a feature heading: "Level 3: Name", "Level 2, 5, 9: Name"
 // or "Level 3: Name (subclass)" for the level the subclass is chosen at.
-var reFeatureHead = regexp.MustCompile(`(?i)^level\s+(\d+(?:\s*,\s*\d+)*)\s*:\s*(.+?)(\s*\(subclass\))?\s*$`)
+var reFeatureHead = regexp.MustCompile(
+	`(?i)^level\s+(\d+(?:\s*,\s*\d+)*)\s*:\s*(.+?)(\s*\(subclass\))?\s*$`,
+)
 
 // ParseFeatures reads class features: each starts with a heading line
 // (reFeatureHead) and its description runs to the next heading.
@@ -140,7 +145,13 @@ func TableText(table map[string]map[int]string) string {
 
 // classTraits are the core traits rows the character wizard reads (see
 // CoreTraits), in table order. The homebrew editor fills the first four.
-var classTraits = []string{TraitSkillProficiencies, TraitArmorTraining, TraitWeaponProficiencies, TraitToolProficiencies, TraitStartingEquipment}
+var classTraits = []string{
+	TraitSkillProficiencies,
+	TraitArmorTraining,
+	TraitWeaponProficiencies,
+	TraitToolProficiencies,
+	TraitStartingEquipment,
+}
 
 // Class core-trait names (keys of CoreTraits) the wizard shows and reads.
 const (

@@ -24,7 +24,9 @@ import (
 )
 
 // errStepSaved refuses a step saved since the page was loaded.
-var errStepSaved = userError{errors.New("this step was already saved, maybe on another device: reload to see it")}
+var errStepSaved = userError{
+	errors.New("this step was already saved, maybe on another device: reload to see it"),
+}
 
 // setupOnce is a creation step's command: it applies the step once and
 // snapshots the sheet before it, so the step can be redone (wizardChange).
@@ -76,7 +78,10 @@ func (a *App) classStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command, erro
 	data, _ := compendium.DecodeData(enum.KindClass, row.DataJson)
 	choice := wizardChoice(row, data)
 	skills := postedSkills(c)
-	if err := checkSkillPick(classSkillPick(sheet, choice.Skills, choice.SkillCount, nil), skills); err != nil {
+	if err := checkSkillPick(
+		classSkillPick(sheet, choice.Skills, choice.SkillCount, nil),
+		skills,
+	); err != nil {
 		return nil, err
 	}
 	return setupOnce(views.StepClass, func(s *dnd5e.Sheet, cc *dnd5e.Character) error {
@@ -87,14 +92,20 @@ func (a *App) classStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command, erro
 			return err
 		}
 		cc.Sheet.AddProfs(info.Name, skills, trainedIn(choice.Traits)...)
-		cc.Sheet.AddArmorTraining(info.Name, dnd5e.ParseArmorTraining(choice.Traits[compendium.TraitArmorTraining])...)
+		cc.Sheet.AddArmorTraining(
+			info.Name,
+			dnd5e.ParseArmorTraining(choice.Traits[compendium.TraitArmorTraining])...)
 		return nil
 	}), nil
 }
 
 // textPick is the posted species or background (a step and kind both), nil
 // without one.
-func (a *App) textPick(c *gin.Context, ch sqlc.Character, kind enum.CompendiumKind) (sqlc.CompendiumEntry, *compendium.TextData, error) {
+func (a *App) textPick(
+	c *gin.Context,
+	ch sqlc.Character,
+	kind enum.CompendiumKind,
+) (sqlc.CompendiumEntry, *compendium.TextData, error) {
 	pick := c.PostForm("pick")
 	if pick == "" {
 		return sqlc.CompendiumEntry{}, nil, nil
@@ -145,7 +156,8 @@ func (a *App) backgroundStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command,
 		return nil, err
 	}
 	return setupOnce(views.StepBackground, func(s *dnd5e.Sheet, _ *dnd5e.Character) error {
-		if pickAgain != nil && len(s.Classes) == 0 { // the class was undone since the sheet was read
+		if pickAgain != nil &&
+			len(s.Classes) == 0 { // the class was undone since the sheet was read
 			return userError{errors.New("choose a class first")}
 		}
 		if pickAgain != nil { // the class's picks are made again, with the background's known
@@ -178,10 +190,20 @@ func (a *App) abilitiesStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command, 
 		}
 		for _, e := range ve {
 			ab := strings.ToLower(e.StructField())
-			errs = append(errs, fieldError{userError{fmt.Errorf("%s must be 3 to 20", dnd5e.AbilityNames[ab])}, ab})
+			errs = append(
+				errs,
+				fieldError{userError{fmt.Errorf("%s must be 3 to 20", dnd5e.AbilityNames[ab])}, ab},
+			)
 		}
 	}
-	scores := map[string]int{"str": f.Str, "dex": f.Dex, "con": f.Con, "int": f.Int, "wis": f.Wis, "cha": f.Cha}
+	scores := map[string]int{
+		"str": f.Str,
+		"dex": f.Dex,
+		"con": f.Con,
+		"int": f.Int,
+		"wis": f.Wis,
+		"cha": f.Cha,
+	}
 	bg, err := a.backgroundChoice(ctx, sheet)
 	if err != nil {
 		return nil, err
@@ -194,7 +216,13 @@ func (a *App) abilitiesStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command, 
 	}
 	for _, ab := range dnd5e.Abilities {
 		if scores[ab]+raises[ab] > dnd5e.AbilityCap {
-			errs = append(errs, fieldError{userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])}, ab})
+			errs = append(
+				errs,
+				fieldError{
+					userError{fmt.Errorf("%s cannot go above 20", dnd5e.AbilityNames[ab])},
+					ab,
+				},
+			)
 		}
 	}
 	if err := errors.Join(errs...); err != nil {
@@ -220,7 +248,13 @@ func (a *App) choicesStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command, er
 	}
 	// Refused together, so every field shows its own error.
 	picks, pickErr := readPicks(c, cr.groups)
-	spells, err := a.classSpellPicks(c, sheet.Classes[0].Slug, cr.view.Spells, cr.view.SpellNeed, ch.CampaignID)
+	spells, err := a.classSpellPicks(
+		c,
+		sheet.Classes[0].Slug,
+		cr.view.Spells,
+		cr.view.SpellNeed,
+		ch.CampaignID,
+	)
 	if err != nil && !errors.As(err, new(userError)) {
 		return nil, err
 	}
@@ -263,7 +297,10 @@ func (a *App) equipmentStep(c *gin.Context, ch sqlc.Character) (*dnd5e.Command, 
 	var picked []compendium.EquipmentOption
 	for _, ec := range choices {
 		letter := c.PostForm("option_" + ec.Key)
-		if i := slices.IndexFunc(ec.Options, func(o compendium.EquipmentOption) bool { return o.Letter == letter }); i >= 0 {
+		if i := slices.IndexFunc(
+			ec.Options,
+			func(o compendium.EquipmentOption) bool { return o.Letter == letter },
+		); i >= 0 {
 			picked = append(picked, ec.Options[i])
 		}
 	}
@@ -283,15 +320,28 @@ func (a *App) detailsStep(c *gin.Context, _ sqlc.Character) (*dnd5e.Command, err
 	if err := c.ShouldBind(&f); err != nil {
 		var ve validator.ValidationErrors
 		if !errors.As(err, &ve) {
-			return nil, userError{errors.New("keep the name to 100 characters, the vision to 200 and the backstory to 20000")}
+			return nil, userError{
+				errors.New(
+					"keep the name to 100 characters, the vision to 200 and the backstory to 20000",
+				),
+			}
 		}
 		for _, e := range ve {
-			errs = append(errs, fieldError{userError{fmt.Errorf("keep it to %s characters", e.Param())}, strings.ToLower(e.StructField())})
+			errs = append(
+				errs,
+				fieldError{
+					userError{fmt.Errorf("keep it to %s characters", e.Param())},
+					strings.ToLower(e.StructField()),
+				},
+			)
 		}
 	}
 	name := strings.TrimSpace(f.Name)
 	if name == "" {
-		errs = append(errs, fieldError{userError{errors.New("give your character a name")}, views.FieldName})
+		errs = append(
+			errs,
+			fieldError{userError{errors.New("give your character a name")}, views.FieldName},
+		)
 	}
 	backstory, vision := f.Backstory, strings.TrimSpace(f.Vision)
 	size := dnd5e.SizeNamed(f.Size)
@@ -367,7 +417,9 @@ func applySpecies(s *dnd5e.Sheet, name string, d *compendium.TextData) {
 			}
 		case p.Type == compendium.PartSize || p.Name == compendium.LabelSize:
 			// "Medium or Small" names no single size: the player picks it in Details.
-			if size := dnd5e.SizeNamed(strings.TrimSuffix(strings.TrimSpace(p.Desc), ".")); size != "" {
+			if size := dnd5e.SizeNamed(
+				strings.TrimSuffix(strings.TrimSpace(p.Desc), "."),
+			); size != "" {
 				s.Size = size
 			}
 		default:
@@ -382,7 +434,10 @@ func applySpecies(s *dnd5e.Sheet, name string, d *compendium.TextData) {
 // backgroundRaises reads the background's ability increases: +2 and +1 to
 // two of its abilities, or +1 to all three.
 func backgroundRaises(c *gin.Context, allowed []string) (map[string]int, error) {
-	errRaises := fieldError{userError{errors.New("choose two different abilities of this background for +2 and +1")}, views.FieldMode}
+	errRaises := fieldError{
+		userError{errors.New("choose two different abilities of this background for +2 and +1")},
+		views.FieldMode,
+	}
 	var f backgroundForm
 	if err := c.ShouldBind(&f); err != nil {
 		return nil, errRaises
@@ -397,7 +452,8 @@ func backgroundRaises(c *gin.Context, allowed []string) (map[string]int, error) 
 	if f.Plus2 == "" && f.Plus1 == "" {
 		return raises, nil
 	}
-	if !slices.Contains(allowed, f.Plus2) || !slices.Contains(allowed, f.Plus1) || f.Plus1 == f.Plus2 {
+	if !slices.Contains(allowed, f.Plus2) || !slices.Contains(allowed, f.Plus1) ||
+		f.Plus1 == f.Plus2 {
 		return nil, errRaises
 	}
 	raises[f.Plus2], raises[f.Plus1] = 2, 1
@@ -406,7 +462,10 @@ func backgroundRaises(c *gin.Context, allowed []string) (map[string]int, error) 
 
 // originFeat is the background's feat from the compendium, if it is there.
 // The second result is the feat's source key ("" when it has no entry).
-func (a *App) originFeat(ctx context.Context, d *compendium.TextData) (*dnd5e.Feature, string, error) {
+func (a *App) originFeat(
+	ctx context.Context,
+	d *compendium.TextData,
+) (*dnd5e.Feature, string, error) {
 	for _, p := range d.Parts {
 		if p.Type != compendium.PartFeat {
 			continue
@@ -474,7 +533,17 @@ func (a *App) gearFor(ctx context.Context, picked []compendium.EquipmentOption) 
 				g.shield = true
 			case item.Armor != nil && g.armor == nil:
 				ar := item.Armor
-				g.armor = &dnd5e.WornArmor{Slug: e.Slug, Name: e.Name, Source: e.SourceKey, Type: ar.Type, Base: ar.Base, AddDex: ar.AddDex, DexCap: ar.DexCap, StrReq: ar.StrReq, Stealth: ar.Stealth}
+				g.armor = &dnd5e.WornArmor{
+					Slug:    e.Slug,
+					Name:    e.Name,
+					Source:  e.SourceKey,
+					Type:    ar.Type,
+					Base:    ar.Base,
+					AddDex:  ar.AddDex,
+					DexCap:  ar.DexCap,
+					StrReq:  ar.StrReq,
+					Stealth: ar.Stealth,
+				}
 			}
 		}
 	}
@@ -485,12 +554,21 @@ func (a *App) gearFor(ctx context.Context, picked []compendium.EquipmentOption) 
 // "Pouches").
 func (a *App) findItem(ctx context.Context, name string) (sqlc.CompendiumEntry, error) {
 	slug := compendium.Slugify(name)
-	e, err := a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: enum.KindItem, Slug: slug})
+	e, err := a.Store.GetCompendiumEntryBySlug(
+		ctx,
+		sqlc.GetCompendiumEntryBySlugParams{Kind: enum.KindItem, Slug: slug},
+	)
 	for _, suffix := range []string{"s", "es"} {
 		if !errors.Is(err, sql.ErrNoRows) || !strings.HasSuffix(slug, suffix) {
 			break
 		}
-		e, err = a.Store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: enum.KindItem, Slug: strings.TrimSuffix(slug, suffix)})
+		e, err = a.Store.GetCompendiumEntryBySlug(
+			ctx,
+			sqlc.GetCompendiumEntryBySlugParams{
+				Kind: enum.KindItem,
+				Slug: strings.TrimSuffix(slug, suffix),
+			},
+		)
 	}
 	return e, err
 }
@@ -500,7 +578,10 @@ func applyEquipment(s *dnd5e.Sheet, picked []compendium.EquipmentOption, g gear)
 		s.Coins.GP += o.GP
 		for _, it := range o.Items {
 			name := cmp.Or(g.names[it.Name], it.Name)
-			if i := slices.IndexFunc(s.Inventory, func(x dnd5e.Item) bool { return strings.EqualFold(x.Name, name) }); i >= 0 {
+			if i := slices.IndexFunc(
+				s.Inventory,
+				func(x dnd5e.Item) bool { return strings.EqualFold(x.Name, name) },
+			); i >= 0 {
 				s.Inventory[i].Qty += it.Qty
 			} else {
 				s.Inventory = append(s.Inventory, dnd5e.Item{Name: name, Qty: it.Qty})

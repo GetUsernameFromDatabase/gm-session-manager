@@ -78,7 +78,11 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 		return fmt.Errorf("read schema version: %w", err)
 	}
 	if current > len(migrations) {
-		return fmt.Errorf("database schema version %d is newer than this binary (%d); refusing to run", current, len(migrations))
+		return fmt.Errorf(
+			"database schema version %d is newer than this binary (%d); refusing to run",
+			current,
+			len(migrations),
+		)
 	}
 
 	for _, m := range migrations[current:] {
@@ -107,7 +111,10 @@ func apply(ctx context.Context, conn *sql.DB, m migration) error {
 		if err := tx.QueryRowContext(ctx, "PRAGMA schema_version").Scan(&sv); err != nil {
 			return fmt.Errorf("migration %s: read schema version: %w", m.name, err)
 		}
-		if _, err := tx.ExecContext(ctx, "PRAGMA schema_version = "+strconv.Itoa(sv+1)); err != nil {
+		if _, err := tx.ExecContext(
+			ctx,
+			"PRAGMA schema_version = "+strconv.Itoa(sv+1),
+		); err != nil {
 			return fmt.Errorf("migration %s: bump schema version: %w", m.name, err)
 		}
 	}

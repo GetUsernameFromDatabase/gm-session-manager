@@ -121,7 +121,14 @@ func effectSheet(sheet dnd5e.Sheet, conds []sqlc.Condition) dnd5e.Sheet {
 // addEffect puts the posted condition or effect on o, in a campaign. v is
 // who posts it: a held_by row must be one v may use. expires is the round it
 // ends, from the form's rounds.
-func (a *App) addEffect(ctx context.Context, v perm.Viewer, o condOwner, campaignID int64, f effectForm, expires sql.NullInt64) error {
+func (a *App) addEffect(
+	ctx context.Context,
+	v perm.Viewer,
+	o condOwner,
+	campaignID int64,
+	f effectForm,
+	expires sql.NullInt64,
+) error {
 	if !dnd5e.IsConditionSlug(f.Slug) {
 		return userError{fmt.Errorf("unknown condition %q", f.Slug)}
 	}
@@ -143,7 +150,12 @@ func (a *App) addEffect(ctx context.Context, v perm.Viewer, o condOwner, campaig
 	if err := dnd5e.ValidateEffectMods(cmp.Or(note, f.Slug), mods); err != nil {
 		return userError{err}
 	}
-	x := condExtra{Expires: expires, EndsOn: enum.EffectEnd(f.EndsOn), HeldBy: nullID(f.HeldBy), ModsJSON: noMods}
+	x := condExtra{
+		Expires:  expires,
+		EndsOn:   enum.EffectEnd(f.EndsOn),
+		HeldBy:   nullID(f.HeldBy),
+		ModsJSON: noMods,
+	}
 	if len(mods) > 0 {
 		raw, err := json.Marshal(dnd5e.EffectMods(cmp.Or(note, f.Slug), mods))
 		if err != nil {
@@ -172,7 +184,16 @@ func (a *App) addEffect(ctx context.Context, v perm.Viewer, o condOwner, campaig
 		if err != nil {
 			return err
 		}
-		preset = &sqlc.UpsertEffectPresetParams{CampaignID: campaignID, Owner: nullID(v.CharacterID), Name: name, Slug: f.Slug, Note: strings.TrimSpace(f.Note), EndsOn: enum.EffectEnd(f.EndsOn), Rounds: int64(f.Rounds), ModsJson: string(raw)}
+		preset = &sqlc.UpsertEffectPresetParams{
+			CampaignID: campaignID,
+			Owner:      nullID(v.CharacterID),
+			Name:       name,
+			Slug:       f.Slug,
+			Note:       strings.TrimSpace(f.Note),
+			EndsOn:     enum.EffectEnd(f.EndsOn),
+			Rounds:     int64(f.Rounds),
+			ModsJson:   string(raw),
+		}
 	}
 	return a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		if f.HeldBy != 0 {
@@ -193,7 +214,10 @@ func (a *App) addEffect(ctx context.Context, v perm.Viewer, o condOwner, campaig
 
 // presetNames are the presets of owner in a campaign, for the picker.
 func (a *App) presetNames(ctx context.Context, campaignID, owner int64) ([]views.Named, error) {
-	rows, err := a.Store.ListEffectPresets(ctx, sqlc.ListEffectPresetsParams{CampaignID: campaignID, Owner: nullID(owner)})
+	rows, err := a.Store.ListEffectPresets(
+		ctx,
+		sqlc.ListEffectPresetsParams{CampaignID: campaignID, Owner: nullID(owner)},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +255,10 @@ func (a *App) deleteEffectPreset(c *gin.Context) error {
 		a.fail(c, http.StatusForbidden, "That is not your preset.")
 		return nil
 	}
-	n, err := a.Store.DeleteEffectPreset(ctx, sqlc.DeleteEffectPresetParams{ID: id, CampaignID: p.CampaignID, Owner: p.OwnerCharacterID})
+	n, err := a.Store.DeleteEffectPreset(
+		ctx,
+		sqlc.DeleteEffectPresetParams{ID: id, CampaignID: p.CampaignID, Owner: p.OwnerCharacterID},
+	)
 	if err != nil {
 		return err
 	}
@@ -248,7 +275,12 @@ func (a *App) deleteEffectPreset(c *gin.Context) error {
 
 // checkHolder refuses a held_by that is not a concentration row of this
 // campaign that v may use: the GM any, a player their own character's.
-func checkHolder(ctx context.Context, q *sqlc.Queries, v perm.Viewer, campaignID, holderID int64) error {
+func checkHolder(
+	ctx context.Context,
+	q *sqlc.Queries,
+	v perm.Viewer,
+	campaignID, holderID int64,
+) error {
 	bad := userError{errors.New("choose a concentration in this campaign")}
 	h, err := q.GetCondition(ctx, holderID)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && h.Slug != slugConcentration {
@@ -292,7 +324,11 @@ func checkHolder(ctx context.Context, q *sqlc.Queries, v perm.Viewer, campaignID
 
 // canAddEffect is perm.CanAddEffect for a target character: the campaign rule
 // compares it with the player's own character.
-func (a *App) canAddEffect(ctx context.Context, v perm.Viewer, target sqlc.Character) (bool, error) {
+func (a *App) canAddEffect(
+	ctx context.Context,
+	v perm.Viewer,
+	target sqlc.Character,
+) (bool, error) {
 	same := false
 	if v.IsPlayer() {
 		own, err := a.Store.GetCharacter(ctx, v.CharacterID)
@@ -340,7 +376,14 @@ func (a *App) characterEffect(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := a.addEffect(ctx, w.viewer, condOwner{characterID: ch.ID}, ch.CampaignID, f, expires); err != nil {
+	if err := a.addEffect(
+		ctx,
+		w.viewer,
+		condOwner{characterID: ch.ID},
+		ch.CampaignID,
+		f,
+		expires,
+	); err != nil {
 		return err
 	}
 	a.characterChanged(c, ch)
@@ -349,7 +392,11 @@ func (a *App) characterEffect(c *gin.Context) error {
 
 // characterRounds is the round an effect of rounds rounds ends in the
 // running fight the character is in. Rounds only count in a fight.
-func (a *App) characterRounds(ctx context.Context, characterID int64, rounds int) (sql.NullInt64, error) {
+func (a *App) characterRounds(
+	ctx context.Context,
+	characterID int64,
+	rounds int,
+) (sql.NullInt64, error) {
 	if rounds == 0 {
 		return sql.NullInt64{}, nil
 	}
@@ -360,7 +407,9 @@ func (a *App) characterRounds(ctx context.Context, characterID int64, rounds int
 	if ok {
 		return roundsEnd(enc.Round, rounds), nil
 	}
-	return sql.NullInt64{}, userError{errors.New("rounds count only in a fight that is running; use a rest instead")}
+	return sql.NullInt64{}, userError{
+		errors.New("rounds count only in a fight that is running; use a rest instead"),
+	}
 }
 
 // roundsEnd is the last round of an effect of rounds rounds started in round.
@@ -383,7 +432,10 @@ func (a *App) effectSpell(c *gin.Context) error {
 	ctx := c.Request.Context()
 	characterID, _ := strconv.ParseInt(c.Query("character"), 10, 64)
 	combatantID, _ := strconv.ParseInt(c.Query("combatant"), 10, 64)
-	f := views.EffectFields{ID: views.EffectID(characterID, combatantID), URL: views.EffectFieldsURL(id, characterID, combatantID)}
+	f := views.EffectFields{
+		ID:  views.EffectID(characterID, combatantID),
+		URL: views.EffectFieldsURL(id, characterID, combatantID),
+	}
 	switch {
 	case characterID != 0:
 		ch, err := a.Store.GetCharacter(ctx, characterID)
@@ -450,7 +502,11 @@ func (a *App) effectSpell(c *gin.Context) error {
 	if f.HeldBy, err = a.heldByOptions(ctx, w.viewer, id, characterID, combatantID); err != nil {
 		return err
 	}
-	if presetID, _ := strconv.ParseInt(strings.TrimSpace(c.Query("preset")), 10, 64); presetID != 0 {
+	if presetID, _ := strconv.ParseInt(
+		strings.TrimSpace(c.Query("preset")),
+		10,
+		64,
+	); presetID != 0 {
 		p, err := a.Store.GetEffectPreset(ctx, presetID)
 		if err != nil {
 			return err
@@ -466,7 +522,9 @@ func (a *App) effectSpell(c *gin.Context) error {
 		if !f.InFight {
 			f.Rounds = 0 // rounds count only in a running fight
 		}
-	} else if spell := strings.TrimSpace(c.Query("spell")); spell != "" {
+	} else if spell := strings.TrimSpace(
+		c.Query("spell"),
+	); spell != "" {
 		var d compendium.SpellData
 		if f.Name, f.Note, f.Rounds, d, err = a.spellPrefill(ctx, spell, id); err != nil {
 			return err
@@ -542,7 +600,11 @@ func heldLabel(owner, note string) string {
 
 // heldLabels name what holds the effects among conds, by concentration row
 // id, for showing. A combatant's name is the GM's: a player sees the spell.
-func (a *App) heldLabels(ctx context.Context, v perm.Viewer, conds []sqlc.Condition) (map[int64]string, error) {
+func (a *App) heldLabels(
+	ctx context.Context,
+	v perm.Viewer,
+	conds []sqlc.Condition,
+) (map[int64]string, error) {
 	var out map[int64]string
 	for _, c := range conds {
 		if !c.HeldBy.Valid || out[c.HeldBy.Int64] != "" {
@@ -582,7 +644,11 @@ func (a *App) heldLabels(ctx context.Context, v perm.Viewer, conds []sqlc.Condit
 // name, a clock duration as the note (a clock never auto-expires), the rounds
 // a duration in rounds or minutes lasts in a fight, and whether it needs
 // concentration (in d, with the text SpellMods reads). spell is its name or slug.
-func (a *App) spellPrefill(ctx context.Context, spell string, campaignID int64) (name, note string, rounds int, d compendium.SpellData, err error) {
+func (a *App) spellPrefill(
+	ctx context.Context,
+	spell string,
+	campaignID int64,
+) (name, note string, rounds int, d compendium.SpellData, err error) {
 	slug := compendium.Slugify(spell)
 	row, err := a.entryBySlug(ctx, enum.KindSpell, slug, campaignID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -626,7 +692,11 @@ func durationRounds(duration string) int {
 // effect on a character (characterID) or a combatant (combatantID): the GM
 // any character's in the campaign and those of the target's fights, a player
 // their own. The label is "Caster: spell".
-func (a *App) heldByOptions(ctx context.Context, v perm.Viewer, campaignID, characterID, combatantID int64) ([]views.Named, error) {
+func (a *App) heldByOptions(
+	ctx context.Context,
+	v perm.Viewer,
+	campaignID, characterID, combatantID int64,
+) ([]views.Named, error) {
 	label := heldLabel
 	var out []views.Named
 	if !v.IsGM {
@@ -637,7 +707,10 @@ func (a *App) heldByOptions(ctx context.Context, v perm.Viewer, campaignID, char
 		if err != nil || ch.CampaignID != campaignID {
 			return nil, notFoundIsNil(err) // no row means no options
 		}
-		cond, err := a.Store.FindCharacterCondition(ctx, sqlc.FindCharacterConditionParams{CharacterID: nullID(ch.ID), Slug: slugConcentration})
+		cond, err := a.Store.FindCharacterCondition(
+			ctx,
+			sqlc.FindCharacterConditionParams{CharacterID: nullID(ch.ID), Slug: slugConcentration},
+		)
 		if err != nil {
 			return nil, notFoundIsNil(err)
 		}

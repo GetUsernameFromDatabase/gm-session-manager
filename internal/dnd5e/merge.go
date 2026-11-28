@@ -37,7 +37,12 @@ const (
 // MergeGroups are the groups in the order the review shows them.
 var MergeGroups = []string{GroupBuild, GroupHealth, GroupGear, GroupStory}
 
-var groupLabels = map[string]string{GroupBuild: "Build", GroupHealth: "Health", GroupGear: "Gear & coins", GroupStory: "Story"}
+var groupLabels = map[string]string{
+	GroupBuild:  "Build",
+	GroupHealth: "Health",
+	GroupGear:   "Gear & coins",
+	GroupStory:  "Story",
+}
 
 // GroupLabel is a group's name for the GM.
 func GroupLabel(group string) string { return groupLabels[group] }
@@ -46,10 +51,12 @@ func GroupLabel(group string) string { return groupLabels[group] }
 // character columns: Build MaxHP, Health HP and TempHP, Story Name.
 // TestMergeGroupsCoverSheet keeps them in step with Sheet.
 var groupKeys = map[string][]string{
-	GroupBuild: strings.Fields(`species species_ability background species_source background_source feat_sources classes abilities
+	GroupBuild: strings.Fields(
+		`species species_ability background species_source background_source feat_sources classes abilities
 		ac_bonus ac speed size vision save_profs skill_profs expertise other_profs armor_training
 		prof_sources resistances immunities vulnerabilities spell_slots pact_slots pact_level spells
-		masteries modifiers features feats last_class setup_done setup_snapshots effects_version`),
+		masteries modifiers features feats last_class setup_done setup_snapshots effects_version`,
+	),
 	GroupHealth: strings.Fields(`hit_dice_used death_saves inspiration`),
 	GroupGear:   strings.Fields(`inventory weapons armor shield coins`),
 	GroupStory:  strings.Fields(`backstory languages`),
@@ -263,11 +270,22 @@ func describe(group string, base, side Character) []string {
 			case i < 0:
 				out = append(out, "Class "+c.Name+" added")
 			case b.Classes[i].Subclass != c.Subclass:
-				out = append(out, fmt.Sprintf("%s subclass: %s → %s", c.Name, orNone(b.Classes[i].Subclass), orNone(c.Subclass)))
+				out = append(
+					out,
+					fmt.Sprintf(
+						"%s subclass: %s → %s",
+						c.Name,
+						orNone(b.Classes[i].Subclass),
+						orNone(c.Subclass),
+					),
+				)
 			}
 		}
 		for _, c := range b.Classes {
-			if !slices.ContainsFunc(s.Classes, func(x ClassLevel) bool { return x.Slug == c.Slug }) {
+			if !slices.ContainsFunc(
+				s.Classes,
+				func(x ClassLevel) bool { return x.Slug == c.Slug },
+			) {
 				out = append(out, "Class "+c.Name+" removed")
 			}
 		}
@@ -290,15 +308,31 @@ func describe(group string, base, side Character) []string {
 			out = append(out, fmt.Sprintf("Hit dice spent %d → %d", b.HitDiceUsed, s.HitDiceUsed))
 		}
 		if b.DeathSaves != s.DeathSaves {
-			out = append(out, fmt.Sprintf("Death saves %d ok, %d failed → %d ok, %d failed", b.DeathSaves.Successes, b.DeathSaves.Failures, s.DeathSaves.Successes, s.DeathSaves.Failures))
+			out = append(
+				out,
+				fmt.Sprintf(
+					"Death saves %d ok, %d failed → %d ok, %d failed",
+					b.DeathSaves.Successes,
+					b.DeathSaves.Failures,
+					s.DeathSaves.Successes,
+					s.DeathSaves.Failures,
+				),
+			)
 		}
 		if b.Inspiration != s.Inspiration {
-			out = append(out, map[bool]string{true: "Inspiration gained", false: "Inspiration used"}[s.Inspiration])
+			out = append(
+				out,
+				map[bool]string{true: "Inspiration gained", false: "Inspiration used"}[s.Inspiration],
+			)
 		}
 	case GroupGear:
 		out = append(out, addedRemoved("Items", itemNames(b), itemNames(s))...)
 		for _, it := range s.Inventory {
-			if i := slices.IndexFunc(b.Inventory, func(x Item) bool { return x.Name == it.Name }); i >= 0 && b.Inventory[i].Qty != it.Qty {
+			if i := slices.IndexFunc(
+				b.Inventory,
+				func(x Item) bool { return x.Name == it.Name },
+			); i >= 0 &&
+				b.Inventory[i].Qty != it.Qty {
 				out = append(out, fmt.Sprintf("%s ×%d → ×%d", it.Name, b.Inventory[i].Qty, it.Qty))
 			}
 		}
@@ -314,7 +348,10 @@ func describe(group string, base, side Character) []string {
 			out = append(out, fmt.Sprintf("Armor: %s → %s", orNone(wb), orNone(ws)))
 		}
 		if b.Shield != s.Shield {
-			out = append(out, map[bool]string{true: "Shield equipped", false: "Shield put away"}[s.Shield])
+			out = append(
+				out,
+				map[bool]string{true: "Shield equipped", false: "Shield put away"}[s.Shield],
+			)
 		}
 	case GroupStory:
 		if base.Name != side.Name {
@@ -387,7 +424,10 @@ func (s Sheet) eachPin(fn func(key, kind, name string)) {
 	fn(s.BackgroundSource, "background", s.Background)
 	for _, slug := range slices.Sorted(maps.Keys(s.FeatSources)) {
 		name := slug // a pin whose feat left the list keeps its slug
-		if i := slices.IndexFunc(s.Feats, func(n string) bool { return sameSlug(n, slug) }); i >= 0 {
+		if i := slices.IndexFunc(
+			s.Feats,
+			func(n string) bool { return sameSlug(n, slug) },
+		); i >= 0 {
 			name = s.Feats[i]
 		}
 		fn(s.FeatSources[slug], "feat", name)

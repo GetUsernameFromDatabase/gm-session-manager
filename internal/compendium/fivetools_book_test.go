@@ -33,8 +33,10 @@ func TestFiveToolsItemMastery(t *testing.T) {
 
 func TestFiveToolsMagicVariants(t *testing.T) {
 	files := map[string][]byte{
-		"book.json":  []byte(`{"id":"DMG","name":"DMG"}`),
-		"items.json": []byte(`{"item":[{"name":"Vorpal Sword","source":"DMG","rarity":"legendary","entries":["Real."]}]}`),
+		"book.json": []byte(`{"id":"DMG","name":"DMG"}`),
+		"items.json": []byte(
+			`{"item":[{"name":"Vorpal Sword","source":"DMG","rarity":"legendary","entries":["Real."]}]}`,
+		),
 		"magicvariants.json": []byte(`{"magicvariant":[
 			{"name":"+1 Weapon","requires":[{"weapon":true}],"inherits":{"source":"DMG","rarity":"uncommon","bonusWeapon":"+1","entries":["You have a {=bonusWeapon} bonus to attack rolls."]}},
 			{"name":"Flame Tongue","requires":[{"sword":true}],"inherits":{"source":"DMG","rarity":"rare","reqAttune":true,"entries":["Aflame."]}},
@@ -57,8 +59,16 @@ func TestFiveToolsMagicVariants(t *testing.T) {
 		{"vorpal-sword", "Legendary", "Real.", false}, // the book's own item wins
 	} {
 		d := got[tc.slug]
-		if d.Rarity != tc.rarity || d.Desc != tc.desc || d.Attunement != tc.attune || d.Category != "other" {
-			t.Errorf("%s = %+v, want rarity %q, desc %q, attunement %v", tc.slug, d, tc.rarity, tc.desc, tc.attune)
+		if d.Rarity != tc.rarity || d.Desc != tc.desc || d.Attunement != tc.attune ||
+			d.Category != "other" {
+			t.Errorf(
+				"%s = %+v, want rarity %q, desc %q, attunement %v",
+				tc.slug,
+				d,
+				tc.rarity,
+				tc.desc,
+				tc.attune,
+			)
 		}
 	}
 }
@@ -96,15 +106,20 @@ func TestImportFiveToolsBook(t *testing.T) {
 	if r.Entries == 0 {
 		t.Fatalf("report %+v", r)
 	}
-	cat, err := store.GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "cat"})
+	cat, err := store.GetCompendiumEntryBySlug(
+		t.Context(),
+		sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "cat"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := FiveToolsImages(readBook(t, fiveToolsFixture))["cat"]; want == "" || cat.ImageUrl.String != want {
+	if want := FiveToolsImages(readBook(t, fiveToolsFixture))["cat"]; want == "" ||
+		cat.ImageUrl.String != want {
 		t.Errorf("cat image %q, want %q", cat.ImageUrl.String, want)
 	}
 	src, err := store.GetCompendiumSource(t.Context(), cat.SourceKey)
-	if err != nil || src.Edition != "2024" || src.Published != "2024-09-17" || !strings.Contains(src.Attribution, "Wizards of the Coast") {
+	if err != nil || src.Edition != "2024" || src.Published != "2024-09-17" ||
+		!strings.Contains(src.Attribution, "Wizards of the Coast") {
 		t.Errorf("source %+v %v", src, err)
 	}
 	// The cat's environment seeds its habitats; a GM change survives re-import.
@@ -113,14 +128,27 @@ func TestImportFiveToolsBook(t *testing.T) {
 		slices.Sort(h)
 		return h
 	}
-	if got := habitats(); !reflect.DeepEqual(got, []enum.Habitat{enum.HabitatPlanar, enum.HabitatUrban}) {
+	if got := habitats(); !reflect.DeepEqual(
+		got,
+		[]enum.Habitat{enum.HabitatPlanar, enum.HabitatUrban},
+	) {
 		t.Errorf("cat habitats %v", got)
 	}
-	if err := store.RemoveMonsterHabitat(t.Context(), sqlc.RemoveMonsterHabitatParams{EntryID: cat.ID, Habitat: "Urban"}); err != nil {
+	if err := store.RemoveMonsterHabitat(
+		t.Context(),
+		sqlc.RemoveMonsterHabitatParams{EntryID: cat.ID, Habitat: "Urban"},
+	); err != nil {
 		t.Fatal(err)
 	}
 	// A changed hash forces the re-import.
-	if err := store.UpsertCompendiumSource(t.Context(), sqlc.UpsertCompendiumSourceParams{SourceKey: src.SourceKey, Path: src.Path, Edition: src.Edition}); err != nil {
+	if err := store.UpsertCompendiumSource(
+		t.Context(),
+		sqlc.UpsertCompendiumSourceParams{
+			SourceKey: src.SourceKey,
+			Path:      src.Path,
+			Edition:   src.Edition,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if r := importOnce(t, store, filepath.Dir(fiveToolsFixture)); r.Unchanged {
@@ -130,7 +158,10 @@ func TestImportFiveToolsBook(t *testing.T) {
 		t.Errorf("cat habitats after re-import %v", got)
 	}
 	// Pickers offer species and subraces (marked with their base), never versions.
-	names, err := store.ListCompendiumNames(t.Context(), sqlc.ListCompendiumNamesParams{Kind: enum.KindSpecies})
+	names, err := store.ListCompendiumNames(
+		t.Context(),
+		sqlc.ListCompendiumNamesParams{Kind: enum.KindSpecies},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,8 +169,19 @@ func TestImportFiveToolsBook(t *testing.T) {
 	for _, n := range names {
 		slugs = append(slugs, strings.TrimSuffix(n.Slug+"<"+n.SubraceOf, "<"))
 	}
-	if want := []string{"dragonborn", "elf", "elf-2014", "elf-drow<elf", "elf-high<elf-2014", "half-elf",
-		"half-elf-aquatic-elf-descent<half-elf", "half-elf-drow-descent<half-elf"}; !reflect.DeepEqual(slugs, want) {
+	if want := []string{
+		"dragonborn",
+		"elf",
+		"elf-2014",
+		"elf-drow<elf",
+		"elf-high<elf-2014",
+		"half-elf",
+		"half-elf-aquatic-elf-descent<half-elf",
+		"half-elf-drow-descent<half-elf",
+	}; !reflect.DeepEqual(
+		slugs,
+		want,
+	) {
 		t.Errorf("species picks %v, want %v", slugs, want)
 	}
 }
@@ -159,7 +201,13 @@ func TestTokensReadAsLabels(t *testing.T) {
 	if strings.Contains(in.Actions, "[[") || !strings.Contains(in.Actions, "It falls prone.") {
 		t.Errorf("form actions %q", in.Actions)
 	}
-	in = InputForEntry(Entry{Kind: enum.KindMonster, Name: "Ogre", Data: MonsterData{Desc: "See [[compendium:monster/goblin|goblins]]."}})
+	in = InputForEntry(
+		Entry{
+			Kind: enum.KindMonster,
+			Name: "Ogre",
+			Data: MonsterData{Desc: "See [[compendium:monster/goblin|goblins]]."},
+		},
+	)
 	if in.Desc != "See goblins." {
 		t.Errorf("form desc %q", in.Desc)
 	}
@@ -228,7 +276,13 @@ func TestParseFiveToolsBook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Source{Key: "5etools-xphb", Edition: "2024", License: "Not SRD — private use", Attribution: "Player's Handbook (2024), © Wizards of the Coast", Published: "2024-09-17"}
+	want := Source{
+		Key:         "5etools-xphb",
+		Edition:     "2024",
+		License:     "Not SRD — private use",
+		Attribution: "Player's Handbook (2024), © Wizards of the Coast",
+		Published:   "2024-09-17",
+	}
 	if src != want {
 		t.Errorf("source %+v", src)
 	}
@@ -245,13 +299,41 @@ func TestParseFiveToolsBook(t *testing.T) {
 		}
 	}
 	keys := []string{
-		"monster/cat", "monster/mountain-cat", "spell/fireball", "spell/detect-magic", "spell/shield",
-		"item/longsword", "item/dagger", "item/plate-armor", "item/dwarven-plate", "item/bag-of-holding",
-		"item/flame-tongue-longsword", "item/absorbing-tattoo", "species/elf", "species/elf-drow",
-		"species/half-elf", "species/elf-2014", "species/half-elf-drow-descent", "species/half-elf-aquatic-elf-descent", "species/elf-high",
-		"species/elf-wood-elf-lineage", "species/dragonborn", "species/dragonborn-black", "species/dragonborn-red",
-		"background/acolyte", "feat/alert", "feat/grappler", "condition/prone", "condition/concentration",
-		"rule/sewer-plague", "rule/advantage", "rule/sap", "class/fighter", "class/wizard", "subclass/champion", "subclass/evoker",
+		"monster/cat",
+		"monster/mountain-cat",
+		"spell/fireball",
+		"spell/detect-magic",
+		"spell/shield",
+		"item/longsword",
+		"item/dagger",
+		"item/plate-armor",
+		"item/dwarven-plate",
+		"item/bag-of-holding",
+		"item/flame-tongue-longsword",
+		"item/absorbing-tattoo",
+		"species/elf",
+		"species/elf-drow",
+		"species/half-elf",
+		"species/elf-2014",
+		"species/half-elf-drow-descent",
+		"species/half-elf-aquatic-elf-descent",
+		"species/elf-high",
+		"species/elf-wood-elf-lineage",
+		"species/dragonborn",
+		"species/dragonborn-black",
+		"species/dragonborn-red",
+		"background/acolyte",
+		"feat/alert",
+		"feat/grappler",
+		"condition/prone",
+		"condition/concentration",
+		"rule/sewer-plague",
+		"rule/advantage",
+		"rule/sap",
+		"class/fighter",
+		"class/wizard",
+		"subclass/champion",
+		"subclass/evoker",
 	}
 	if len(entries) != len(keys) {
 		t.Errorf("%d entries, want %d", len(entries), len(keys))
@@ -383,12 +465,18 @@ func TestParseFiveToolsBook(t *testing.T) {
 
 	// Fluff joins the description and the search text.
 	cat := got["monster/cat"]
-	if d := cat.Data.(MonsterData); d.Desc != "Cats prowl rooftops and [[compendium:item/bag-of-holding|bags]]." || !strings.Contains(cat.Text, "rooftops and bags.") {
+	if d := cat.Data.(MonsterData); d.Desc != "Cats prowl rooftops and [[compendium:item/bag-of-holding|bags]]." ||
+		!strings.Contains(cat.Text, "rooftops and bags.") {
 		t.Errorf("cat fluff %q, text %q", d.Desc, cat.Text)
 	}
 
 	images := FiveToolsImages(files)
-	if want := map[string]string{"cat": fiveToolsImages + "XPHB/Cat.webp"}; !reflect.DeepEqual(images, want) {
+	if want := map[string]string{
+		"cat": fiveToolsImages + "XPHB/Cat.webp",
+	}; !reflect.DeepEqual(
+		images,
+		want,
+	) {
 		t.Errorf("images %v", images)
 	}
 
@@ -452,7 +540,9 @@ func TestFiveToolsCopyTargets(t *testing.T) {
 	if err := json.Unmarshal(files["bestiary.json"], &doc); err != nil {
 		t.Fatal(err)
 	}
-	doc[copyTargetsKey] = json.RawMessage(`{"monster":[{"name":"Owl","source":"XMM","size":["T"],"type":"beast","ac":[11],"hp":{"average":1,"formula":"1d4 - 1"},"cr":"0"}]}`)
+	doc[copyTargetsKey] = json.RawMessage(
+		`{"monster":[{"name":"Owl","source":"XMM","size":["T"],"type":"beast","ac":[11],"hp":{"average":1,"formula":"1d4 - 1"},"cr":"0"}]}`,
+	)
 	files["bestiary.json"], _ = json.Marshal(doc)
 	_, entries, skipped, err := parseFiveToolsBookReport("5etools-xphb", files)
 	if err != nil {
@@ -515,8 +605,20 @@ func TestFiveToolsCopy(t *testing.T) {
 				first = ftEntries(tr.Entries)
 			}
 		}
-		if got := strings.Join(names, ",") + ": " + first; got != tt.want || m.Name != "Copy" || m.Page != 0 || m.HasToken {
-			t.Errorf("%s: %q (name %s page %d token %v), want %q", tt.name, got, m.Name, m.Page, m.HasToken, tt.want)
+		if got := strings.Join(
+			names,
+			",",
+		) + ": " + first; got != tt.want || m.Name != "Copy" || m.Page != 0 ||
+			m.HasToken {
+			t.Errorf(
+				"%s: %q (name %s page %d token %v), want %q",
+				tt.name,
+				got,
+				m.Name,
+				m.Page,
+				m.HasToken,
+				tt.want,
+			)
 		}
 		if _, ok := recs[1]["_copy"]; ok {
 			b, _ := json.Marshal(recs[1])
@@ -535,7 +637,11 @@ func TestFiveToolsCopy(t *testing.T) {
 		{"unknown mode", `[{"name":"Base; Odd","_mod":{"trait":{"mode":"addSpells"}}},{"name":"Base; Ok"}]`, "Base (Ok)", 1},
 		{"not a list", `{}`, "", 1},
 	} {
-		rec := ftRec{"name": json.RawMessage(`"Base"`), "source": json.RawMessage(`"B"`), "trait": json.RawMessage(`[]`)}
+		rec := ftRec{
+			"name":   json.RawMessage(`"Base"`),
+			"source": json.RawMessage(`"B"`),
+			"trait":  json.RawMessage(`[]`),
+		}
 		if tt.versions != "null" {
 			rec["_versions"] = json.RawMessage(tt.versions)
 		}
@@ -549,7 +655,14 @@ func TestFiveToolsCopy(t *testing.T) {
 			}
 		}
 		if got := strings.Join(names, ","); got != tt.want || skipped != tt.skipped {
-			t.Errorf("%s: %q skipped %d, want %q skipped %d", tt.name, got, skipped, tt.want, tt.skipped)
+			t.Errorf(
+				"%s: %q skipped %d, want %q skipped %d",
+				tt.name,
+				got,
+				skipped,
+				tt.want,
+				tt.skipped,
+			)
 		}
 	}
 

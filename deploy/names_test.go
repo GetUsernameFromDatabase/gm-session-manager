@@ -9,7 +9,8 @@ import (
 	"gm-session-manager/internal/web"
 )
 
-// The scripts name in common.sh the files the Go app also reads or writes in DATA_DIR; a rename on one side only
+// The scripts name in common.sh the files the Go app also reads or writes in DATA_DIR; a rename on
+// one side only
 // would back up, or show in the footer, a file that no longer exists.
 func TestNamesMatchGo(t *testing.T) {
 	src, err := os.ReadFile("common.sh")

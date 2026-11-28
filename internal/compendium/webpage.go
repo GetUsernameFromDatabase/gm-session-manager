@@ -92,7 +92,8 @@ func ParsePageURL(raw string) (Site, string, error) {
 		raw = "https://" + raw
 	}
 	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Port() != "" || u.User != nil {
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Port() != "" ||
+		u.User != nil {
 		return Site{}, "", errNotASite
 	}
 	for _, s := range Sites {
@@ -152,14 +153,30 @@ func SavePage(ctx context.Context, store *db.Store, p Page) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err = storeSource(ctx, store, base, src, p.URL(), hex.EncodeToString(sum[:]), []Entry{e}, nil); err != nil || p.Image == "" {
+	if _, err = storeSource(
+		ctx,
+		store,
+		base,
+		src,
+		p.URL(),
+		hex.EncodeToString(sum[:]),
+		[]Entry{e},
+		nil,
+	); err != nil ||
+		p.Image == "" {
 		return src.Key, err
 	}
 	rows, err := store.ListCompendiumKeysBySource(ctx, src.Key)
 	if err != nil || len(rows) == 0 {
 		return src.Key, err
 	}
-	_, err = store.SetCompendiumImage(ctx, sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: p.Image, Valid: true}, ID: rows[0].ID})
+	_, err = store.SetCompendiumImage(
+		ctx,
+		sqlc.SetCompendiumImageParams{
+			ImageUrl: sql.NullString{String: p.Image, Valid: true},
+			ID:       rows[0].ID,
+		},
+	)
 	return src.Key, err
 }
 
@@ -170,7 +187,12 @@ var editionPublished = map[string]string{"2014": "2014-08-19", "2024": "2024-09-
 func pageSource(p Page) Source {
 	edition := p.Site.edition(p.ID)
 	return Source{
-		Key: PageSourceKey(p.Site.Key, p.ID), Edition: edition, License: "Unverified (third-party site copy)",
+		Key: PageSourceKey(
+			p.Site.Key,
+			p.ID,
+		),
+		Edition:     edition,
+		License:     "Unverified (third-party site copy)",
 		Attribution: strings.TrimSpace(strings.TrimSpace(p.Book) + " via " + p.URL()),
 		Published:   editionPublished[edition],
 	}
@@ -187,7 +209,11 @@ func ParsePlainPage(body []byte) (Entry, error) {
 		return Entry{}, err
 	}
 	root, name := doc, ""
-	if h1 := find(doc, func(n *html.Node) bool { return n.Data == "h1" }); h1 != nil && h1.Parent != nil {
+	if h1 := find(
+		doc,
+		func(n *html.Node) bool { return n.Data == "h1" },
+	); h1 != nil &&
+		h1.Parent != nil {
 		root, name = h1.Parent, textOf(h1)
 	}
 	if name == "" {
@@ -196,7 +222,10 @@ func ParsePlainPage(body []byte) (Entry, error) {
 	if name == "" {
 		return Entry{}, errors.New("the page has no title")
 	}
-	desc := strings.Join(slices.DeleteFunc(textLines(root), func(l string) bool { return l == name }), "\n\n")
+	desc := strings.Join(
+		slices.DeleteFunc(textLines(root), func(l string) bool { return l == name }),
+		"\n\n",
+	)
 	return Entry{Name: name, Data: TextData{Desc: desc}, Text: desc}, nil
 }
 

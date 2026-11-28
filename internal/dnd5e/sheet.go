@@ -39,7 +39,10 @@ var Sizes = []string{"Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"}
 
 // SizeNamed is the size named like name (any case), or "".
 func SizeNamed(name string) string {
-	i := slices.IndexFunc(Sizes, func(s string) bool { return strings.EqualFold(s, strings.TrimSpace(name)) })
+	i := slices.IndexFunc(
+		Sizes,
+		func(s string) bool { return strings.EqualFold(s, strings.TrimSpace(name)) },
+	)
 	if i < 0 {
 		return ""
 	}
@@ -141,8 +144,8 @@ type ClassLevel struct {
 	Source         string `json:"source,omitempty"          validate:"max=512"`
 	SubclassSlug   string `json:"subclass_slug,omitempty"   validate:"max=200"`
 	SubclassSource string `json:"subclass_source,omitempty" validate:"max=512"`
-	Level          int    `json:"level"              validate:"min=1,max=20"`
-	HitDie         int    `json:"hit_die"            validate:"oneof=6 8 10 12"`
+	Level          int    `json:"level"                     validate:"min=1,max=20"`
+	HitDie         int    `json:"hit_die"                   validate:"oneof=6 8 10 12"`
 	// Caster is the class's caster type: full, half, pact or none.
 	Caster string `json:"caster" validate:"oneof=full half third pact none"`
 }
@@ -186,7 +189,8 @@ type Item struct {
 
 // Worn reports whether an inventory item is the armor or shield worn.
 func (s Sheet) Worn(it Item) bool {
-	return it.Armor != nil && s.Armor != nil && strings.EqualFold(s.Armor.Name, it.Name) || it.Shield && s.Shield
+	return it.Armor != nil && s.Armor != nil && strings.EqualFold(s.Armor.Name, it.Name) ||
+		it.Shield && s.Shield
 }
 
 // Ready reports whether an inventory item is a weapon on the attack list.
@@ -195,7 +199,10 @@ func (s Sheet) Ready(it Item) bool {
 }
 
 func (s Sheet) weaponIndex(name string) int {
-	return slices.IndexFunc(s.Weapons, func(w Weapon) bool { return strings.EqualFold(w.Name, name) })
+	return slices.IndexFunc(
+		s.Weapons,
+		func(w Weapon) bool { return strings.EqualFold(w.Name, name) },
+	)
 }
 
 // ArmorItem is the index of the inventory armor or shield named name, or -1.
@@ -356,8 +363,8 @@ type Weapon struct {
 	DamageType string `json:"damage_type,omitempty" validate:"max=50"`
 	Proficient bool   `json:"proficient"`
 	// Range is normal/long range in feet for ranged and thrown weapons.
-	Range      string `json:"range,omitempty"       validate:"max=20"`
-	Properties string `json:"properties,omitempty"  validate:"max=300"`
+	Range      string `json:"range,omitempty"      validate:"max=20"`
+	Properties string `json:"properties,omitempty" validate:"max=300"`
 	// Mastery is the weapon's mastery property ("Sap"), usable while
 	// Sheet.Masters its kind.
 	Mastery string `json:"mastery,omitempty" validate:"max=50"`
@@ -367,12 +374,17 @@ type Weapon struct {
 // and "Longsword (+1)" (the SRD's form) are a Longsword.
 func WeaponKind(name string) string {
 	name = strings.TrimSpace(name)
-	// shortcut: only a "+n" bonus is stripped, so "Berserker Battleaxe" is its own kind; give sheet weapons a base weapon if other names matter.
+	// shortcut: only a "+n" bonus is stripped, so "Berserker Battleaxe" is its own kind; give sheet
+	// weapons a base weapon if other names matter.
 	isBonus := func(s string) bool { return len(s) == 2 && s[0] == '+' && s[1] >= '1' && s[1] <= '9' }
 	if bonus, rest, ok := strings.Cut(name, " "); ok && isBonus(bonus) {
 		return rest
 	}
-	if rest, bonus, ok := strings.Cut(name, " ("); ok && isBonus(strings.TrimSuffix(bonus, ")")) && strings.HasSuffix(bonus, ")") {
+	if rest, bonus, ok := strings.Cut(
+		name,
+		" (",
+	); ok && isBonus(strings.TrimSuffix(bonus, ")")) &&
+		strings.HasSuffix(bonus, ")") {
 		return rest
 	}
 	return name
@@ -382,7 +394,10 @@ func WeaponKind(name string) string {
 // Mastery.
 func (s Sheet) Masters(weapon string) bool {
 	kind := WeaponKind(weapon)
-	return slices.ContainsFunc(s.Masteries, func(m string) bool { return strings.EqualFold(m, kind) })
+	return slices.ContainsFunc(
+		s.Masteries,
+		func(m string) bool { return strings.EqualFold(m, kind) },
+	)
 }
 
 // CustomMod is a custom bonus for what the app does not compute itself
@@ -443,7 +458,11 @@ const ExplainOffhand = "offhand"
 
 // IsModTarget reports whether target names a value modifiers can change.
 func IsModTarget(target string) bool {
-	if slices.Contains([]string{ModAC, ModSpeed, ModInit, ModPassive, ModAttack, ModDamage}, target) || slices.Contains(Abilities, target) {
+	if slices.Contains(
+		[]string{ModAC, ModSpeed, ModInit, ModPassive, ModAttack, ModDamage},
+		target,
+	) ||
+		slices.Contains(Abilities, target) {
 		return true
 	}
 	kind, rest, ok := strings.Cut(target, ".")
@@ -464,35 +483,35 @@ type Sheet struct {
 	// SpeciesAbility is the spellcasting ability picked for the species'
 	// spells, kept for the ones its lineage teaches at later levels.
 	SpeciesAbility string `json:"species_ability,omitempty" validate:"omitempty,oneof=int wis cha"`
-	Background     string `json:"background,omitempty" validate:"max=200"`
+	Background     string `json:"background,omitempty"      validate:"max=200"`
 	// SpeciesSource, BackgroundSource and FeatSources (by feat slug) pin the
 	// compendium copies those came from; empty follows source priority.
 	SpeciesSource    string            `json:"species_source,omitempty"    validate:"max=512"`
 	BackgroundSource string            `json:"background_source,omitempty" validate:"max=512"`
 	FeatSources      map[string]string `json:"feat_sources,omitempty"      validate:"dive,keys,max=200,endkeys,max=512"`
-	Backstory        string            `json:"backstory,omitempty"  validate:"max=20000"`
-	Classes          []ClassLevel      `json:"classes"              validate:"dive"`
-	Scores           map[string]int    `json:"abilities"            validate:"dive,keys,oneof=str dex con int wis cha,endkeys,min=1,max=30"`
+	Backstory        string            `json:"backstory,omitempty"         validate:"max=20000"`
+	Classes          []ClassLevel      `json:"classes"                     validate:"dive"`
+	Scores           map[string]int    `json:"abilities"                   validate:"dive,keys,oneof=str dex con int wis cha,endkeys,min=1,max=30"`
 	// ACBonus is added to AC whatever is worn; AC is the base AC older
 	// sheets set by hand, turned into ACBonus by ParseSheet.
-	ACBonus int    `json:"ac_bonus,omitempty"   validate:"min=-20,max=30"`
-	AC      int    `json:"ac,omitempty"         validate:"min=0,max=50"`
-	Speed   int    `json:"speed"                validate:"min=0,max=500"`
-	Size    string `json:"size,omitempty"       validate:"omitempty,oneof=Tiny Small Medium Large Huge Gargantuan"`
+	ACBonus int    `json:"ac_bonus,omitempty" validate:"min=-20,max=30"`
+	AC      int    `json:"ac,omitempty"       validate:"min=0,max=50"`
+	Speed   int    `json:"speed"              validate:"min=0,max=500"`
+	Size    string `json:"size,omitempty"     validate:"omitempty,oneof=Tiny Small Medium Large Huge Gargantuan"`
 	// Vision is what the character sees in the dark ("Darkvision 60 ft");
 	// empty is normal sight.
-	Vision     string   `json:"vision,omitempty"     validate:"max=200"`
-	SaveProfs  []string `json:"save_profs"           validate:"dive,oneof=str dex con int wis cha"`
-	SkillProfs []string `json:"skill_profs"          validate:"dive,required"`
-	Expertise  []string `json:"expertise"            validate:"dive,required"`
-	OtherProfs []string `json:"other_profs"          validate:"dive,required,max=200"`
+	Vision     string   `json:"vision,omitempty" validate:"max=200"`
+	SaveProfs  []string `json:"save_profs"       validate:"dive,oneof=str dex con int wis cha"`
+	SkillProfs []string `json:"skill_profs"      validate:"dive,required"`
+	Expertise  []string `json:"expertise"        validate:"dive,required"`
+	OtherProfs []string `json:"other_profs"      validate:"dive,required,max=200"`
 	// ArmorTraining are the armor kinds (ArmorKinds) worn without penalty.
 	ArmorTraining []string `json:"armor_training,omitempty" validate:"dive,oneof=light medium heavy shield"`
 	// ProfSources names what granted a skill (by key), other proficiency or
 	// armor training ("armor:heavy"): a feature, class, species trait or
 	// background. Profs added by hand or before it was kept have none.
 	ProfSources map[string]string `json:"prof_sources,omitempty" validate:"dive,keys,max=200,endkeys,max=200"`
-	Languages   []string          `json:"languages"            validate:"dive,required,max=100"`
+	Languages   []string          `json:"languages"              validate:"dive,required,max=100"`
 	// Resistances are the damage types (DamageTypes) the character resists.
 	Resistances     []string `json:"resistances,omitempty"     validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`
 	Immunities      []string `json:"immunities,omitempty"      validate:"dive,oneof=acid bludgeoning cold fire force lightning necrotic piercing poison psychic radiant slashing thunder"`
@@ -508,9 +527,9 @@ type Sheet struct {
 	// Masteries are the weapon kinds (compendium weapon names) chosen for
 	// Weapon Mastery, at most Sheet.MasteryLimit of them.
 	Masteries   []string    `json:"masteries,omitempty" validate:"max=20,dive,required,max=200"`
-	Modifiers   []CustomMod `json:"modifiers"     validate:"dive"`
-	Features    []Feature   `json:"features"      validate:"dive"`
-	Feats       []string    `json:"feats"         validate:"dive,required"`
+	Modifiers   []CustomMod `json:"modifiers"           validate:"dive"`
+	Features    []Feature   `json:"features"            validate:"dive"`
+	Feats       []string    `json:"feats"               validate:"dive,required"`
 	DeathSaves  DeathSaves  `json:"death_saves"`
 	Inspiration bool        `json:"inspiration"`
 	Coins       Coins       `json:"coins"`
@@ -541,7 +560,21 @@ type SetupSnapshot struct {
 func (s Sheet) SetUp(step string) bool { return slices.Contains(s.SetupDone, step) }
 
 // DamageTypes are the 2024 damage types, lowercase.
-var DamageTypes = []string{"acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"}
+var DamageTypes = []string{
+	"acid",
+	"bludgeoning",
+	"cold",
+	"fire",
+	"force",
+	"lightning",
+	"necrotic",
+	"piercing",
+	"poison",
+	"psychic",
+	"radiant",
+	"slashing",
+	"thunder",
+}
 
 // Defense kinds.
 const (
@@ -634,7 +667,17 @@ func ParseDefenses(kind, text string) []Defense {
 
 // StandardLanguages is the 2024 Standard Languages table, which a new
 // character picks two from besides Common.
-var StandardLanguages = []string{"Common Sign Language", "Draconic", "Dwarvish", "Elvish", "Giant", "Gnomish", "Goblin", "Halfling", "Orc"}
+var StandardLanguages = []string{
+	"Common Sign Language",
+	"Draconic",
+	"Dwarvish",
+	"Elvish",
+	"Giant",
+	"Gnomish",
+	"Goblin",
+	"Halfling",
+	"Orc",
+}
 
 // NewSheet returns the sheet of a freshly created character.
 func NewSheet() Sheet {
@@ -892,7 +935,11 @@ func (s Sheet) SpellAbility() string {
 // class whose list taught it (a slug), else the first casting class's.
 func (s Sheet) SpellAbilityOf(sp Spell) string {
 	of := spellAbilities[sp.Class]
-	if i := slices.IndexFunc(s.Classes, func(c ClassLevel) bool { return c.Slug == sp.Class }); sp.Class != "" && i >= 0 {
+	if i := slices.IndexFunc(
+		s.Classes,
+		func(c ClassLevel) bool { return c.Slug == sp.Class },
+	); sp.Class != "" &&
+		i >= 0 {
 		of = classAbility(s.Classes[i])
 	}
 	return cmp.Or(sp.Ability, of, s.SpellAbility())

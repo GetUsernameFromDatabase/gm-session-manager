@@ -16,7 +16,8 @@ import (
 	"gm-session-manager/internal/route"
 )
 
-// UnstampedVersion is main.version in a plain go build (task run); the GM footer shows the commit Go recorded instead.
+// UnstampedVersion is main.version in a plain go build (task run); the GM footer shows the commit
+// Go recorded instead.
 const UnstampedVersion = "dev"
 
 // Deps is what the web layer needs from main.
@@ -246,7 +247,9 @@ func (a *App) Router() *gin.Engine {
 	a.compendiumRoutes(comp, gm)
 	a.compendiumRoutes(campComp, gm)
 
-	r.NoRoute(func(c *gin.Context) { a.fail(c, http.StatusNotFound, "There is no page at this address.") })
+	r.NoRoute(
+		func(c *gin.Context) { a.fail(c, http.StatusNotFound, "There is no page at this address.") },
+	)
 	return r
 }
 

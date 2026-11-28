@@ -42,7 +42,9 @@ func TestArmorTrainingTextReadsBack(t *testing.T) {
 			t.Errorf("%q reads back as %q, want %q", text, got, kinds)
 		}
 	}
-	if got := ArmorTrainingText([]string{ArmorLight, ArmorMedium, ArmorShield}); got != "Light and Medium armor and Shields" {
+	if got := ArmorTrainingText(
+		[]string{ArmorLight, ArmorMedium, ArmorShield},
+	); got != "Light and Medium armor and Shields" {
 		t.Errorf("wording %q", got)
 	}
 }
@@ -67,11 +69,19 @@ func TestArmorGrants(t *testing.T) {
 
 // TestArmorUntrained checks the warning reads the training, not weapon text.
 func TestArmorUntrained(t *testing.T) {
-	wizard := Sheet{OtherProfs: []string{"Daggers, darts, slings, quarterstaffs, light crossbows"}, Armor: &WornArmor{Name: "Leather Armor", Type: ArmorLight}, Shield: true}
+	wizard := Sheet{
+		OtherProfs: []string{"Daggers, darts, slings, quarterstaffs, light crossbows"},
+		Armor:      &WornArmor{Name: "Leather Armor", Type: ArmorLight},
+		Shield:     true,
+	}
 	if got := wizard.ArmorUntrained(); !slices.Equal(got, []string{"light armor", "shields"}) {
 		t.Errorf("wizard untrained %q", got)
 	}
-	knight := Sheet{ArmorTraining: []string{ArmorHeavy, ArmorShield}, Armor: &WornArmor{Name: "Plate Armor", Type: ArmorHeavy}, Shield: true}
+	knight := Sheet{
+		ArmorTraining: []string{ArmorHeavy, ArmorShield},
+		Armor:         &WornArmor{Name: "Plate Armor", Type: ArmorHeavy},
+		Shield:        true,
+	}
 	if got := knight.ArmorUntrained(); got != nil {
 		t.Errorf("trained knight untrained %q", got)
 	}
@@ -82,14 +92,34 @@ func TestArmorUntrained(t *testing.T) {
 func TestArmorTrainingGrantsAndRemoval(t *testing.T) {
 	c := fighter()
 	c.Sheet.Scores[Wis] = 13
-	AddFeat(&c.Sheet, Feature{Name: "Heavily Armored", Source: SourceFeat, Description: "You gain training with Heavy armor."})
-	if err := c.LevelUp(LevelUpChoice{Class: ClassInfo{Slug: "cleric", Name: "Cleric", HitDie: 8}}); err != nil {
+	AddFeat(
+		&c.Sheet,
+		Feature{
+			Name:        "Heavily Armored",
+			Source:      SourceFeat,
+			Description: "You gain training with Heavy armor.",
+		},
+	)
+	if err := c.LevelUp(
+		LevelUpChoice{Class: ClassInfo{Slug: "cleric", Name: "Cleric", HitDie: 8}},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(c.Sheet.ArmorTraining, []string{ArmorLight, ArmorMedium, ArmorHeavy, ArmorShield}) {
+	if !slices.Equal(
+		c.Sheet.ArmorTraining,
+		[]string{ArmorLight, ArmorMedium, ArmorHeavy, ArmorShield},
+	) {
 		t.Fatalf("training %q", c.Sheet.ArmorTraining)
 	}
-	if got := c.Sheet.ArmorTrainingLabels(); !slices.Equal(got, []string{"Light (Cleric)", "Medium (Cleric)", "Heavy (Heavily Armored)", "Shields (Cleric)"}) {
+	if got := c.Sheet.ArmorTrainingLabels(); !slices.Equal(
+		got,
+		[]string{
+			"Light (Cleric)",
+			"Medium (Cleric)",
+			"Heavy (Heavily Armored)",
+			"Shields (Cleric)",
+		},
+	) {
 		t.Errorf("labels %q", got)
 	}
 	c.Sheet.RemoveProfsFrom("Heavily Armored")
@@ -105,7 +135,8 @@ func TestArmorTrainingGrantsAndRemoval(t *testing.T) {
 			t.Fatalf("%s: %v", line, err)
 		}
 	}
-	if !slices.Equal(c.Sheet.ArmorTraining, []string{ArmorLight, ArmorMedium, ArmorHeavy}) || c.Sheet.ProfSources["armor:shield"] != "" {
+	if !slices.Equal(c.Sheet.ArmorTraining, []string{ArmorLight, ArmorMedium, ArmorHeavy}) ||
+		c.Sheet.ProfSources["armor:shield"] != "" {
 		t.Errorf("after commands: %q, sources %v", c.Sheet.ArmorTraining, c.Sheet.ProfSources)
 	}
 	if _, err := Parse("prof add armor plate"); err == nil {
@@ -117,8 +148,16 @@ func TestArmorTrainingGrantsAndRemoval(t *testing.T) {
 // class its multiclass training, leaving weapon text alone.
 func TestCatchUpArmorTraining(t *testing.T) {
 	s := NewSheet()
-	s.Classes = []ClassLevel{{Slug: "fighter", Name: "Fighter", Level: 2}, {Slug: "rogue", Name: "Rogue", Level: 1}}
-	s.OtherProfs = []string{"All armor, shields", "Simple weapons, martial weapons", "None", "Daggers, darts, slings, quarterstaffs, light crossbows"}
+	s.Classes = []ClassLevel{
+		{Slug: "fighter", Name: "Fighter", Level: 2},
+		{Slug: "rogue", Name: "Rogue", Level: 1},
+	}
+	s.OtherProfs = []string{
+		"All armor, shields",
+		"Simple weapons, martial weapons",
+		"None",
+		"Daggers, darts, slings, quarterstaffs, light crossbows",
+	}
 	s.ProfSources = map[string]string{"All armor, shields": "Fighter"}
 	if !s.CatchUpArmorTraining() {
 		t.Fatal("nothing changed")
@@ -126,7 +165,13 @@ func TestCatchUpArmorTraining(t *testing.T) {
 	if !slices.Equal(s.ArmorTraining, []string{ArmorLight, ArmorMedium, ArmorHeavy, ArmorShield}) {
 		t.Errorf("training %q", s.ArmorTraining)
 	}
-	if !slices.Equal(s.OtherProfs, []string{"Simple weapons, martial weapons", "Daggers, darts, slings, quarterstaffs, light crossbows"}) {
+	if !slices.Equal(
+		s.OtherProfs,
+		[]string{
+			"Simple weapons, martial weapons",
+			"Daggers, darts, slings, quarterstaffs, light crossbows",
+		},
+	) {
 		t.Errorf("other profs %q", s.OtherProfs)
 	}
 	if s.ProfSources["armor:heavy"] != "Fighter" || s.ProfSources["All armor, shields"] != "" {

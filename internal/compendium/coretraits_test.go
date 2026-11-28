@@ -61,14 +61,24 @@ func TestOptions(t *testing.T) {
 		}
 	}
 	lineage := "Choose a lineage.\n\n**Table: Lineages**\n\n|Lineage|Level 1|Level 3|Level 5|\n|---|---|---|---|\n|Drow|Dancing Lights.|Faerie Fire|Darkness|\n|High Elf|Prestidigitation.|Detect Magic||\n\n|Other|Level 3|\n|---|---|\n|Not|This|"
-	if got, want := LevelSpells(lineage), map[string]map[int]string{"Drow": {3: "Faerie Fire", 5: "Darkness"}, "High Elf": {3: "Detect Magic"}}; !reflect.DeepEqual(got, want) {
-		t.Errorf("LevelSpells: %v", got)
+	spells := LevelSpells(lineage)
+	wantSpells := map[string]map[int]string{
+		"Drow":     {3: "Faerie Fire", 5: "Darkness"},
+		"High Elf": {3: "Detect Magic"},
 	}
-	if got := LevelSpells("**Forest Gnome.** You know the *Minor Illusion* cantrip."); len(got) != 0 {
-		t.Errorf("LevelSpells without a table: %v", got)
+	if !reflect.DeepEqual(spells, wantSpells) {
+		t.Errorf("LevelSpells: %v", spells)
 	}
-	if got := OptionPrerequisite("*Prerequisite: Level 5+ Warlock, Pact of the Blade Invocation*\n\nText."); got != "Level 5+ Warlock, Pact of the Blade Invocation" || OptionPrerequisite("Mage Armor.") != "" {
-		t.Errorf("OptionPrerequisite: %q", got)
+	noTable := LevelSpells("**Forest Gnome.** You know the *Minor Illusion* cantrip.")
+	if len(noTable) != 0 {
+		t.Errorf("LevelSpells without a table: %v", noTable)
+	}
+	prereq := OptionPrerequisite(
+		"*Prerequisite: Level 5+ Warlock, Pact of the Blade Invocation*\n\nText.",
+	)
+	if prereq != "Level 5+ Warlock, Pact of the Blade Invocation" ||
+		OptionPrerequisite("Mage Armor.") != "" {
+		t.Errorf("OptionPrerequisite: %q", prereq)
 	}
 	for in, want := range map[string][]string{
 		"You also know the Dancing Lights cantrip.":                  {"Dancing Lights"},
@@ -82,7 +92,9 @@ func TestOptions(t *testing.T) {
 }
 
 func TestEquipmentOptions(t *testing.T) {
-	got := EquipmentOptions("Choose A, B, or C: (A) Chain Mail, 8 Javelins, Dungeoneer's Pack, and 4 GP; (B) Druidic Focus (Quarterstaff), and 11 GP; or (C) 155 GP")
+	got := EquipmentOptions(
+		"Choose A, B, or C: (A) Chain Mail, 8 Javelins, Dungeoneer's Pack, and 4 GP; (B) Druidic Focus (Quarterstaff), and 11 GP; or (C) 155 GP",
+	)
 	want := []EquipmentOption{
 		{"A", []EquipmentItem{{"Chain Mail", 1}, {"Javelins", 8}, {"Dungeoneer's Pack", 1}}, 4},
 		{"B", []EquipmentItem{{"Druidic Focus (Quarterstaff)", 1}}, 11},
@@ -91,7 +103,9 @@ func TestEquipmentOptions(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v", got)
 	}
-	bg := EquipmentOptions("*Choose A or B:* (A) Calligrapher's Supplies, Book (prayers), 8 GP; or (B) 50 GP")
+	bg := EquipmentOptions(
+		"*Choose A or B:* (A) Calligrapher's Supplies, Book (prayers), 8 GP; or (B) 50 GP",
+	)
 	if len(bg) != 2 || bg[0].GP != 8 || len(bg[0].Items) != 2 || bg[1].GP != 50 {
 		t.Errorf("background: %+v", bg)
 	}

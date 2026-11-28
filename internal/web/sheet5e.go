@@ -31,7 +31,11 @@ const (
 )
 
 // appendedSourcePriority is a new source's priority: below every ordered source, by group rank.
-func appendedSourcePriority(ctx context.Context, q *sqlc.Queries, key, edition string) (int64, error) {
+func appendedSourcePriority(
+	ctx context.Context,
+	q *sqlc.Queries,
+	key, edition string,
+) (int64, error) {
 	base, err := q.MaxSourcePriority(ctx)
 	return base + compendium.DefaultRank(key, edition), err
 }
@@ -57,7 +61,13 @@ func normalizeCharacterFile(cf *export.CharacterFile) error {
 	if err != nil {
 		return err
 	}
-	ch := dnd5e.Character{Name: cf.Name, HP: int(cf.HP), MaxHP: int(cf.MaxHP), TempHP: int(cf.TempHP), Sheet: sheet}
+	ch := dnd5e.Character{
+		Name:   cf.Name,
+		HP:     int(cf.HP),
+		MaxHP:  int(cf.MaxHP),
+		TempHP: int(cf.TempHP),
+		Sheet:  sheet,
+	}
 	if err := ch.Validate(); err != nil {
 		return err
 	}
@@ -129,7 +139,10 @@ func initiativeMod(r sqlc.ListCombatantsRow, s *dnd5e.Sheet) int {
 		return s.Initiative()
 	}
 	if r.MonsterData.Valid {
-		if d, err := compendium.Decode[compendium.MonsterData](enum.KindMonster, r.MonsterData.String); err == nil {
+		if d, err := compendium.Decode[compendium.MonsterData](
+			enum.KindMonster,
+			r.MonsterData.String,
+		); err == nil {
 			return d.Initiative
 		}
 	}
@@ -138,13 +151,24 @@ func initiativeMod(r sqlc.ListCombatantsRow, s *dnd5e.Sheet) int {
 
 // combatantDefenses are how a combatant takes damage: a PC's sheet or a
 // statblock's free text, all of it resisted while Petrified.
-func combatantDefenses(r sqlc.ListCombatantsRow, s *dnd5e.Sheet, conds []sqlc.Condition) dnd5e.Defenses {
+func combatantDefenses(
+	r sqlc.ListCombatantsRow,
+	s *dnd5e.Sheet,
+	conds []sqlc.Condition,
+) dnd5e.Defenses {
 	var d dnd5e.Defenses
 	if s != nil {
 		d = s.Defenses()
 	} else if r.MonsterData.Valid {
-		if md, err := compendium.Decode[compendium.MonsterData](enum.KindMonster, r.MonsterData.String); err == nil {
-			d.List = slices.Concat(dnd5e.ParseDefenses(dnd5e.DefResist, md.Resistance), dnd5e.ParseDefenses(dnd5e.DefImmune, md.Immunity), dnd5e.ParseDefenses(dnd5e.DefVulnerable, md.Vulnerability))
+		if md, err := compendium.Decode[compendium.MonsterData](
+			enum.KindMonster,
+			r.MonsterData.String,
+		); err == nil {
+			d.List = slices.Concat(
+				dnd5e.ParseDefenses(dnd5e.DefResist, md.Resistance),
+				dnd5e.ParseDefenses(dnd5e.DefImmune, md.Immunity),
+				dnd5e.ParseDefenses(dnd5e.DefVulnerable, md.Vulnerability),
+			)
 		}
 	}
 	d.ResistAll = petrified(conds)
@@ -152,7 +176,10 @@ func combatantDefenses(r sqlc.ListCombatantsRow, s *dnd5e.Sheet, conds []sqlc.Co
 }
 
 func petrified(conds []sqlc.Condition) bool {
-	return slices.ContainsFunc(conds, func(c sqlc.Condition) bool { return c.Slug == dnd5e.Petrified })
+	return slices.ContainsFunc(
+		conds,
+		func(c sqlc.Condition) bool { return c.Slug == dnd5e.Petrified },
+	)
 }
 
 // outOfFight reports a combatant whose turn is skipped: a monster or NPC at
@@ -176,7 +203,8 @@ func damageChoice(v string, d dnd5e.Defenses) (kind string, when int, err error)
 		return kind, -1, nil
 	}
 	when, err = strconv.Atoi(at)
-	if err != nil || when < 0 || when >= len(d.List) || d.List[when].When == "" || !slices.Contains(d.List[when].Types, kind) {
+	if err != nil || when < 0 || when >= len(d.List) || d.List[when].When == "" ||
+		!slices.Contains(d.List[when].Types, kind) {
 		return "", 0, userError{errors.New("that defense changed; pick the damage type again")}
 	}
 	return kind, when, nil
@@ -267,11 +295,23 @@ func monsterHP(ctx context.Context, q *sqlc.Queries, id int64, fn hpChange) erro
 			return err
 		}
 	}
-	return q.SetCombatantHP(ctx, sqlc.SetCombatantHPParams{ID: id, Hp: int64(m.HP), MaxHp: int64(m.MaxHP), TempHp: int64(m.TempHP)})
+	return q.SetCombatantHP(
+		ctx,
+		sqlc.SetCombatantHPParams{
+			ID:     id,
+			Hp:     int64(m.HP),
+			MaxHp:  int64(m.MaxHP),
+			TempHp: int64(m.TempHP),
+		},
+	)
 }
 
 // monsterStats fills name, AC and HP from a compendium monster.
-func (a *App) monsterStats(ctx context.Context, entryID int64, p *sqlc.CreateCombatantParams) error {
+func (a *App) monsterStats(
+	ctx context.Context,
+	entryID int64,
+	p *sqlc.CreateCombatantParams,
+) error {
 	row, err := a.Store.GetCompendiumEntry(ctx, entryID)
 	if err != nil {
 		return err
@@ -283,7 +323,11 @@ func (a *App) monsterStats(ctx context.Context, entryID int64, p *sqlc.CreateCom
 	if err != nil {
 		return err
 	}
-	p.MonsterRef, p.Name, p.Ac, p.Hp, p.MaxHp = nullID(row.ID), row.Name, int64(m.AC), int64(m.HP), int64(m.HP)
+	p.MonsterRef = nullID(row.ID)
+	p.Name = row.Name
+	p.Ac = int64(m.AC)
+	p.Hp = int64(m.HP)
+	p.MaxHp = int64(m.HP)
 	return nil
 }
 
@@ -365,12 +409,24 @@ type charState struct {
 
 func (c charState) parse() (dnd5e.Character, error) {
 	s, err := dnd5e.ParseSheet(c.Sheet)
-	return dnd5e.Character{Name: c.Name, HP: int(c.HP), MaxHP: int(c.MaxHP), TempHP: int(c.TempHP), Sheet: s}, err
+	return dnd5e.Character{
+		Name:   c.Name,
+		HP:     int(c.HP),
+		MaxHP:  int(c.MaxHP),
+		TempHP: int(c.TempHP),
+		Sheet:  s,
+	}, err
 }
 
 func stateOf(c dnd5e.Character) (charState, error) {
 	raw, err := c.Sheet.JSON()
-	return charState{Name: c.Name, HP: int64(c.HP), MaxHP: int64(c.MaxHP), TempHP: int64(c.TempHP), Sheet: raw}, err
+	return charState{
+		Name:   c.Name,
+		HP:     int64(c.HP),
+		MaxHP:  int64(c.MaxHP),
+		TempHP: int64(c.TempHP),
+		Sheet:  raw,
+	}, err
 }
 
 // Where the merged build comes from (dnd5e's sides, or the fallback).
@@ -455,9 +511,11 @@ func planBringBack(in bringBackIn) (bringBackPlan, error) {
 	var declined []string
 	// The fallback stands in only if it uses no declined source, this one included.
 	fallbackFree := func(key string) bool {
-		return fb != nil && !fb.Sheet.BuildPinsSource(key) && !slices.ContainsFunc(in.Sources, func(o reviewSource) bool {
-			return in.Form(views.SourceParam(o.Key)) == views.SourceDecline && fb.Sheet.BuildPinsSource(o.Key)
-		})
+		return fb != nil && !fb.Sheet.BuildPinsSource(key) &&
+			!slices.ContainsFunc(in.Sources, func(o reviewSource) bool {
+				return in.Form(views.SourceParam(o.Key)) == views.SourceDecline &&
+					fb.Sheet.BuildPinsSource(o.Key)
+			})
 	}
 	mergedJSON, err := merged.Sheet.JSON()
 	if err != nil {
@@ -478,7 +536,8 @@ func planBringBack(in bringBackIn) (bringBackPlan, error) {
 		}
 		switch {
 		case ms.BuildPinsSource(rs.Key) && fallbackFree(rs.Key):
-			sv.Effect = "Declining: the Build comes from the fallback (" + buildSummary(fb.Sheet) + ")"
+			sv.Effect = "Declining: the Build comes from the fallback (" +
+				buildSummary(fb.Sheet) + ")"
 		case ms.BuildPinsSource(rs.Key):
 			sv.Effect = "Declining blocks Accept"
 		default:
@@ -514,7 +573,11 @@ func planBringBack(in bringBackIn) (bringBackPlan, error) {
 				}
 			}
 		} else if p.Block == "" {
-			p.Block = fmt.Sprintf("%s's build uses %s and has no fallback without it. Allow it, or reject and ask the player to revert that level-up at home.", merged.Name, strings.Join(pinned, ", "))
+			p.Block = fmt.Sprintf(
+				"%s's build uses %s and has no fallback without it. Allow it, or reject and ask the player to revert that level-up at home.",
+				merged.Name,
+				strings.Join(pinned, ", "),
+			)
 		}
 	}
 	for _, k := range declined {
@@ -544,8 +607,18 @@ func groupView(d dnd5e.GroupDiff) views.HomeFileGroup {
 	case dnd5e.MergeConflict:
 		g.Badge = "Both"
 		g.Columns = []views.HomeFileColumn{
-			{Side: dnd5e.SideHome, Title: titleHome, Lines: d.Home, Checked: d.Side == dnd5e.SideHome},
-			{Side: dnd5e.SideTable, Title: titleTable, Lines: d.Table, Checked: d.Side == dnd5e.SideTable},
+			{
+				Side:    dnd5e.SideHome,
+				Title:   titleHome,
+				Lines:   d.Home,
+				Checked: d.Side == dnd5e.SideHome,
+			},
+			{
+				Side:    dnd5e.SideTable,
+				Title:   titleTable,
+				Lines:   d.Table,
+				Checked: d.Side == dnd5e.SideTable,
+			},
 		}
 	}
 	return g
@@ -598,7 +671,11 @@ func sheetSourceKeys(sheet string) ([]string, error) {
 // planNewSources shows the sources a new character's file brings that the
 // campaign lacks. There is no merge to fall back on, so one Decline blocks the
 // add, and so does a source not chosen yet.
-func planNewSources(sheet, name string, sources []reviewSource, form func(string) string) ([]views.HomeFileSource, string, error) {
+func planNewSources(
+	sheet, name string,
+	sources []reviewSource,
+	form func(string) string,
+) ([]views.HomeFileSource, string, error) {
 	s, err := dnd5e.ParseSheet(sheet)
 	if err != nil {
 		return nil, "", err
@@ -610,7 +687,13 @@ func planNewSources(sheet, name string, sources []reviewSource, form func(string
 		if choice != views.SourceAllow && choice != views.SourceDecline {
 			choice = ""
 		}
-		sv := views.HomeFileSource{Key: rs.Key, Label: rs.Label, Choice: choice, Uses: "Not used", Effect: "Declining rejects " + name}
+		sv := views.HomeFileSource{
+			Key:    rs.Key,
+			Label:  rs.Label,
+			Choice: choice,
+			Uses:   "Not used",
+			Effect: "Declining rejects " + name,
+		}
 		if uses := s.SourceUses(rs.Key); len(uses) > 0 {
 			sv.Uses = "Used: " + strings.Join(uses, ", ")
 		}
@@ -632,4 +715,6 @@ func planNewSources(sheet, name string, sources []reviewSource, form func(string
 }
 
 // sourceLabel names a source for the GM.
-func sourceLabel(s export.TakeHomeSource) string { return views.SourceLabel(s.SourceKey, s.Edition) }
+func sourceLabel(s export.TakeHomeSource) string {
+	return views.SourceLabel(s.SourceKey, s.Edition)
+}

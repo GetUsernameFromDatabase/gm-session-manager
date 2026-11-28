@@ -49,7 +49,11 @@ func LoadOrCreateCert(dir string, ips []net.IP, now time.Time) (tls.Certificate,
 	// Missing, corrupt, expiring or outdated files are all simply replaced:
 	// the certificate holds no data worth keeping.
 	host, _ := os.Hostname()
-	if existing, err := tls.LoadX509KeyPair(certPath, keyPath); err == nil && usable(existing.Leaf, ips, host, now) {
+	if existing, err := tls.LoadX509KeyPair(
+		certPath,
+		keyPath,
+	); err == nil &&
+		usable(existing.Leaf, ips, host, now) {
 		return existing, false, nil
 	}
 
@@ -117,8 +121,11 @@ func generate(ips []net.IP, now time.Time) (certPEM, keyPEM []byte, err error) {
 		dnsNames = append(dnsNames, host)
 	}
 	tmpl := &x509.Certificate{
-		SerialNumber:          serial,
-		Subject:               pkix.Name{Organization: []string{certOrg}, CommonName: dnsNames[len(dnsNames)-1]},
+		SerialNumber: serial,
+		Subject: pkix.Name{
+			Organization: []string{certOrg},
+			CommonName:   dnsNames[len(dnsNames)-1],
+		},
 		NotBefore:             now.Add(-time.Hour), // tolerate small clock skew on phones
 		NotAfter:              now.Add(certValidity),
 		KeyUsage:              x509.KeyUsageDigitalSignature,

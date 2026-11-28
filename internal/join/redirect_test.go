@@ -37,9 +37,14 @@ func serveSplit(t *testing.T) (string, *http.Client) {
 	}
 	tlsL, plainL := SplitTLS(base)
 	app := &http.Server{
-		Handler:           http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "app") }),
+		Handler: http.HandlerFunc(
+			func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "app") },
+		),
 		ReadHeaderTimeout: time.Second,
-		TLSConfig:         &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+		},
 	}
 	redirect := &http.Server{Handler: RedirectHTTPS, ReadHeaderTimeout: time.Second}
 	go func() { _ = app.ServeTLS(tlsL, "", "") }()
@@ -51,7 +56,9 @@ func serveSplit(t *testing.T) (string, *http.Client) {
 	})
 
 	client := &http.Client{
-		Transport:     &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}},
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+		},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		Timeout:       5 * time.Second,
 	}
@@ -67,8 +74,22 @@ func TestSplitTLS(t *testing.T) {
 		wantLocation string
 		wantBody     string
 	}{
-		{"plain GET redirects", http.MethodGet, "http://" + addr + routes.Notes + "?x=1", http.StatusPermanentRedirect, "https://" + addr + routes.Notes + "?x=1", ""},
-		{"plain POST redirects", http.MethodPost, "http://" + addr + routes.AdminLogin, http.StatusPermanentRedirect, "https://" + addr + routes.AdminLogin, ""},
+		{
+			"plain GET redirects",
+			http.MethodGet,
+			"http://" + addr + routes.Notes + "?x=1",
+			http.StatusPermanentRedirect,
+			"https://" + addr + routes.Notes + "?x=1",
+			"",
+		},
+		{
+			"plain POST redirects",
+			http.MethodPost,
+			"http://" + addr + routes.AdminLogin,
+			http.StatusPermanentRedirect,
+			"https://" + addr + routes.AdminLogin,
+			"",
+		},
 		{"TLS reaches the app", http.MethodGet, "https://" + addr + "/", http.StatusOK, "", "app"},
 	}
 	for _, tt := range tests {
@@ -84,7 +105,13 @@ func TestSplitTLS(t *testing.T) {
 			defer func() { _ = resp.Body.Close() }()
 			body, _ := io.ReadAll(resp.Body)
 			if resp.StatusCode != tt.wantStatus || resp.Header.Get("Location") != tt.wantLocation {
-				t.Errorf("got %d %q, want %d %q", resp.StatusCode, resp.Header.Get("Location"), tt.wantStatus, tt.wantLocation)
+				t.Errorf(
+					"got %d %q, want %d %q",
+					resp.StatusCode,
+					resp.Header.Get("Location"),
+					tt.wantStatus,
+					tt.wantLocation,
+				)
 			}
 			if tt.wantBody != "" && string(body) != tt.wantBody {
 				t.Errorf("body %q, want %q", body, tt.wantBody)

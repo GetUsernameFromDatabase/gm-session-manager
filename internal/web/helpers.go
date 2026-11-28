@@ -59,7 +59,10 @@ func (a *App) mountAssets(r *gin.Engine) {
 		} else {
 			c.Header("Cache-Control", "no-cache")
 			if etag, ok := etags[p]; ok {
-				c.Header("ETag", etag) // embedded files have no ModTime, so this is the only validator
+				c.Header(
+					"ETag",
+					etag,
+				) // embedded files have no ModTime, so this is the only validator
 			}
 		}
 		c.Request.URL.Path = p
@@ -247,7 +250,11 @@ func (a *App) failBack(c *gin.Context, status int, msg, backURL, backLabel strin
 		c.Abort()
 		return
 	}
-	a.render(c, status, views.ErrorPage(views.Layout{Title: http.StatusText(status)}, msg, backURL, backLabel))
+	a.render(
+		c,
+		status,
+		views.ErrorPage(views.Layout{Title: http.StatusText(status)}, msg, backURL, backLabel),
+	)
 	c.Abort()
 }
 
@@ -291,7 +298,12 @@ func (a *App) changedNotice(c *gin.Context, campaignID int64, msg string, topics
 }
 
 // changedWith is changed answering htmx with res, such as a views.Toast.
-func (a *App) changedWith(c *gin.Context, campaignID int64, res templ.Component, topics ...hub.Topic) {
+func (a *App) changedWith(
+	c *gin.Context,
+	campaignID int64,
+	res templ.Component,
+	topics ...hub.Topic,
+) {
 	a.publish(c, campaignID, topics...)
 	if !isHTMX(c) {
 		back := c.GetHeader("Referer")
@@ -307,7 +319,13 @@ func (a *App) changedWith(c *gin.Context, campaignID int64, res templ.Component,
 // layout fills the frame for a page. Pages that show live data pass a
 // websocket URL; the hub position is read here, before the page's data.
 func (a *App) layout(w who, title, active string, camp *sqlc.Campaign, live bool) views.Layout {
-	l := views.Layout{Title: title, Active: active, IsGM: w.isGM(), HasSession: w.id.Session != nil, PlayerApp: a.Player}
+	l := views.Layout{
+		Title:      title,
+		Active:     active,
+		IsGM:       w.isGM(),
+		HasSession: w.id.Session != nil,
+		PlayerApp:  a.Player,
+	}
 	if w.character != nil {
 		l.CharacterID = w.character.ID
 	}
@@ -395,7 +413,8 @@ const hostLookupTimeout = time.Second
 
 // lanHostname asks the network (usually the router, from DHCP) for the name
 // of the device at remoteAddr, "" when nobody knows it.
-// shortcut: synchronous, so the waiting page can take up to hostLookupTimeout when the router does not answer; move to a goroutine and republish if that is noticeable.
+// shortcut: synchronous, so the waiting page can take up to hostLookupTimeout when the router does
+// not answer; move to a goroutine and republish if that is noticeable.
 func lanHostname(ctx context.Context, remoteAddr string) string {
 	ip, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {

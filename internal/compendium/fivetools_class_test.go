@@ -66,7 +66,9 @@ func TestFiveToolsClasses(t *testing.T) {
 			continue
 		}
 		d := e.Data.(ClassData)
-		if d.HitDie != tt.hitDie || d.Caster != tt.caster || !reflect.DeepEqual(d.Saves, tt.saves) || d.SubclassOf != tt.subclassOf {
+		if d.HitDie != tt.hitDie || d.Caster != tt.caster ||
+			!reflect.DeepEqual(d.Saves, tt.saves) ||
+			d.SubclassOf != tt.subclassOf {
 			t.Errorf("%s: %+v", tt.key, d)
 		}
 		for name, levels := range tt.levels {
@@ -102,7 +104,15 @@ func TestFiveToolsClasses(t *testing.T) {
 		{"wizard", wizard, "Slots 3rd", 4, ""}, // zero slots are left out
 	} {
 		if v := tt.d.Table[tt.col][tt.lvl]; v != tt.want {
-			t.Errorf("%s %s at %d: %q, want %q (table %v)", tt.name, tt.col, tt.lvl, v, tt.want, tt.d.Table)
+			t.Errorf(
+				"%s %s at %d: %q, want %q (table %v)",
+				tt.name,
+				tt.col,
+				tt.lvl,
+				v,
+				tt.want,
+				tt.d.Table,
+			)
 		}
 	}
 
@@ -123,7 +133,9 @@ func TestFiveToolsClasses(t *testing.T) {
 			t.Errorf("%s core traits %q, want %q", key, got, want)
 		}
 	}
-	if n, opts := len(EquipmentOptions(CoreTraits(fighter.Desc)[TraitStartingEquipment])), 3; n != opts {
+	if n, opts := len(
+		EquipmentOptions(CoreTraits(fighter.Desc)[TraitStartingEquipment]),
+	), 3; n != opts {
 		t.Errorf("fighter equipment: %d options, want %d", n, opts)
 	}
 
@@ -166,12 +178,28 @@ func TestFiveToolsClassLevelUp(t *testing.T) {
 	info := func(key string) dnd5e.ClassInfo {
 		e := got[key]
 		d := e.Data.(ClassData)
-		return dnd5e.ClassInfo{Slug: e.Slug, Name: e.Name, HitDie: d.HitDie, Caster: d.Caster, Saves: d.Saves, Table: d.Table, Features: dnd5eFeatures(d)}
+		return dnd5e.ClassInfo{
+			Slug:     e.Slug,
+			Name:     e.Name,
+			HitDie:   d.HitDie,
+			Caster:   d.Caster,
+			Saves:    d.Saves,
+			Table:    d.Table,
+			Features: dnd5eFeatures(d),
+		}
 	}
 	fighter := info("class/fighter")
-	sh := dnd5e.Sheet{Classes: []dnd5e.ClassLevel{{Slug: "fighter", Name: "Fighter", Level: 1, HitDie: 10, Caster: "none"}}}
+	sh := dnd5e.Sheet{
+		Classes: []dnd5e.ClassLevel{
+			{Slug: "fighter", Name: "Fighter", Level: 1, HitDie: 10, Caster: "none"},
+		},
+	}
 	plan, err := sh.Plan(fighter)
-	if err != nil || !slices.ContainsFunc(plan.Features, func(f dnd5e.ClassFeature) bool { return f.Name == "Action Surge" }) {
+	if err != nil ||
+		!slices.ContainsFunc(
+			plan.Features,
+			func(f dnd5e.ClassFeature) bool { return f.Name == "Action Surge" },
+		) {
 		t.Errorf("fighter 2: %+v %v", plan.Features, err)
 	}
 	sh.Classes[0].Level = 3
@@ -181,12 +209,20 @@ func TestFiveToolsClassLevelUp(t *testing.T) {
 
 	wizard := info("class/wizard")
 	wizard.SubclassFeatures = dnd5eFeatures(got["subclass/evoker"].Data.(ClassData))
-	sh = dnd5e.Sheet{Classes: []dnd5e.ClassLevel{{Slug: "wizard", Name: "Wizard", Level: 2, HitDie: 6, Caster: "full"}}}
+	sh = dnd5e.Sheet{
+		Classes: []dnd5e.ClassLevel{
+			{Slug: "wizard", Name: "Wizard", Level: 2, HitDie: 6, Caster: "full"},
+		},
+	}
 	plan, err = sh.Plan(wizard)
-	if err != nil || !plan.NeedsSubclass || plan.Slots != [9]int{4, 2} || plan.Columns["Prepared Spells"] != "6" {
+	if err != nil || !plan.NeedsSubclass || plan.Slots != [9]int{4, 2} ||
+		plan.Columns["Prepared Spells"] != "6" {
 		t.Errorf("wizard 3: %+v %v", plan, err)
 	}
-	if !slices.ContainsFunc(plan.Features, func(f dnd5e.ClassFeature) bool { return f.Name == "Evoker" }) {
+	if !slices.ContainsFunc(
+		plan.Features,
+		func(f dnd5e.ClassFeature) bool { return f.Name == "Evoker" },
+	) {
 		t.Errorf("wizard 3: no subclass feature %+v", plan.Features)
 	}
 }
@@ -220,7 +256,15 @@ func TestFiveToolsCoreTraitsShapes(t *testing.T) {
 func dnd5eFeatures(d ClassData) []dnd5e.ClassFeature {
 	out := make([]dnd5e.ClassFeature, 0, len(d.Features))
 	for _, f := range d.Features {
-		out = append(out, dnd5e.ClassFeature{Name: f.Name, Description: f.Desc, Levels: f.Levels, Subclass: f.Subclass})
+		out = append(
+			out,
+			dnd5e.ClassFeature{
+				Name:        f.Name,
+				Description: f.Desc,
+				Levels:      f.Levels,
+				Subclass:    f.Subclass,
+			},
+		)
 	}
 	return out
 }

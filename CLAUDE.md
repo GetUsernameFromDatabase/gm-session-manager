@@ -30,7 +30,7 @@ Out of scope: accounts or email, hosting on the internet, S3, Docker (allowed on
 - Constants for cookie, context, header and event keys. Validate structs with `go-playground/validator` tags.
 - Values a SQL CHECK lists are typed in `internal/enum` and wired through sqlc `overrides`; goconst guards other repeated strings. A family of values (one list, map or switch domain, numbers too) is all constants or none.
 - Table-driven tests for all permission and visibility logic. Positional test-table rows break when a field is added; add a separate loop instead.
-- `task lint` (golangci-lint, `gopls check` on Go files changed against HEAD, then stale Tailwind classes via `tailwindcss canonicalize`) stays clean; `task lint -- --all` after upgrading golangci-lint, gopls or tailwindcss. Formatters always win: keep what `templ fmt` and `golangci-lint fmt` change, even in untouched files.
+- `task lint` (golangci-lint, `gopls check` on Go files changed against HEAD, then stale Tailwind classes via `tailwindcss canonicalize`) stays clean; `task lint -- --all` after upgrading golangci-lint, gopls or tailwindcss. Formatters always win: keep what `templ fmt` and `golangci-lint fmt` change, even in untouched files. golines wraps Go at 100 columns: put a `//nolint` on its own line above the statement, and wrap a long comment by hand at a clause boundary (`;`, `:`, `,`, sentence end), not by length.
 - Never hand-edit `internal/web/components`, `internal/web/utils`, `*_templ.go` or `internal/db/sqlc`.
 - Durable lessons go in the nearest folder's `CLAUDE.md`; workflows in a skill; `HANDOFF.md` holds only current state and open items.
 

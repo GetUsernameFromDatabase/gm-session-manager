@@ -38,7 +38,10 @@ func SetSourceOrder(ctx context.Context, store *db.Store, keys []string) error {
 // writeOrder numbers keys 10, 20, … in order.
 func writeOrder(ctx context.Context, q *sqlc.Queries, keys []string) error {
 	for i, k := range keys {
-		if err := q.SetCompendiumSourcePriority(ctx, sqlc.SetCompendiumSourcePriorityParams{Priority: int64(i+1) * 10, SourceKey: k}); err != nil {
+		if err := q.SetCompendiumSourcePriority(
+			ctx,
+			sqlc.SetCompendiumSourcePriorityParams{Priority: int64(i+1) * 10, SourceKey: k},
+		); err != nil {
 			return err
 		}
 	}
@@ -87,8 +90,14 @@ func undated(published string) int {
 
 // sortedKeys is the sources' keys in default order, homebrew at its current index.
 func sortedKeys(sources []sqlc.CompendiumSource) []string {
-	home := slices.IndexFunc(sources, func(s sqlc.CompendiumSource) bool { return s.SourceKey == HomebrewSource })
-	rest := slices.DeleteFunc(slices.Clone(sources), func(s sqlc.CompendiumSource) bool { return s.SourceKey == HomebrewSource })
+	home := slices.IndexFunc(
+		sources,
+		func(s sqlc.CompendiumSource) bool { return s.SourceKey == HomebrewSource },
+	)
+	rest := slices.DeleteFunc(
+		slices.Clone(sources),
+		func(s sqlc.CompendiumSource) bool { return s.SourceKey == HomebrewSource },
+	)
 	slices.SortFunc(rest, func(a, b sqlc.CompendiumSource) int {
 		return cmp.Or(
 			cmp.Compare(DefaultRank(a.SourceKey, a.Edition), DefaultRank(b.SourceKey, b.Edition)),

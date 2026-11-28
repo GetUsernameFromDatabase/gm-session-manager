@@ -12,16 +12,24 @@ import (
 // (a renamed or merged weapon) stays selected in both editors.
 func TestModTargetKeepsStored(t *testing.T) {
 	s := SheetView{C: dnd5e.Character{Sheet: dnd5e.Sheet{
-		Weapons:   []dnd5e.Weapon{{Name: "Dagger 1"}},
-		Modifiers: []dnd5e.CustomMod{{Target: "attack.Daggers 4", Value: 1, Note: "Magic", Source: "Blessed"}},
-		Features:  []dnd5e.Feature{{Name: "Blessed"}},
+		Weapons: []dnd5e.Weapon{{Name: "Dagger 1"}},
+		Modifiers: []dnd5e.CustomMod{
+			{Target: "attack.Daggers 4", Value: 1, Note: "Magic", Source: "Blessed"},
+		},
+		Features: []dnd5e.Feature{{Name: "Blessed"}},
 	}}}
 	for _, tt := range []struct{ name, verb, op, subject, field string }{
 		{"modifier dialog", "mods", "mod-edit", "0", "subject"},
 		{"feature editor", "features", "feature-add", "Blessed", "mod_target"},
 	} {
 		var b strings.Builder
-		if err := CommandBuilder(s, tt.verb, tt.op, tt.subject, BuilderExtra{}).Render(t.Context(), &b); err != nil {
+		if err := CommandBuilder(
+			s,
+			tt.verb,
+			tt.op,
+			tt.subject,
+			BuilderExtra{},
+		).Render(t.Context(), &b); err != nil {
 			t.Fatal(err)
 		}
 		html := b.String()
@@ -56,10 +64,17 @@ func TestBuilderEveryOp(t *testing.T) {
 	for _, v := range s.builderVerbs() {
 		for _, o := range v.Ops {
 			var b strings.Builder
-			if err := CommandBuilder(s, v.Key, o.Key, subjects[o.Key], BuilderExtra{}).Render(t.Context(), &b); err != nil {
+			if err := CommandBuilder(
+				s,
+				v.Key,
+				o.Key,
+				subjects[o.Key],
+				BuilderExtra{},
+			).Render(t.Context(), &b); err != nil {
 				t.Fatalf("%s/%s: %v", v.Key, o.Key, err)
 			}
-			if o.Prefix != "" && !strings.Contains(b.String(), `name="prefix" value="`+o.Prefix+`"`) {
+			if o.Prefix != "" &&
+				!strings.Contains(b.String(), `name="prefix" value="`+o.Prefix+`"`) {
 				t.Errorf("%s/%s: no prefix %q in %s", v.Key, o.Key, o.Prefix, b.String())
 			}
 		}
@@ -70,13 +85,22 @@ func TestBuilderEveryOp(t *testing.T) {
 // weapon, not on the first target (Armor class).
 func TestModTargetStowedWeapon(t *testing.T) {
 	s := SheetView{C: dnd5e.Character{Sheet: dnd5e.Sheet{
-		Inventory: []dnd5e.Item{{Name: "Old Blade", Qty: 1, Weapon: &dnd5e.Weapon{Name: "Old Blade"}}},
+		Inventory: []dnd5e.Item{
+			{Name: "Old Blade", Qty: 1, Weapon: &dnd5e.Weapon{Name: "Old Blade"}},
+		},
 	}}}
 	var b strings.Builder
-	if err := CommandBuilder(s, "mods", "mod-add", "attack.Old Blade", BuilderExtra{}).Render(t.Context(), &b); err != nil {
+	if err := CommandBuilder(
+		s,
+		"mods",
+		"mod-add",
+		"attack.Old Blade",
+		BuilderExtra{},
+	).Render(t.Context(), &b); err != nil {
 		t.Fatal(err)
 	}
-	if html := b.String(); !regexp.MustCompile(`<input[^>]*name="subject"[^>]*value="attack\.Old Blade"`).MatchString(html) {
+	if html := b.String(); !regexp.MustCompile(`<input[^>]*name="subject"[^>]*value="attack\.Old Blade"`).
+		MatchString(html) {
 		t.Errorf("stowed weapon target not selected in %s", html)
 	}
 }

@@ -21,7 +21,8 @@ func TestSheetRoutesPermissions(t *testing.T) {
 	ctx := t.Context()
 	newPlayer := func(campaignID int64, name string) string {
 		t.Helper()
-		ch, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: campaignID, Name: name, System: "dnd5e", SheetJson: "{}"})
+		ch, err := e.q().
+			CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: campaignID, Name: name, System: "dnd5e", SheetJson: "{}"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -31,7 +32,8 @@ func TestSheetRoutesPermissions(t *testing.T) {
 		}
 		return tok
 	}
-	elsewhere, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Elsewhere", System: "dnd5e", Edition: "2024"})
+	elsewhere, err := e.q().
+		CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Elsewhere", System: "dnd5e", Edition: "2024"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,10 +51,25 @@ func TestSheetRoutesPermissions(t *testing.T) {
 		name, method, path string
 		gmMay              bool // perm lets the GM in: view (completions), sources (preview)
 	}{
-		{"wizard page", http.MethodGet, route.Path(route.CharacterCreateStep, id, views.StepClass), false},
-		{"wizard save", http.MethodPost, route.Path(route.CharacterCreateStep, id, views.StepClass), false},
+		{
+			"wizard page",
+			http.MethodGet,
+			route.Path(route.CharacterCreateStep, id, views.StepClass),
+			false,
+		},
+		{
+			"wizard save",
+			http.MethodPost,
+			route.Path(route.CharacterCreateStep, id, views.StepClass),
+			false,
+		},
 		{"level-up page", http.MethodGet, route.Path(route.CharacterLevelup, id), false},
-		{"level-up", http.MethodPost, route.Path(route.CharacterLevelup, id), false}, // owner: class found, no level: 422
+		{
+			"level-up",
+			http.MethodPost,
+			route.Path(route.CharacterLevelup, id),
+			false,
+		}, // owner: class found, no level: 422
 		{"level-up revert", http.MethodPost, route.Path(route.CharacterLevelupRevert, id), false},
 		{"builder", http.MethodGet, route.Path(route.CharacterBuilder, id), false},
 		{"picks", http.MethodGet, route.Path(route.CharacterPicks, id), false},
@@ -69,7 +86,12 @@ func TestSheetRoutesPermissions(t *testing.T) {
 	for _, r := range routes {
 		t.Run(r.name, func(t *testing.T) {
 			// An empty form may be refused as invalid (422), but never as forbidden or missing.
-			if code := do(r.method, r.path, owner); code == http.StatusForbidden || code == http.StatusNotFound || code >= http.StatusInternalServerError {
+			if code := do(
+				r.method,
+				r.path,
+				owner,
+			); code == http.StatusForbidden || code == http.StatusNotFound ||
+				code >= http.StatusInternalServerError {
 				t.Errorf("owner: %d", code)
 			}
 			for _, s := range strangers {
@@ -83,7 +105,8 @@ func TestSheetRoutesPermissions(t *testing.T) {
 	for _, r := range routes {
 		t.Run("gm "+r.name, func(t *testing.T) {
 			code := do(r.method, r.path, gm)
-			if forbidden := code == http.StatusForbidden; forbidden == r.gmMay || code >= http.StatusInternalServerError {
+			if forbidden := code == http.StatusForbidden; forbidden == r.gmMay ||
+				code >= http.StatusInternalServerError {
 				t.Errorf("gm: %d, may %v", code, r.gmMay)
 			}
 		})

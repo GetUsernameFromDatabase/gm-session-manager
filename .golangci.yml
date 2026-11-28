@@ -91,6 +91,7 @@ formatters:
   enable:
     - gofmt
     - goimports
+    - golines
   exclusions:
     paths:
       - internal/db/sqlc
@@ -100,3 +101,6 @@ formatters:
   settings:
     goimports:
       local-prefixes: [gm-session-manager]
+    golines:
+      max-len: 100
+      shorten-comments: true

@@ -12,7 +12,19 @@ import (
 
 // ftNotCopied are fields a copy does not inherit (its own pictures and
 // page), unless _preserve names them.
-var ftNotCopied = []string{keyPage, keyHasFluff, keyHasFluffImages, keyHasToken, keySrd, keySrd52, keyBasicRules, keyBasicRules2024, keyReprintedAs, keyOtherSources, keyVersions}
+var ftNotCopied = []string{
+	keyPage,
+	keyHasFluff,
+	keyHasFluffImages,
+	keyHasToken,
+	keySrd,
+	keySrd52,
+	keyBasicRules,
+	keyBasicRules2024,
+	keyReprintedAs,
+	keyOtherSources,
+	keyVersions,
+}
 
 var errCopy = errors.New("unresolved _copy")
 
@@ -29,7 +41,11 @@ type ftCopyRef struct {
 }
 
 func (c ftCopyRef) key() string {
-	return strings.ToLower(fmt.Sprint(c.Name, "|", c.Source, "|", c.ClassName, "|", c.ClassSource, "|", c.ShortName, "|", c.SubclassShortName, "|", c.SubclassSource, "|", c.Level))
+	parts := []string{
+		c.Name, c.Source, c.ClassName, c.ClassSource, c.ShortName,
+		c.SubclassShortName, c.SubclassSource, fmt.Sprint(c.Level),
+	}
+	return strings.ToLower(strings.Join(parts, "|"))
 }
 
 // ftResolve applies a record's _copy: the target's fields, then its own,
@@ -126,7 +142,13 @@ func ftVersions(r ftRec) ([]ftRec, int) {
 	index := map[string]ftRec{parent.key(): r}
 	var out []ftRec
 	for _, v := range all {
-		ref, _ := json.Marshal(map[string]json.RawMessage{keyMod: v[keyMod], keyName: r[keyName], keySource: r[keySource]})
+		ref, _ := json.Marshal(
+			map[string]json.RawMessage{
+				keyMod:    v[keyMod],
+				keyName:   r[keyName],
+				keySource: r[keySource],
+			},
+		)
 		ver := maps.Clone(v)
 		delete(ver, keyMod)
 		ver[keyCopy] = ref
@@ -193,7 +215,8 @@ func ftMod(rec ftRec, key string, raw json.RawMessage) error {
 			}
 			with := reJSGroup.ReplaceAllString(op.With, "$${$1}")
 			for k, v := range rec {
-				if (key == keyModAll && k != keyName && k != keySource && !strings.HasPrefix(k, "_")) || k == key {
+				if (key == keyModAll && k != keyName && k != keySource && !strings.HasPrefix(k, "_")) ||
+					k == key {
 					var val any
 					_ = json.Unmarshal(v, &val)
 					rec[k], _ = json.Marshal(ftReplaceText(val, re, with))
@@ -227,7 +250,10 @@ func ftMod(rec ftRec, key string, raw json.RawMessage) error {
 					names = append(names, s)
 				}
 			}
-			arr = slices.DeleteFunc(arr, func(v any) bool { return slices.Contains(names, ftName(v)) })
+			arr = slices.DeleteFunc(
+				arr,
+				func(v any) bool { return slices.Contains(names, ftName(v)) },
+			)
 		case modReplaceArr:
 			var name string
 			_ = json.Unmarshal(op.Replace, &name)

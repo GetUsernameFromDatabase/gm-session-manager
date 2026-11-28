@@ -70,7 +70,11 @@ func (a *App) startHandoff(ips []net.IP, h *handoff) *handoff {
 	h.state = views.HandoffWaiting
 	port := "0"
 	for _, ip := range ips {
-		ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp4", net.JoinHostPort(ip.String(), port))
+		ln, err := (&net.ListenConfig{}).Listen(
+			context.Background(),
+			"tcp4",
+			net.JoinHostPort(ip.String(), port),
+		)
 		if err != nil {
 			continue
 		}
@@ -188,8 +192,15 @@ func (a *App) handoffView() views.HandoffView {
 		return views.HandoffView{}
 	}
 	return views.HandoffView{
-		ID: h.secret, State: h.state, Send: h.send, Name: h.name, CharacterID: h.characterID, TakenAt: h.takenAt,
-		URLs: h.urls, QR: h.qr, Expires: h.expires,
+		ID:          h.secret,
+		State:       h.state,
+		Send:        h.send,
+		Name:        h.name,
+		CharacterID: h.characterID,
+		TakenAt:     h.takenAt,
+		URLs:        h.urls,
+		QR:          h.qr,
+		Expires:     h.expires,
 	}
 }
 
@@ -254,7 +265,10 @@ func (a *App) handoffMux(h *handoff) http.Handler {
 		_, _ = w.Write(css)
 	})
 	if h.send {
-		mux.HandleFunc("GET "+base+route.File, func(w http.ResponseWriter, r *http.Request) { a.handoffDownload(w, r, h) })
+		mux.HandleFunc(
+			"GET "+base+route.File,
+			func(w http.ResponseWriter, r *http.Request) { a.handoffDownload(w, r, h) },
+		)
 	} else {
 		mux.HandleFunc("POST "+base, func(w http.ResponseWriter, r *http.Request) {
 			if !open() {
@@ -335,7 +349,9 @@ func (a *App) handoffUpload(w http.ResponseWriter, r *http.Request, h *handoff) 
 	if h.timer != nil {
 		h.timer.Stop()
 	}
-	h.state, h.file, h.name, h.takenAt, keep = views.HandoffReceived, tmp.Name(), name, file.Manifest.CreatedAt, true
+	h.state, h.file, h.name = views.HandoffReceived, tmp.Name(), name
+	h.takenAt = file.Manifest.CreatedAt
+	keep = true
 	return ""
 }
 
@@ -349,7 +365,8 @@ func (a *App) handoffDownload(w http.ResponseWriter, r *http.Request, h *handoff
 		http.NotFound(w, r)
 		return
 	}
-	f, err := os.Open(path) //nolint:gosec // our own temp file, set by the handler that started this handoff
+	//nolint:gosec // our own temp file, set by the handler that started this handoff
+	f, err := os.Open(path)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -411,7 +428,17 @@ func (a *App) handoffSend(c *gin.Context) error {
 		_ = os.Remove(tmp.Name())
 		return err
 	}
-	a.startHandoff(a.handoffAddrs(), &handoff{send: true, file: tmp.Name(), name: th.Character.Name, characterID: id, fileName: name, size: size})
+	a.startHandoff(
+		a.handoffAddrs(),
+		&handoff{
+			send:        true,
+			file:        tmp.Name(),
+			name:        th.Character.Name,
+			characterID: id,
+			fileName:    name,
+			size:        size,
+		},
+	)
 	a.render(c, http.StatusOK, views.HandoffPanel(a.handoffView()))
 	return nil
 }

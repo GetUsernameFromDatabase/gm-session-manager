@@ -51,7 +51,16 @@ func (a *App) home(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		a.render(c, http.StatusOK, views.GMHome(a.layout(w, "Campaigns", views.NavHome, nil, false), campaigns, a.joinInfo(0), a.feedbackPath()))
+		a.render(
+			c,
+			http.StatusOK,
+			views.GMHome(
+				a.layout(w, "Campaigns", views.NavHome, nil, false),
+				campaigns,
+				a.joinInfo(0),
+				a.feedbackPath(),
+			),
+		)
 	case w.character != nil:
 		c.Redirect(http.StatusSeeOther, route.Path(route.Character, w.character.ID))
 	case a.Player:
@@ -66,7 +75,10 @@ func (a *App) home(c *gin.Context) error {
 func (a *App) joinURLs(path string) []string {
 	var out []string
 	for _, ip := range a.LANIPs {
-		out = append(out, fmt.Sprintf("https://%s%s", net.JoinHostPort(ip.String(), fmt.Sprint(a.Port)), path))
+		out = append(
+			out,
+			fmt.Sprintf("https://%s%s", net.JoinHostPort(ip.String(), fmt.Sprint(a.Port)), path),
+		)
 	}
 	return out
 }
@@ -81,7 +93,11 @@ func joinPath(campaignID int64) string {
 }
 
 func (a *App) joinInfo(campaignID int64) views.JoinInfo {
-	return views.JoinInfo{URLs: a.joinURLs(joinPath(campaignID)), QR: views.JoinQRSrc(campaignID), Fingerprint: a.Fingerprint}
+	return views.JoinInfo{
+		URLs:        a.joinURLs(joinPath(campaignID)),
+		QR:          views.JoinQRSrc(campaignID),
+		Fingerprint: a.Fingerprint,
+	}
 }
 
 // queryCampaign picks the campaign a join QR code leads to (views.JoinQRSrc).
@@ -136,13 +152,24 @@ func (a *App) adminLogin(c *gin.Context) error {
 
 	var form adminLoginForm
 	if err := c.ShouldBind(&form); err != nil {
-		a.render(c, http.StatusBadRequest, views.AdminLogin(views.Layout{Title: titleAdminLogin}, "Enter a username and password."))
+		a.render(
+			c,
+			http.StatusBadRequest,
+			views.AdminLogin(
+				views.Layout{Title: titleAdminLogin},
+				"Enter a username and password.",
+			),
+		)
 		return nil
 	}
 
 	token, _, err := a.Auth.LoginAdmin(c.Request.Context(), form.Username, form.Password)
 	if errors.Is(err, auth.ErrBadCredentials) {
-		a.render(c, http.StatusUnauthorized, views.AdminLogin(views.Layout{Title: titleAdminLogin}, "Wrong username or password."))
+		a.render(
+			c,
+			http.StatusUnauthorized,
+			views.AdminLogin(views.Layout{Title: titleAdminLogin}, "Wrong username or password."),
+		)
 		return nil
 	}
 	if err != nil {
@@ -231,7 +258,12 @@ func (a *App) joinCreate(c *gin.Context) error {
 	}
 	var form nameForm
 	if err := c.ShouldBind(&form); err != nil {
-		a.renderJoinCharacters(c, http.StatusUnprocessableEntity, camp, "Give your character a name (up to 100 characters).")
+		a.renderJoinCharacters(
+			c,
+			http.StatusUnprocessableEntity,
+			camp,
+			"Give your character a name (up to 100 characters).",
+		)
 		return nil
 	}
 	name := strings.TrimSpace(form.Name)
@@ -306,10 +338,21 @@ func (a *App) joinClaim(c *gin.Context) error {
 
 // startRequest records a pending request and shows the waiting page, whose
 // websocket keeps the request alive.
-func (a *App) startRequest(c *gin.Context, camp sqlc.Campaign, kind hub.PendingKind, characterID int64, name string) {
+func (a *App) startRequest(
+	c *gin.Context,
+	camp sqlc.Campaign,
+	kind hub.PendingKind,
+	characterID int64,
+	name string,
+) {
 	var form playerForm
 	if err := c.ShouldBind(&form); err != nil {
-		a.renderJoinCharacters(c, http.StatusUnprocessableEntity, camp, "Tell the GM your name (up to 12 characters).")
+		a.renderJoinCharacters(
+			c,
+			http.StatusUnprocessableEntity,
+			camp,
+			"Tell the GM your name (up to 12 characters).",
+		)
 		return
 	}
 	ua := useragent.Parse(c.Request.UserAgent())
@@ -318,17 +361,36 @@ func (a *App) startRequest(c *gin.Context, camp sqlc.Campaign, kind hub.PendingK
 		addr = c.Request.RemoteAddr
 	}
 	p, ok := a.Hub.AddPending(hub.Pending{
-		Addr:       addr,
-		CampaignID: camp.ID, CampaignName: camp.Name, Kind: kind, CharacterID: characterID, Name: name,
-		Player: strings.TrimSpace(form.Player), Device: userAgentSummary(ua), Phone: ua.Mobile, Host: lanHostname(c.Request.Context(), c.Request.RemoteAddr),
+		Addr:         addr,
+		CampaignID:   camp.ID,
+		CampaignName: camp.Name,
+		Kind:         kind,
+		CharacterID:  characterID,
+		Name:         name,
+		Player:       strings.TrimSpace(form.Player),
+		Device:       userAgentSummary(ua),
+		Phone:        ua.Mobile,
+		Host:         lanHostname(c.Request.Context(), c.Request.RemoteAddr),
 	})
 	if !ok {
-		a.renderJoinCharacters(c, http.StatusTooManyRequests, camp, "Too many people are waiting to join. Ask the GM to answer the requests first.")
+		a.renderJoinCharacters(
+			c,
+			http.StatusTooManyRequests,
+			camp,
+			"Too many people are waiting to join. Ask the GM to answer the requests first.",
+		)
 		return
 	}
 	epoch, seq := a.Hub.Position()
-	l := views.Layout{Title: "Waiting", WS: &views.WS{URL: route.WS + "?pending=" + p.Secret, Epoch: epoch, Seq: seq}}
-	a.render(c, http.StatusOK, views.JoinWaiting(l, views.Waiting{Secret: p.Secret, Name: p.Name, State: stateWaiting}))
+	l := views.Layout{
+		Title: "Waiting",
+		WS:    &views.WS{URL: route.WS + "?pending=" + p.Secret, Epoch: epoch, Seq: seq},
+	}
+	a.render(
+		c,
+		http.StatusOK,
+		views.JoinWaiting(l, views.Waiting{Secret: p.Secret, Name: p.Name, State: stateWaiting}),
+	)
 }
 
 // requestGone answers an approval whose character or campaign was deleted.
@@ -350,7 +412,13 @@ func (a *App) completeRequest(c *gin.Context) error {
 	next := route.Home
 	if p.Kind == hub.PendingCreate {
 		// Deleted while the request waited (TestCompleteRequestGone).
-		if _, gerr := a.Store.GetCampaign(c.Request.Context(), p.CampaignID); errors.Is(gerr, sql.ErrNoRows) {
+		if _, gerr := a.Store.GetCampaign(
+			c.Request.Context(),
+			p.CampaignID,
+		); errors.Is(
+			gerr,
+			sql.ErrNoRows,
+		) {
 			a.fail(c, http.StatusNotFound, requestGone)
 			return nil
 		} else if gerr != nil {
@@ -477,7 +545,10 @@ func (a *App) websocket(c *gin.Context) {
 // offline devices can say what and when. The hub tells that list once the
 // device's leave grace ends, well after this write.
 func (a *App) seenLeaving(ctx context.Context, sessionID int64, userAgent string) {
-	if err := a.Store.LeaveSession(context.WithoutCancel(ctx), sqlc.LeaveSessionParams{ID: sessionID, UserAgent: userAgent}); err != nil { // the request is over
+	if err := a.Store.LeaveSession(
+		context.WithoutCancel(ctx),
+		sqlc.LeaveSessionParams{ID: sessionID, UserAgent: userAgent},
+	); err != nil { // the request is over
 		slog.Error("record device leaving", "err", err)
 	}
 }

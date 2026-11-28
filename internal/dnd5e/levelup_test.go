@@ -47,8 +47,17 @@ func TestRevertSheet(t *testing.T) {
 		{Target: ModAC, Value: 1, Note: "Cloak"}, // taken off since
 	}
 	cur.Modifiers = []CustomMod{
-		{Target: ModSpeed, Value: 15, Note: "Fast Movement", Source: "Fast Movement"}, // scaled by the level-up
-		{Target: ModAC, Value: 1, Note: "Ring of Protection"},                         // put on since
+		{
+			Target: ModSpeed,
+			Value:  15,
+			Note:   "Fast Movement",
+			Source: "Fast Movement",
+		}, // scaled by the level-up
+		{
+			Target: ModAC,
+			Value:  1,
+			Note:   "Ring of Protection",
+		}, // put on since
 	}
 
 	got := RevertSheet(snap, cur)
@@ -58,8 +67,8 @@ func TestRevertSheet(t *testing.T) {
 	}{
 		{"gear and play state kept", func(t *testing.T) {
 			if got.Coins.GP != 90 || len(got.Inventory) != 1 || got.Inventory[0].Name != "Torch" ||
-				len(got.Weapons) != 1 || got.Armor == nil || !got.Shield || got.Backstory != "now" ||
-				!got.Inspiration || got.DeathSaves.Failures != 1 {
+				len(got.Weapons) != 1 || got.Armor == nil || !got.Shield ||
+				got.Backstory != "now" || !got.Inspiration || got.DeathSaves.Failures != 1 {
 				t.Errorf("not kept from current: %+v", got)
 			}
 		}},
@@ -85,7 +94,11 @@ func TestRevertSheet(t *testing.T) {
 		}},
 		{"feature uses kept, clamped to restored max", func(t *testing.T) {
 			if got.Features[0].Uses.Used != 0 || got.Features[1].Uses.Used != 3 {
-				t.Errorf("feature uses %+v %+v, want rage 0/2 and second wind 3/3", got.Features[0].Uses, got.Features[1].Uses)
+				t.Errorf(
+					"feature uses %+v %+v, want rage 0/2 and second wind 3/3",
+					got.Features[0].Uses,
+					got.Features[1].Uses,
+				)
 			}
 			if snap.Features[0].Uses.Used != 2 {
 				t.Error("snapshot features changed")

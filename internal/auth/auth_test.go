@@ -40,15 +40,31 @@ func newFixture(t *testing.T) fixture {
 	t.Cleanup(func() { _ = conn.Close() })
 
 	q := db.NewStore(conn)
-	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Test", System: "dnd5e", Edition: "2024"})
+	camp, err := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{Name: "Test", System: "dnd5e", Edition: "2024"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	char, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: "Alice", System: "dnd5e", SheetJson: "{}"})
+	char, err := q.CreateCharacterWithSheet(
+		ctx,
+		sqlc.CreateCharacterWithSheetParams{
+			CampaignID: camp.ID,
+			Name:       "Alice",
+			System:     "dnd5e",
+			SheetJson:  "{}",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{conn: conn, q: q, mgr: NewManager(q, testAdminUser, testAdminPass), characterID: char.ID}
+	return fixture{
+		conn:        conn,
+		q:           q,
+		mgr:         NewManager(q, testAdminUser, testAdminPass),
+		characterID: char.ID,
+	}
 }
 
 // tokens holds one of each kind of credential a device might present.
@@ -156,9 +172,24 @@ func TestIsLoopback(t *testing.T) {
 		{"ipv4-mapped loopback", "[::ffff:127.0.0.1]:5000", nil, true},
 		{"lan peer", lanAddr, nil, false},
 		{"unspecified", "0.0.0.0:5000", nil, false},
-		{"lan peer spoofing X-Forwarded-For", lanAddr, map[string]string{"X-Forwarded-For": "127.0.0.1"}, false},
-		{"lan peer spoofing X-Real-IP", lanAddr, map[string]string{"X-Real-Ip": "127.0.0.1"}, false},
-		{"lan peer spoofing Forwarded", lanAddr, map[string]string{"Forwarded": "for=127.0.0.1"}, false},
+		{
+			"lan peer spoofing X-Forwarded-For",
+			lanAddr,
+			map[string]string{"X-Forwarded-For": "127.0.0.1"},
+			false,
+		},
+		{
+			"lan peer spoofing X-Real-IP",
+			lanAddr,
+			map[string]string{"X-Real-Ip": "127.0.0.1"},
+			false,
+		},
+		{
+			"lan peer spoofing Forwarded",
+			lanAddr,
+			map[string]string{"Forwarded": "for=127.0.0.1"},
+			false,
+		},
 		{"missing port", "127.0.0.1", nil, false},
 		{"hostname", "localhost:5000", nil, false},
 		{"empty", "", nil, false},
@@ -193,7 +224,12 @@ func TestCredentialsMatch(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := credentialsMatch(testAdminUser, testAdminPass, tt.user, tt.pass); got != tt.want {
+			if got := credentialsMatch(
+				testAdminUser,
+				testAdminPass,
+				tt.user,
+				tt.pass,
+			); got != tt.want {
 				t.Errorf("got %v, want %v", got, tt.want)
 			}
 		})
@@ -215,12 +251,47 @@ func TestMiddlewareIdentity(t *testing.T) {
 	}{
 		{name: "lan visitor", remoteAddr: lanAddr},
 		{name: "loopback visitor", remoteAddr: loopbackAddr, wantAdmin: true},
-		{name: "lan player", remoteAddr: lanAddr, cookie: tk.player, wantSession: true, wantCharacter: true},
-		{name: "loopback player acts as player only", remoteAddr: loopbackAddr, cookie: tk.player, wantSession: true, wantCharacter: true},
-		{name: "lan admin login", remoteAddr: lanAddr, cookie: tk.admin, wantAdmin: true, wantSession: true},
-		{name: "loopback admin login", remoteAddr: loopbackAddr, cookie: tk.admin, wantAdmin: true, wantSession: true},
-		{name: "lan revoked (kick/logout)", remoteAddr: lanAddr, cookie: tk.revoked, wantCleared: true},
-		{name: "loopback revoked is admin again", remoteAddr: loopbackAddr, cookie: tk.revoked, wantAdmin: true, wantCleared: true},
+		{
+			name:          "lan player",
+			remoteAddr:    lanAddr,
+			cookie:        tk.player,
+			wantSession:   true,
+			wantCharacter: true,
+		},
+		{
+			name:          "loopback player acts as player only",
+			remoteAddr:    loopbackAddr,
+			cookie:        tk.player,
+			wantSession:   true,
+			wantCharacter: true,
+		},
+		{
+			name:        "lan admin login",
+			remoteAddr:  lanAddr,
+			cookie:      tk.admin,
+			wantAdmin:   true,
+			wantSession: true,
+		},
+		{
+			name:        "loopback admin login",
+			remoteAddr:  loopbackAddr,
+			cookie:      tk.admin,
+			wantAdmin:   true,
+			wantSession: true,
+		},
+		{
+			name:        "lan revoked (kick/logout)",
+			remoteAddr:  lanAddr,
+			cookie:      tk.revoked,
+			wantCleared: true,
+		},
+		{
+			name:        "loopback revoked is admin again",
+			remoteAddr:  loopbackAddr,
+			cookie:      tk.revoked,
+			wantAdmin:   true,
+			wantCleared: true,
+		},
 		{name: "lan never issued", remoteAddr: lanAddr, cookie: tk.unknown, wantCleared: true},
 		{name: "lan garbage cookie", remoteAddr: lanAddr, cookie: "garbage", wantCleared: true},
 	}
@@ -244,7 +315,12 @@ func TestMiddlewareIdentity(t *testing.T) {
 			}
 			charID, hasChar := got.CharacterID()
 			if hasChar != tt.wantCharacter || (hasChar && charID != f.characterID) {
-				t.Errorf("CharacterID = (%d, %v), want character %v", charID, hasChar, tt.wantCharacter)
+				t.Errorf(
+					"CharacterID = (%d, %v), want character %v",
+					charID,
+					hasChar,
+					tt.wantCharacter,
+				)
 			}
 			if cleared := isCleared(w); cleared != tt.wantCleared {
 				t.Errorf("cookie cleared = %v, want %v", cleared, tt.wantCleared)
@@ -302,7 +378,11 @@ func TestResolveTouchesStaleSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.conn.ExecContext(ctx, `UPDATE sessions SET last_seen_at = datetime('now', '-1 hour') WHERE id = ?`, sess.ID); err != nil {
+	if _, err := f.conn.ExecContext(
+		ctx,
+		`UPDATE sessions SET last_seen_at = datetime('now', '-1 hour') WHERE id = ?`,
+		sess.ID,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.mgr.Resolve(ctx, tok); err != nil {
@@ -378,7 +458,8 @@ func TestPlayerManager(t *testing.T) {
 				t.Errorf("IsAdmin = %v, want %v", got.IsAdmin(), tt.wantAdmin)
 			}
 			cookies := w.Result().Cookies()
-			if len(cookies) != 1 || cookies[0].Name != tt.wantName || cookies[0].Secure != tt.wantSecure {
+			if len(cookies) != 1 || cookies[0].Name != tt.wantName ||
+				cookies[0].Secure != tt.wantSecure {
 				t.Errorf("cookies = %v, want %s secure=%v", cookies, tt.wantName, tt.wantSecure)
 			}
 		})

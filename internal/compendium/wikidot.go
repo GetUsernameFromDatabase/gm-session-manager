@@ -145,7 +145,12 @@ func pageTitle(doc *html.Node) string {
 	if t := textOf(byID(doc, "page-title")); t != "" {
 		return t
 	}
-	if t := textOf(find(doc, func(n *html.Node) bool { return slices.Contains(strings.Fields(attr(n, "class")), "page-title") })); t != "" {
+	if t := textOf(
+		find(
+			doc,
+			func(n *html.Node) bool { return slices.Contains(strings.Fields(attr(n, "class")), "page-title") },
+		),
+	); t != "" {
 		return t
 	}
 	t := textOf(find(doc, func(n *html.Node) bool { return n.Data == "title" }))
@@ -224,7 +229,9 @@ func labelAt(c *html.Node) string {
 		if c.Type == html.TextNode && strings.TrimSpace(c.Data) == "" {
 			continue
 		}
-		if t := textOf(c); c.Type == html.ElementNode && slices.Contains(emphasis, c.Data) && (strings.HasSuffix(t, ".") || strings.HasSuffix(t, ":")) {
+		t := textOf(c)
+		if c.Type == html.ElementNode && slices.Contains(emphasis, c.Data) &&
+			(strings.HasSuffix(t, ".") || strings.HasSuffix(t, ":")) {
 			return t
 		}
 		return ""
@@ -285,7 +292,10 @@ func collect(n *html.Node, out *[]block) {
 				if label = strings.TrimRight(label, ".:"); rest == "" {
 					label, rest = "", text
 				}
-				*out = append(*out, block{Label: label, Text: rest, Item: c.Data == "li", Links: links(p)})
+				*out = append(
+					*out,
+					block{Label: label, Text: rest, Item: c.Data == "li", Links: links(p)},
+				)
 			}
 			for _, k := range nested {
 				collect(k, out)
@@ -360,7 +370,10 @@ func wikidotText(blocks []block) TextData {
 			d.Prerequisite = b.Text
 		case b.Label != "":
 			name := strings.TrimSpace(strings.TrimPrefix(b.Label, "Feature:"))
-			d.Parts = append(d.Parts, NameDesc{Name: name, Desc: b.Text, Type: textTypes[strings.ToLower(name)]})
+			d.Parts = append(
+				d.Parts,
+				NameDesc{Name: name, Desc: b.Text, Type: textTypes[strings.ToLower(name)]},
+			)
 		case heading != "":
 			if n := len(d.Parts); n > 0 && d.Parts[n-1].Name == heading {
 				d.Parts[n-1].Desc += "\n\n" + b.Text
@@ -390,13 +403,18 @@ var (
 // limits features to its names (a class's Features column); deeper
 // headings are parts of a feature. A feature linking to "<subclassLink>…"
 // pages is where the subclass is chosen.
-func featuresUnder(blocks []block, levels map[string][]int, subclassLink string) (string, []ClassFeature) {
+func featuresUnder(
+	blocks []block,
+	levels map[string][]int,
+	subclassLink string,
+) (string, []ClassFeature) {
 	var desc []string
 	var out []ClassFeature
 	top := 0
 	for _, b := range blocks {
 		name := strings.ToLower(b.Text)
-		if b.Heading > 0 && (levels == nil || levels[name] != nil) && (top == 0 || b.Heading <= top) {
+		if b.Heading > 0 && (levels == nil || levels[name] != nil) &&
+			(top == 0 || b.Heading <= top) {
 			top = b.Heading
 			out = append(out, ClassFeature{Name: b.Text, Levels: levels[name]})
 			continue
@@ -416,7 +434,11 @@ func featuresUnder(blocks []block, levels map[string][]int, subclassLink string)
 		default:
 			f.Desc += b.markdown() + "\n\n"
 		}
-		if subclassLink != "" && slices.ContainsFunc(b.Links, func(l string) bool { return strings.Contains(l, "/"+subclassLink) }) {
+		if subclassLink != "" &&
+			slices.ContainsFunc(
+				b.Links,
+				func(l string) bool { return strings.Contains(l, "/"+subclassLink) },
+			) {
 			f.Subclass = true
 		}
 	}
@@ -473,7 +495,10 @@ func wikidotClass(page string, blocks []block) ClassData {
 		case b.Label == LabelSkills:
 			traits[classTraits[0]] = b.Text
 			if m := reChoose.FindStringSubmatch(b.Text); m != nil {
-				traits[classTraits[0]] = "Choose " + cmp.Or(dnd5e.CountWords[strings.ToLower(m[1])], m[1]) + ": " + m[2]
+				traits[classTraits[0]] = "Choose " + cmp.Or(
+					dnd5e.CountWords[strings.ToLower(m[1])],
+					m[1],
+				) + ": " + m[2]
 			}
 		case b.Rows != nil && !table:
 			table = classTable(&d, levels, b.Rows)
@@ -489,7 +514,10 @@ func wikidotClass(page string, blocks []block) ClassData {
 // Features column, the other columns, and the caster type from the spell
 // slot columns. It reports whether rows were the class table.
 func classTable(d *ClassData, levels map[string][]int, rows [][]string) bool {
-	head := slices.IndexFunc(rows, func(r []string) bool { return slices.Contains(r, "Level") && slices.Contains(r, "Features") })
+	head := slices.IndexFunc(
+		rows,
+		func(r []string) bool { return slices.Contains(r, "Level") && slices.Contains(r, "Features") },
+	)
 	if head < 0 {
 		return false
 	}

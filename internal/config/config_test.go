@@ -36,19 +36,53 @@ func TestFromLookup(t *testing.T) {
 		{
 			name: "defaults applied",
 			env:  valid,
-			want: Config{AdminUsername: "gm", AdminPassword: "secret", Port: DefaultPort, DataDir: DefaultDataDir},
+			want: Config{
+				AdminUsername: "gm",
+				AdminPassword: "secret",
+				Port:          DefaultPort,
+				DataDir:       DefaultDataDir,
+			},
 		},
 		{
 			name: "explicit values",
 			env:  with(map[string]string{EnvPort: "9000", EnvDataDir: "/srv/gm"}),
-			want: Config{AdminUsername: "gm", AdminPassword: "secret", Port: 9000, DataDir: "/srv/gm"},
+			want: Config{
+				AdminUsername: "gm",
+				AdminPassword: "secret",
+				Port:          9000,
+				DataDir:       "/srv/gm",
+			},
 		},
-		{name: "missing username", env: with(map[string]string{EnvAdminUsername: ""}), wantErr: []string{EnvAdminUsername}},
-		{name: "missing password", env: with(map[string]string{EnvAdminPassword: ""}), wantErr: []string{EnvAdminPassword}},
-		{name: "whitespace password", env: with(map[string]string{EnvAdminPassword: "   "}), wantErr: []string{EnvAdminPassword}},
-		{name: "both missing", env: map[string]string{}, wantErr: []string{EnvAdminUsername, EnvAdminPassword}},
-		{name: "port not a number", env: with(map[string]string{EnvPort: "http"}), wantErr: []string{EnvPort}},
-		{name: "port out of range", env: with(map[string]string{EnvPort: "70000"}), wantErr: []string{EnvPort}},
+		{
+			name:    "missing username",
+			env:     with(map[string]string{EnvAdminUsername: ""}),
+			wantErr: []string{EnvAdminUsername},
+		},
+		{
+			name:    "missing password",
+			env:     with(map[string]string{EnvAdminPassword: ""}),
+			wantErr: []string{EnvAdminPassword},
+		},
+		{
+			name:    "whitespace password",
+			env:     with(map[string]string{EnvAdminPassword: "   "}),
+			wantErr: []string{EnvAdminPassword},
+		},
+		{
+			name:    "both missing",
+			env:     map[string]string{},
+			wantErr: []string{EnvAdminUsername, EnvAdminPassword},
+		},
+		{
+			name:    "port not a number",
+			env:     with(map[string]string{EnvPort: "http"}),
+			wantErr: []string{EnvPort},
+		},
+		{
+			name:    "port out of range",
+			env:     with(map[string]string{EnvPort: "70000"}),
+			wantErr: []string{EnvPort},
+		},
 		{name: "port zero", env: with(map[string]string{EnvPort: "0"}), wantErr: []string{EnvPort}},
 	}
 
@@ -113,14 +147,20 @@ func TestPlayer(t *testing.T) {
 	}{
 		{name: "defaults are valid", port: DefaultPlayerPort, dataDir: DefaultPlayerDataDir},
 		{name: "port 0 refused", port: 0, dataDir: DefaultPlayerDataDir, wantErr: "--port"},
-		{name: "port above 65535 refused", port: 70000, dataDir: DefaultPlayerDataDir, wantErr: "--port"},
+		{
+			name:    "port above 65535 refused",
+			port:    70000,
+			dataDir: DefaultPlayerDataDir,
+			wantErr: "--port",
+		},
 		{name: "empty data dir refused", port: DefaultPlayerPort, dataDir: " ", wantErr: "--data"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := Player(tt.port, tt.dataDir)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || strings.Contains(err.Error(), ".env") {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) ||
+					strings.Contains(err.Error(), ".env") {
 					t.Fatalf("got %v, want an error naming %s and not .env", err, tt.wantErr)
 				}
 				return

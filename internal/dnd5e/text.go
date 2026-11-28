@@ -28,7 +28,14 @@ func Squash(s string) string {
 }
 
 // CountWords are the spelled-out counts source texts use ("two cantrips").
-var CountWords = map[string]string{"one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6"}
+var CountWords = map[string]string{
+	"one":   "1",
+	"two":   "2",
+	"three": "3",
+	"four":  "4",
+	"five":  "5",
+	"six":   "6",
+}
 
 // CountWord reads a count written as a word ("two") or digits.
 func CountWord(w string) int {

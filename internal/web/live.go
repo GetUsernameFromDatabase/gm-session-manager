@@ -67,24 +67,53 @@ type liveKind struct {
 // campaign, so campaign-wide views take any topic of their kind.
 var liveKinds = map[string]liveKind{
 	// The roster shows every character's hit points.
-	views.LiveRoster:   {any: []hub.TopicKind{hub.TopicCampaign, hub.TopicCharacter}, load: (*App).loadRosterLive},
+	views.LiveRoster: {
+		any:  []hub.TopicKind{hub.TopicCampaign, hub.TopicCharacter},
+		load: (*App).loadRosterLive,
+	},
 	views.LiveRequests: {any: []hub.TopicKind{hub.TopicPending}, load: (*App).loadRequestsLive},
 	views.LiveWaiting:  {any: []hub.TopicKind{hub.TopicPending}, load: (*App).loadWaitingLive},
 	// An import, priority move or book removal can change the sheet's source warning.
-	views.LiveCharacter:  {own: hub.TopicCharacter, any: []hub.TopicKind{hub.TopicCompendium}, load: (*App).loadCharacterLive},
-	views.LiveEncounters: {any: []hub.TopicKind{hub.TopicEncounter}, load: (*App).loadEncountersLive},
+	views.LiveCharacter: {
+		own:  hub.TopicCharacter,
+		any:  []hub.TopicKind{hub.TopicCompendium},
+		load: (*App).loadCharacterLive,
+	},
+	views.LiveEncounters: {
+		any:  []hub.TopicKind{hub.TopicEncounter},
+		load: (*App).loadEncountersLive,
+	},
 	// Trackers show NPC portraits, which change through their NPC.
-	views.LiveEncounter:    {own: hub.TopicEncounter, any: []hub.TopicKind{hub.TopicEntity}, load: (*App).loadEncounterLive},
-	views.LivePlayerCombat: {any: []hub.TopicKind{hub.TopicEncounter, hub.TopicEntity}, load: (*App).loadPlayerCombatLive},
-	views.LiveNotes:        {any: []hub.TopicKind{hub.TopicNotes}, load: (*App).loadNotesLive},
-	views.LiveNote:         {own: hub.TopicNote, load: (*App).loadNoteLive},
-	views.LiveEntities:     {any: []hub.TopicKind{hub.TopicEntities}, load: (*App).loadEntitiesLive},
-	views.LiveEntity:       {own: hub.TopicEntity, load: (*App).loadEntityLive},
-	views.LiveImport:       {any: []hub.TopicKind{hub.TopicImport}, load: (*App).loadImportLive},
-	views.LiveSources:      {any: []hub.TopicKind{hub.TopicCompendium}, load: (*App).loadSourcesLive},
+	views.LiveEncounter: {
+		own:  hub.TopicEncounter,
+		any:  []hub.TopicKind{hub.TopicEntity},
+		load: (*App).loadEncounterLive,
+	},
+	views.LivePlayerCombat: {
+		any:  []hub.TopicKind{hub.TopicEncounter, hub.TopicEntity},
+		load: (*App).loadPlayerCombatLive,
+	},
+	views.LiveNotes: {any: []hub.TopicKind{hub.TopicNotes}, load: (*App).loadNotesLive},
+	views.LiveNote:  {own: hub.TopicNote, load: (*App).loadNoteLive},
+	views.LiveEntities: {
+		any:  []hub.TopicKind{hub.TopicEntities},
+		load: (*App).loadEntitiesLive,
+	},
+	views.LiveEntity: {own: hub.TopicEntity, load: (*App).loadEntityLive},
+	views.LiveImport: {any: []hub.TopicKind{hub.TopicImport}, load: (*App).loadImportLive},
+	views.LiveSources: {
+		any:  []hub.TopicKind{hub.TopicCompendium},
+		load: (*App).loadSourcesLive,
+	},
 	// The card shows the starting sets and their import while nothing is imported.
-	views.LiveCampaignSources: {any: []hub.TopicKind{hub.TopicCompendium, hub.TopicImport}, load: (*App).loadCampaignSourcesLive},
-	views.LiveCompendium:      {any: []hub.TopicKind{hub.TopicCompendium, hub.TopicHabitats}, load: (*App).loadCompendiumLive},
+	views.LiveCampaignSources: {
+		any:  []hub.TopicKind{hub.TopicCompendium, hub.TopicImport},
+		load: (*App).loadCampaignSourcesLive,
+	},
+	views.LiveCompendium: {
+		any:  []hub.TopicKind{hub.TopicCompendium, hub.TopicHabitats},
+		load: (*App).loadCompendiumLive,
+	},
 }
 
 // Affects implements hub.Handler.
@@ -101,7 +130,11 @@ func (a *App) Affects(view string, topics []hub.Topic) bool {
 
 // State implements hub.Handler.
 func (a *App) State(ctx context.Context, c *hub.Client, view string) (hub.State, bool, error) {
-	lv, err := a.loadLive(ctx, viewerCtx{viewer: c.Viewer, campaignID: c.CampaignID, pending: c.Pending}, view)
+	lv, err := a.loadLive(
+		ctx,
+		viewerCtx{viewer: c.Viewer, campaignID: c.CampaignID, pending: c.Pending},
+		view,
+	)
 	if err != nil || !lv.ok {
 		return nil, false, err
 	}
@@ -246,7 +279,12 @@ func (a *App) loadRosterLive(ctx context.Context, vc viewerCtx, k liveKey) (live
 	if err != nil {
 		return liveView{}, notFoundIsNil(err)
 	}
-	return liveView{html: views.CampaignRoster(r), shape: views.CampaignRoster(r.Shape()), hot: r.Hot, ok: true}, nil
+	return liveView{
+		html:  views.CampaignRoster(r),
+		shape: views.CampaignRoster(r.Shape()),
+		hot:   r.Hot,
+		ok:    true,
+	}, nil
 }
 
 // loadImportLive is the import tab's progress (id 0), or the starting sets
@@ -257,9 +295,19 @@ func (a *App) loadImportLive(_ context.Context, vc viewerCtx, k liveKey) (liveVi
 	}
 	j := a.fiveTools.get()
 	if k.num() == views.StarterLiveCompendium {
-		return liveView{html: views.StarterSets(j, 0), shape: views.StarterSets(j.Shape(), 0), hot: j.Hot, ok: true}, nil
+		return liveView{
+			html:  views.StarterSets(j, 0),
+			shape: views.StarterSets(j.Shape(), 0),
+			hot:   j.Hot,
+			ok:    true,
+		}, nil
 	}
-	return liveView{html: views.FiveToolsProgress(j, true), shape: views.FiveToolsProgress(j.Shape(), true), hot: j.Hot, ok: true}, nil
+	return liveView{
+		html:  views.FiveToolsProgress(j, true),
+		shape: views.FiveToolsProgress(j.Shape(), true),
+		hot:   j.Hot,
+		ok:    true,
+	}, nil
 }
 
 // loadSourcesLive is the priority card of the campaign's compendium (id; 0
@@ -283,13 +331,21 @@ func (a *App) loadCompendiumLive(_ context.Context, vc viewerCtx, k liveKey) (li
 	}
 	// A fresh nonce, so every publish that may change the list refetches it
 	// (a counter: Windows clock ticks are coarse enough to repeat a time).
-	return liveView{html: views.CompendiumLive(k.num()), model: compendiumNonce.Add(1), ok: true}, nil
+	return liveView{
+		html:  views.CompendiumLive(k.num()),
+		model: compendiumNonce.Add(1),
+		ok:    true,
+	}, nil
 }
 
 var compendiumNonce atomic.Int64
 
 // loadCampaignSourcesLive is the campaign page's Sources card (id = campaign).
-func (a *App) loadCampaignSourcesLive(ctx context.Context, vc viewerCtx, k liveKey) (liveView, error) {
+func (a *App) loadCampaignSourcesLive(
+	ctx context.Context,
+	vc viewerCtx,
+	k liveKey,
+) (liveView, error) {
 	if !vc.viewer.IsGM {
 		return liveView{}, nil
 	}
@@ -300,7 +356,12 @@ func (a *App) loadCampaignSourcesLive(ctx context.Context, vc viewerCtx, k liveK
 	shape := v
 	shape.Job = v.Job.Shape()
 	// The card shows the bar whenever an import runs, so its keys always match.
-	return liveView{html: views.CampaignSourcesLive(v), shape: views.CampaignSourcesLive(shape), hot: v.Job.Hot, ok: true}, nil
+	return liveView{
+		html:  views.CampaignSourcesLive(v),
+		shape: views.CampaignSourcesLive(shape),
+		hot:   v.Job.Hot,
+		ok:    true,
+	}, nil
 }
 
 func (a *App) loadRequestsLive(_ context.Context, vc viewerCtx, _ liveKey) (liveView, error) {

@@ -26,12 +26,21 @@ import (
 // to the page, putting the title in the address.
 func TestNoteTitleEnterPosts(t *testing.T) {
 	e := newTestEnv(t)
-	note, err := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Plans"})
+	note, err := e.q().
+		CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Plans"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := e.do(t, http.MethodGet, route.Path(route.Note, note.ID), e.token(t, enum.RoleAdmin), nil, false)
-	form := regexp.MustCompile(`<form[^>]*hx-post="` + regexp.QuoteMeta(route.Path(route.NoteRename, note.ID)) + `"[^>]*hx-trigger="([^"]*)"`).FindStringSubmatch(w.Body.String())
+	w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.Note, note.ID),
+		e.token(t, enum.RoleAdmin),
+		nil,
+		false,
+	)
+	form := regexp.MustCompile(`<form[^>]*hx-post="` + regexp.QuoteMeta(route.Path(route.NoteRename, note.ID)) + `"[^>]*hx-trigger="([^"]*)"`).
+		FindStringSubmatch(w.Body.String())
 	if form == nil {
 		t.Fatalf("no title form with an hx-trigger on the note page")
 	}
@@ -45,23 +54,27 @@ func TestNoteTitleEnterPosts(t *testing.T) {
 func TestNoteViewAudiences(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	bram, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bram", System: "dnd5e", SheetJson: "{}"})
+	bram, err := e.q().
+		CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bram", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Plans"})
+	note, err := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Plans"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := [][]int64{{e.characterID}, {bram.ID}, {e.characterID, bram.ID}, nil}
 	var ids []int64
 	for _, who := range want {
-		b, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisListed})
+		b, err := e.q().
+			CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisListed})
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, c := range who {
-			if err := e.q().AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: b.ID, CharacterID: c}); err != nil {
+			if err := e.q().
+				AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: b.ID, CharacterID: c}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -83,13 +96,19 @@ func TestNoteViewAudiences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nv.Blocks) != 2 || nv.Blocks[0].ID != ids[1] || nv.Blocks[1].ID != ids[2] || nv.Blocks[0].Audience != nil {
+	if len(nv.Blocks) != 2 || nv.Blocks[0].ID != ids[1] || nv.Blocks[1].ID != ids[2] ||
+		nv.Blocks[0].Audience != nil {
 		t.Errorf("player's blocks: %+v", nv.Blocks)
 	}
 }
 
 // do sends a request as a device. htmx marks the request as an htmx one.
-func (e testEnv) do(t testing.TB, method, path, cookie string, form url.Values, htmx bool) *httptest.ResponseRecorder {
+func (e testEnv) do(
+	t testing.TB,
+	method, path, cookie string,
+	form url.Values,
+	htmx bool,
+) *httptest.ResponseRecorder {
 	t.Helper()
 	var body io.Reader
 	if form != nil {
@@ -114,7 +133,12 @@ func (e testEnv) do(t testing.TB, method, path, cookie string, form url.Values, 
 func (e testEnv) doJSON(t *testing.T, path, cookie string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(string(b)))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		path,
+		strings.NewReader(string(b)),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = lanAddr
 	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: cookie})
@@ -127,7 +151,14 @@ func (e testEnv) q() *sqlc.Queries { return e.app.Store.Queries }
 
 func TestJoinOpenCampaign(t *testing.T) {
 	e := newTestEnv(t)
-	w := e.do(t, http.MethodPost, route.Path(route.JoinCreate, e.campaignID), "", url.Values{"name": {"Bob"}}, false)
+	w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.JoinCreate, e.campaignID),
+		"",
+		url.Values{"name": {"Bob"}},
+		false,
+	)
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
 	}
@@ -141,12 +172,15 @@ func TestJoinOpenCampaign(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, ch := range chars {
-		if s, err := dnd5e.ParseSheet(ch.SheetJson); ch.Name == "Bob" && (err != nil || s.EffectsVersion != dnd5e.EffectsVersion) {
+		s, err := dnd5e.ParseSheet(ch.SheetJson)
+		if ch.Name == "Bob" && (err != nil || s.EffectsVersion != dnd5e.EffectsVersion) {
 			t.Errorf("new sheet effects version %d (%v)", s.EffectsVersion, err)
 		}
 	}
 	// A device with a session cannot join again without logging out.
-	if w := e.do(t, http.MethodPost, route.Path(route.JoinCreate, e.campaignID), c.Value, url.Values{"name": {"Eve"}}, false); sessionCookie(w) != nil {
+	join := route.Path(route.JoinCreate, e.campaignID)
+	w = e.do(t, http.MethodPost, join, c.Value, url.Values{"name": {"Eve"}}, false)
+	if sessionCookie(w) != nil {
 		t.Error("second join issued another session")
 	}
 }
@@ -157,7 +191,14 @@ func TestClaimNeedsApproval(t *testing.T) {
 
 	claim := route.Path(route.JoinClaim, e.campaignID, e.characterID)
 	for _, player := range []string{"", "Thirteen char"} {
-		if w := e.do(t, http.MethodPost, claim, "", url.Values{"player": {player}}, false); w.Code != http.StatusUnprocessableEntity {
+		if w := e.do(
+			t,
+			http.MethodPost,
+			claim,
+			"",
+			url.Values{"player": {player}},
+			false,
+		); w.Code != http.StatusUnprocessableEntity {
 			t.Errorf("player %q: status %d", player, w.Code)
 		}
 	}
@@ -175,7 +216,8 @@ func TestClaimNeedsApproval(t *testing.T) {
 	p, _ := e.app.Hub.PendingBySecret(pendingSecret(t, e, pending[0].ID))
 
 	// Before approval the secret redeems nothing.
-	if w := e.do(t, http.MethodPost, route.RequestsComplete, "", url.Values{"secret": {p.Secret}}, true); sessionCookie(w) != nil {
+	w = e.do(t, http.MethodPost, route.RequestsComplete, "", url.Values{"secret": {p.Secret}}, true)
+	if sessionCookie(w) != nil {
 		t.Fatal("redeemed before approval")
 	}
 	// A player cannot approve; the GM can.
@@ -198,7 +240,14 @@ func TestClaimNeedsApproval(t *testing.T) {
 	}
 
 	// Kick: the session is gone and the device is anonymous again.
-	if w := e.do(t, http.MethodPost, route.Path(route.SessionKick, sess.ID), gm, nil, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.SessionKick, sess.ID),
+		gm,
+		nil,
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("kick: %d %s", w.Code, w.Body)
 	}
 	if e.alive(t, c.Value) {
@@ -211,17 +260,33 @@ func TestClaimNeedsApproval(t *testing.T) {
 func TestJoinBurst(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
-	if err := e.q().SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
+	if err := e.q().
+		SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"Ann", "Ben", "Cat"} {
-		e.do(t, http.MethodPost, route.Path(route.JoinCreate, e.campaignID), "", url.Values{"name": {name}, "player": {name}}, false)
+		e.do(
+			t,
+			http.MethodPost,
+			route.Path(route.JoinCreate, e.campaignID),
+			"",
+			url.Values{"name": {name}, "player": {name}},
+			false,
+		)
 	}
 	p := e.app.Hub.PendingList(e.campaignID)
 	if len(p) != 3 {
 		t.Fatalf("pending %+v", p)
 	}
-	if w := e.do(t, http.MethodGet, route.Compendium, gm, nil, false); !strings.Contains(w.Body.String(), route.Path(route.CampaignRequestsDecision, e.campaignID, "approve")) || !strings.Contains(w.Body.String(), "Cat") {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Compendium,
+		gm,
+		nil,
+		false,
+	); !strings.Contains(w.Body.String(), route.Path(route.CampaignRequestsDecision, e.campaignID, "approve")) ||
+		!strings.Contains(w.Body.String(), "Cat") {
 		t.Error("compendium page does not show the requests")
 	}
 
@@ -229,28 +294,53 @@ func TestJoinBurst(t *testing.T) {
 	all := func(decision string) string {
 		return route.Path(route.CampaignRequestsDecision, e.campaignID, decision)
 	}
-	if w := e.do(t, http.MethodPost, all("approve"), gm, url.Values{"id": {p[0].ID, p[1].ID}}, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		all("approve"),
+		gm,
+		url.Values{"id": {p[0].ID, p[1].ID}},
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("approve all: %d %s", w.Code, w.Body)
 	}
 	if left := e.app.Hub.PendingList(e.campaignID); len(left) != 1 || left[0].ID != p[2].ID {
 		t.Fatalf("still waiting %+v", left)
 	}
 	for _, r := range p[:2] {
-		if w := e.do(t, http.MethodPost, route.RequestsComplete, "", url.Values{"secret": {r.Secret}}, true); sessionCookie(w) == nil {
+		redeem := url.Values{"secret": {r.Secret}}
+		w := e.do(t, http.MethodPost, route.RequestsComplete, "", redeem, true)
+		if sessionCookie(w) == nil {
 			t.Errorf("%s not logged in", r.Name)
 		}
-		if w := e.do(t, http.MethodPost, route.RequestsComplete, "", url.Values{"secret": {r.Secret}}, true); sessionCookie(w) != nil {
+		w = e.do(t, http.MethodPost, route.RequestsComplete, "", redeem, true)
+		if sessionCookie(w) != nil {
 			t.Errorf("%s redeemed twice", r.Name)
 		}
 	}
 
-	if w := e.do(t, http.MethodPost, all("deny"), gm, url.Values{"id": {p[2].ID}}, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		all("deny"),
+		gm,
+		url.Values{"id": {p[2].ID}},
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("deny all: %d %s", w.Code, w.Body)
 	}
 	if left := e.app.Hub.PendingList(e.campaignID); len(left) != 0 {
 		t.Errorf("still waiting after deny %+v", left)
 	}
-	if w := e.do(t, http.MethodPost, route.RequestsComplete, "", url.Values{"secret": {p[2].Secret}}, true); sessionCookie(w) != nil {
+	w := e.do(
+		t,
+		http.MethodPost,
+		route.RequestsComplete,
+		"",
+		url.Values{"secret": {p[2].Secret}},
+		true,
+	)
+	if sessionCookie(w) != nil {
 		t.Error("denied request logged in")
 	}
 }
@@ -269,10 +359,18 @@ func pendingSecret(t *testing.T, e testEnv, id string) string {
 
 func TestWaitingPageCarriesSecret(t *testing.T) {
 	e := newTestEnv(t)
-	if err := e.q().SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
+	if err := e.q().
+		SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
 		t.Fatal(err)
 	}
-	w := e.do(t, http.MethodPost, route.Path(route.JoinCreate, e.campaignID), "", url.Values{"name": {"Zed"}, "player": {"Mira"}}, false)
+	w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.JoinCreate, e.campaignID),
+		"",
+		url.Values{"name": {"Zed"}, "player": {"Mira"}},
+		false,
+	)
 	if sessionCookie(w) != nil {
 		t.Fatal("closed campaign created a session without approval")
 	}
@@ -289,7 +387,8 @@ func TestCommandPermissions(t *testing.T) {
 	e := newTestEnv(t)
 	player := e.token(t, enum.RolePlayer)
 	gm := e.token(t, enum.RoleAdmin)
-	other, err := e.q().CreateCharacterWithSheet(t.Context(), sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
+	other, err := e.q().
+		CreateCharacterWithSheet(t.Context(), sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +452,8 @@ func TestHPQuickForm(t *testing.T) {
 			if w.Code != tt.want {
 				t.Errorf("status %d, want %d: %s", w.Code, tt.want, w.Body)
 			}
-			if tt.want != http.StatusOK && (!strings.Contains(w.Body.String(), "hit points") || strings.Contains(w.Body.String(), "unknown command")) {
+			if tt.want != http.StatusOK &&
+				(!strings.Contains(w.Body.String(), "hit points") || strings.Contains(w.Body.String(), "unknown command")) {
 				t.Errorf("message: %s", w.Body)
 			}
 		})
@@ -376,8 +476,25 @@ func TestCommandBuilder(t *testing.T) {
 		}
 	}
 	// The score field starts at the preselected ability's score.
-	e.do(t, http.MethodPost, route.Path(route.CharacterCmd, e.characterID), player, url.Values{"cmd": {"set ability wis 17"}}, true)
-	if w := e.do(t, http.MethodGet, base+"abilities&op=ability&subject=wis", player, nil, true); !strings.Contains(w.Body.String(), `value="17"`) {
+	e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CharacterCmd, e.characterID),
+		player,
+		url.Values{"cmd": {"set ability wis 17"}},
+		true,
+	)
+	if w := e.do(
+		t,
+		http.MethodGet,
+		base+"abilities&op=ability&subject=wis",
+		player,
+		nil,
+		true,
+	); !strings.Contains(
+		w.Body.String(),
+		`value="17"`,
+	) {
 		t.Errorf("ability not preselected: %s", w.Body)
 	}
 	if w := e.do(t, http.MethodGet, base+"hp", gm, nil, true); w.Code == http.StatusOK {
@@ -400,7 +517,17 @@ func TestCommandBuilder(t *testing.T) {
 		"profs&op=save&subject=con":            "Constitution save",
 		"weapons&op=weapon-add&subject=Rapier": "weapon remove",
 	} {
-		if w := e.do(t, http.MethodGet, base+path, player, nil, true); !strings.Contains(w.Body.String(), want) {
+		if w := e.do(
+			t,
+			http.MethodGet,
+			base+path,
+			player,
+			nil,
+			true,
+		); !strings.Contains(
+			w.Body.String(),
+			want,
+		) {
 			t.Errorf("%s lacks %q: %s", path, want, w.Body)
 		}
 	}
@@ -413,7 +540,15 @@ func TestCommandBuilder(t *testing.T) {
 		}
 	}
 	// Tapping the modifier opens it for editing.
-	if w := e.do(t, http.MethodGet, base+"mods&op=mod-edit&subject=0", player, nil, true); !strings.Contains(w.Body.String(), `value="mod edit"`) || !strings.Contains(w.Body.String(), `Lucky`) {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		base+"mods&op=mod-edit&subject=0",
+		player,
+		nil,
+		true,
+	); !strings.Contains(w.Body.String(), `value="mod edit"`) ||
+		!strings.Contains(w.Body.String(), `Lucky`) {
 		t.Errorf("edit form: %s", w.Body)
 	}
 	for _, form := range []url.Values{
@@ -427,7 +562,10 @@ func TestCommandBuilder(t *testing.T) {
 		}
 	}
 	ch, _ := e.q().GetCharacter(t.Context(), e.characterID)
-	if !strings.Contains(ch.SheetJson, `"modifiers":[{"target":"ac","value":2,"note":"Shield spell"}]`) {
+	if !strings.Contains(
+		ch.SheetJson,
+		`"modifiers":[{"target":"ac","value":2,"note":"Shield spell"}]`,
+	) {
 		t.Errorf("modifiers after edit and remove: %s", ch.SheetJson)
 	}
 	for _, want := range []string{`"dex":16`, `"save_profs":["con"]`, `"skill_profs":["stealth"],"expertise":["stealth"]`, `"name":"Rapier","ability":"finesse","dice":"1d8","damage_type":"piercing","proficient":true`, `"backstory":"Line one\nSaid \"hi\""`} {
@@ -445,38 +583,76 @@ func TestServerSideStripping(t *testing.T) {
 	player := e.token(t, enum.RolePlayer)
 
 	ent, err := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{
-		CampaignID: e.campaignID, Kind: "npc", Name: "Mira", IsRevealed: true,
+		CampaignID: e.campaignID,
+		Kind:       "npc",
+		Name:       "Mira",
+		IsRevealed: true,
 		FieldsJson: `{"role":{"value":"Innkeeper","is_revealed":true},"secret":{"value":"Is the lich","is_revealed":false}}`,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := e.do(t, http.MethodGet, route.Path(route.Entity, ent.ID), player, nil, false).Body.String()
-	if !strings.Contains(body, "Innkeeper") || strings.Contains(body, "lich") || strings.Contains(body, ">secret<") {
+	body := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.Entity, ent.ID),
+		player,
+		nil,
+		false,
+	).Body.String()
+	if !strings.Contains(body, "Innkeeper") || strings.Contains(body, "lich") ||
+		strings.Contains(body, ">secret<") {
 		t.Errorf("entity page leaks or misses fields")
 	}
 
-	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Plans"})
+	note, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Plans"})
 	secret, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "gm"})
-	if w := e.do(t, http.MethodGet, route.Path(route.BlockDoc, secret.ID), player, nil, false); w.Code != http.StatusNotFound {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.BlockDoc, secret.ID),
+		player,
+		nil,
+		false,
+	); w.Code != http.StatusNotFound {
 		t.Errorf("player read a GM block: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodGet, route.Path(route.Note, note.ID), player, nil, false); w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "Plans") {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.Note, note.ID),
+		player,
+		nil,
+		false,
+	); w.Code != http.StatusNotFound ||
+		strings.Contains(w.Body.String(), "Plans") {
 		t.Errorf("player saw a GM-only note: %d", w.Code)
 	}
 
-	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
-	if _, err := e.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, Name: "Ogre", Hp: 59, MaxHp: 59, Ac: 11}); err != nil {
+	enc, _ := e.q().
+		CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	if _, err := e.q().
+		CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, Name: "Ogre", Hp: 59, MaxHp: 59, Ac: 11}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, CharacterID: nullID(e.characterID), Name: "Alice"}); err != nil {
+	if _, err := e.q().
+		CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, CharacterID: nullID(e.characterID), Name: "Alice"}); err != nil {
 		t.Fatal(err)
 	}
 	cb, _ := e.q().ListCombatants(ctx, enc.ID)
-	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1, ActiveCombatantID: nullID(cb[0].ID)}); err != nil {
+	if err := e.q().
+		UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1, ActiveCombatantID: nullID(cb[0].ID)}); err != nil {
 		t.Fatal(err)
 	}
-	body = e.do(t, http.MethodGet, route.Path(route.CampaignCombat, e.campaignID), player, nil, false).Body.String()
+	body = e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.CampaignCombat, e.campaignID),
+		player,
+		nil,
+		false,
+	).Body.String()
 	if !strings.Contains(body, "Ogre") || strings.Contains(body, "59/59") {
 		t.Errorf("combat page leaks monster HP or misses the monster")
 	}
@@ -485,26 +661,57 @@ func TestServerSideStripping(t *testing.T) {
 func TestSubmitStepsRefusesScriptLinks(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
-	note, _ := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
-	b, _ := e.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
+	note, _ := e.q().
+		CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
+	b, _ := e.q().
+		CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
 	hrefs := map[string]bool{
-		"javascript:alert(1)": false, "JavaScript:x": false, "  javascript:x": false, "java\tscript:x": false,
-		"data:text/html,x": false, "vbscript:x": false,
-		"https://example.com": true, "http://x": true, route.Path(route.Note, 3): true, "#a": true, "": true,
-		"mailto:a@example.com": true, "https://x/%zz": true, // no script; refusing would block every later snapshot
-		"ftp://files.example": true, "sms:123": true, // TipTap autolinks these
+		"javascript:alert(1)":     false,
+		"JavaScript:x":            false,
+		"  javascript:x":          false,
+		"java\tscript:x":          false,
+		"data:text/html,x":        false,
+		"vbscript:x":              false,
+		"https://example.com":     true,
+		"http://x":                true,
+		route.Path(route.Note, 3): true,
+		"#a":                      true,
+		"":                        true,
+		"mailto:a@example.com":    true,
+		"https://x/%zz":           true, // no script; refusing would block every later snapshot
+		"ftp://files.example":     true,
+		"sms:123":                 true, // TipTap autolinks these
 	}
 	version := 0
 	for href, ok := range hrefs {
 		mark := map[string]any{"type": "link", "attrs": map[string]any{"href": href}}
 		steps := map[string]json.RawMessage{
-			"addMark": mustJSON(t, map[string]any{"stepType": "addMark", "from": 1, "to": 2, "mark": mark}),
-			"replace": mustJSON(t, map[string]any{"stepType": "replace", "from": 1, "to": 1, "slice": map[string]any{
-				"content": []any{map[string]any{"type": "text", "text": "a", "marks": []any{mark}}}}}),
+			"addMark": mustJSON(
+				t,
+				map[string]any{"stepType": "addMark", "from": 1, "to": 2, "mark": mark},
+			),
+			"replace": mustJSON(
+				t,
+				map[string]any{"stepType": "replace", "from": 1, "to": 1, "slice": map[string]any{
+					"content": []any{
+						map[string]any{"type": "text", "text": "a", "marks": []any{mark}},
+					},
+				}},
+			),
 		}
 		for name, step := range steps {
-			w := e.doJSON(t, route.Path(route.BlockSteps, b.ID), gm, map[string]any{"version": version, "clientID": "c", "steps": []json.RawMessage{step}})
-			if got := w.Code == http.StatusOK; got != ok || (!ok && w.Code != http.StatusUnprocessableEntity) {
+			w := e.doJSON(
+				t,
+				route.Path(route.BlockSteps, b.ID),
+				gm,
+				map[string]any{
+					"version":  version,
+					"clientID": "c",
+					"steps":    []json.RawMessage{step},
+				},
+			)
+			if got := w.Code == http.StatusOK; got != ok ||
+				(!ok && w.Code != http.StatusUnprocessableEntity) {
 				t.Errorf("%s href %q: %d", name, href, w.Code)
 			}
 			if w.Code == http.StatusOK {
@@ -514,9 +721,24 @@ func TestSubmitStepsRefusesScriptLinks(t *testing.T) {
 	}
 	// The snapshot endpoint takes the whole document.
 	for href, ok := range hrefs {
-		doc := map[string]any{"type": "doc", "content": []any{map[string]any{"type": "paragraph", "content": []any{
-			map[string]any{"type": "text", "text": "a", "marks": []any{map[string]any{"type": "link", "attrs": map[string]any{"href": href}}}}}}}}
-		w := e.doJSON(t, route.Path(route.BlockSnapshot, b.ID), gm, map[string]any{"version": 1, "doc": doc, "text": "a", "links": []any{}})
+		doc := map[string]any{
+			"type": "doc",
+			"content": []any{map[string]any{"type": "paragraph", "content": []any{
+				map[string]any{
+					"type": "text",
+					"text": "a",
+					"marks": []any{
+						map[string]any{"type": "link", "attrs": map[string]any{"href": href}},
+					},
+				},
+			}}},
+		}
+		w := e.doJSON(
+			t,
+			route.Path(route.BlockSnapshot, b.ID),
+			gm,
+			map[string]any{"version": 1, "doc": doc, "text": "a", "links": []any{}},
+		)
 		if got := w.Code < 300; got != ok || (!ok && w.Code != http.StatusUnprocessableEntity) {
 			t.Errorf("snapshot href %q: %d", href, w.Code)
 		}
@@ -526,14 +748,21 @@ func TestSubmitStepsRefusesScriptLinks(t *testing.T) {
 func TestSubmitStepsLimits(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
-	note, _ := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
-	b, _ := e.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
-	valid := json.RawMessage(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}}`)
+	note, _ := e.q().
+		CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
+	b, _ := e.q().
+		CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
+	valid := json.RawMessage(
+		`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}}`,
+	)
 	many := make([]json.RawMessage, maxSteps+1)
 	for i := range many {
 		many[i] = valid
 	}
-	big := mustJSON(t, map[string]any{"stepType": "replace", "pad": strings.Repeat("x", maxStepBytes)})
+	big := mustJSON(
+		t,
+		map[string]any{"stepType": "replace", "pad": strings.Repeat("x", maxStepBytes)},
+	)
 	cases := []struct {
 		name  string
 		steps []json.RawMessage
@@ -542,11 +771,20 @@ func TestSubmitStepsLimits(t *testing.T) {
 		{"too many steps", many, http.StatusBadRequest},
 		{"step too big", []json.RawMessage{big}, http.StatusBadRequest},
 		{"empty object", []json.RawMessage{json.RawMessage(`{}`)}, http.StatusUnprocessableEntity},
-		{"stepType not a string", []json.RawMessage{json.RawMessage(`{"stepType":5}`)}, http.StatusUnprocessableEntity},
+		{
+			"stepType not a string",
+			[]json.RawMessage{json.RawMessage(`{"stepType":5}`)},
+			http.StatusUnprocessableEntity,
+		},
 		{"valid replace", []json.RawMessage{valid}, http.StatusOK},
 	}
 	for _, tc := range cases {
-		w := e.doJSON(t, route.Path(route.BlockSteps, b.ID), gm, map[string]any{"version": 0, "clientID": "c", "steps": tc.steps})
+		w := e.doJSON(
+			t,
+			route.Path(route.BlockSteps, b.ID),
+			gm,
+			map[string]any{"version": 0, "clientID": "c", "steps": tc.steps},
+		)
 		if w.Code != tc.want {
 			t.Errorf("%s: got %d, want %d", tc.name, w.Code, tc.want)
 		}
@@ -560,13 +798,23 @@ func TestSubmitStepsLimits(t *testing.T) {
 func TestBlockDocGone(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
-	note, _ := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
-	b, _ := e.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players"})
+	note, _ := e.q().
+		CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
+	b, _ := e.q().
+		CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players"})
 	// A version with no steps behind it: the document cannot be rebuilt.
-	if err := e.q().SetBlockVersion(t.Context(), sqlc.SetBlockVersionParams{ID: b.ID, Version: 5}); err != nil {
+	if err := e.q().
+		SetBlockVersion(t.Context(), sqlc.SetBlockVersionParams{ID: b.ID, Version: 5}); err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodGet, route.Path(route.BlockDoc, b.ID), gm, nil, false); w.Code != http.StatusGone {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.BlockDoc, b.ID),
+		gm,
+		nil,
+		false,
+	); w.Code != http.StatusGone {
 		t.Errorf("got %d, want 410", w.Code)
 	}
 }
@@ -584,29 +832,57 @@ func TestCollabConflict(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
-	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
-	b, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
+	note, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Log"})
+	b, _ := e.q().
+		CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
 	path := route.Path(route.BlockSteps, b.ID)
-	step := json.RawMessage(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}}`)
+	step := json.RawMessage(
+		`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}}`,
+	)
 
-	w := e.doJSON(t, path, gm, map[string]any{"version": 0, "clientID": "c1", "steps": []json.RawMessage{step}})
+	w := e.doJSON(
+		t,
+		path,
+		gm,
+		map[string]any{"version": 0, "clientID": "c1", "steps": []json.RawMessage{step}},
+	)
 	if w.Code != http.StatusOK {
 		t.Fatalf("first submit: %d %s", w.Code, w.Body)
 	}
 	// A second client still at version 0 must rebase.
-	w = e.doJSON(t, path, e.token(t, enum.RolePlayer), map[string]any{"version": 0, "clientID": "c2", "steps": []json.RawMessage{step}})
+	w = e.doJSON(
+		t,
+		path,
+		e.token(t, enum.RolePlayer),
+		map[string]any{"version": 0, "clientID": "c2", "steps": []json.RawMessage{step}},
+	)
 	if w.Code != http.StatusConflict {
 		t.Fatalf("stale submit: %d", w.Code)
 	}
 	var p stepsPayload
-	if err := json.Unmarshal(w.Body.Bytes(), &p); err != nil || len(p.Steps) != 1 || p.ClientIDs[0] != "c1" {
+	if err := json.Unmarshal(
+		w.Body.Bytes(),
+		&p,
+	); err != nil || len(p.Steps) != 1 ||
+		p.ClientIDs[0] != "c1" {
 		t.Errorf("conflict payload %+v %v", p, err)
 	}
 
 	snapshot := func(version int) {
 		t.Helper()
-		snap := map[string]any{"version": version, "doc": json.RawMessage(`{"type":"doc","content":[]}`), "text": "a", "links": []any{}}
-		if w := e.doJSON(t, route.Path(route.BlockSnapshot, b.ID), gm, snap); w.Code != http.StatusNoContent {
+		snap := map[string]any{
+			"version": version,
+			"doc":     json.RawMessage(`{"type":"doc","content":[]}`),
+			"text":    "a",
+			"links":   []any{},
+		}
+		if w := e.doJSON(
+			t,
+			route.Path(route.BlockSnapshot, b.ID),
+			gm,
+			snap,
+		); w.Code != http.StatusNoContent {
 			t.Fatalf("snapshot: %d %s", w.Code, w.Body)
 		}
 	}
@@ -616,17 +892,36 @@ func TestCollabConflict(t *testing.T) {
 	if w := e.do(t, http.MethodGet, path+"?since=0", gm, nil, false); w.Code != http.StatusOK {
 		t.Errorf("steps behind a snapshot: %d", w.Code)
 	}
-	if w := e.doJSON(t, path, gm, map[string]any{"version": 0, "clientID": "c3", "steps": []json.RawMessage{step}}); w.Code != http.StatusConflict {
+	if w := e.doJSON(
+		t,
+		path,
+		gm,
+		map[string]any{"version": 0, "clientID": "c3", "steps": []json.RawMessage{step}},
+	); w.Code != http.StatusConflict {
 		t.Fatalf("offline submit: %d", w.Code)
 	}
-	if w := e.doJSON(t, path, gm, map[string]any{"version": 1, "clientID": "c3", "steps": []json.RawMessage{step}}); w.Code != http.StatusOK {
+	if w := e.doJSON(
+		t,
+		path,
+		gm,
+		map[string]any{"version": 1, "clientID": "c3", "steps": []json.RawMessage{step}},
+	); w.Code != http.StatusOK {
 		t.Fatalf("rebased submit: %d %s", w.Code, w.Body)
 	}
 
 	// Push the block well past keepSteps; a snapshot then trims the oldest.
 	version := 2
 	for _, n := range []int{500, 500, 100} {
-		w := e.doJSON(t, path, gm, map[string]any{"version": version, "clientID": "c1", "steps": slices.Repeat([]json.RawMessage{step}, n)})
+		w := e.doJSON(
+			t,
+			path,
+			gm,
+			map[string]any{
+				"version":  version,
+				"clientID": "c1",
+				"steps":    slices.Repeat([]json.RawMessage{step}, n),
+			},
+		)
 		if w.Code != http.StatusOK {
 			t.Fatalf("bulk submit: %d %s", w.Code, w.Body)
 		}
@@ -635,11 +930,23 @@ func TestCollabConflict(t *testing.T) {
 	snapshot(version)
 	kept := version - keepSteps
 	for since, want := range map[int]int{kept - 1: http.StatusGone, kept: http.StatusOK, version: http.StatusOK} {
-		if w := e.do(t, http.MethodGet, fmt.Sprintf("%s?since=%d", path, since), gm, nil, false); w.Code != want {
+		if w := e.do(
+			t,
+			http.MethodGet,
+			fmt.Sprintf("%s?since=%d", path, since),
+			gm,
+			nil,
+			false,
+		); w.Code != want {
 			t.Errorf("since=%d: %d, want %d", since, w.Code, want)
 		}
 	}
-	if w := e.doJSON(t, path, gm, map[string]any{"version": kept - 1, "clientID": "c3", "steps": []json.RawMessage{step}}); w.Code != http.StatusGone {
+	if w := e.doJSON(
+		t,
+		path,
+		gm,
+		map[string]any{"version": kept - 1, "clientID": "c3", "steps": []json.RawMessage{step}},
+	); w.Code != http.StatusGone {
 		t.Errorf("submit behind the kept window: %d", w.Code)
 	}
 }
@@ -650,7 +957,8 @@ func TestPlayerBlocksInGameSession(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	alice := e.token(t, enum.RolePlayer)
-	other, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
+	other, err := e.q().
+		CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -658,12 +966,22 @@ func TestPlayerBlocksInGameSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "game_session", Title: "Session 1"})
-	plain, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Lore"})
-	gmBlock, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: log.ID, Visibility: "players"})
+	log, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "game_session", Title: "Session 1"})
+	plain, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Lore"})
+	gmBlock, _ := e.q().
+		CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: log.ID, Visibility: "players"})
 
 	add := func(cookie string, noteID int64, vis string) int {
-		return e.do(t, http.MethodPost, route.Path(route.NoteBlocks, noteID), cookie, url.Values{"visibility": {vis}}, true).Code
+		return e.do(
+			t,
+			http.MethodPost,
+			route.Path(route.NoteBlocks, noteID),
+			cookie,
+			url.Values{"visibility": {vis}},
+			true,
+		).Code
 	}
 	if got := add(alice, log.ID, "players"); got != http.StatusOK {
 		t.Fatalf("player add to game session: %d", got)
@@ -678,15 +996,27 @@ func TestPlayerBlocksInGameSession(t *testing.T) {
 		}
 	}
 
-	blocks, _ := e.q().ListReadableBlocks(ctx, sqlc.ListReadableBlocksParams{NoteID: log.ID, IsGm: true})
+	blocks, _ := e.q().
+		ListReadableBlocks(ctx, sqlc.ListReadableBlocksParams{NoteID: log.ID, IsGm: true})
 	own := blocks[len(blocks)-1]
 	if own.AuthorCharacterID.Int64 != e.characterID {
 		t.Fatalf("author = %v", own.AuthorCharacterID)
 	}
 	// The author edits without players_can_edit; other players cannot.
-	step := json.RawMessage(`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}}`)
+	step := json.RawMessage(
+		`{"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}}`,
+	)
 	steps := func(cookie string) int {
-		return e.doJSON(t, route.Path(route.BlockSteps, own.ID), cookie, map[string]any{"version": own.Version, "clientID": "c", "steps": []json.RawMessage{step}}).Code
+		return e.doJSON(
+			t,
+			route.Path(route.BlockSteps, own.ID),
+			cookie,
+			map[string]any{
+				"version":  own.Version,
+				"clientID": "c",
+				"steps":    []json.RawMessage{step},
+			},
+		).Code
 	}
 	if own.PlayersCanEdit || steps(alice) != http.StatusOK || steps(bob) != http.StatusNotFound {
 		t.Error("only the author may edit a block without players_can_edit")
@@ -717,12 +1047,19 @@ func TestPlayerBlocksInGameSession(t *testing.T) {
 // TestJoinRequestCapPerAddr refuses a fourth waiting request from one address.
 func TestJoinRequestCapPerAddr(t *testing.T) {
 	e := newTestEnv(t)
-	if err := e.q().SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
+	if err := e.q().
+		SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
 		t.Fatal(err)
 	}
 	path := route.Path(route.JoinCreate, e.campaignID)
 	for i := range hub.MaxPendingPerAddr + 1 {
-		w := e.post(t, path, lanAddr, url.Values{"name": {"Ann"}, "player": {fmt.Sprintf("P%d", i)}}, "")
+		w := e.post(
+			t,
+			path,
+			lanAddr,
+			url.Values{"name": {"Ann"}, "player": {fmt.Sprintf("P%d", i)}},
+			"",
+		)
 		want := http.StatusOK
 		if i == hub.MaxPendingPerAddr {
 			want = http.StatusTooManyRequests
@@ -771,19 +1108,27 @@ func TestCompleteRequestGone(t *testing.T) {
 // TestJoinRequestCap refuses new requests once the host-wide cap is reached.
 func TestJoinRequestCap(t *testing.T) {
 	e := newTestEnv(t)
-	if err := e.q().SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
+	if err := e.q().
+		SetCampaignOpenJoin(t.Context(), sqlc.SetCampaignOpenJoinParams{ID: e.campaignID, OpenJoin: false}); err != nil {
 		t.Fatal(err)
 	}
 	path := route.Path(route.JoinCreate, e.campaignID)
 	// One address per request: a single address is capped lower (hub.MaxPendingPerAddr).
 	addr := func(i int) string { return fmt.Sprintf("192.168.1.%d:51000", 100+i) }
 	for i := range hub.MaxPending {
-		if w := e.post(t, path, addr(i), url.Values{"name": {"Ann"}, "player": {fmt.Sprintf("P%d", i)}}, ""); w.Code != http.StatusOK {
+		if w := e.post(
+			t,
+			path,
+			addr(i),
+			url.Values{"name": {"Ann"}, "player": {fmt.Sprintf("P%d", i)}},
+			"",
+		); w.Code != http.StatusOK {
 			t.Fatalf("request %d: status %d", i, w.Code)
 		}
 	}
 	w := e.post(t, path, addr(hub.MaxPending), url.Values{"name": {"Ann"}, "player": {"Late"}}, "")
-	if w.Code != http.StatusTooManyRequests || !strings.Contains(w.Body.String(), "Too many people are waiting to join") {
+	if w.Code != http.StatusTooManyRequests ||
+		!strings.Contains(w.Body.String(), "Too many people are waiting to join") {
 		t.Fatalf("status %d, body missing message", w.Code)
 	}
 	if n := len(e.app.Hub.PendingList(e.campaignID)); n != hub.MaxPending {

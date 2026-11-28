@@ -12,13 +12,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// DownloadsDir is the folder under DATA_DIR whose files the GM's server hands out (the app for taking a character home).
+// DownloadsDir is the folder under DATA_DIR whose files the GM's server hands out (the app for
+// taking a character home).
 const DownloadsDir = "downloads"
 
 // UpdateStatusFile is the one line deploy/update.sh writes in DATA_DIR about the last update.
 const UpdateStatusFile = "update-status"
 
-// updateStatus reads the server's update line on every render (it changes while the app runs); empty off the server.
+// updateStatus reads the server's update line on every render (it changes while the app runs);
+// empty off the server.
 func (a *App) updateStatus() string {
 	b, err := os.ReadFile(filepath.Join(a.DataDir, UpdateStatusFile))
 	if err != nil {

@@ -63,7 +63,11 @@ func (a *App) attachmentUses(ctx context.Context) (map[int64][]views.FileUse, er
 	}
 	byBlock := map[int64]views.FileUse{}
 	for _, b := range blocks {
-		u := views.FileUse{Kind: views.FileUseNote, URL: route.Path(route.Note, b.NoteID), Label: b.Title}
+		u := views.FileUse{
+			Kind:  views.FileUseNote,
+			URL:   route.Path(route.Note, b.NoteID),
+			Label: b.Title,
+		}
 		if b.Visibility == enum.VisOwner {
 			// The GM never reads a player's own blocks, so not even the note's title.
 			u = views.FileUse{Kind: views.FileUseNote, Private: true}
@@ -79,7 +83,14 @@ func (a *App) attachmentUses(ctx context.Context) (map[int64][]views.FileUse, er
 		}
 	}
 	for _, img := range images {
-		add(img.AttachmentID.Int64, views.FileUse{Kind: views.FileUseImage, URL: route.Path(route.Image, img.ID), Label: img.Name})
+		add(
+			img.AttachmentID.Int64,
+			views.FileUse{
+				Kind:  views.FileUseImage,
+				URL:   route.Path(route.Image, img.ID),
+				Label: img.Name,
+			},
+		)
 	}
 	return uses, nil
 }
@@ -96,7 +107,10 @@ func (a *App) unusedAttachments(ctx context.Context) ([]sqlc.ListAttachmentFiles
 		return nil, err
 	}
 	files, err := a.Store.ListAttachmentFiles(ctx)
-	return slices.DeleteFunc(files, func(f sqlc.ListAttachmentFilesRow) bool { return len(uses[f.ID]) > 0 || fresh(f) }), err
+	return slices.DeleteFunc(
+		files,
+		func(f sqlc.ListAttachmentFilesRow) bool { return len(uses[f.ID]) > 0 || fresh(f) },
+	), err
 }
 
 // filesCampaign is the campaign in the path, nil for every campaign's files.
@@ -140,15 +154,24 @@ func (a *App) filesPage(c *gin.Context) error {
 		return err
 	}
 	l := a.layout(w, "Files", views.NavFiles, camp, false)
-	l.Switch = &views.CampaignSwitch{Campaigns: campaigns, Base: views.FilesBase, All: "All campaigns"}
+	l.Switch = &views.CampaignSwitch{
+		Campaigns: campaigns,
+		Base:      views.FilesBase,
+		All:       "All campaigns",
+	}
 	v := views.FilesView{Tab: c.Query("tab")}
 	for _, f := range files {
 		if !inCampaign(camp, f) {
 			continue
 		}
 		row := views.FileRow{
-			ID: f.ID, Name: f.Name, CampaignID: f.CampaignID, Campaign: f.CampaignName, Size: f.Size, CreatedAt: f.CreatedAt,
-			IsImage: slices.Contains(inlineTypes, f.Mime),
+			ID:         f.ID,
+			Name:       f.Name,
+			CampaignID: f.CampaignID,
+			Campaign:   f.CampaignName,
+			Size:       f.Size,
+			CreatedAt:  f.CreatedAt,
+			IsImage:    slices.Contains(inlineTypes, f.Mime),
 			// The GM never reads a player's own blocks, so not even the name.
 			Private: f.BlockVisibility == enum.VisOwner,
 			Uses:    uses[f.ID],
@@ -196,7 +219,10 @@ func (a *App) deleteUnused(c *gin.Context, pick func(sqlc.ListAttachmentFilesRow
 		if err := a.Store.DeleteAttachment(ctx, f.ID); err != nil {
 			return err
 		}
-		if err := os.Remove(filepath.Join(a.attachmentsDir(), filepath.Base(f.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := os.Remove(
+			filepath.Join(a.attachmentsDir(), filepath.Base(f.Path)),
+		); err != nil &&
+			!errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}

@@ -14,7 +14,12 @@ func TestPath(t *testing.T) {
 		{"one", "/notes/:note", []any{7}, "/notes/7"},
 		{"two", "/images/:image/:action", []any{int64(3), "up"}, "/images/3/up"},
 		{"param in the middle", "/blocks/:block/steps", []any{12}, "/blocks/12/steps"},
-		{"escaped", "/compendium/find/:kind/:slug", []any{"monster", "a b/c?"}, "/compendium/find/monster/a%20b%2Fc%3F"},
+		{
+			"escaped",
+			"/compendium/find/:kind/:slug",
+			[]any{"monster", "a b/c?"},
+			"/compendium/find/monster/a%20b%2Fc%3F",
+		},
 		{"catch-all", "/assets/*path", []any{"js app.js"}, "/assets/js%20app.js"},
 	}
 	for _, tt := range tests {

@@ -45,7 +45,9 @@ const Edition2024From = "2024-09-01"
 func FiveTools2024Set(books []Book) []Book {
 	var out []Book
 	for _, b := range books {
-		if (b.Group == GroupCore || b.Group == GroupSupplement) && b.Publisher == defaultPublisher && b.Published >= Edition2024From {
+		if (b.Group == GroupCore || b.Group == GroupSupplement) &&
+			b.Publisher == defaultPublisher &&
+			b.Published >= Edition2024From {
 			out = append(out, b)
 		}
 	}
@@ -192,8 +194,16 @@ func FiveToolsBooks(ctx context.Context, dir string) ([]Book, error) {
 		return cached, nil
 	}
 	data, err := json.Marshal(books)
-	if err == nil && os.MkdirAll(filepath.Dir(cache), 0o750) == nil { //nolint:gosec // dir is the operator's DATA_DIR, never request input
-		_ = os.WriteFile(cache, data, 0o600) //nolint:gosec // as above; a failed cache write only costs offline use
+	if err == nil &&
+		os.MkdirAll(
+			filepath.Dir(cache),
+			0o750,
+		) == nil { //nolint:gosec // dir is the operator's DATA_DIR, never request input
+		_ = os.WriteFile(
+			cache,
+			data,
+			0o600,
+		) //nolint:gosec // as above; a failed cache write only costs offline use
 	}
 	return books, nil
 }
@@ -272,7 +282,11 @@ func filterSource(arr json.RawMessage, id string, inherits bool) ([]json.RawMess
 
 // filterDoc keeps, per top-level array of a 5etools file (only those in keys
 // when given), the entries of source id. A nil result means nothing is left.
-func filterDoc(raw json.RawMessage, id string, keys ...string) (map[string][]json.RawMessage, error) {
+func filterDoc(
+	raw json.RawMessage,
+	id string,
+	keys ...string,
+) (map[string][]json.RawMessage, error) {
 	if raw == nil {
 		return nil, nil
 	}
@@ -340,7 +354,8 @@ func (m *mirror) reprints(rel string) map[string]string {
 			var obj struct {
 				UID string `json:"uid"`
 			}
-			if json.Unmarshal(r.ReprintedAs[0], &uid) != nil && json.Unmarshal(r.ReprintedAs[0], &obj) == nil {
+			if json.Unmarshal(r.ReprintedAs[0], &uid) != nil &&
+				json.Unmarshal(r.ReprintedAs[0], &obj) == nil {
 				uid = obj.UID
 			}
 			if uid != "" {
@@ -415,7 +430,12 @@ func (w bookWriter) write(name string, v any) error {
 // writeDoc writes the filtered rel file as name, unless nothing is left.
 // idx, for a per-book file, names the other books' files copies can reach.
 // It reports whether it wrote.
-func (w bookWriter) writeDoc(m *mirror, id, rel, name string, idx map[string]string, keys ...string) (bool, error) {
+func (w bookWriter) writeDoc(
+	m *mirror,
+	id, rel, name string,
+	idx map[string]string,
+	keys ...string,
+) (bool, error) {
 	raw, err := m.get(rel)
 	if err != nil {
 		return false, err
@@ -441,7 +461,12 @@ func (w bookWriter) writeDoc(m *mirror, id, rel, name string, idx map[string]str
 const copyTargetsKey = "_copyTargets"
 
 // writeWithCopies writes doc plus the copy targets the filter dropped.
-func (w bookWriter) writeWithCopies(name string, doc map[string][]json.RawMessage, raw json.RawMessage, other func(string) (json.RawMessage, error)) error {
+func (w bookWriter) writeWithCopies(
+	name string,
+	doc map[string][]json.RawMessage,
+	raw json.RawMessage,
+	other func(string) (json.RawMessage, error),
+) error {
 	targets, err := copyTargets(doc, raw, other)
 	if err != nil {
 		return fmt.Errorf("5etools %s: %w", name, err)
@@ -472,7 +497,11 @@ func copyIndex(recs []json.RawMessage) map[string]json.RawMessage {
 // copyTargets finds, per list of doc, the records its entries _copy that are
 // not in doc: in raw, else in other(source), another book's file (nil if
 // none). It follows copies of copies as deep as ftResolve does.
-func copyTargets(doc map[string][]json.RawMessage, raw json.RawMessage, other func(string) (json.RawMessage, error)) (map[string][]json.RawMessage, error) {
+func copyTargets(
+	doc map[string][]json.RawMessage,
+	raw json.RawMessage,
+	other func(string) (json.RawMessage, error),
+) (map[string][]json.RawMessage, error) {
 	pools := map[string]map[string]json.RawMessage{} // by source file ("" is raw) and list
 	pool := func(src, list string) (map[string]json.RawMessage, error) {
 		if p, ok := pools[src+"|"+list]; ok {
@@ -509,7 +538,9 @@ func copyTargets(doc map[string][]json.RawMessage, raw json.RawMessage, other fu
 				var rec struct {
 					Copy *ftCopyRef `json:"_copy"`
 				}
-				if json.Unmarshal(r, &rec) != nil || rec.Copy == nil || have[rec.Copy.key()] != nil || have[rec.Copy.ftNamed.key()] != nil {
+				if json.Unmarshal(r, &rec) != nil || rec.Copy == nil ||
+					have[rec.Copy.key()] != nil ||
+					have[rec.Copy.ftNamed.key()] != nil {
 					continue
 				}
 				for _, src := range []string{"", rec.Copy.Source} {
@@ -593,7 +624,13 @@ func (m *mirror) writeBook(w bookWriter, b Book) error {
 		if !ok {
 			continue
 		}
-		if _, err := w.writeDoc(m, b.ID, filepath.ToSlash(filepath.Join(filepath.Dir(f.index), file)), f.name, idx); err != nil {
+		if _, err := w.writeDoc(
+			m,
+			b.ID,
+			filepath.ToSlash(filepath.Join(filepath.Dir(f.index), file)),
+			f.name,
+			idx,
+		); err != nil {
 			return err
 		}
 	}
@@ -771,8 +808,16 @@ func bookFolder(id string) string { return FiveToolsPrefix + strings.ToLower(id)
 
 // DownloadFiveTools writes a folder under dir for each book. A failed book
 // leaves no folder behind. progress, if set, hears of each book as it starts.
-func DownloadFiveTools(ctx context.Context, dir string, books []Book, progress func(done int, next Book)) error {
-	if err := os.MkdirAll(dir, 0o750); err != nil { //nolint:gosec // dir is the operator's DATA_DIR, never request input
+func DownloadFiveTools(
+	ctx context.Context,
+	dir string,
+	books []Book,
+	progress func(done int, next Book),
+) error {
+	if err := os.MkdirAll(
+		dir,
+		0o750,
+	); err != nil { //nolint:gosec // dir is the operator's DATA_DIR, never request input
 		return err
 	}
 	m := &mirror{ctx: ctx, files: map[string]json.RawMessage{}}

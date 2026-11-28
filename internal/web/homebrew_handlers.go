@@ -45,7 +45,11 @@ func (a *App) homebrewEntry(c *gin.Context) (who, sqlc.CompendiumEntry, bool) {
 	case e.SourceKey != compendium.HomebrewSource:
 		a.fail(c, http.StatusForbidden, "Imported entries are edited by re-importing their source.")
 	case !perm.CanEditHomebrew(w.viewer, e.OwnerCharacterID.Int64):
-		a.fail(c, http.StatusForbidden, "Only the GM and the player who wrote it may change this entry.")
+		a.fail(
+			c,
+			http.StatusForbidden,
+			"Only the GM and the player who wrote it may change this entry.",
+		)
 	default:
 		return w, e, true
 	}
@@ -55,7 +59,11 @@ func (a *App) homebrewEntry(c *gin.Context) (who, sqlc.CompendiumEntry, bool) {
 func (a *App) renderHomebrew(c *gin.Context, status int, w who, v views.HomebrewView) {
 	v.IsGM = w.isGM()
 	// No switcher: homebrew is the same in every campaign.
-	a.render(c, status, views.HomebrewPage(a.layout(w, "Homebrew", views.NavCompendium, pathCampaign(c), false), v))
+	a.render(
+		c,
+		status,
+		views.HomebrewPage(a.layout(w, "Homebrew", views.NavCompendium, pathCampaign(c), false), v),
+	)
 }
 
 // homebrewNew is the empty editor. From a character sheet (?add=1 with a
@@ -69,7 +77,15 @@ func (a *App) homebrewNew(c *gin.Context) {
 	if !w.isGM() && !slices.Contains(compendium.PlayerKinds, kind) {
 		kind = enum.KindSpell
 	}
-	a.renderHomebrew(c, http.StatusOK, w, views.HomebrewView{Input: compendium.HomebrewInput{Kind: kind}, AddToSheet: c.Query("add") != ""})
+	a.renderHomebrew(
+		c,
+		http.StatusOK,
+		w,
+		views.HomebrewView{
+			Input:      compendium.HomebrewInput{Kind: kind},
+			AddToSheet: c.Query("add") != "",
+		},
+	)
 }
 
 func (a *App) homebrewEdit(c *gin.Context) error {
@@ -81,7 +97,15 @@ func (a *App) homebrewEdit(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.renderHomebrew(c, http.StatusOK, w, views.HomebrewView{ID: e.ID, Input: compendium.HomebrewInputFor(e.Kind, e.Name, e.BodyText, data)})
+	a.renderHomebrew(
+		c,
+		http.StatusOK,
+		w,
+		views.HomebrewView{
+			ID:    e.ID,
+			Input: compendium.HomebrewInputFor(e.Kind, e.Name, e.BodyText, data),
+		},
+	)
 	return nil
 }
 
@@ -107,7 +131,10 @@ func (a *App) saveHomebrew(c *gin.Context, w who, id int64) error {
 	err := c.ShouldBind(&in)
 	var owner compendium.HomebrewOwner
 	if w.character != nil {
-		owner = compendium.HomebrewOwner{CharacterID: w.character.ID, CampaignID: w.character.CampaignID}
+		owner = compendium.HomebrewOwner{
+			CharacterID: w.character.ID,
+			CampaignID:  w.character.CampaignID,
+		}
 		if err == nil && !slices.Contains(compendium.PlayerKinds, in.Kind) {
 			err = errors.New("players write homebrew spells and items")
 		}
@@ -127,7 +154,12 @@ func (a *App) saveHomebrew(c *gin.Context, w who, id int64) error {
 	}
 	add := c.PostForm("add") != ""
 	if err != nil {
-		a.renderHomebrew(c, http.StatusUnprocessableEntity, w, views.HomebrewView{ID: id, Input: in, Error: err.Error(), AddToSheet: add})
+		a.renderHomebrew(
+			c,
+			http.StatusUnprocessableEntity,
+			w,
+			views.HomebrewView{ID: id, Input: in, Error: err.Error(), AddToSheet: add},
+		)
 		return nil
 	}
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium}) // a homebrew copy may outrank a pin
@@ -176,7 +208,10 @@ func (a *App) homebrewLink(c *gin.Context) error {
 		a.fail(c, http.StatusUnprocessableEntity, "Choose a campaign.")
 		return nil
 	}
-	if err := a.Store.LinkEntryCampaign(c.Request.Context(), sqlc.LinkEntryCampaignParams{EntryID: e.ID, CampaignID: campaignID}); err != nil {
+	if err := a.Store.LinkEntryCampaign(
+		c.Request.Context(),
+		sqlc.LinkEntryCampaignParams{EntryID: e.ID, CampaignID: campaignID},
+	); err != nil {
 		return err
 	}
 	a.Hub.Publish(campaignID, hub.Topic{Kind: hub.TopicCompendium})
@@ -194,7 +229,10 @@ func (a *App) homebrewUnlink(c *gin.Context) error {
 	if !ok {
 		return nil
 	}
-	if err := a.Store.UnlinkEntryCampaign(c.Request.Context(), sqlc.UnlinkEntryCampaignParams{EntryID: e.ID, CampaignID: campaignID}); err != nil {
+	if err := a.Store.UnlinkEntryCampaign(
+		c.Request.Context(),
+		sqlc.UnlinkEntryCampaignParams{EntryID: e.ID, CampaignID: campaignID},
+	); err != nil {
 		return err
 	}
 	a.Hub.Publish(campaignID, hub.Topic{Kind: hub.TopicCompendium})

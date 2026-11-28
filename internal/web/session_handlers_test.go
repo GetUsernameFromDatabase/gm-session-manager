@@ -44,8 +44,12 @@ type testEnv struct {
 // Call it once after the test's compendium data is in.
 func (e testEnv) allowEntrySources(t testing.TB) {
 	t.Helper()
-	if _, err := e.conn.ExecContext(t.Context(), `INSERT OR IGNORE INTO campaign_sources (campaign_id, source_key)
-		SELECT DISTINCT ?, source_key FROM compendium_entries WHERE source_key <> 'homebrew'`, e.campaignID); err != nil {
+	if _, err := e.conn.ExecContext(
+		t.Context(),
+		`INSERT OR IGNORE INTO campaign_sources (campaign_id, source_key)
+		SELECT DISTINCT ?, source_key FROM compendium_entries WHERE source_key <> 'homebrew'`,
+		e.campaignID,
+	); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -60,18 +64,36 @@ func newTestEnv(t testing.TB) testEnv {
 	t.Cleanup(func() { _ = conn.Close() })
 
 	q := db.NewStore(conn)
-	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Test", System: "dnd5e", Edition: "2024"})
+	camp, err := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{Name: "Test", System: "dnd5e", Edition: "2024"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	char, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: "Alice", System: "dnd5e", SheetJson: "{}"})
+	char, err := q.CreateCharacterWithSheet(
+		ctx,
+		sqlc.CreateCharacterWithSheetParams{
+			CampaignID: camp.ID,
+			Name:       "Alice",
+			System:     "dnd5e",
+			SheetJson:  "{}",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mgr := auth.NewManager(q, testAdminUser, testAdminPass)
 	app := New(Deps{Auth: mgr, Store: q, DataDir: t.TempDir(), Port: 8080})
 	t.Cleanup(app.Close)
-	return testEnv{router: app.Router(), mgr: mgr, app: app, campaignID: camp.ID, characterID: char.ID, conn: conn}
+	return testEnv{
+		router:      app.Router(),
+		mgr:         mgr,
+		app:         app,
+		campaignID:  camp.ID,
+		characterID: char.ID,
+		conn:        conn,
+	}
 }
 
 // token issues a session of the given role, or returns "" for none.
@@ -91,9 +113,19 @@ func (e testEnv) token(t testing.TB, role enum.Role) string {
 	return tok
 }
 
-func (e testEnv) post(t *testing.T, path, remoteAddr string, form url.Values, cookie string) *httptest.ResponseRecorder {
+func (e testEnv) post(
+	t *testing.T,
+	path, remoteAddr string,
+	form url.Values,
+	cookie string,
+) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(form.Encode()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		path,
+		strings.NewReader(form.Encode()),
+	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.RemoteAddr = remoteAddr
 	if cookie != "" {
@@ -127,8 +159,18 @@ func TestAdminLogin(t *testing.T) {
 		wantStatus int
 	}{
 		{"correct", "", adminCreds, http.StatusSeeOther},
-		{"wrong password", "", url.Values{"username": {testAdminUser}, "password": {"nope"}}, http.StatusUnauthorized},
-		{"wrong user", "", url.Values{"username": {"bob"}, "password": {testAdminPass}}, http.StatusUnauthorized},
+		{
+			"wrong password",
+			"",
+			url.Values{"username": {testAdminUser}, "password": {"nope"}},
+			http.StatusUnauthorized,
+		},
+		{
+			"wrong user",
+			"",
+			url.Values{"username": {"bob"}, "password": {testAdminPass}},
+			http.StatusUnauthorized,
+		},
 		{"missing password", "", url.Values{"username": {testAdminUser}}, http.StatusBadRequest},
 		{"empty", "", url.Values{}, http.StatusBadRequest},
 		{"already a player: log out first", enum.RolePlayer, adminCreds, http.StatusConflict},
@@ -154,7 +196,8 @@ func TestAdminLogin(t *testing.T) {
 			if c == nil {
 				return
 			}
-			if !c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.MaxAge <= 0 || c.Path != "/" {
+			if !c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.MaxAge <= 0 ||
+				c.Path != "/" {
 				t.Errorf("cookie attributes: %+v", c)
 			}
 			if !e.alive(t, c.Value) {
@@ -199,7 +242,12 @@ func TestLogout(t *testing.T) {
 func TestCrossSiteRefused(t *testing.T) {
 	e := newTestEnv(t)
 	for site, want := range map[string]int{"cross-site": http.StatusForbidden, "same-origin": http.StatusSeeOther, "": http.StatusSeeOther} {
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, route.Path(route.CampaignOpenJoin, e.campaignID), nil)
+		req := httptest.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			route.Path(route.CampaignOpenJoin, e.campaignID),
+			nil,
+		)
 		req.RemoteAddr = loopbackAddr
 		if site != "" {
 			req.Header.Set("Sec-Fetch-Site", site)
@@ -226,8 +274,16 @@ func TestCampaignJoinLinks(t *testing.T) {
 		path, url, qr string
 	}{
 		{"/", "https://192.168.1.10:8080" + route.Join + "<", `src="` + route.JoinQR + `"`},
-		{route.Path(route.Campaign, e.campaignID), "https://192.168.1.10:8080" + route.Path(route.JoinCampaign, e.campaignID) + "<", fmt.Sprintf(`src="%s?campaign=%d"`, route.JoinQR, e.campaignID)},
-		{route.Path(route.CampaignImages, e.campaignID), "Show join QR", fmt.Sprintf(`data-src="%s?campaign=%d"`, route.JoinQR, e.campaignID)},
+		{
+			route.Path(route.Campaign, e.campaignID),
+			"https://192.168.1.10:8080" + route.Path(route.JoinCampaign, e.campaignID) + "<",
+			fmt.Sprintf(`src="%s?campaign=%d"`, route.JoinQR, e.campaignID),
+		},
+		{
+			route.Path(route.CampaignImages, e.campaignID),
+			"Show join QR",
+			fmt.Sprintf(`data-src="%s?campaign=%d"`, route.JoinQR, e.campaignID),
+		},
 	}
 	for _, tc := range cases {
 		body := e.do(t, http.MethodGet, tc.path, gm, nil, false).Body.String()

@@ -29,7 +29,9 @@ func TestStoreSourceRollsBackOnAfterSave(t *testing.T) {
 	store := newStore(t)
 	ctx := t.Context()
 	src := Source{Key: "5etools-test", Edition: "2024", License: "x", Attribution: "x"}
-	entries := []Entry{{Kind: enum.KindMonster, Slug: "ogre", Name: "Ogre", Data: MonsterData{Desc: "Big."}}}
+	entries := []Entry{
+		{Kind: enum.KindMonster, Slug: "ogre", Name: "Ogre", Data: MonsterData{Desc: "Big."}},
+	}
 	fail := func(*sqlc.Queries) error { return errors.New("bind failed") }
 	if _, err := storeSource(ctx, store, 0, src, "p", "h", entries, fail); err == nil {
 		t.Fatal("expected the failure")
@@ -83,12 +85,16 @@ func TestImportIsIdempotent(t *testing.T) {
 	if r.Unchanged || r.Entries != 5 {
 		t.Fatalf("first import %+v", r)
 	}
-	goblin, err := store.GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
+	goblin, err := store.GetCompendiumEntryBySlug(
+		t.Context(),
+		sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	source, err := store.GetCompendiumSource(t.Context(), goblin.SourceKey)
-	if err != nil || source.License != "CC-BY-4.0" || source.Edition != "2024" || source.Attribution == "" {
+	if err != nil || source.License != "CC-BY-4.0" || source.Edition != "2024" ||
+		source.Attribution == "" {
 		t.Errorf("source metadata %+v %v", source, err)
 	}
 
@@ -103,7 +109,10 @@ func TestImportIsIdempotent(t *testing.T) {
 	if r := importOnce(t, store, dir); r.Unchanged || r.Removed != 1 {
 		t.Errorf("third import %+v", r)
 	}
-	again, err := store.GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"})
+	again, err := store.GetCompendiumEntryBySlug(
+		t.Context(),
+		sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "goblin-warrior"},
+	)
 	if err != nil || again.ID != goblin.ID {
 		t.Errorf("goblin id changed: %v %v", again.ID, err)
 	}
@@ -128,7 +137,10 @@ func TestNormalizedShapes(t *testing.T) {
 
 	get := func(kind enum.CompendiumKind, slug string) any {
 		t.Helper()
-		row, err := store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug})
+		row, err := store.GetCompendiumEntryBySlug(
+			ctx,
+			sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug},
+		)
 		if err != nil {
 			t.Fatalf("%s %s: %v", kind, slug, err)
 		}
@@ -140,10 +152,13 @@ func TestNormalizedShapes(t *testing.T) {
 	}
 
 	m := get(enum.KindMonster, "goblin-warrior").(*MonsterData)
-	if m.AC != 15 || m.HP != 10 || m.CR != "1/4" || m.Speed["walk"] != 30 || m.Abilities["dex"] != 15 || m.Skills["stealth"] != 6 {
+	if m.AC != 15 || m.HP != 10 || m.CR != "1/4" || m.Speed["walk"] != 30 ||
+		m.Abilities["dex"] != 15 ||
+		m.Skills["stealth"] != 6 {
 		t.Errorf("monster %+v", m)
 	}
-	if len(m.Actions) != 2 || m.Actions[0].Name != "Scimitar" || m.Actions[1].Type != "bonus_action" {
+	if len(m.Actions) != 2 || m.Actions[0].Name != "Scimitar" ||
+		m.Actions[1].Type != "bonus_action" {
 		t.Errorf("actions %+v", m.Actions)
 	}
 	if m.Senses != "Darkvision 60 ft., Passive Perception 9" {
@@ -156,14 +171,16 @@ func TestNormalizedShapes(t *testing.T) {
 	}
 
 	c := get(enum.KindClass, "wizard").(*ClassData)
-	if c.HitDie != 6 || c.Caster != "full" || c.Table["Cantrips"][4] != "4" || len(c.Features) != 3 {
+	if c.HitDie != 6 || c.Caster != "full" || c.Table["Cantrips"][4] != "4" ||
+		len(c.Features) != 3 {
 		t.Errorf("class %+v", c)
 	}
 	if c.Features[1].Name != "Ability Score Improvement" || len(c.Features[1].Levels) != 2 {
 		t.Errorf("features %+v", c.Features)
 	}
 	// A feature's valued rows are its table column, not levels it is gained at.
-	if f := c.Features[2]; f.Name != "Fast Feet" || !slices.Equal(f.Levels, []int{9}) || c.Table["Fast Feet"][12] != "+15 ft." {
+	if f := c.Features[2]; f.Name != "Fast Feet" || !slices.Equal(f.Levels, []int{9}) ||
+		c.Table["Fast Feet"][12] != "+15 ft." {
 		t.Errorf("column feature %+v, table %v", f, c.Table["Fast Feet"])
 	}
 	sub := get(enum.KindSubclass, "wizard_evoker").(*ClassData)
@@ -183,7 +200,10 @@ func TestOpen5eHabitats(t *testing.T) {
 	if err != nil || len(monsters) != 1 {
 		t.Fatal(monsters, err)
 	}
-	if got := monsters[0].Habitats; !slices.Equal(got, []enum.Habitat{enum.HabitatForest, enum.HabitatGrassland}) {
+	if got := monsters[0].Habitats; !slices.Equal(
+		got,
+		[]enum.Habitat{enum.HabitatForest, enum.HabitatGrassland},
+	) {
 		t.Errorf("habitats %v", got)
 	}
 }
@@ -210,7 +230,8 @@ func TestOpen5eMastery(t *testing.T) {
 		t.Errorf("longsword %+v", d)
 	}
 	rules, err := n.rules()
-	if err != nil || len(rules) != 1 || rules[0].Slug != "sap" || rules[0].Data.(TextData).Category != masteryCategory {
+	if err != nil || len(rules) != 1 || rules[0].Slug != "sap" ||
+		rules[0].Data.(TextData).Category != masteryCategory {
 		t.Errorf("rules %+v %v", rules, err)
 	}
 }
@@ -259,7 +280,14 @@ func TestSearch(t *testing.T) {
 func TestHomebrew(t *testing.T) {
 	store := newStore(t)
 	ctx := t.Context()
-	in := HomebrewInput{Kind: "monster", Name: "Bog Wight", Desc: "A drowned soul.", AC: 13, HP: 45, CR: "3"}
+	in := HomebrewInput{
+		Kind: "monster",
+		Name: "Bog Wight",
+		Desc: "A drowned soul.",
+		AC:   13,
+		HP:   45,
+		CR:   "3",
+	}
 	id, err := SaveHomebrew(ctx, store.Queries, 0, in, HomebrewOwner{})
 	if err != nil {
 		t.Fatal(err)
@@ -334,7 +362,10 @@ func TestMonsterImageBinding(t *testing.T) {
 
 	get := func(kind enum.CompendiumKind, slug string) sqlc.CompendiumEntry {
 		t.Helper()
-		row, err := store.GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug})
+		row, err := store.GetCompendiumEntryBySlug(
+			ctx,
+			sqlc.GetCompendiumEntryBySlugParams{Kind: kind, Slug: slug},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -351,14 +382,28 @@ func TestMonsterImageBinding(t *testing.T) {
 	// Monsters outside data folders get no guess, and keep a link the GM set.
 	var brews []int64
 	for _, slug := range []string{"goblin-boss", "goblin-hexer"} {
-		brew, err := store.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: enum.KindMonster, Slug: slug, Name: slug, DataJson: "{}"})
+		brew, err := store.CreateHomebrew(
+			ctx,
+			sqlc.CreateHomebrewParams{
+				Kind:     enum.KindMonster,
+				Slug:     slug,
+				Name:     slug,
+				DataJson: "{}",
+			},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		brews = append(brews, brew.ID)
 	}
 	gmLink := MonsterImagePrefix + "goblin-hexer.png"
-	if _, err := store.SetCompendiumImage(ctx, sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: gmLink, Valid: true}, ID: brews[1]}); err != nil {
+	if _, err := store.SetCompendiumImage(
+		ctx,
+		sqlc.SetCompendiumImageParams{
+			ImageUrl: sql.NullString{String: gmLink, Valid: true},
+			ID:       brews[1],
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Import(ctx, store, dir); err != nil {
@@ -372,14 +417,24 @@ func TestMonsterImageBinding(t *testing.T) {
 
 	// The GM's link, and a cleared one, survive a changed re-import.
 	for _, want := range []string{"https://example.com/goblin.png", ""} {
-		if _, err := store.SetCompendiumImage(ctx, sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: want, Valid: true}, ID: goblin.ID}); err != nil {
+		if _, err := store.SetCompendiumImage(
+			ctx,
+			sqlc.SetCompendiumImageParams{
+				ImageUrl: sql.NullString{String: want, Valid: true},
+				ID:       goblin.ID,
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Remove(filepath.Join(src, "Spell.json")); err != nil && !os.IsNotExist(err) {
 			t.Fatal(err)
 		}
 		importOnce(t, store, dir)
-		if got := get(enum.KindMonster, "goblin-warrior").ImageUrl; !got.Valid || got.String != want {
+		if got := get(
+			enum.KindMonster,
+			"goblin-warrior",
+		).ImageUrl; !got.Valid ||
+			got.String != want {
 			t.Errorf("after re-import %+v, want %q", got, want)
 		}
 		copySource(t, dir)

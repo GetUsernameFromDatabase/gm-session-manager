@@ -27,7 +27,12 @@ var loopbackIPs = func() []net.IP { return []net.IP{net.IPv4(127, 0, 0, 1)} }
 // postPlayer posts a plain form to the player app as the browser at home.
 func (e testEnv) postPlayer(t *testing.T, path string, form url.Values) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(form.Encode()))
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		path,
+		strings.NewReader(form.Encode()),
+	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 	req.RemoteAddr = loopbackAddr
@@ -60,17 +65,33 @@ func TestBringBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	note, err := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: ch.CampaignID, Kind: enum.NoteGeneric, Title: "Home note", OwnerCharacterID: nullID(id)})
+	note, err := q.CreateNote(
+		ctx,
+		sqlc.CreateNoteParams{
+			CampaignID:       ch.CampaignID,
+			Kind:             enum.NoteGeneric,
+			Title:            "Home note",
+			OwnerCharacterID: nullID(id),
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisOwner, AuthorCharacterID: nullID(id)}); err != nil {
+	if _, err := q.CreateBlock(
+		ctx,
+		sqlc.CreateBlockParams{
+			NoteID:            note.ID,
+			Visibility:        enum.VisOwner,
+			AuthorCharacterID: nullID(id),
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 
 	// The Save button's post checks, then sends the browser to the download.
 	w := e.postPlayer(t, route.Path(route.AtHomeBringBack, id), nil)
-	if w.Code != http.StatusNoContent || w.Header().Get("HX-Redirect") != route.Path(route.AtHomeBringBack, id) {
+	if w.Code != http.StatusNoContent ||
+		w.Header().Get("HX-Redirect") != route.Path(route.AtHomeBringBack, id) {
 		t.Fatalf("save: status %d, redirect %q: %s", w.Code, w.Header().Get("HX-Redirect"), w.Body)
 	}
 	w = e.get(t, route.Path(route.AtHomeBringBack, id), "")
@@ -82,7 +103,8 @@ func TestBringBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Manifest.Token != "tok" || f.Manifest.ServerID != "srv" || f.Manifest.CharacterID != 7 || f.Manifest.SavedAt.IsZero() {
+	if f.Manifest.Token != "tok" || f.Manifest.ServerID != "srv" || f.Manifest.CharacterID != 7 ||
+		f.Manifest.SavedAt.IsZero() {
 		t.Errorf("manifest %+v", f.Manifest)
 	}
 	hc, err := q.GetHomeCopy(ctx, id)
@@ -111,11 +133,16 @@ func TestBringBack(t *testing.T) {
 	}
 
 	// Steps past the last snapshot: a note is still open elsewhere.
-	if _, err := e.conn.ExecContext(ctx, `UPDATE note_blocks SET version = doc_version + 3 WHERE note_id = ?`, note.ID); err != nil {
+	if _, err := e.conn.ExecContext(
+		ctx,
+		`UPDATE note_blocks SET version = doc_version + 3 WHERE note_id = ?`,
+		note.ID,
+	); err != nil {
 		t.Fatal(err)
 	}
 	w = e.postPlayer(t, route.Path(route.AtHomeBringBack, id), nil)
-	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "still open in another tab") {
+	if w.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(w.Body.String(), "still open in another tab") {
 		t.Errorf("open note: status %d, want 422 with the reason: %s", w.Code, w.Body)
 	}
 }
@@ -157,20 +184,46 @@ func TestHandoffRoutesPlayerAppOnly(t *testing.T) {
 	// The poll names the handoff and state it shows: unchanged is a bare 204,
 	// changed (or another handoff, started in another tab) reloads the page.
 	pollFor := func(id string) string {
-		return route.AtHomeHandoff + "?" + url.Values{views.HandoffStateParam: {views.HandoffWaiting}, views.HandoffIDParam: {id}}.Encode()
+		return route.AtHomeHandoff + "?" + url.Values{
+			views.HandoffStateParam: {views.HandoffWaiting},
+			views.HandoffIDParam:    {id},
+		}.Encode()
 	}
 	poll := pollFor(p.app.handoffView().ID)
-	if w := p.get(t, poll, ""); w.Code != http.StatusNoContent || w.Header().Get("HX-Refresh") != "" {
-		t.Errorf("poll while waiting: status %d, refresh %q; want a bare 204", w.Code, w.Header().Get("HX-Refresh"))
+	if w := p.get(
+		t,
+		poll,
+		"",
+	); w.Code != http.StatusNoContent ||
+		w.Header().Get("HX-Refresh") != "" {
+		t.Errorf(
+			"poll while waiting: status %d, refresh %q; want a bare 204",
+			w.Code,
+			w.Header().Get("HX-Refresh"),
+		)
 	}
 	if w := p.get(t, pollFor("another-tab"), ""); w.Header().Get("HX-Refresh") != "true" {
 		t.Errorf("poll for a replaced handoff: refresh %q, want true", w.Header().Get("HX-Refresh"))
 	}
 	p.app.expireHandoff(p.app.handoff)
-	if w := p.get(t, poll, ""); w.Code != http.StatusNoContent || w.Header().Get("HX-Refresh") != "true" {
-		t.Errorf("poll after expiry: status %d, refresh %q; want a reload", w.Code, w.Header().Get("HX-Refresh"))
+	if w := p.get(
+		t,
+		poll,
+		"",
+	); w.Code != http.StatusNoContent ||
+		w.Header().Get("HX-Refresh") != "true" {
+		t.Errorf(
+			"poll after expiry: status %d, refresh %q; want a reload",
+			w.Code,
+			w.Header().Get("HX-Refresh"),
+		)
 	}
-	if w := p.postPlayer(t, route.AtHomeHandoffStop, nil); w.Code != http.StatusOK || p.app.handoffView().State != views.HandoffNone {
+	if w := p.postPlayer(
+		t,
+		route.AtHomeHandoffStop,
+		nil,
+	); w.Code != http.StatusOK ||
+		p.app.handoffView().State != views.HandoffNone {
 		t.Errorf("stop: status %d, state %q", w.Code, p.app.handoffView().State)
 	}
 }
@@ -252,13 +305,25 @@ func TestHandoffReceive(t *testing.T) {
 	}
 	target := h.urls[0]
 
-	if resp, err := phoneGet(t, strings.Replace(target, h.secret, "WRONG", 1)); err != nil || resp.StatusCode != http.StatusNotFound {
+	if resp, err := phoneGet(
+		t,
+		strings.Replace(target, h.secret, "WRONG", 1),
+	); err != nil ||
+		resp.StatusCode != http.StatusNotFound {
 		t.Errorf("wrong secret: %v %v", resp, err)
 	}
-	if resp, err := phoneGet(t, target); err != nil || resp.StatusCode != http.StatusOK || !strings.Contains(resp.Header.Get("Content-Security-Policy"), "default-src") {
+	if resp, err := phoneGet(
+		t,
+		target,
+	); err != nil || resp.StatusCode != http.StatusOK ||
+		!strings.Contains(resp.Header.Get("Content-Security-Policy"), "default-src") {
 		t.Errorf("phone page: %v %v", resp, err)
 	}
-	if resp, err := phoneGet(t, target+views.PhoneCSS); err != nil || resp.StatusCode != http.StatusOK {
+	if resp, err := phoneGet(
+		t,
+		target+views.PhoneCSS,
+	); err != nil ||
+		resp.StatusCode != http.StatusOK {
 		t.Errorf("stylesheet: %v %v", resp, err)
 	}
 
@@ -269,28 +334,53 @@ func TestHandoffReceive(t *testing.T) {
 	})
 	resp := phoneUpload(t, target, bring)
 	msg := resp.Body
-	if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(string(msg), "bring it to the table") || e.app.handoffView().State != views.HandoffWaiting {
-		t.Fatalf("bring-back upload: status %d, state %q: %s", resp.StatusCode, e.app.handoffView().State, msg)
+	if resp.StatusCode != http.StatusUnprocessableEntity ||
+		!strings.Contains(string(msg), "bring it to the table") ||
+		e.app.handoffView().State != views.HandoffWaiting {
+		t.Fatalf(
+			"bring-back upload: status %d, state %q: %s",
+			resp.StatusCode,
+			e.app.handoffView().State,
+			msg,
+		)
 	}
 
 	resp = phoneUpload(t, target, sampleTakeHome(t, nil))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("take-home upload: status %d", resp.StatusCode)
 	}
-	if v := e.app.handoffView(); v.State != views.HandoffReceived || v.Name != "Aria" || v.TakenAt.IsZero() {
+	if v := e.app.handoffView(); v.State != views.HandoffReceived || v.Name != "Aria" ||
+		v.TakenAt.IsZero() {
 		t.Fatalf("view %+v", v)
 	}
 	// The "Sent" page loads its stylesheet after the transfer, but the transfer is used up.
-	if resp, err := phoneGet(t, target+views.PhoneCSS); err != nil || resp.StatusCode != http.StatusOK {
+	if resp, err := phoneGet(
+		t,
+		target+views.PhoneCSS,
+	); err != nil ||
+		resp.StatusCode != http.StatusOK {
 		t.Errorf("stylesheet after the transfer: %v %v", resp, err)
 	}
-	if resp := phoneUpload(t, target, sampleTakeHome(t, nil)); resp.StatusCode != http.StatusNotFound {
+	if resp := phoneUpload(
+		t,
+		target,
+		sampleTakeHome(t, nil),
+	); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("second upload: status %d, want 404", resp.StatusCode)
 	}
-	eventually(t, "servers closed", func() bool { _, err := phoneGet(t, target); return err != nil })
+	eventually(
+		t,
+		"servers closed",
+		func() bool { _, err := phoneGet(t, target); return err != nil },
+	)
 
 	// The page offers the received file and does not claim there are no characters.
-	if body := e.get(t, route.AtHome, "").Body.String(); !strings.Contains(body, "Open Aria") || strings.Contains(body, "No characters here yet") {
+	if body := e.get(
+		t,
+		route.AtHome,
+		"",
+	).Body.String(); !strings.Contains(body, "Open Aria") ||
+		strings.Contains(body, "No characters here yet") {
 		t.Errorf("home page with a received file:\n%s", body)
 	}
 
@@ -298,7 +388,11 @@ func TestHandoffReceive(t *testing.T) {
 	if _, err := os.Stat(tmp); err != nil {
 		t.Fatalf("temp file gone before the import: %v", err)
 	}
-	if w := e.postPlayer(t, route.AtHome, url.Values{"handoff": {"1"}}); w.Code != http.StatusNoContent {
+	if w := e.postPlayer(
+		t,
+		route.AtHome,
+		url.Values{"handoff": {"1"}},
+	); w.Code != http.StatusNoContent {
 		t.Fatalf("import from handoff: status %d: %s", w.Code, w.Body)
 	}
 	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
@@ -307,7 +401,11 @@ func TestHandoffReceive(t *testing.T) {
 	if e.app.handoffView().State != views.HandoffNone {
 		t.Error("handoff not cleared after the import")
 	}
-	if w := e.postPlayer(t, route.AtHome, url.Values{"handoff": {"1"}}); w.Code != http.StatusUnprocessableEntity {
+	if w := e.postPlayer(
+		t,
+		route.AtHome,
+		url.Values{"handoff": {"1"}},
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("second import from handoff: status %d, want 422", w.Code)
 	}
 }
@@ -334,10 +432,18 @@ func TestHandoffSend(t *testing.T) {
 	if int64(len(body)) != h.size {
 		t.Fatalf("read %d bytes of %d", len(body), h.size)
 	}
-	if _, err := export.ReadTakeHome(bytes.NewReader(body), int64(len(body)), export.KindBringBack); err != nil {
+	if _, err := export.ReadTakeHome(
+		bytes.NewReader(body),
+		int64(len(body)),
+		export.KindBringBack,
+	); err != nil {
 		t.Errorf("downloaded file: %v", err)
 	}
-	eventually(t, "state sent", func() bool { return e.app.handoffView().State == views.HandoffSent })
+	eventually(
+		t,
+		"state sent",
+		func() bool { return e.app.handoffView().State == views.HandoffSent },
+	)
 	eventually(t, "second download refused", func() bool {
 		r, err := phoneGet(t, target+route.File)
 		return err != nil || r.StatusCode == http.StatusNotFound
@@ -350,7 +456,11 @@ func TestHandoffExpiresAndReplaces(t *testing.T) {
 	handoffTTL = 50 * time.Millisecond
 	t.Cleanup(func() { handoffTTL = old })
 	h := e.app.startHandoff(loopbackIPs(), &handoff{})
-	eventually(t, "state closed", func() bool { return e.app.handoffView().State == views.HandoffClosed })
+	eventually(
+		t,
+		"state closed",
+		func() bool { return e.app.handoffView().State == views.HandoffClosed },
+	)
 	if _, err := phoneGet(t, h.urls[0]); err == nil {
 		t.Error("the closed handoff still answers")
 	}
@@ -376,16 +486,22 @@ func TestHandoffNoNetwork(t *testing.T) {
 
 // homeNote makes a note of character id with one block per visibility and
 // returns the note and the block ids.
-func (e testEnv) homeNote(t *testing.T, campaignID, id int64, vis ...enum.Visibility) (sqlc.Note, []int64) {
+func (e testEnv) homeNote(
+	t *testing.T,
+	campaignID, id int64,
+	vis ...enum.Visibility,
+) (sqlc.Note, []int64) {
 	t.Helper()
 	ctx := t.Context()
-	note, err := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: campaignID, Kind: enum.NoteGeneric, Title: "Mixed", OwnerCharacterID: nullID(id)})
+	note, err := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: campaignID, Kind: enum.NoteGeneric, Title: "Mixed", OwnerCharacterID: nullID(id)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var ids []int64
 	for _, v := range vis {
-		b, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: v, AuthorCharacterID: nullID(id)})
+		b, err := e.q().
+			CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: v, AuthorCharacterID: nullID(id)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -412,7 +528,12 @@ func TestAtHomeNoteRules(t *testing.T) {
 	mixed, blocks := e.homeNote(t, ch.CampaignID, id, enum.VisPlayers, enum.VisOwner)
 	shared, private := blocks[0], blocks[1]
 	send := func(path, contentType, body string) *httptest.ResponseRecorder {
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(body))
+		req := httptest.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			path,
+			strings.NewReader(body),
+		)
 		req.Header.Set("Content-Type", contentType) // no HX-Request: a refusal keeps its own status
 		req.AddCookie(cookie)
 		req.RemoteAddr = loopbackAddr
@@ -424,7 +545,11 @@ func TestAtHomeNoteRules(t *testing.T) {
 		return send(path, "application/x-www-form-urlencoded", form.Encode())
 	}
 	steps := func(block int64) int {
-		return send(route.Path(route.BlockSteps, block), "application/json", `{"version":0,"clientID":"c","steps":[{"stepType":"replace","from":0,"to":0}]}`).Code
+		return send(
+			route.Path(route.BlockSteps, block),
+			"application/json",
+			`{"version":0,"clientID":"c","steps":[{"stepType":"replace","from":0,"to":0}]}`,
+		).Code
 	}
 	if got := steps(shared); got != http.StatusNotFound {
 		t.Errorf("edit shared block: %d, want 404", got)
@@ -433,19 +558,34 @@ func TestAtHomeNoteRules(t *testing.T) {
 		t.Errorf("edit private block: %d, want it allowed", got)
 	}
 	form := url.Values{"title": {"New"}, "kind": {string(enum.NoteGeneric)}}
-	if w := postPlayer(route.Path(route.NoteRename, mixed.ID), form); w.Code != http.StatusForbidden {
+	if w := postPlayer(
+		route.Path(route.NoteRename, mixed.ID),
+		form,
+	); w.Code != http.StatusForbidden {
 		t.Errorf("rename locked note: %d, want 403", w.Code)
 	}
-	if w := postPlayer(route.Path(route.NoteDelete, mixed.ID), nil); w.Code != http.StatusForbidden {
+	if w := postPlayer(
+		route.Path(route.NoteDelete, mixed.ID),
+		nil,
+	); w.Code != http.StatusForbidden {
 		t.Errorf("delete locked note: %d, want 403", w.Code)
 	}
-	if w := postPlayer(route.Path(route.BlockMove, private), url.Values{"dir": {"up"}}); w.Code != http.StatusNotFound {
+	if w := postPlayer(
+		route.Path(route.BlockMove, private),
+		url.Values{"dir": {"up"}},
+	); w.Code != http.StatusNotFound {
 		t.Errorf("reorder locked note: %d, want 404", w.Code)
 	}
-	if w := postPlayer(route.Path(route.NoteBlocks, mixed.ID), url.Values{"visibility": {string(enum.VisPlayers)}}); w.Code != http.StatusUnprocessableEntity {
+	if w := postPlayer(
+		route.Path(route.NoteBlocks, mixed.ID),
+		url.Values{"visibility": {string(enum.VisPlayers)}},
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("add shared block: %d, want 422", w.Code)
 	}
-	if w := postPlayer(route.Path(route.NoteBlocks, mixed.ID), url.Values{"visibility": {string(enum.VisOwner)}}); w.Code >= 400 {
+	if w := postPlayer(
+		route.Path(route.NoteBlocks, mixed.ID),
+		url.Values{"visibility": {string(enum.VisOwner)}},
+	); w.Code >= 400 {
 		t.Errorf("add private block: %d: %s", w.Code, w.Body)
 	}
 
@@ -462,11 +602,13 @@ func TestAtHomeNoteRules(t *testing.T) {
 // At the table a note with shared blocks is renamed as before.
 func TestTableRenameWithSharedBlocks(t *testing.T) {
 	e := newTestEnv(t)
-	note, err := e.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Plot"})
+	note, err := e.q().
+		CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: enum.NoteGeneric, Title: "Plot"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisPlayers}); err != nil {
+	if _, err := e.q().
+		CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisPlayers}); err != nil {
 		t.Fatal(err)
 	}
 	form := url.Values{"title": {"Plot 2"}, "kind": {string(enum.NoteGeneric)}}

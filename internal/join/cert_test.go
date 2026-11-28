@@ -23,11 +23,29 @@ func TestLoadOrCreateCert(t *testing.T) {
 		wantCreated bool
 	}{
 		{"missing files", nil, []net.IP{lanA}, t0, true},
-		{"valid and covering", seedCert([]net.IP{lanA}), []net.IP{lanA}, t0.Add(24 * time.Hour), false},
+		{
+			"valid and covering",
+			seedCert([]net.IP{lanA}),
+			[]net.IP{lanA},
+			t0.Add(24 * time.Hour),
+			false,
+		},
 		{"covers a superset", seedCert([]net.IP{lanA, lanB}), []net.IP{lanA}, t0, false},
 		{"new LAN address", seedCert([]net.IP{lanA}), []net.IP{lanA, lanB}, t0, true},
-		{"close to expiry", seedCert([]net.IP{lanA}), []net.IP{lanA}, t0.Add(certValidity - renewBefore + time.Hour), true},
-		{"expired", seedCert([]net.IP{lanA}), []net.IP{lanA}, t0.Add(certValidity + time.Hour), true},
+		{
+			"close to expiry",
+			seedCert([]net.IP{lanA}),
+			[]net.IP{lanA},
+			t0.Add(certValidity - renewBefore + time.Hour),
+			true,
+		},
+		{
+			"expired",
+			seedCert([]net.IP{lanA}),
+			[]net.IP{lanA},
+			t0.Add(certValidity + time.Hour),
+			true,
+		},
 		{"corrupt files", seedGarbage, []net.IP{lanA}, t0, true},
 	}
 	for _, tt := range tests {

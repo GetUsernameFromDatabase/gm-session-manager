@@ -500,7 +500,13 @@ func masteryItems(current string) []selectcomp.ItemData {
 	if current != "" && !slices.Contains(names, current) {
 		names = append(slices.Clone(names), current)
 	}
-	return append([]selectcomp.ItemData{{Value: "", Label: labelNone}}, selectItems(names, func(m string) string { return m }, func(m string) string { return m })...)
+	return append(
+		[]selectcomp.ItemData{{Value: "", Label: labelNone}},
+		selectItems(
+			names,
+			func(m string) string { return m },
+			func(m string) string { return m },
+		)...)
 }
 
 const homebrewFormID = "homebrew-form"

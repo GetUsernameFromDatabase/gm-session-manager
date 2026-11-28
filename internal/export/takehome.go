@@ -22,7 +22,10 @@ import (
 //
 //	manifest.json            format, kind, versions, token, campaign, the table's character id
 //	maps.json                bring-back only: home id to table id of what came from the table
-//	fallback.json            bring-back only, optional: the build-only fallback (sheet, max HP, level-ups; home ids, not in maps.json)
+//	fallback.json            bring-back only, optional: the build-only fallback (sheet, max HP,
+//
+// level-ups; home ids, not in maps.json)
+//
 //	character.json           CharacterFile
 //	levelups.json            the revert history
 //	looks.json               the character's images
@@ -34,7 +37,8 @@ import (
 //
 // A campaign-starter file holds only manifest.json and the two compendium parts.
 const (
-	// TakeHomeFormat is the zip's layout version; a reader accepts 1 up to this and refuses a newer one.
+	// TakeHomeFormat is the zip's layout version;
+	// a reader accepts 1 up to this and refuses a newer one.
 	// 2 added the campaign starter kind, TakeHomeCampaign.ID and TakeHomeManifest.MadeAtHome.
 	TakeHomeFormat = 2
 
@@ -66,9 +70,11 @@ const (
 	KindTakeHome Kind = "take-home"
 	// KindBringBack goes from a home computer back to the table; its ids are the home's.
 	KindBringBack Kind = "bring-back"
-	// KindNewCharacter is a character made at home: the bring-back format without a take-out token, maps or fallback.
+	// KindNewCharacter is a character made at home: the bring-back format without a take-out token,
+	// maps or fallback.
 	KindNewCharacter Kind = "new-character"
-	// KindStarter is a campaign's books and entries with no character, for a player to start characters at home.
+	// KindStarter is a campaign's books and entries with no character, for a player to start
+	// characters at home.
 	KindStarter Kind = "campaign-starter"
 )
 
@@ -84,7 +90,8 @@ type TakeHomeManifest struct {
 	Campaign    TakeHomeCampaign `json:"campaign"`
 	CharacterID int64            `json:"character_id"`
 	CreatedAt   time.Time        `json:"created_at"`
-	// MadeAtHome ties a character made at home to its copy at the table; only new-character and take-home files hold it.
+	// MadeAtHome ties a character made at home to its copy at the table; only new-character and
+	// take-home files hold it.
 	MadeAtHome string `json:"made_at_home,omitempty"`
 }
 
@@ -247,7 +254,12 @@ func WriteTakeHome(w io.Writer, t TakeHome, attachmentsDir string) error {
 		name string
 		v    any
 	}{
-		{manifestFile, t.Manifest}, {sourcesFile, nonNil(t.Sources)}, {entriesFile, nonNil(t.Entries)},
+		{
+			manifestFile,
+			t.Manifest,
+		},
+		{sourcesFile, nonNil(t.Sources)},
+		{entriesFile, nonNil(t.Entries)},
 	}
 	if t.Manifest.Kind != KindStarter {
 		char, err := t.Character.JSON()
@@ -291,7 +303,8 @@ func WriteTakeHome(w io.Writer, t TakeHome, attachmentsDir string) error {
 			return nil
 		}
 		written[file] = true
-		body, err := os.ReadFile(filepath.Join(attachmentsDir, path.Base(file))) //nolint:gosec // see DropMissing
+		//nolint:gosec // see DropMissing
+		body, err := os.ReadFile(filepath.Join(attachmentsDir, path.Base(file)))
 		if err != nil {
 			return err
 		}
@@ -312,7 +325,10 @@ func WriteTakeHome(w io.Writer, t TakeHome, attachmentsDir string) error {
 		}
 	}
 	if len(missing) > 0 {
-		list := "Files that were not on disk, so not taken home:\n" + strings.Join(missing, "\n") + "\n"
+		list := "Files that were not on disk, so not taken home:\n" + strings.Join(
+			missing,
+			"\n",
+		) + "\n"
 		if err := writeFile(zw, filesPrefix+"MISSING.txt", []byte(list)); err != nil {
 			return err
 		}
@@ -328,7 +344,9 @@ func DropMissing(t *TakeHome, attachmentsDir string) []string {
 		if file == "" {
 			return false
 		}
-		_, err := os.Stat(filepath.Join(attachmentsDir, path.Base(file))) //nolint:gosec // our random file name, kept inside attachmentsDir by Base
+		_, err := os.Stat(
+			filepath.Join(attachmentsDir, path.Base(file)),
+		) //nolint:gosec // our random file name, kept inside attachmentsDir by Base
 		if err != nil {
 			missing = append(missing, path.Base(file))
 		}
@@ -398,7 +416,12 @@ func ReadTakeHome(r io.ReaderAt, size int64, want Kind) (*TakeHomeFile, error) {
 		return nil, err
 	}
 	if head.Format < 1 || head.Format > TakeHomeFormat {
-		return nil, fmt.Errorf("this take-home file (from app %s) has format %d; this app reads formats 1 to %d", head.AppVersion, head.Format, TakeHomeFormat)
+		return nil, fmt.Errorf(
+			"this take-home file (from app %s) has format %d; this app reads formats 1 to %d",
+			head.AppVersion,
+			head.Format,
+			TakeHomeFormat,
+		)
 	}
 	if err := f.readJSON(manifestFile, maxJSONBytes, &f.Manifest, true); err != nil {
 		return nil, err
@@ -408,7 +431,9 @@ func ReadTakeHome(r io.ReaderAt, size int64, want Kind) (*TakeHomeFile, error) {
 		case k == KindStarter && want == KindTakeHome:
 			return nil, errors.New("this is a campaign starter file: open it in the player app")
 		case k == KindStarter:
-			return nil, errors.New("this is a campaign starter file: open it in the player app, not at the table")
+			return nil, errors.New(
+				"this is a campaign starter file: open it in the player app, not at the table",
+			)
 		case want == KindStarter:
 			return nil, fmt.Errorf("this is a %s file, not a campaign starter file", k)
 		case want == KindTakeHome && k == KindBringBack:
@@ -421,7 +446,10 @@ func ReadTakeHome(r io.ReaderAt, size int64, want Kind) (*TakeHomeFile, error) {
 			return nil, fmt.Errorf("this is a %s file, not a %s file", k, want)
 		}
 		// Callers say "not a take-home file" first; this says why and what to do.
-		return nil, fmt.Errorf("it comes from app %s and is not a take-home, bring-back or new character file. Take the character home again from the table", f.Manifest.AppVersion)
+		return nil, fmt.Errorf(
+			"it comes from app %s and is not a take-home, bring-back or new character file. Take the character home again from the table",
+			f.Manifest.AppVersion,
+		)
 	}
 	if want == KindNewCharacter && (f.Manifest.Token != "" || f.Manifest.CharacterID != 0) {
 		return nil, errors.New("a new-character file must not name a table character or take-out")
@@ -475,7 +503,9 @@ func ReadTakeHome(r io.ReaderAt, size int64, want Kind) (*TakeHomeFile, error) {
 func (f *TakeHomeFile) readStarter() (*TakeHomeFile, error) {
 	m := f.Manifest
 	if m.Campaign.ID == 0 || m.ServerID == "" || m.Token != "" || m.CharacterID != 0 {
-		return nil, errors.New("a campaign starter file must name its table and campaign, and no character")
+		return nil, errors.New(
+			"a campaign starter file must name its table and campaign, and no character",
+		)
 	}
 	for _, zf := range f.zr.File {
 		if zf.Name != manifestFile && zf.Name != sourcesFile && zf.Name != entriesFile {
@@ -515,7 +545,8 @@ func (f *TakeHomeFile) check() error {
 		kinds[k] = true
 	}
 	for _, e := range append(append([]TakeHomeEntry{}, f.Homebrew...), f.Entries...) {
-		if !kinds[e.Kind] || e.Slug == "" || e.Name == "" || e.SourceKey == "" || !json.Valid(e.Data) {
+		if !kinds[e.Kind] || e.Slug == "" || e.Name == "" || e.SourceKey == "" ||
+			!json.Valid(e.Data) {
 			return fmt.Errorf("compendium entry %q is not valid", e.Slug)
 		}
 	}
@@ -532,7 +563,10 @@ func (f *TakeHomeFile) check() error {
 			return fmt.Errorf("note %d is not valid", n.ID)
 		}
 		for _, b := range n.Blocks {
-			if b.Visibility != enum.VisGM && b.Visibility != enum.VisPlayers && b.Visibility != enum.VisListed && b.Visibility != enum.VisOwner || !json.Valid(b.Doc) {
+			if b.Visibility != enum.VisGM && b.Visibility != enum.VisPlayers &&
+				b.Visibility != enum.VisListed &&
+				b.Visibility != enum.VisOwner ||
+				!json.Valid(b.Doc) {
 				return fmt.Errorf("block %d is not valid", b.ID)
 			}
 			for _, bf := range b.Files {

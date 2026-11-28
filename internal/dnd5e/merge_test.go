@@ -43,7 +43,9 @@ func mergeChar(t *testing.T, change func(*Character)) Character {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Classes = []ClassLevel{{Slug: "wizard", Name: "Wizard", Level: 4, HitDie: 6, Caster: CasterFull}}
+	s.Classes = []ClassLevel{
+		{Slug: "wizard", Name: "Wizard", Level: 4, HitDie: 6, Caster: CasterFull},
+	}
 	s.Spells = []Spell{{Slug: "shield", Name: "Shield", Level: 1}}
 	s.Inventory = []Item{{Name: "Rope", Qty: 1}}
 	s.Coins.GP = 30
@@ -100,28 +102,54 @@ func TestMerge(t *testing.T) {
 					t.Errorf("hp %d/%d", m.HP, m.MaxHP)
 				}
 			}},
-		{"conflict defaults to home", hurt, heal, nil, map[string]string{GroupHealth: MergeConflict}, func(t *testing.T, m Character) {
-			if m.HP != 27 { // 33 clamped to the table's unchanged max
-				t.Errorf("hp %d, want 27", m.HP)
-			}
-		}},
-		{"conflict picks the table", hurt, heal, map[string]string{GroupHealth: SideTable}, map[string]string{GroupHealth: MergeConflict}, func(t *testing.T, m Character) {
-			if m.HP != 12 {
-				t.Errorf("hp %d, want 12", m.HP)
-			}
-		}},
-		{"conflict picks home", hurt, heal, map[string]string{GroupHealth: SideHome}, map[string]string{GroupHealth: MergeConflict}, func(t *testing.T, m Character) {
-			if m.HP != 27 {
-				t.Errorf("hp %d, want 27", m.HP)
-			}
-		}},
-		{"home max HP lets home HP stand", hurt, func(c *Character) { levelUp(c); heal(c) }, map[string]string{GroupHealth: SideHome},
+		{
+			"conflict defaults to home",
+			hurt,
+			heal,
+			nil,
+			map[string]string{GroupHealth: MergeConflict},
+			func(t *testing.T, m Character) {
+				if m.HP != 27 { // 33 clamped to the table's unchanged max
+					t.Errorf("hp %d, want 27", m.HP)
+				}
+			},
+		},
+		{
+			"conflict picks the table",
+			hurt,
+			heal,
+			map[string]string{GroupHealth: SideTable},
+			map[string]string{GroupHealth: MergeConflict},
+			func(t *testing.T, m Character) {
+				if m.HP != 12 {
+					t.Errorf("hp %d, want 12", m.HP)
+				}
+			},
+		},
+		{
+			"conflict picks home",
+			hurt,
+			heal,
+			map[string]string{GroupHealth: SideHome},
+			map[string]string{GroupHealth: MergeConflict},
+			func(t *testing.T, m Character) {
+				if m.HP != 27 {
+					t.Errorf("hp %d, want 27", m.HP)
+				}
+			},
+		},
+		{
+			"home max HP lets home HP stand",
+			hurt,
+			func(c *Character) { levelUp(c); heal(c) },
+			map[string]string{GroupHealth: SideHome},
 			map[string]string{GroupHealth: MergeConflict, GroupBuild: SideHome},
 			func(t *testing.T, m Character) {
 				if m.HP != 33 {
 					t.Errorf("hp %d, want 33", m.HP)
 				}
-			}},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -190,16 +218,28 @@ func TestTakeBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Sheet.Level() != 3 || got.MaxHP != 20 || got.HP != 20 || got.Sheet.Coins.GP != 5 {
-		t.Errorf("got level %d, hp %d/%d, gp %d", got.Sheet.Level(), got.HP, got.MaxHP, got.Sheet.Coins.GP)
+		t.Errorf(
+			"got level %d, hp %d/%d, gp %d",
+			got.Sheet.Level(),
+			got.HP,
+			got.MaxHP,
+			got.Sheet.Coins.GP,
+		)
 	}
 }
 
 // SourceKeys lists each book once and skips unpinned and homebrew entries.
 func TestSourceKeys(t *testing.T) {
 	s := Sheet{
-		Classes:       []ClassLevel{{Name: "Wizard", Source: "phb", Subclass: "Bladesinging", SubclassSource: "tce"}},
+		Classes: []ClassLevel{
+			{Name: "Wizard", Source: "phb", Subclass: "Bladesinging", SubclassSource: "tce"},
+		},
 		SpeciesSource: "",
-		Spells:        []Spell{{Name: "Glow", Source: homebrewSource}, {Name: "Zap", Source: "phb"}, {Name: "Light"}},
+		Spells: []Spell{
+			{Name: "Glow", Source: homebrewSource},
+			{Name: "Zap", Source: "phb"},
+			{Name: "Light"},
+		},
 	}
 	if got := s.SourceKeys(); !slices.Equal(got, []string{"phb", "tce"}) {
 		t.Errorf("SourceKeys() = %v, want [phb tce]", got)
@@ -212,12 +252,27 @@ func TestSourceUsesAndDrop(t *testing.T) {
 	s.SpeciesSource, s.Species = "book", "Elf"
 	s.FeatSources = map[string]string{"alert": "book", "tough": "other", "lucky": "book"}
 	s.Feats = append(s.Feats, "Alert")
-	s.Spells = append(s.Spells, Spell{Slug: "boom", Name: "Booming Blade", Source: "book"}, Spell{Slug: "zap", Name: "Zap", Source: "other"})
+	s.Spells = append(
+		s.Spells,
+		Spell{Slug: "boom", Name: "Booming Blade", Source: "book"},
+		Spell{Slug: "zap", Name: "Zap", Source: "other"},
+	)
 	plate := WornArmor{Name: "Plate", Source: "book", Type: "heavy", Base: 18}
 	s.Armor = &plate
-	s.Inventory = append(s.Inventory, Item{Name: "Plate", Qty: 1, Armor: &plate}, Item{Name: "Chain", Qty: 1, Armor: &WornArmor{Name: "Chain", Source: "other"}})
+	s.Inventory = append(
+		s.Inventory,
+		Item{Name: "Plate", Qty: 1, Armor: &plate},
+		Item{Name: "Chain", Qty: 1, Armor: &WornArmor{Name: "Chain", Source: "other"}},
+	)
 
-	want := []string{"subclass Bladesinging", "species Elf", "feat Alert", "feat lucky", "spell Booming Blade", "armor Plate"}
+	want := []string{
+		"subclass Bladesinging",
+		"species Elf",
+		"feat Alert",
+		"feat lucky",
+		"spell Booming Blade",
+		"armor Plate",
+	}
 	if got := s.SourceUses("book"); !slices.Equal(got, want) {
 		t.Errorf("SourceUses = %q, want %q", got, want)
 	}
@@ -229,7 +284,13 @@ func TestSourceUsesAndDrop(t *testing.T) {
 		t.Errorf("DropSource = %q", removed)
 	}
 	if len(s.Spells) != 2 || s.Armor != nil || len(s.Inventory) != 2 || !s.BuildPinsSource("book") {
-		t.Errorf("after drop: %d spells, armor %v, %d items, build pins %v", len(s.Spells), s.Armor, len(s.Inventory), s.BuildPinsSource("book"))
+		t.Errorf(
+			"after drop: %d spells, armor %v, %d items, build pins %v",
+			len(s.Spells),
+			s.Armor,
+			len(s.Inventory),
+			s.BuildPinsSource("book"),
+		)
 	}
 	if got := s.DropSource("book"); len(got) != 0 {
 		t.Errorf("second DropSource removed %q", got)

@@ -46,7 +46,9 @@ var closeDialogJS = templ.JSUnsafeFuncCall("if (event.detail.successful) { " + c
 // itself (the effect form's). A ComponentScript, since templ blanks a spread
 // event handler given a string.
 func closeDialogAfter(reset string) templ.ComponentScript {
-	return templ.JSUnsafeFuncCall("if (event.detail.successful && event.detail.elt === this) { " + reset + closeDialog + " }")
+	return templ.JSUnsafeFuncCall(
+		"if (event.detail.successful && event.detail.elt === this) { " + reset + closeDialog + " }",
+	)
 }
 
 // BlockView is one note block as a viewer sees it. The document itself is
@@ -140,7 +142,10 @@ const buttonLike = "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-
 // chosen. It runs on the visibility fields' change events.
 const visToggleJS = `const vis = this.querySelector("[name=visibility]").value; for (const f of this.querySelectorAll("[data-for-vis]")) f.hidden = f.dataset.forVis !== vis`
 
-var noteKindItems = []selectcomp.ItemData{{Value: string(enum.NoteGeneric), Label: "Note"}, {Value: string(enum.NoteGameSession), Label: "Game session"}}
+var noteKindItems = []selectcomp.ItemData{
+	{Value: string(enum.NoteGeneric), Label: "Note"},
+	{Value: string(enum.NoteGameSession), Label: "Game session"},
+}
 
 // LinkItem is a note, entity or image a viewer may link to or jump to.
 type LinkItem struct {

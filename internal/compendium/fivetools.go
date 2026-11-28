@@ -194,7 +194,9 @@ const (
 )
 
 var fiveToolsSite = Site{
-	Key: "5etools", Name: "5e.tools bestiary", Home: "https://5e.tools/bestiary.html",
+	Key:     "5etools",
+	Name:    "5e.tools bestiary",
+	Home:    "https://5e.tools/bestiary.html",
 	Imports: "monsters of every book, with a picture when it has one",
 	Note:    "5e.tools blocks the server, so the monster is read from the 5etools GitHub mirror instead.",
 	NoteURL: "https://github.com/5etools-mirror-3/5etools-src/tree/main/data/bestiary",
@@ -202,7 +204,9 @@ var fiveToolsSite = Site{
 	page:    fiveToolsPage,
 	check: func(page string) (enum.CompendiumKind, error) {
 		if !reFiveToolsPage.MatchString(page) {
-			return "", errors.New("5e.tools blocks the server, so only bestiary (monster) links can be read, like https://5e.tools/bestiary/howler-mtf.html")
+			return "", errors.New(
+				"5e.tools blocks the server, so only bestiary (monster) links can be read, like https://5e.tools/bestiary/howler-mtf.html",
+			)
 		}
 		return enum.KindMonster, nil
 	},
@@ -312,7 +316,14 @@ type ftSpellcasting struct {
 	DisplayAs     string                     `json:"displayAs"`
 }
 
-var ftSizes = map[string]string{"T": "Tiny", "S": "Small", "M": "Medium", "L": "Large", "H": "Huge", "G": "Gargantuan"}
+var ftSizes = map[string]string{
+	"T": "Tiny",
+	"S": "Small",
+	"M": "Medium",
+	"L": "Large",
+	"H": "Huge",
+	"G": "Gargantuan",
+}
 
 var ftAlignments = map[string]string{
 	"L": alignLawful, "N": alignNeutral, "C": alignChaotic, "G": alignGood, "E": alignEvil,
@@ -339,15 +350,26 @@ func ParseFiveTools(body []byte, slug string) (book, image string, e Entry, err 
 	case m == nil:
 		return "", "", Entry{}, fmt.Errorf("5etools: no monster %q in that book", slug)
 	case m.Copy != nil:
-		// shortcut: monsters that copy another one with changes are refused here; the book import resolves them.
-		return "", "", Entry{}, fmt.Errorf("5etools: %s is a variant of another monster; import that one instead", m.Name)
+		// shortcut: monsters that copy another one with changes are refused here;
+		// the book import resolves them.
+		return "", "", Entry{}, fmt.Errorf(
+			"5etools: %s is a variant of another monster; import that one instead",
+			m.Name,
+		)
 	}
 	d := m.data()
 	book = m.Source
 	if m.Page > 0 {
 		book += fmt.Sprintf(" p. %d", m.Page)
 	}
-	return book, m.image(), Entry{Kind: enum.KindMonster, Slug: slug, Name: m.Name, Data: d, Text: plainText(d.searchText()), Habitats: habitatsFrom(m.Environment)}, nil
+	return book, m.image(), Entry{
+		Kind:     enum.KindMonster,
+		Slug:     slug,
+		Name:     m.Name,
+		Data:     d,
+		Text:     plainText(d.searchText()),
+		Habitats: habitatsFrom(m.Environment),
+	}, nil
 }
 
 // image is the monster's picture link, or "" when 5etools has none.
@@ -356,7 +378,8 @@ func (m *ftMonster) image() string {
 	case m.HasFluffImages:
 		return fiveToolsImages + url.PathEscape(m.Source) + "/" + url.PathEscape(m.Name) + ".webp"
 	case m.HasToken:
-		return fiveToolsImages + "tokens/" + url.PathEscape(m.Source) + "/" + url.PathEscape(m.Name) + ".webp"
+		return fiveToolsImages + "tokens/" + url.PathEscape(m.Source) + "/" +
+			url.PathEscape(m.Name) + ".webp"
 	}
 	return ""
 }
@@ -364,12 +387,31 @@ func (m *ftMonster) image() string {
 // data normalizes the statblock.
 func (m *ftMonster) data() MonsterData {
 	d := MonsterData{
-		Type: ftType(m.Type), HP: m.HP.Average, HitDice: m.HP.Formula,
-		Speed: map[string]int{}, Saves: map[string]int{}, Skills: map[string]int{},
-		Abilities: map[string]int{dnd5e.Str: m.Str, dnd5e.Dex: m.Dex, dnd5e.Con: m.Con, dnd5e.Int: m.Int, dnd5e.Wis: m.Wis, dnd5e.Cha: m.Cha},
-		Senses:    plainTags(strings.Join(m.Senses, ", ")), Languages: plainTags(strings.Join(m.Languages, ", ")),
-		Resistance: ftList(m.Resist, keyResist), Vulnerability: ftList(m.Vulnerable, keyVulnerable),
-		Immunity:   joinNonEmpty("; ", ftList(m.Immune, keyImmune), ftList(m.ConditionImmune, keyConditionImmune)),
+		Type:    ftType(m.Type),
+		HP:      m.HP.Average,
+		HitDice: m.HP.Formula,
+		Speed:   map[string]int{},
+		Saves:   map[string]int{},
+		Skills:  map[string]int{},
+		Abilities: map[string]int{
+			dnd5e.Str: m.Str,
+			dnd5e.Dex: m.Dex,
+			dnd5e.Con: m.Con,
+			dnd5e.Int: m.Int,
+			dnd5e.Wis: m.Wis,
+			dnd5e.Cha: m.Cha,
+		},
+		Senses: plainTags(
+			strings.Join(m.Senses, ", "),
+		),
+		Languages:     plainTags(strings.Join(m.Languages, ", ")),
+		Resistance:    ftList(m.Resist, keyResist),
+		Vulnerability: ftList(m.Vulnerable, keyVulnerable),
+		Immunity: joinNonEmpty(
+			"; ",
+			ftList(m.Immune, keyImmune),
+			ftList(m.ConditionImmune, keyConditionImmune),
+		),
 		Initiative: abilityMod(m.Dex),
 	}
 	var sizes []string
@@ -429,7 +471,8 @@ func (m *ftMonster) data() MonsterData {
 	var ini struct {
 		Proficiency int `json:"proficiency"`
 	}
-	if json.Unmarshal(m.Initiative, &d.Initiative) != nil && json.Unmarshal(m.Initiative, &ini) == nil {
+	if json.Unmarshal(m.Initiative, &d.Initiative) != nil &&
+		json.Unmarshal(m.Initiative, &ini) == nil {
 		d.Initiative += ini.Proficiency * crProficiency(d.CR)
 	}
 	for _, t := range m.Trait {
@@ -438,14 +481,24 @@ func (m *ftMonster) data() MonsterData {
 	for _, s := range m.Spellcasting {
 		desc := ftSpells(s)
 		if s.DisplayAs == monsterAction {
-			d.Actions = append(d.Actions, MonsterAction{Name: s.Name, Desc: desc, Type: monsterAction})
+			d.Actions = append(
+				d.Actions,
+				MonsterAction{Name: s.Name, Desc: desc, Type: monsterAction},
+			)
 		} else {
 			d.Traits = append(d.Traits, NameDesc{Name: s.Name, Desc: desc})
 		}
 	}
 	for i, list := range [][]ftEntry{m.Action, m.Bonus, m.Reaction, m.Legendary} {
 		for _, a := range list {
-			d.Actions = append(d.Actions, MonsterAction{Name: plainTags(a.Name), Desc: ftEntries(a.Entries), Type: actionTypes[i]})
+			d.Actions = append(
+				d.Actions,
+				MonsterAction{
+					Name: plainTags(a.Name),
+					Desc: ftEntries(a.Entries),
+					Type: actionTypes[i],
+				},
+			)
 		}
 	}
 	return d
@@ -468,7 +521,8 @@ func ftType(raw json.RawMessage) string {
 	var choose struct {
 		Choose []string `json:"choose"`
 	}
-	if json.Unmarshal(t.Type, &s) != nil && json.Unmarshal(t.Type, &choose) == nil && len(choose.Choose) > 0 {
+	if json.Unmarshal(t.Type, &s) != nil && json.Unmarshal(t.Type, &choose) == nil &&
+		len(choose.Choose) > 0 {
 		n := len(choose.Choose)
 		s = joinNonEmpty(" or ", strings.Join(choose.Choose[:n-1], ", "), choose.Choose[n-1])
 	}
@@ -505,7 +559,13 @@ func ftList(raws []json.RawMessage, key string) string {
 		_ = json.Unmarshal(g[keyNote], &note)
 		var inner []json.RawMessage
 		_ = json.Unmarshal(g[key], &inner)
-		groups = append(groups, strings.Join(strings.Fields(strings.Join([]string{pre, special, ftList(inner, key), note}, " ")), " "))
+		groups = append(
+			groups,
+			strings.Join(
+				strings.Fields(strings.Join([]string{pre, special, ftList(inner, key), note}, " ")),
+				" ",
+			),
+		)
 	}
 	return plainTags(joinNonEmpty("; ", append([]string{strings.Join(simple, ", ")}, groups...)...))
 }
@@ -598,28 +658,59 @@ func ftSpells(s ftSpellcasting) string {
 var reTag = regexp.MustCompile(`\{@(\w+)(?: ([^{}]*))?\}`)
 
 var ftAttacks = map[string]string{
-	"mw": "Melee Weapon Attack:", "rw": "Ranged Weapon Attack:", "mw,rw": "Melee or Ranged Weapon Attack:",
-	"ms": "Melee Spell Attack:", "rs": "Ranged Spell Attack:", "ms,rs": "Melee or Ranged Spell Attack:",
-	"m": "Melee Attack Roll:", "r": "Ranged Attack Roll:", "m,r": "Melee or Ranged Attack Roll:",
+	"mw":    "Melee Weapon Attack:",
+	"rw":    "Ranged Weapon Attack:",
+	"mw,rw": "Melee or Ranged Weapon Attack:",
+	"ms":    "Melee Spell Attack:",
+	"rs":    "Ranged Spell Attack:",
+	"ms,rs": "Melee or Ranged Spell Attack:",
+	"m":     "Melee Attack Roll:",
+	"r":     "Ranged Attack Roll:",
+	"m,r":   "Melee or Ranged Attack Roll:",
 }
 
 var ftAbilityNames = map[string]string{
-	dnd5e.Str: "Strength", dnd5e.Dex: "Dexterity", dnd5e.Con: "Constitution", dnd5e.Int: "Intelligence", dnd5e.Wis: "Wisdom", dnd5e.Cha: "Charisma",
+	dnd5e.Str: "Strength",
+	dnd5e.Dex: "Dexterity",
+	dnd5e.Con: "Constitution",
+	dnd5e.Int: "Intelligence",
+	dnd5e.Wis: "Wisdom",
+	dnd5e.Cha: "Charisma",
 }
 
 // ftLinkKinds are the tags that name a compendium entry, by our kind.
 var ftLinkKinds = map[string]enum.CompendiumKind{
-	keySpell: enum.KindSpell, keyItem: enum.KindItem, keyCreature: enum.KindMonster, keyCondition: enum.KindCondition,
-	keyFeat: enum.KindFeat, keyBackground: enum.KindBackground, keyRace: enum.KindSpecies, keyItemMastery: enum.KindRule,
+	keySpell:       enum.KindSpell,
+	keyItem:        enum.KindItem,
+	keyCreature:    enum.KindMonster,
+	keyCondition:   enum.KindCondition,
+	keyFeat:        enum.KindFeat,
+	keyBackground:  enum.KindBackground,
+	keyRace:        enum.KindSpecies,
+	keyItemMastery: enum.KindRule,
 }
 
 // ftDisplayTags are reference tags whose third argument is the text shown
 // ({@variantrule Sphere [Area of Effect]|XPHB|Sphere}); scaledice and
 // scaledamage show the per-level step.
 var ftDisplayTags = map[string]bool{
-	keyVariantRule: true, keyAction: true, keySense: true, keySkill: true, keyStatus: true, keyClass: true,
-	keyDeity: true, keyHazard: true, keyObject: true, keyLanguage: true, keyDisease: true, keyOptFeature: true,
-	keyTrap: true, keyTable: true, keyItemProperty: true, keyScaleDice: true, keyScaleDamage: true,
+	keyVariantRule:  true,
+	keyAction:       true,
+	keySense:        true,
+	keySkill:        true,
+	keyStatus:       true,
+	keyClass:        true,
+	keyDeity:        true,
+	keyHazard:       true,
+	keyObject:       true,
+	keyLanguage:     true,
+	keyDisease:      true,
+	keyOptFeature:   true,
+	keyTrap:         true,
+	keyTable:        true,
+	keyItemProperty: true,
+	keyScaleDice:    true,
+	keyScaleDamage:  true,
 }
 
 // tokenSep stands in for a token's "|" while tags are still being replaced.
@@ -645,12 +736,18 @@ func stripTags(s string) string {
 			tag, arg := sub[1], sub[2]
 			text, _, _ := strings.Cut(arg, "|")
 			display := text
-			if parts := strings.Split(arg, "|"); len(parts) > 2 && parts[2] != "" && (ftLinkKinds[tag] != "" || ftDisplayTags[tag]) {
+			if parts := strings.Split(
+				arg,
+				"|",
+			); len(parts) > 2 && parts[2] != "" &&
+				(ftLinkKinds[tag] != "" || ftDisplayTags[tag]) {
 				display = parts[2]
 			}
 			if kind, ok := ftLinkKinds[tag]; ok {
-				// The separator stays out of "|" until the end, so an outer tag's arguments do not split it.
-				return "[[compendium:" + string(kind) + "/" + Slugify(text) + tokenSep + display + "]]"
+				// The separator stays out of "|" until the end,
+				// so an outer tag's arguments do not split it.
+				return "[[compendium:" + string(kind) + "/" + Slugify(text) +
+					tokenSep + display + "]]"
 			}
 			if ftDisplayTags[tag] {
 				return display

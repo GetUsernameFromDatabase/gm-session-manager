@@ -37,13 +37,16 @@ func (m *Manager) ClearCookie(c *gin.Context) {
 }
 
 func (m *Manager) writeCookie(c *gin.Context, value string, maxAge int) {
-	http.SetCookie(c.Writer, &http.Cookie{ //nolint:gosec // Secure is off only in the player app: plain HTTP on loopback
-		Name:     m.CookieName(),
-		Value:    value,
-		Path:     "/",
-		MaxAge:   maxAge,
-		HttpOnly: true,
-		Secure:   !m.player, // the player app is plain HTTP on loopback
-		SameSite: http.SameSiteLaxMode,
-	})
+	http.SetCookie(
+		c.Writer,
+		&http.Cookie{ //nolint:gosec // Secure is off only in the player app: plain HTTP on loopback
+			Name:     m.CookieName(),
+			Value:    value,
+			Path:     "/",
+			MaxAge:   maxAge,
+			HttpOnly: true,
+			Secure:   !m.player, // the player app is plain HTTP on loopback
+			SameSite: http.SameSiteLaxMode,
+		},
+	)
 }

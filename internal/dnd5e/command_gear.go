@@ -221,7 +221,10 @@ func parseWeapon(args []string) (Command, error) {
 	}
 	op, name := strings.ToLower(args[0]), args[1]
 	find := func(c *Character) int {
-		return slices.IndexFunc(c.Sheet.Weapons, func(w Weapon) bool { return strings.EqualFold(w.Name, name) })
+		return slices.IndexFunc(
+			c.Sheet.Weapons,
+			func(w Weapon) bool { return strings.EqualFold(w.Name, name) },
+		)
 	}
 	switch {
 	case op == verbAdd && len(args) >= 4:
@@ -290,7 +293,11 @@ func parseMastery(args []string) (Command, error) {
 				return nil
 			}
 			if len(s.Masteries) >= env.MasteryLimit {
-				return fmt.Errorf("%d of %d weapon masteries chosen: remove one first", len(s.Masteries), env.MasteryLimit)
+				return fmt.Errorf(
+					"%d of %d weapon masteries chosen: remove one first",
+					len(s.Masteries),
+					env.MasteryLimit,
+				)
 			}
 			s.Masteries = append(s.Masteries, env.MasteryWeapon)
 			return nil
@@ -299,7 +306,10 @@ func parseMastery(args []string) (Command, error) {
 		return cmd, nil
 	case verbRemove:
 		return scoped(perm.ScopeSheet, func(c *Character, _ Env, _ *Effects) error {
-			c.Sheet.Masteries = slices.DeleteFunc(c.Sheet.Masteries, func(m string) bool { return strings.EqualFold(m, name) })
+			c.Sheet.Masteries = slices.DeleteFunc(
+				c.Sheet.Masteries,
+				func(m string) bool { return strings.EqualFold(m, name) },
+			)
 			return nil
 		}), nil
 	}
@@ -309,14 +319,18 @@ func parseMastery(args []string) (Command, error) {
 // SaveWeapon readies a weapon, or replaces the one of the same name, and
 // keeps its stats on its inventory item.
 func SaveWeapon(w Weapon) Command {
-	return NewCommand("weapon add "+strconv.Quote(w.Name), perm.ScopeSheet, func(c *Character) error {
-		if i := c.Sheet.weaponIndex(w.Name); i >= 0 {
-			c.Sheet.Weapons[i] = w
-		} else {
-			c.Sheet.Weapons = append(c.Sheet.Weapons, w)
-		}
-		stats := w
-		c.Sheet.Inventory = ensureItem(c.Sheet.Inventory, Item{Name: w.Name, Weapon: &stats})
-		return nil
-	})
+	return NewCommand(
+		"weapon add "+strconv.Quote(w.Name),
+		perm.ScopeSheet,
+		func(c *Character) error {
+			if i := c.Sheet.weaponIndex(w.Name); i >= 0 {
+				c.Sheet.Weapons[i] = w
+			} else {
+				c.Sheet.Weapons = append(c.Sheet.Weapons, w)
+			}
+			stats := w
+			c.Sheet.Inventory = ensureItem(c.Sheet.Inventory, Item{Name: w.Name, Weapon: &stats})
+			return nil
+		},
+	)
 }

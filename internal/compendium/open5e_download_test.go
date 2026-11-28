@@ -29,7 +29,10 @@ func serveOpen5e(t *testing.T, doc string, names []string, files map[string]stri
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/listing/"+doc, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(listing) })
+	mux.HandleFunc(
+		"/listing/"+doc,
+		func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(listing) },
+	)
 	mux.HandleFunc("/srd/"+doc+"/", func(w http.ResponseWriter, r *http.Request) {
 		body, ok := files[r.URL.Path[len("/srd/"+doc+"/"):]]
 		if !ok {
@@ -64,12 +67,17 @@ func TestDownloadOpen5e(t *testing.T) {
 			dir := t.TempDir()
 			old := writeSRD(t, dir, doc)
 			var heard []string
-			err := DownloadOpen5e(context.Background(), dir, doc, func(done, total int, name string) {
-				if total != 2 || done != len(heard) {
-					t.Errorf("progress %d/%d %s", done, total, name)
-				}
-				heard = append(heard, name)
-			})
+			err := DownloadOpen5e(
+				context.Background(),
+				dir,
+				doc,
+				func(done, total int, name string) {
+					if total != 2 || done != len(heard) {
+						t.Errorf("progress %d/%d %s", done, total, name)
+					}
+					heard = append(heard, name)
+				},
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -77,7 +85,9 @@ func TestDownloadOpen5e(t *testing.T) {
 				t.Errorf("heard %v", heard)
 			}
 			for name, body := range files {
-				got, err := os.ReadFile(filepath.Join(dir, doc, name)) //nolint:gosec // test temp dir
+				got, err := os.ReadFile(
+					filepath.Join(dir, doc, name),
+				) //nolint:gosec // test temp dir
 				if err != nil || string(got) != body {
 					t.Errorf("%s: %q %v", name, got, err)
 				}
@@ -103,7 +113,12 @@ func TestDownloadOpen5eUnknownDoc(t *testing.T) {
 }
 
 func TestDownloadOpen5eBadName(t *testing.T) {
-	serveOpen5e(t, SRD2024Key, []string{"Spell.json", "../evil.json"}, map[string]string{"Spell.json": `[]`})
+	serveOpen5e(
+		t,
+		SRD2024Key,
+		[]string{"Spell.json", "../evil.json"},
+		map[string]string{"Spell.json": `[]`},
+	)
 	dir := t.TempDir()
 	if err := DownloadOpen5e(context.Background(), dir, SRD2024Key, nil); err == nil {
 		t.Fatal("want error")
@@ -114,7 +129,12 @@ func TestDownloadOpen5eBadName(t *testing.T) {
 }
 
 func TestDownloadOpen5eFailureKeepsOld(t *testing.T) {
-	serveOpen5e(t, SRD2024Key, []string{"Document.json", "Spell.json"}, map[string]string{"Document.json": `[]`})
+	serveOpen5e(
+		t,
+		SRD2024Key,
+		[]string{"Document.json", "Spell.json"},
+		map[string]string{"Document.json": `[]`},
+	)
 	dir := t.TempDir()
 	old := writeSRD(t, dir, SRD2024Key)
 	if err := DownloadOpen5e(context.Background(), dir, SRD2024Key, nil); err == nil {

@@ -25,7 +25,13 @@ import (
 
 // dial connects a websocket as a device and says hello at the current
 // hub position, watching the given live views.
-func dial(t *testing.T, e testEnv, srv *httptest.Server, query, cookie string, watch ...string) *websocket.Conn {
+func dial(
+	t *testing.T,
+	e testEnv,
+	srv *httptest.Server,
+	query, cookie string,
+	watch ...string,
+) *websocket.Conn {
 	t.Helper()
 	h := http.Header{}
 	if cookie != "" {
@@ -33,7 +39,14 @@ func dial(t *testing.T, e testEnv, srv *httptest.Server, query, cookie string, w
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	conn, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+route.WS+query, &websocket.DialOptions{HTTPHeader: h, CompressionMode: websocket.CompressionContextTakeover})
+	conn, res, err := websocket.Dial(
+		ctx,
+		"ws"+strings.TrimPrefix(srv.URL, "http")+route.WS+query,
+		&websocket.DialOptions{
+			HTTPHeader:      h,
+			CompressionMode: websocket.CompressionContextTakeover,
+		},
+	)
 	if res != nil && res.Body != nil {
 		_ = res.Body.Close()
 	}
@@ -44,7 +57,9 @@ func dial(t *testing.T, e testEnv, srv *httptest.Server, query, cookie string, w
 	conn.SetReadLimit(hub.ReadLimit)
 	t.Cleanup(func() { _ = conn.CloseNow() })
 	epoch, seq := e.app.Hub.Position()
-	hello, _ := json.Marshal(map[string]any{"type": "hello", "epoch": epoch, "seq": seq, "watch": watch})
+	hello, _ := json.Marshal(
+		map[string]any{"type": "hello", "epoch": epoch, "seq": seq, "watch": watch},
+	)
 	if err := conn.Write(ctx, websocket.MessageText, hello); err != nil {
 		t.Fatal(err)
 	}
@@ -88,10 +103,17 @@ func TestWebsocketRefusesForeignOrigin(t *testing.T) {
 	e := newTestEnv(t)
 	srv := httptest.NewServer(e.router)
 	t.Cleanup(srv.Close)
-	h := http.Header{"Cookie": {auth.CookieName + "=" + e.token(t, enum.RolePlayer)}, "Origin": {"https://evil.example"}}
+	h := http.Header{
+		"Cookie": {auth.CookieName + "=" + e.token(t, enum.RolePlayer)},
+		"Origin": {"https://evil.example"},
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	conn, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+route.WS, &websocket.DialOptions{HTTPHeader: h})
+	conn, res, err := websocket.Dial(
+		ctx,
+		"ws"+strings.TrimPrefix(srv.URL, "http")+route.WS,
+		&websocket.DialOptions{HTTPHeader: h},
+	)
 	if res != nil && res.Body != nil {
 		_ = res.Body.Close()
 	}
@@ -118,7 +140,12 @@ type wsMessage struct {
 }
 
 // readUntil reads messages until match accepts one.
-func readUntil(t *testing.T, conn *websocket.Conn, what string, match func(wsMessage) bool) wsMessage {
+func readUntil(
+	t *testing.T,
+	conn *websocket.Conn,
+	what string,
+	match func(wsMessage) bool,
+) wsMessage {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -177,7 +204,12 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 	cmd := func(c string) {
 		t.Helper()
 		form := url.Values{"cmd": {c}}
-		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+route.Path(route.CharacterCmd, e.characterID), strings.NewReader(form.Encode()))
+		req, _ := http.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			srv.URL+route.Path(route.CharacterCmd, e.characterID),
+			strings.NewReader(form.Encode()),
+		)
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("HX-Request", "true")
 		req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: player})
@@ -241,7 +273,14 @@ func TestLiveUpdatesAndKick(t *testing.T) {
 	})
 
 	// The combat tab heard none of it: its first message is its own view.
-	if w := e.do(t, http.MethodPost, route.Path(route.CampaignEncounters, e.campaignID), e.token(t, enum.RoleAdmin), url.Values{"name": {"Ambush"}}, true); w.Code >= 400 {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CampaignEncounters, e.campaignID),
+		e.token(t, enum.RoleAdmin),
+		url.Values{"name": {"Ambush"}},
+		true,
+	); w.Code >= 400 {
 		t.Fatalf("create encounter: %d", w.Code)
 	}
 	m := readUntil(t, combat, "any message", func(wsMessage) bool { return true })
@@ -273,7 +312,11 @@ func TestDeviceSeenOnLeave(t *testing.T) {
 	readUntil(t, phone, "the phone's hello", hello)
 
 	// The phone's last request was long ago; only its socket stayed open.
-	if _, err := e.conn.ExecContext(t.Context(), `UPDATE sessions SET last_seen_at = datetime('now', '-1 hour') WHERE id = ?`, sess.ID); err != nil {
+	if _, err := e.conn.ExecContext(
+		t.Context(),
+		`UPDATE sessions SET last_seen_at = datetime('now', '-1 hour') WHERE id = ?`,
+		sess.ID,
+	); err != nil {
 		t.Fatal(err)
 	}
 	_ = phone.Close(websocket.StatusNormalClosure, "")

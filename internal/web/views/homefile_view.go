@@ -161,7 +161,12 @@ type NewCharacterNotice struct {
 // file" dialog body into the take-home dialog.
 func newCharacterLoad(campaignID int64) templ.Attributes {
 	return with(dialog.TriggerFor(takeHomeID), templ.Attributes{
-		attrHxGet: route.Path(route.CampaignNewCharacter, campaignID), attrHxTarget: takeHomeTarget, attrHxSwap: swapInner,
+		attrHxGet: route.Path(
+			route.CampaignNewCharacter,
+			campaignID,
+		),
+		attrHxTarget: takeHomeTarget,
+		attrHxSwap:   swapInner,
 	})
 }
 
@@ -176,7 +181,12 @@ type BringBackView struct {
 // dialog body into the take-home dialog.
 func bringBackLoad(characterID int64) templ.Attributes {
 	return with(dialog.TriggerFor(takeHomeID), templ.Attributes{
-		attrHxGet: route.Path(route.CharacterBringBack, characterID), attrHxTarget: takeHomeTarget, attrHxSwap: swapInner,
+		attrHxGet: route.Path(
+			route.CharacterBringBack,
+			characterID,
+		),
+		attrHxTarget: takeHomeTarget,
+		attrHxSwap:   swapInner,
 	})
 }
 

@@ -15,13 +15,28 @@ import (
 
 func sampleTakeHome(file string) TakeHome {
 	return TakeHome{
-		Manifest:  TakeHomeManifest{Format: TakeHomeFormat, Kind: KindTakeHome, AppVersion: "v1", Token: "tok", ServerID: "srv", CharacterID: 7, CreatedAt: time.Unix(1700000000, 0).UTC()},
-		Character: CharacterFile{ID: 7, Name: "Aria", System: "dnd5e", Sheet: json.RawMessage(`{}`)},
-		Looks:     []TakeHomeLook{{ImageID: 1, Name: "Hood", File: file, IsCurrent: true}},
-		Notes: []TakeHomeNote{{ID: 3, Kind: enum.NoteGeneric, Title: "Diary", Blocks: []TakeHomeBlock{{
-			ID: 4, Visibility: enum.VisOwner, Doc: json.RawMessage(`{"type":"doc"}`),
-			Files: []TakeHomeBlockFile{{AttachmentID: 5, Name: "map.png", File: file}},
-		}}}},
+		Manifest: TakeHomeManifest{
+			Format:      TakeHomeFormat,
+			Kind:        KindTakeHome,
+			AppVersion:  "v1",
+			Token:       "tok",
+			ServerID:    "srv",
+			CharacterID: 7,
+			CreatedAt:   time.Unix(1700000000, 0).UTC(),
+		},
+		Character: CharacterFile{
+			ID:     7,
+			Name:   "Aria",
+			System: "dnd5e",
+			Sheet:  json.RawMessage(`{}`),
+		},
+		Looks: []TakeHomeLook{{ImageID: 1, Name: "Hood", File: file, IsCurrent: true}},
+		Notes: []TakeHomeNote{
+			{ID: 3, Kind: enum.NoteGeneric, Title: "Diary", Blocks: []TakeHomeBlock{{
+				ID: 4, Visibility: enum.VisOwner, Doc: json.RawMessage(`{"type":"doc"}`),
+				Files: []TakeHomeBlockFile{{AttachmentID: 5, Name: "map.png", File: file}},
+			}}},
+		},
 	}
 }
 
@@ -44,7 +59,8 @@ func TestTakeHomeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Manifest.Token != "tok" || f.Character.Name != "Aria" || len(f.Looks) != 1 || len(f.Notes[0].Blocks[0].Files) != 1 {
+	if f.Manifest.Token != "tok" || f.Character.Name != "Aria" || len(f.Looks) != 1 ||
+		len(f.Notes[0].Blocks[0].Files) != 1 {
 		t.Errorf("round trip lost data: %+v", f.TakeHome)
 	}
 	got, err := f.OpenFile(f.Looks[0].File)
@@ -174,7 +190,9 @@ func TestBringBackRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Maps == nil || f.Maps.Notes[11] != 3 || f.Maps.Blocks[12] != 4 || f.Manifest.Kind != KindBringBack || f.Manifest.SavedAt.IsZero() {
+	if f.Maps == nil || f.Maps.Notes[11] != 3 || f.Maps.Blocks[12] != 4 ||
+		f.Manifest.Kind != KindBringBack ||
+		f.Manifest.SavedAt.IsZero() {
 		t.Errorf("round trip lost data: %+v %+v", f.Manifest, f.Maps)
 	}
 }
@@ -189,7 +207,11 @@ func TestReadTakeHomeKinds(t *testing.T) {
 		}
 		return d
 	})
-	withMaps := writeZip(t, func() TakeHome { th := sampleTakeHome(""); th.Maps = &HomeIDMaps{}; return th }(), dir)
+	withMaps := writeZip(
+		t,
+		func() TakeHome { th := sampleTakeHome(""); th.Maps = &HomeIDMaps{}; return th }(),
+		dir,
+	)
 	tests := []struct {
 		name string
 		body []byte
@@ -221,8 +243,16 @@ func sampleNewCharacter() TakeHome {
 
 func sampleFallback() *TakeHomeFallback {
 	return &TakeHomeFallback{
-		MaxHP: 31, Sheet: json.RawMessage(`{"level":3}`),
-		LevelUps: []TakeHomeLevelUp{{ID: 9, MaxHP: 24, Sheet: json.RawMessage(`{}`), CreatedAt: time.Unix(1700000500, 0).UTC()}},
+		MaxHP: 31,
+		Sheet: json.RawMessage(`{"level":3}`),
+		LevelUps: []TakeHomeLevelUp{
+			{
+				ID:        9,
+				MaxHP:     24,
+				Sheet:     json.RawMessage(`{}`),
+				CreatedAt: time.Unix(1700000500, 0).UTC(),
+			},
+		},
 	}
 }
 
@@ -234,11 +264,19 @@ func TestBringBackFallbackRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Fallback == nil || f.Fallback.MaxHP != 31 || !strings.Contains(string(f.Fallback.Sheet), `"level": 3`) || len(f.Fallback.LevelUps) != 1 || f.Fallback.LevelUps[0].ID != 9 {
+	if f.Fallback == nil || f.Fallback.MaxHP != 31 ||
+		!strings.Contains(string(f.Fallback.Sheet), `"level": 3`) ||
+		len(f.Fallback.LevelUps) != 1 ||
+		f.Fallback.LevelUps[0].ID != 9 {
 		t.Errorf("fallback lost: %+v", f.Fallback)
 	}
 	plain := writeZip(t, sampleBringBack(), t.TempDir())
-	if f, err := ReadTakeHome(bytes.NewReader(plain), int64(len(plain)), KindBringBack); err != nil || f.Fallback != nil {
+	if f, err := ReadTakeHome(
+		bytes.NewReader(plain),
+		int64(len(plain)),
+		KindBringBack,
+	); err != nil ||
+		f.Fallback != nil {
 		t.Errorf("a bring-back without a fallback: %v, %+v", err, f)
 	}
 }
@@ -249,7 +287,8 @@ func TestNewCharacterRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Manifest.Kind != KindNewCharacter || f.Maps != nil || f.Fallback != nil || f.Character.Name != "Aria" {
+	if f.Manifest.Kind != KindNewCharacter || f.Maps != nil || f.Fallback != nil ||
+		f.Character.Name != "Aria" {
 		t.Errorf("round trip lost data: %+v", f.TakeHome)
 	}
 }
@@ -270,15 +309,50 @@ func TestReadTakeHomeNewCharacterKinds(t *testing.T) {
 		want Kind
 		err  string
 	}{
-		{"new-character where take-home wanted", newChar, KindTakeHome, "give it to your GM at the table"},
-		{"take-home where new-character wanted", sampleTakeHome(""), KindNewCharacter, "open it in the player app"},
-		{"bring-back where new-character wanted", sampleBringBack(), KindNewCharacter, "bring-back file, not a new-character file"},
-		{"new-character where bring-back wanted", newChar, KindBringBack, "new-character file, not a bring-back file"},
-		{"fallback in take-home", withFallback(sampleTakeHome("")), KindTakeHome, "must not hold fallback.json"},
-		{"fallback in new-character", withFallback(newChar), KindNewCharacter, "must not hold fallback.json"},
+		{
+			"new-character where take-home wanted",
+			newChar,
+			KindTakeHome,
+			"give it to your GM at the table",
+		},
+		{
+			"take-home where new-character wanted",
+			sampleTakeHome(""),
+			KindNewCharacter,
+			"open it in the player app",
+		},
+		{
+			"bring-back where new-character wanted",
+			sampleBringBack(),
+			KindNewCharacter,
+			"bring-back file, not a new-character file",
+		},
+		{
+			"new-character where bring-back wanted",
+			newChar,
+			KindBringBack,
+			"new-character file, not a bring-back file",
+		},
+		{
+			"fallback in take-home",
+			withFallback(sampleTakeHome("")),
+			KindTakeHome,
+			"must not hold fallback.json",
+		},
+		{
+			"fallback in new-character",
+			withFallback(newChar),
+			KindNewCharacter,
+			"must not hold fallback.json",
+		},
 		{"maps in new-character", withMaps, KindNewCharacter, "must not hold maps.json"},
 		{"token in new-character", withToken, KindNewCharacter, "must not name a table character"},
-		{"character id in new-character", withID, KindNewCharacter, "must not name a table character"},
+		{
+			"character id in new-character",
+			withID,
+			KindNewCharacter,
+			"must not name a table character",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -297,9 +371,20 @@ func TestDropMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	th := sampleTakeHome(ZipFile("gone"))
-	th.Looks = append(th.Looks, TakeHomeLook{ImageID: 2, Name: "Link", URL: "https://example.com/a.png", File: ZipFile("gone2"), FileName: "a"}, TakeHomeLook{ImageID: 3, Name: "Kept", File: ZipFile("here")})
+	th.Looks = append(
+		th.Looks,
+		TakeHomeLook{
+			ImageID:  2,
+			Name:     "Link",
+			URL:      "https://example.com/a.png",
+			File:     ZipFile("gone2"),
+			FileName: "a",
+		},
+		TakeHomeLook{ImageID: 3, Name: "Kept", File: ZipFile("here")},
+	)
 	missing := DropMissing(&th, dir)
-	if len(th.Looks) != 2 || th.Looks[0].Name != "Link" || th.Looks[0].File != "" || th.Looks[1].Name != "Kept" {
+	if len(th.Looks) != 2 || th.Looks[0].Name != "Link" || th.Looks[0].File != "" ||
+		th.Looks[1].Name != "Kept" {
 		t.Errorf("looks = %+v", th.Looks)
 	}
 	if len(th.Notes[0].Blocks[0].Files) != 0 || len(missing) != 3 {
@@ -317,11 +402,26 @@ func plainTakeHome() TakeHome {
 func sampleStarter() TakeHome {
 	return TakeHome{
 		Manifest: TakeHomeManifest{
-			Format: TakeHomeFormat, Kind: KindStarter, AppVersion: "v1", ServerID: "srv",
-			Campaign: TakeHomeCampaign{ID: 4, Name: "Mist"}, CreatedAt: time.Unix(1700000000, 0).UTC(),
+			Format:     TakeHomeFormat,
+			Kind:       KindStarter,
+			AppVersion: "v1",
+			ServerID:   "srv",
+			Campaign: TakeHomeCampaign{
+				ID:   4,
+				Name: "Mist",
+			},
+			CreatedAt: time.Unix(1700000000, 0).UTC(),
 		},
 		Sources: []TakeHomeSource{{SourceKey: "xphb", Priority: 1}},
-		Entries: []TakeHomeEntry{{Kind: enum.KindSpell, Slug: "light", Name: "Light", SourceKey: "xphb", Data: json.RawMessage(`{}`)}},
+		Entries: []TakeHomeEntry{
+			{
+				Kind:      enum.KindSpell,
+				Slug:      "light",
+				Name:      "Light",
+				SourceKey: "xphb",
+				Data:      json.RawMessage(`{}`),
+			},
+		},
 	}
 }
 
@@ -334,7 +434,11 @@ func TestStarterRoundTrip(t *testing.T) {
 	if f.Manifest.Campaign.ID != 4 || len(f.Sources) != 1 || len(f.Entries) != 1 {
 		t.Errorf("round trip lost data: %+v", f.TakeHome)
 	}
-	if k, err := ManifestKind(bytes.NewReader(body), int64(len(body))); err != nil || k != KindStarter {
+	if k, err := ManifestKind(
+		bytes.NewReader(body),
+		int64(len(body)),
+	); err != nil ||
+		k != KindStarter {
 		t.Errorf("ManifestKind = %q, %v", k, err)
 	}
 	zr, _ := zip.NewReader(bytes.NewReader(body), int64(len(body)))
@@ -345,12 +449,16 @@ func TestStarterRoundTrip(t *testing.T) {
 
 // A format 1 file (before the starter) still reads.
 func TestReadTakeHomeFormatOne(t *testing.T) {
-	body := rewriteZip(t, writeZip(t, plainTakeHome(), t.TempDir()), func(n string, d []byte) []byte {
-		if n == manifestFile {
-			return []byte(strings.Replace(string(d), `"format": 2`, `"format": 1`, 1))
-		}
-		return d
-	})
+	body := rewriteZip(
+		t,
+		writeZip(t, plainTakeHome(), t.TempDir()),
+		func(n string, d []byte) []byte {
+			if n == manifestFile {
+				return []byte(strings.Replace(string(d), `"format": 2`, `"format": 1`, 1))
+			}
+			return d
+		},
+	)
 	if _, err := ReadTakeHome(bytes.NewReader(body), int64(len(body)), KindTakeHome); err != nil {
 		t.Error(err)
 	}
@@ -385,21 +493,56 @@ func TestReadStarterRefusals(t *testing.T) {
 		want Kind
 		err  string
 	}{
-		{"character in a starter", withPart(characterFile), KindStarter, "must not hold character.json"},
+		{
+			"character in a starter",
+			withPart(characterFile),
+			KindStarter,
+			"must not hold character.json",
+		},
 		{"maps in a starter", withPart(mapsFile), KindStarter, "must not hold maps.json"},
 		{"file in a starter", withPart(filesPrefix + "x"), KindStarter, "must not hold files/x"},
-		{"starter without a campaign id", edited(func(th *TakeHome) { th.Manifest.Campaign.ID = 0 }), KindStarter, "must name its table and campaign"},
-		{"starter naming a character", edited(func(th *TakeHome) { th.Manifest.CharacterID = 3 }), KindStarter, "no character"},
-		{"made-at-home in a starter", edited(func(th *TakeHome) { th.Manifest.MadeAtHome = "x" }), KindStarter, "made at home"},
+		{
+			"starter without a campaign id",
+			edited(func(th *TakeHome) { th.Manifest.Campaign.ID = 0 }),
+			KindStarter,
+			"must name its table and campaign",
+		},
+		{
+			"starter naming a character",
+			edited(func(th *TakeHome) { th.Manifest.CharacterID = 3 }),
+			KindStarter,
+			"no character",
+		},
+		{
+			"made-at-home in a starter",
+			edited(func(th *TakeHome) { th.Manifest.MadeAtHome = "x" }),
+			KindStarter,
+			"made at home",
+		},
 		{"made-at-home in a bring-back", func() []byte {
 			th := sampleBringBack()
 			th.Manifest.MadeAtHome = "x"
 			return writeZip(t, th, dir)
 		}(), KindBringBack, "made at home"},
-		{"starter where take-home wanted", good, KindTakeHome, "campaign starter file: open it in the player app"},
+		{
+			"starter where take-home wanted",
+			good,
+			KindTakeHome,
+			"campaign starter file: open it in the player app",
+		},
 		{"starter where bring-back wanted", good, KindBringBack, "campaign starter file"},
-		{"take-home where starter wanted", writeZip(t, sampleTakeHome(""), dir), KindStarter, "not a campaign starter"},
-		{"entry of a bad kind", edited(func(th *TakeHome) { th.Entries[0].Kind = "monster" }), KindStarter, "not valid"},
+		{
+			"take-home where starter wanted",
+			writeZip(t, sampleTakeHome(""), dir),
+			KindStarter,
+			"not a campaign starter",
+		},
+		{
+			"entry of a bad kind",
+			edited(func(th *TakeHome) { th.Entries[0].Kind = "monster" }),
+			KindStarter,
+			"not valid",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

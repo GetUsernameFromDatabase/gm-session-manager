@@ -45,33 +45,44 @@ func newLiveFixture(t testing.TB) liveFixture {
 	ctx := t.Context()
 	f := liveFixture{testEnv: e}
 	ent, err := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{
-		CampaignID: e.campaignID, Kind: "npc", Name: "Mira", IsRevealed: true,
+		CampaignID: e.campaignID,
+		Kind:       "npc",
+		Name:       "Mira",
+		IsRevealed: true,
 		FieldsJson: `{"role":{"value":"Innkeeper","is_revealed":true},"secret":{"value":"Is the lich","is_revealed":false}}`,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.entity = ent.ID
-	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Plans"})
-	if _, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "gm"}); err != nil {
+	note, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Plans"})
+	if _, err := e.q().
+		CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "gm"}); err != nil {
 		t.Fatal(err)
 	}
 	f.gmNote = note.ID
-	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
-	ogre, err := e.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, Name: "Ogre", Hp: 59, MaxHp: 59, Ac: 11})
+	enc, _ := e.q().
+		CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	ogre, err := e.q().
+		CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, Name: "Ogre", Hp: 59, MaxHp: 59, Ac: 11})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Players only see fights their character is in.
-	if _, err := e.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, CharacterID: nullID(e.characterID), Name: "Alice"}); err != nil {
+	if _, err := e.q().
+		CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, CharacterID: nullID(e.characterID), Name: "Alice"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1, ActiveCombatantID: nullID(ogre.ID)}); err != nil {
+	if err := e.q().
+		UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1, ActiveCombatantID: nullID(ogre.ID)}); err != nil {
 		t.Fatal(err)
 	}
 	f.ogre, f.encounter = ogre.ID, enc.ID
-	other, _ := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Elsewhere", System: "dnd5e"})
-	stranger, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: other.ID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
+	other, _ := e.q().
+		CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Elsewhere", System: "dnd5e"})
+	stranger, err := e.q().
+		CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: other.ID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +90,12 @@ func newLiveFixture(t testing.TB) liveFixture {
 	return f
 }
 
-func (f liveFixture) state(t *testing.T, v perm.Viewer, campaignID int64, view string) (hub.State, bool) {
+func (f liveFixture) state(
+	t *testing.T,
+	v perm.Viewer,
+	campaignID int64,
+	view string,
+) (hub.State, bool) {
 	t.Helper()
 	st, ok, err := f.app.State(t.Context(), hub.NewClient(campaignID, v, 0, "test"), view)
 	if err != nil {
@@ -103,36 +119,276 @@ func TestLiveVisibility(t *testing.T) {
 		wantKeys   []string
 		noKeys     []string
 	}{
-		{"GM sees monster HP", perm.GM, f.campaignID, views.LiveKey(views.LiveEncounter, f.encounter), true, []string{ogreHP, "turn.cur"}, nil},
-		{"player's fight hides monster HP", player, f.campaignID, views.LiveKey(views.LivePlayerCombat, f.campaignID), true, []string{fmt.Sprintf("c.%d.on", f.ogre), fmt.Sprintf("c.%d.down", f.ogre)}, []string{ogreHP}},
-		{"player may not open the GM tracker", player, f.campaignID, views.LiveKey(views.LiveEncounter, f.encounter), false, nil, nil},
-		{"player may not see the roster", player, f.campaignID, views.LiveKey(views.LiveRoster, f.campaignID), false, nil, nil},
-		{"player may not see the encounter list", player, f.campaignID, views.LiveKey(views.LiveEncounters, f.campaignID), false, nil, nil},
-		{"GM sees join requests outside a campaign", perm.GM, 0, views.LiveKey(views.LiveRequests, 0), true, nil, nil},
-		{"player may not see join requests", player, f.campaignID, views.LiveKey(views.LiveRequests, 0), false, nil, nil},
-		{"GM sees the 5etools import", perm.GM, 0, views.LiveKey(views.LiveImport, 0), true, nil, nil},
-		{"player may not see the 5etools import", player, f.campaignID, views.LiveKey(views.LiveImport, 0), false, nil, nil},
-		{"GM sees the starting sets", perm.GM, 0, views.LiveKey(views.LiveImport, views.StarterLiveCompendium), true, nil, nil},
-		{"player may not see the starting sets", player, f.campaignID, views.LiveKey(views.LiveImport, views.StarterLiveCompendium), false, nil, nil},
-		{"GM sees the source priority", perm.GM, 0, views.LiveKey(views.LiveSources, 0), true, nil, nil},
-		{"GM sees a campaign's source priority", perm.GM, f.campaignID, views.LiveKey(views.LiveSources, f.campaignID), true, nil, nil},
-		{"player may not see the source priority", player, f.campaignID, views.LiveKey(views.LiveSources, f.campaignID), false, nil, nil},
-		{"GM sees the Sources card", perm.GM, f.campaignID, views.LiveKey(views.LiveCampaignSources, f.campaignID), true, nil, nil},
-		{"player may not see the Sources card", player, f.campaignID, views.LiveKey(views.LiveCampaignSources, f.campaignID), false, nil, nil},
-		{"GM follows the whole compendium", perm.GM, 0, views.LiveKey(views.LiveCompendium, 0), true, nil, nil},
-		{"GM follows a campaign's compendium", perm.GM, f.campaignID, views.LiveKey(views.LiveCompendium, f.campaignID), true, nil, nil},
-		{"player follows own campaign's compendium", player, f.campaignID, views.LiveKey(views.LiveCompendium, f.campaignID), true, nil, nil},
-		{"player may not follow the whole compendium", player, f.campaignID, views.LiveKey(views.LiveCompendium, 0), false, nil, nil},
-		{"outsider may not follow another campaign's compendium", f.outsider, f.outsiderCampaign, views.LiveKey(views.LiveCompendium, f.campaignID), false, nil, nil},
-		{"player sees a revealed NPC", player, f.campaignID, views.LiveKey(views.LiveEntity, f.entity), true, nil, nil},
-		{"player may not see a GM-only note", player, f.campaignID, views.LiveKey(views.LiveNote, f.gmNote), false, nil, nil},
-		{"player sees own sheet with HP", player, f.campaignID, views.LiveKey(views.LiveCharacter, f.characterID), true, []string{"hp"}, nil},
-		{"outsider may not see another campaign's sheet", f.outsider, f.outsiderCampaign, views.LiveKey(views.LiveCharacter, f.characterID), false, nil, nil},
-		{"outsider may not list another campaign's notes", f.outsider, f.outsiderCampaign, views.LiveKey(views.LiveNotes, f.campaignID), false, nil, nil},
-		{"outsider may not list another campaign's NPCs", f.outsider, f.outsiderCampaign, views.LiveKey(views.LiveEntities, f.campaignID), false, nil, nil},
-		{"outsider may not see another campaign's NPC", f.outsider, f.outsiderCampaign, views.LiveKey(views.LiveEntity, f.entity), false, nil, nil},
-		{"visitor sees nothing", perm.Viewer{}, f.campaignID, views.LiveKey(views.LiveNotes, f.campaignID), false, nil, nil},
-		{"visitor needs the right secret", perm.Viewer{}, f.campaignID, views.LiveKey(views.LiveWaiting, "guess"), false, nil, nil},
+		{
+			"GM sees monster HP",
+			perm.GM,
+			f.campaignID,
+			views.LiveKey(views.LiveEncounter, f.encounter),
+			true,
+			[]string{ogreHP, "turn.cur"},
+			nil,
+		},
+		{
+			"player's fight hides monster HP",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LivePlayerCombat, f.campaignID),
+			true,
+			[]string{fmt.Sprintf("c.%d.on", f.ogre), fmt.Sprintf("c.%d.down", f.ogre)},
+			[]string{ogreHP},
+		},
+		{
+			"player may not open the GM tracker",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveEncounter, f.encounter),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"player may not see the roster",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveRoster, f.campaignID),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"player may not see the encounter list",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveEncounters, f.campaignID),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"GM sees join requests outside a campaign",
+			perm.GM,
+			0,
+			views.LiveKey(views.LiveRequests, 0),
+			true,
+			nil,
+			nil,
+		},
+		{
+			"player may not see join requests",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveRequests, 0),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"GM sees the 5etools import",
+			perm.GM,
+			0,
+			views.LiveKey(views.LiveImport, 0),
+			true,
+			nil,
+			nil,
+		},
+		{
+			"player may not see the 5etools import",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveImport, 0),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"GM sees the starting sets",
+			perm.GM,
+			0,
+			views.LiveKey(views.LiveImport, views.StarterLiveCompendium),
+			true,
+			nil,
+			nil,
+		},
+		{
+			"player may not see the starting sets",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveImport, views.StarterLiveCompendium),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"GM sees the source priority",
+			perm.GM,
+			0,
+			views.LiveKey(views.LiveSources, 0),
+			true,
+			nil,
+			nil,
+		},
+		{
+			"GM sees a campaign's source priority",
+			perm.GM,
+			f.campaignID,
+			views.LiveKey(views.LiveSources, f.campaignID),
+			true,
+			nil,
+			nil,
+		},
+		{
+			"player may not see the source priority",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveSources, f.campaignID),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"GM sees the Sources card",
+			perm.GM,
+			f.campaignID,
+			views.LiveKey(views.LiveCampaignSources, f.campaignID),
+			true,
+			nil,
+			nil,
+		},
+		{
+			"player may not see the Sources card",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveCampaignSources, f.campaignID),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"GM follows the whole compendium",
+			perm.GM,
+			0,
+			views.LiveKey(views.LiveCompendium, 0),
+			true,
+			nil,
+			nil,
+		},
+		{
+			"GM follows a campaign's compendium",
+			perm.GM,
+			f.campaignID,
+			views.LiveKey(views.LiveCompendium, f.campaignID),
+			true,
+			nil,
+			nil,
+		},
+		{
+			"player follows own campaign's compendium",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveCompendium, f.campaignID),
+			true,
+			nil,
+			nil,
+		},
+		{
+			"player may not follow the whole compendium",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveCompendium, 0),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"outsider may not follow another campaign's compendium",
+			f.outsider,
+			f.outsiderCampaign,
+			views.LiveKey(views.LiveCompendium, f.campaignID),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"player sees a revealed NPC",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveEntity, f.entity),
+			true,
+			nil,
+			nil,
+		},
+		{
+			"player may not see a GM-only note",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveNote, f.gmNote),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"player sees own sheet with HP",
+			player,
+			f.campaignID,
+			views.LiveKey(views.LiveCharacter, f.characterID),
+			true,
+			[]string{"hp"},
+			nil,
+		},
+		{
+			"outsider may not see another campaign's sheet",
+			f.outsider,
+			f.outsiderCampaign,
+			views.LiveKey(views.LiveCharacter, f.characterID),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"outsider may not list another campaign's notes",
+			f.outsider,
+			f.outsiderCampaign,
+			views.LiveKey(views.LiveNotes, f.campaignID),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"outsider may not list another campaign's NPCs",
+			f.outsider,
+			f.outsiderCampaign,
+			views.LiveKey(views.LiveEntities, f.campaignID),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"outsider may not see another campaign's NPC",
+			f.outsider,
+			f.outsiderCampaign,
+			views.LiveKey(views.LiveEntity, f.entity),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"visitor sees nothing",
+			perm.Viewer{},
+			f.campaignID,
+			views.LiveKey(views.LiveNotes, f.campaignID),
+			false,
+			nil,
+			nil,
+		},
+		{
+			"visitor needs the right secret",
+			perm.Viewer{},
+			f.campaignID,
+			views.LiveKey(views.LiveWaiting, "guess"),
+			false,
+			nil,
+			nil,
+		},
 		{"unknown view", perm.GM, f.campaignID, "bogus:1", false, nil, nil},
 	}
 	for _, tt := range tests {
@@ -219,17 +475,29 @@ func TestCombatHidesUnrevealedNPC(t *testing.T) {
 	f := newLiveFixture(t)
 	ctx := t.Context()
 	const pic = "https://example.com/vampire.png"
-	if err := f.upsertEntry(ctx, sqlc.UpsertCompendiumEntryParams{Kind: "monster", Slug: "vampire", Name: "Vampire", SourceKey: "test", DataJson: "{}"}); err != nil {
+	if err := f.upsertEntry(
+		ctx,
+		sqlc.UpsertCompendiumEntryParams{
+			Kind:      "monster",
+			Slug:      "vampire",
+			Name:      "Vampire",
+			SourceKey: "test",
+			DataJson:  "{}",
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
-	m, err := f.q().GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "vampire"})
+	m, err := f.q().
+		GetCompendiumEntryBySlug(ctx, sqlc.GetCompendiumEntryBySlugParams{Kind: "monster", Slug: "vampire"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.q().SetCompendiumImage(ctx, sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: pic, Valid: true}, ID: m.ID}); err != nil {
+	if _, err := f.q().
+		SetCompendiumImage(ctx, sqlc.SetCompendiumImageParams{ImageUrl: sql.NullString{String: pic, Valid: true}, ID: m.ID}); err != nil {
 		t.Fatal(err)
 	}
-	secret, err := f.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: f.campaignID, Kind: "npc", Name: "Vampire Mayor", FieldsJson: "{}", CompendiumRef: nullID(m.ID)})
+	secret, err := f.q().
+		CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: f.campaignID, Kind: "npc", Name: "Vampire Mayor", FieldsJson: "{}", CompendiumRef: nullID(m.ID)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +523,10 @@ func TestCombatHidesUnrevealedNPC(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		i := slices.IndexFunc(ev.Combatants, func(c views.CombatantView) bool { return c.ID == combatantID })
+		i := slices.IndexFunc(
+			ev.Combatants,
+			func(c views.CombatantView) bool { return c.ID == combatantID },
+		)
 		if i < 0 {
 			t.Fatal("combatant not in the turn order")
 		}
@@ -273,14 +544,32 @@ func TestCombatHidesUnrevealedNPC(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := row(t, tt.viewer, ids[tt.combatant]); got.Name != tt.want || got.Portrait != tt.wPic {
-				t.Errorf("name, portrait = %q, %q, want %q, %q", got.Name, got.Portrait, tt.want, tt.wPic)
+			if got := row(
+				t,
+				tt.viewer,
+				ids[tt.combatant],
+			); got.Name != tt.want ||
+				got.Portrait != tt.wPic {
+				t.Errorf(
+					"name, portrait = %q, %q, want %q, %q",
+					got.Name,
+					got.Portrait,
+					tt.want,
+					tt.wPic,
+				)
 			}
 		})
 	}
 	// Deleting the NPC leaves its combatant without a link: the stored name stays hidden too.
 	gm := f.token(t, enum.RoleAdmin)
-	if w := f.do(t, http.MethodPost, route.Path(route.EntityDelete, secret.ID), gm, url.Values{}, true); w.Code >= http.StatusBadRequest {
+	if w := f.do(
+		t,
+		http.MethodPost,
+		route.Path(route.EntityDelete, secret.ID),
+		gm,
+		url.Values{},
+		true,
+	); w.Code >= http.StatusBadRequest {
 		t.Fatalf("delete NPC: %d %s", w.Code, w.Body)
 	}
 	if got := row(t, player, ids["Vampire Mayor"]); got.Name != hiddenNPCName {
@@ -297,18 +586,78 @@ func TestLiveAffects(t *testing.T) {
 		topic hub.Topic
 		want  bool
 	}{
-		{"own id", views.LiveKey(views.LiveCharacter, 1), hub.Topic{Kind: hub.TopicCharacter, ID: 1}, true},
-		{"other id", views.LiveKey(views.LiveCharacter, 1), hub.Topic{Kind: hub.TopicCharacter, ID: 2}, false},
-		{"sheet on compendium", views.LiveKey(views.LiveCharacter, 1), hub.Topic{Kind: hub.TopicCompendium}, true},
-		{"roster on any campaign topic", views.LiveKey(views.LiveRoster, 1), hub.Topic{Kind: hub.TopicCampaign, ID: 9}, true},
-		{"roster on character HP", views.LiveKey(views.LiveRoster, 1), hub.Topic{Kind: hub.TopicCharacter, ID: 9}, true},
-		{"tracker on its encounter", views.LiveKey(views.LiveEncounter, 1), hub.Topic{Kind: hub.TopicEncounter, ID: 1}, true},
-		{"tracker on another encounter", views.LiveKey(views.LiveEncounter, 1), hub.Topic{Kind: hub.TopicEncounter, ID: 2}, false},
-		{"tracker on NPC portrait", views.LiveKey(views.LiveEncounter, 1), hub.Topic{Kind: hub.TopicEntity, ID: 9}, true},
-		{"player combat on NPC portrait", views.LiveKey(views.LivePlayerCombat, 1), hub.Topic{Kind: hub.TopicEntity, ID: 9}, true},
-		{"player combat on any encounter", views.LiveKey(views.LivePlayerCombat, 1), hub.Topic{Kind: hub.TopicEncounter, ID: 9}, true},
-		{"note list on a note", views.LiveKey(views.LiveNotes, 1), hub.Topic{Kind: hub.TopicNote, ID: 1}, false},
-		{"entity on another entity", views.LiveKey(views.LiveEntity, 1), hub.Topic{Kind: hub.TopicEntity, ID: 2}, false},
+		{
+			"own id",
+			views.LiveKey(views.LiveCharacter, 1),
+			hub.Topic{Kind: hub.TopicCharacter, ID: 1},
+			true,
+		},
+		{
+			"other id",
+			views.LiveKey(views.LiveCharacter, 1),
+			hub.Topic{Kind: hub.TopicCharacter, ID: 2},
+			false,
+		},
+		{
+			"sheet on compendium",
+			views.LiveKey(views.LiveCharacter, 1),
+			hub.Topic{Kind: hub.TopicCompendium},
+			true,
+		},
+		{
+			"roster on any campaign topic",
+			views.LiveKey(views.LiveRoster, 1),
+			hub.Topic{Kind: hub.TopicCampaign, ID: 9},
+			true,
+		},
+		{
+			"roster on character HP",
+			views.LiveKey(views.LiveRoster, 1),
+			hub.Topic{Kind: hub.TopicCharacter, ID: 9},
+			true,
+		},
+		{
+			"tracker on its encounter",
+			views.LiveKey(views.LiveEncounter, 1),
+			hub.Topic{Kind: hub.TopicEncounter, ID: 1},
+			true,
+		},
+		{
+			"tracker on another encounter",
+			views.LiveKey(views.LiveEncounter, 1),
+			hub.Topic{Kind: hub.TopicEncounter, ID: 2},
+			false,
+		},
+		{
+			"tracker on NPC portrait",
+			views.LiveKey(views.LiveEncounter, 1),
+			hub.Topic{Kind: hub.TopicEntity, ID: 9},
+			true,
+		},
+		{
+			"player combat on NPC portrait",
+			views.LiveKey(views.LivePlayerCombat, 1),
+			hub.Topic{Kind: hub.TopicEntity, ID: 9},
+			true,
+		},
+		{
+			"player combat on any encounter",
+			views.LiveKey(views.LivePlayerCombat, 1),
+			hub.Topic{Kind: hub.TopicEncounter, ID: 9},
+			true,
+		},
+		{
+			"note list on a note",
+			views.LiveKey(views.LiveNotes, 1),
+			hub.Topic{Kind: hub.TopicNote, ID: 1},
+			false,
+		},
+		{
+			"entity on another entity",
+			views.LiveKey(views.LiveEntity, 1),
+			hub.Topic{Kind: hub.TopicEntity, ID: 2},
+			false,
+		},
 		{"unknown view", "bogus:1", hub.Topic{Kind: hub.TopicCampaign, ID: 1}, false},
 	}
 	for _, tt := range tests {
@@ -326,17 +675,25 @@ func TestLiveRefetchStrips(t *testing.T) {
 		return f.do(t, http.MethodGet, route.Live+"?v="+url.QueryEscape(view), player, nil, true)
 	}
 	body := func(view string) string { return get(view).Body.String() }
-	if b := body(views.LiveKey(views.LiveEntity, f.entity)); !strings.Contains(b, "Innkeeper") || strings.Contains(b, "lich") {
+	if b := body(
+		views.LiveKey(views.LiveEntity, f.entity),
+	); !strings.Contains(b, "Innkeeper") ||
+		strings.Contains(b, "lich") {
 		t.Errorf("NPC refetch leaks or misses fields: %s", b)
 	}
 	// The NPC list shows a portrait only once its look is revealed.
-	mask, _ := f.q().CreateImage(t.Context(), sqlc.CreateImageParams{CampaignID: f.campaignID, Name: "mask", Url: sql.NullString{String: "https://example.com/mask.png", Valid: true}})
+	mask, _ := f.q().
+		CreateImage(t.Context(), sqlc.CreateImageParams{CampaignID: f.campaignID, Name: "mask", Url: sql.NullString{String: "https://example.com/mask.png", Valid: true}})
 	look := sqlc.ToggleEntityImageRevealedParams{EntityID: f.entity, ImageID: mask.ID}
-	if err := f.q().LinkEntityImage(t.Context(), sqlc.LinkEntityImageParams{EntityID: f.entity, ImageID: mask.ID}); err != nil {
+	if err := f.q().
+		LinkEntityImage(t.Context(), sqlc.LinkEntityImageParams{EntityID: f.entity, ImageID: mask.ID}); err != nil {
 		t.Fatal(err)
 	}
 	src := views.ImageSrc(mask.ID)
-	if b := body(views.LiveKey(views.LiveEntities, f.campaignID)); !strings.Contains(b, "Innkeeper") || strings.Contains(b, src) {
+	if b := body(
+		views.LiveKey(views.LiveEntities, f.campaignID),
+	); !strings.Contains(b, "Innkeeper") ||
+		strings.Contains(b, src) {
 		t.Errorf("NPC list leaks a hidden portrait or misses the role: %s", b)
 	}
 	if err := f.q().ToggleEntityImageRevealed(t.Context(), look); err != nil {
@@ -345,37 +702,56 @@ func TestLiveRefetchStrips(t *testing.T) {
 	if b := body(views.LiveKey(views.LiveEntities, f.campaignID)); !strings.Contains(b, src) {
 		t.Errorf("NPC list misses a revealed portrait: %s", b)
 	}
-	if err := f.q().SetCombatantMarker(t.Context(), sqlc.SetCombatantMarkerParams{ID: f.ogre, Marker: "mini 5"}); err != nil {
+	if err := f.q().
+		SetCombatantMarker(t.Context(), sqlc.SetCombatantMarkerParams{ID: f.ogre, Marker: "mini 5"}); err != nil {
 		t.Fatal(err)
 	}
-	if b := body(views.LiveKey(views.LivePlayerCombat, f.campaignID)); !strings.Contains(b, "Ogre") || strings.Contains(b, "59/59") || !strings.Contains(b, "mini 5") {
+	if b := body(
+		views.LiveKey(views.LivePlayerCombat, f.campaignID),
+	); !strings.Contains(b, "Ogre") || strings.Contains(b, "59/59") ||
+		!strings.Contains(b, "mini 5") {
 		t.Errorf("combat refetch leaks monster HP, or misses the monster or its table marker")
 	}
 	// A running fight without the player, and one with them still being
 	// prepared, stay hidden even when asked for by id.
-	brawl, _ := f.q().CreateEncounter(t.Context(), sqlc.CreateEncounterParams{CampaignID: f.campaignID, Name: "Brawl"})
-	if err := f.q().UpdateEncounterState(t.Context(), sqlc.UpdateEncounterStateParams{ID: brawl.ID, Status: "active", Round: 1}); err != nil {
+	brawl, _ := f.q().
+		CreateEncounter(t.Context(), sqlc.CreateEncounterParams{CampaignID: f.campaignID, Name: "Brawl"})
+	if err := f.q().
+		UpdateEncounterState(t.Context(), sqlc.UpdateEncounterStateParams{ID: brawl.ID, Status: "active", Round: 1}); err != nil {
 		t.Fatal(err)
 	}
-	siege, _ := f.q().CreateEncounter(t.Context(), sqlc.CreateEncounterParams{CampaignID: f.campaignID, Name: "Siege"})
-	if _, err := f.q().CreateCombatant(t.Context(), sqlc.CreateCombatantParams{EncounterID: siege.ID, CharacterID: nullID(f.characterID), Name: "Alice"}); err != nil {
+	siege, _ := f.q().
+		CreateEncounter(t.Context(), sqlc.CreateEncounterParams{CampaignID: f.campaignID, Name: "Siege"})
+	if _, err := f.q().
+		CreateCombatant(t.Context(), sqlc.CreateCombatantParams{EncounterID: siege.ID, CharacterID: nullID(f.characterID), Name: "Alice"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []int64{0, brawl.ID, siege.ID} {
-		if b := body(views.LiveKey(views.LivePlayerCombat, f.campaignID, want)); !strings.Contains(b, "Ambush") || strings.Contains(b, "Brawl") || strings.Contains(b, "Siege") {
+		if b := body(
+			views.LiveKey(views.LivePlayerCombat, f.campaignID, want),
+		); !strings.Contains(b, "Ambush") || strings.Contains(b, "Brawl") ||
+			strings.Contains(b, "Siege") {
 			t.Errorf("player combat asking for %d shows another fight or misses their own", want)
 		}
 	}
 	// A player reads the GM's shared note but may not manage it from the index.
-	shared, _ := f.q().CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: f.campaignID, Kind: "generic", Title: "Rumours"})
-	if _, err := f.q().CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: shared.ID, Visibility: "players"}); err != nil {
+	shared, _ := f.q().
+		CreateNote(t.Context(), sqlc.CreateNoteParams{CampaignID: f.campaignID, Kind: "generic", Title: "Rumours"})
+	if _, err := f.q().
+		CreateBlock(t.Context(), sqlc.CreateBlockParams{NoteID: shared.ID, Visibility: "players"}); err != nil {
 		t.Fatal(err)
 	}
-	if b := body(views.LiveKey(views.LiveNotes, f.campaignID)); !strings.Contains(b, "Rumours") || strings.Contains(b, route.Path(route.NoteRename, shared.ID)) {
+	if b := body(
+		views.LiveKey(views.LiveNotes, f.campaignID),
+	); !strings.Contains(b, "Rumours") ||
+		strings.Contains(b, route.Path(route.NoteRename, shared.ID)) {
 		t.Errorf("notes refetch misses the shared note or lets the player manage it")
 	}
 	// A hidden note clears the page that showed it, naming nothing.
-	if b := body(views.LiveKey(views.LiveNote, f.gmNote)); !strings.Contains(b, "not available") || strings.Contains(b, "Plans") {
+	if b := body(
+		views.LiveKey(views.LiveNote, f.gmNote),
+	); !strings.Contains(b, "not available") ||
+		strings.Contains(b, "Plans") {
 		t.Errorf("hidden note refetch leaks or does not clear: %s", b)
 	}
 	for _, view := range []string{views.LiveKey(views.LiveRoster, f.campaignID), views.LiveKey(views.LiveEncounter, f.encounter)} {
@@ -391,7 +767,10 @@ func (f liveFixture) outrankPin(t *testing.T) {
 	t.Helper()
 	f.source(t, oldSrc, "2014")
 	f.feat(t, oldSrc, "tough", "old")
-	f.setSheet(t, dnd5e.Sheet{Feats: []string{"Tough"}, FeatSources: map[string]string{"tough": oldSrc}})
+	f.setSheet(
+		t,
+		dnd5e.Sheet{Feats: []string{"Tough"}, FeatSources: map[string]string{"tough": oldSrc}},
+	)
 	f.source(t, newSrc, "2024")
 	f.feat(t, newSrc, "tough", "new")
 }
@@ -403,7 +782,14 @@ func TestLiveSourcesAlert(t *testing.T) {
 	f.outrankPin(t)
 	view := views.LiveKey(views.LiveCharacter, f.characterID)
 	for name, cookie := range map[string]string{"owner": f.token(t, enum.RolePlayer), "GM": f.token(t, enum.RoleAdmin)} {
-		b := f.do(t, http.MethodGet, route.Live+"?v="+url.QueryEscape(view), cookie, nil, true).Body.String()
+		b := f.do(
+			t,
+			http.MethodGet,
+			route.Live+"?v="+url.QueryEscape(view),
+			cookie,
+			nil,
+			true,
+		).Body.String()
 		if !strings.Contains(b, "1 source to review") || !strings.Contains(b, "Review sources") {
 			t.Errorf("%s misses the alert: %s", name, b)
 		}
@@ -428,7 +814,14 @@ func TestLiveBindsMatchState(t *testing.T) {
 	player := f.token(t, enum.RolePlayer)
 	gm := f.token(t, enum.RoleAdmin)
 	for _, c := range []string{"maxhp =12", "hp =0", "temp 3", "slot max 1 2", "exhaustion +1", "toggle prone", "deathsave fail", "feature add Lucky", "feature set Lucky uses=prof"} {
-		if w := f.do(t, http.MethodPost, route.Path(route.CharacterCmd, f.characterID), player, url.Values{"cmd": {c}}, true); w.Code != http.StatusOK {
+		if w := f.do(
+			t,
+			http.MethodPost,
+			route.Path(route.CharacterCmd, f.characterID),
+			player,
+			url.Values{"cmd": {c}},
+			true,
+		); w.Code != http.StatusOK {
 			t.Fatalf("%s: %d %s", c, w.Code, w.Body)
 		}
 	}
@@ -439,23 +832,70 @@ func TestLiveBindsMatchState(t *testing.T) {
 		name, path, cookie string
 		viewer             perm.Viewer
 	}{
-		{"GM compendium import", route.Compendium + "?import=" + views.ImportTabFiveTools, gm, perm.GM},
+		{
+			"GM compendium import",
+			route.Compendium + "?import=" + views.ImportTabFiveTools,
+			gm,
+			perm.GM,
+		},
 		{"GM empty compendium", route.Compendium, gm, perm.GM}, // the starting sets
-		{"player sheet", route.Path(route.Character, f.characterID), player, perm.Player(f.characterID)},
+		{
+			"player sheet",
+			route.Path(route.Character, f.characterID),
+			player,
+			perm.Player(f.characterID),
+		},
 		{"GM sheet", route.Path(route.Character, f.characterID), gm, perm.GM},
-		{"player combat", route.Path(route.CampaignCombat, f.campaignID), player, perm.Player(f.characterID)},
-		{"GM combat", fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, f.campaignID), f.encounter), gm, perm.GM},
-		{"GM overview", route.Path(route.Campaign, f.campaignID), gm, perm.GM}, // the live Sources card too
+		{
+			"player combat",
+			route.Path(route.CampaignCombat, f.campaignID),
+			player,
+			perm.Player(f.characterID),
+		},
+		{
+			"GM combat",
+			fmt.Sprintf(
+				"%s?encounter=%d",
+				route.Path(route.CampaignCombat, f.campaignID),
+				f.encounter,
+			),
+			gm,
+			perm.GM,
+		},
+		{
+			"GM overview",
+			route.Path(route.Campaign, f.campaignID),
+			gm,
+			perm.GM,
+		}, // the live Sources card too
 	}
 	// The source cards are live views, so the loop below checks them too.
 	for path, kind := range map[string]string{route.Compendium + "?import=" + views.ImportTabFiveTools: views.LiveSources, route.Path(route.Campaign, f.campaignID): views.LiveCampaignSources} {
-		if page := f.do(t, http.MethodGet, path, gm, nil, false).Body.String(); !strings.Contains(page, `data-live="`+kind+`:`) {
+		if page := f.do(
+			t,
+			http.MethodGet,
+			path,
+			gm,
+			nil,
+			false,
+		).Body.String(); !strings.Contains(
+			page,
+			`data-live="`+kind+`:`,
+		) {
 			t.Errorf("%s does not show the live %s view", path, kind)
 		}
 	}
 	// A player's compendium is live too, so its Browse tab reloads.
 	playerCompendium := route.Path(route.CampaignCompendium, f.campaignID)
-	if page := f.do(t, http.MethodGet, playerCompendium, player, nil, false).Body.String(); !strings.Contains(page, `data-live="`+views.LiveKey(views.LiveCompendium, f.campaignID)+`"`) || !strings.Contains(page, "ws-connect") {
+	if page := f.do(
+		t,
+		http.MethodGet,
+		playerCompendium,
+		player,
+		nil,
+		false,
+	).Body.String(); !strings.Contains(page, `data-live="`+views.LiveKey(views.LiveCompendium, f.campaignID)+`"`) ||
+		!strings.Contains(page, "ws-connect") {
 		t.Errorf("%s does not follow the live compendium view", playerCompendium)
 	}
 	for _, dead := range []bool{false, true} { // the dead sheet swaps its buttons and the tracker its badge
@@ -490,7 +930,8 @@ func TestLiveBindsMatchState(t *testing.T) {
 				}
 				slices.Sort(bound)
 				slices.Sort(hot)
-				if bound, hot = slices.Compact(bound), slices.Compact(hot); !slices.Equal(bound, hot) {
+				bound, hot = slices.Compact(bound), slices.Compact(hot)
+				if !slices.Equal(bound, hot) {
 					t.Errorf("bound %v\nstate %v", bound, hot)
 				}
 			})
@@ -549,7 +990,9 @@ func TestLiveHotKeepsHash(t *testing.T) {
 	sheetCmd := func(c string) { f.sheetCmd(t, player, c) }
 	post := func(path string, form url.Values) { f.postOK(t, gm, path, form) }
 	sh := dnd5e.NewSheet() // a class, for hit dice
-	sh.Classes = []dnd5e.ClassLevel{{Slug: "wizard", Name: "Wizard", Level: 1, HitDie: 6, Caster: dnd5e.CasterFull}}
+	sh.Classes = []dnd5e.ClassLevel{
+		{Slug: "wizard", Name: "Wizard", Level: 1, HitDie: 6, Caster: dnd5e.CasterFull},
+	}
 	f.setSheet(t, sh)
 	for _, c := range []string{"maxhp =12", "slot max 1 2", "feature add Lucky", "feature set Lucky uses=prof"} {
 		sheetCmd(c)
@@ -637,7 +1080,14 @@ func TestLiveTurnValsFollowTurn(t *testing.T) {
 	first := vals()
 	f.postOK(t, gm, next, first)
 	f.postOK(t, gm, next, vals()) // the live payload, as the page now holds it
-	if w := f.do(t, http.MethodPost, next, gm, first, true); w.Code != http.StatusUnprocessableEntity {
+	if w := f.do(
+		t,
+		http.MethodPost,
+		next,
+		gm,
+		first,
+		true,
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("stale turn: %d, want %d", w.Code, http.StatusUnprocessableEntity)
 	}
 }
@@ -663,7 +1113,17 @@ func TestLiveModelHashFollowsMarkup(t *testing.T) {
 		{"feature", func() { f.sheetCmd(t, player, "feature add Lucky") }},
 		{"concentration", func() { f.sheetCmd(t, player, "concentrate Bless") }},
 		{"effect", func() {
-			f.postOK(t, player, route.Path(route.CharacterEffect, f.characterID), url.Values{"slug": {"custom"}, "name": {"Shield of Faith"}, "mod_target": {"ac"}, "mod_value": {"2"}})
+			f.postOK(
+				t,
+				player,
+				route.Path(route.CharacterEffect, f.characterID),
+				url.Values{
+					"slug":       {"custom"},
+					"name":       {"Shield of Faith"},
+					"mod_target": {"ac"},
+					"mod_value":  {"2"},
+				},
+			)
 		}},
 		{"skill", func() { f.sheetCmd(t, player, "prof add skill athletics") }},
 		{"death", func() {
@@ -675,12 +1135,14 @@ func TestLiveModelHashFollowsMarkup(t *testing.T) {
 		{"monster condition", ogre("condition", url.Values{"slug": {"blinded"}})},
 		{"hp shown", ogre("visible", nil)},
 		{"new NPC", func() {
-			if _, err := f.q().CreateEntity(t.Context(), sqlc.CreateEntityParams{CampaignID: f.campaignID, Kind: "npc", Name: "Bram", FieldsJson: "{}"}); err != nil {
+			if _, err := f.q().
+				CreateEntity(t.Context(), sqlc.CreateEntityParams{CampaignID: f.campaignID, Kind: "npc", Name: "Bram", FieldsJson: "{}"}); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{"new combatant", func() {
-			if _, err := f.q().CreateCombatant(t.Context(), sqlc.CreateCombatantParams{EncounterID: f.encounter, Name: "Wolf", Hp: 11, MaxHp: 11, Ac: 13}); err != nil {
+			if _, err := f.q().
+				CreateCombatant(t.Context(), sqlc.CreateCombatantParams{EncounterID: f.encounter, Name: "Wolf", Hp: 11, MaxHp: 11, Ac: 13}); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -720,11 +1182,15 @@ func TestLiveModelHashFollowsMarkup(t *testing.T) {
 // TestLiveModelsEncodeWhole guards the JSON-hashed models: a field JSON
 // skips would be shown but not hashed, so its changes would never refetch.
 func TestLiveModelsEncodeWhole(t *testing.T) {
-	custom := []reflect.Type{reflect.TypeFor[json.Marshaler](), reflect.TypeFor[encoding.TextMarshaler]()}
+	custom := []reflect.Type{
+		reflect.TypeFor[json.Marshaler](),
+		reflect.TypeFor[encoding.TextMarshaler](),
+	}
 	seen := map[reflect.Type]bool{}
 	var walk func(ty reflect.Type, path string)
 	walk = func(ty reflect.Type, path string) {
-		if seen[ty] || ty == reflect.TypeFor[time.Time]() || ty == reflect.TypeFor[json.RawMessage]() { // both encode whole
+		if seen[ty] || ty == reflect.TypeFor[time.Time]() ||
+			ty == reflect.TypeFor[json.RawMessage]() { // both encode whole
 			return
 		}
 		seen[ty] = true
@@ -787,7 +1253,14 @@ func (f liveFixture) hashes(t *testing.T, v perm.Viewer, view string) (markup, s
 // sheetCmd runs a sheet command on the fixture's character.
 func (f liveFixture) sheetCmd(t *testing.T, cookie, cmd string) {
 	t.Helper()
-	if w := f.do(t, http.MethodPost, route.Path(route.CharacterCmd, f.characterID), cookie, url.Values{"cmd": {cmd}}, true); w.Code != http.StatusOK {
+	if w := f.do(
+		t,
+		http.MethodPost,
+		route.Path(route.CharacterCmd, f.characterID),
+		cookie,
+		url.Values{"cmd": {cmd}},
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("%s: %d %s", cmd, w.Code, w.Body)
 	}
 }
@@ -808,7 +1281,8 @@ func (f liveFixture) readyTurns(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, r := range rows {
-		if err := f.q().SetCombatantInitiative(t.Context(), sqlc.SetCombatantInitiativeParams{ID: r.ID, Initiative: sql.NullInt64{Int64: int64(10 + i), Valid: true}}); err != nil {
+		if err := f.q().
+			SetCombatantInitiative(t.Context(), sqlc.SetCombatantInitiativeParams{ID: r.ID, Initiative: sql.NullInt64{Int64: int64(10 + i), Valid: true}}); err != nil {
 			t.Fatal(err)
 		}
 	}

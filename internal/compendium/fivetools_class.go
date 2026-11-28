@@ -73,7 +73,11 @@ func (c ftClass) coreTraits() map[string]string {
 	}
 	for _, s := range p.Skills {
 		if s.Choose != nil {
-			rows[TraitSkillProficiencies] = fmt.Sprintf("Choose %d: %s", s.Choose.Count, strings.Join(ftSkillNames(s.Choose.From), ", "))
+			rows[TraitSkillProficiencies] = fmt.Sprintf(
+				"Choose %d: %s",
+				s.Choose.Count,
+				strings.Join(ftSkillNames(s.Choose.From), ", "),
+			)
 			break
 		}
 		if s.Any > 0 {
@@ -109,7 +113,10 @@ func ftSkillNames(keys []string) []string {
 	out := make([]string, len(keys))
 	for i, k := range keys {
 		out[i] = k
-		if j := slices.IndexFunc(dnd5e.Skills, func(sk dnd5e.Skill) bool { return strings.EqualFold(sk.Name, k) }); j >= 0 {
+		if j := slices.IndexFunc(
+			dnd5e.Skills,
+			func(sk dnd5e.Skill) bool { return strings.EqualFold(sk.Name, k) },
+		); j >= 0 {
 			out[i] = dnd5e.Skills[j].Name
 		}
 	}
@@ -143,7 +150,13 @@ type ftClassFeature struct {
 
 // ftCasters maps casterProgression to our caster types. Only subclasses
 // (Eldritch Knight, Arcane Trickster) are third casters.
-var ftCasters = map[string]string{"full": dnd5e.CasterFull, "1/2": dnd5e.CasterHalf, "1/3": dnd5e.CasterThird, "artificer": dnd5e.CasterHalf, "pact": dnd5e.CasterPact}
+var ftCasters = map[string]string{
+	"full":      dnd5e.CasterFull,
+	"1/2":       dnd5e.CasterHalf,
+	"1/3":       dnd5e.CasterThird,
+	"artificer": dnd5e.CasterHalf,
+	"pact":      dnd5e.CasterPact,
+}
 
 // ftClassRefs resolves class and subclass feature references of one file.
 type ftClassRefs struct {
@@ -170,7 +183,13 @@ func ftFeatureKey(ref string, subclass bool) (key string, level int) {
 }
 
 func (f ftClassFeature) key() string {
-	parts := []string{f.Name, f.ClassName, cmp.Or(f.ClassSource, "PHB"), strconv.Itoa(f.Level), f.Source}
+	parts := []string{
+		f.Name,
+		f.ClassName,
+		cmp.Or(f.ClassSource, "PHB"),
+		strconv.Itoa(f.Level),
+		f.Source,
+	}
 	if f.SubclassShortName != "" {
 		parts = slices.Insert(parts, 3, f.SubclassShortName, cmp.Or(f.SubclassSource, "PHB"))
 	}
@@ -222,14 +241,22 @@ func (x ftClassRefs) expand(v any, depth int) any {
 		var entries any
 		b, _ := json.Marshal(f.Entries)
 		_ = json.Unmarshal(b, &entries)
-		return map[string]any{keyType: keyEntries, keyName: f.Name, keyEntries: x.expand(entries, depth+1)}
+		return map[string]any{
+			keyType:    keyEntries,
+			keyName:    f.Name,
+			keyEntries: x.expand(entries, depth+1),
+		}
 	}
 	return v
 }
 
 // features resolves feature references in order; features of one name
 // gained at several levels (Ability Score Improvement) become one.
-func (x ftClassRefs) features(refs []string, subclass bool, gainsSubclass map[string]bool) []ClassFeature {
+func (x ftClassRefs) features(
+	refs []string,
+	subclass bool,
+	gainsSubclass map[string]bool,
+) []ClassFeature {
 	var out []ClassFeature
 	at := map[string]int{}
 	for _, ref := range refs {
@@ -293,8 +320,16 @@ func (p *ftBook) classFile(file string) error {
 			refs = append(refs, ref)
 		}
 		d := ClassData{
-			HitDie: c.HD.Faces, Caster: cmp.Or(ftCasters[c.CasterProgression], dnd5e.CasterNone), Saves: c.Proficiency,
-			Features: x.features(refs, false, gains), Table: ftClassTable(c.TableGroups), Desc: withCoreTraits("", c.coreTraits()),
+			HitDie: c.HD.Faces,
+			Caster: cmp.Or(ftCasters[c.CasterProgression], dnd5e.CasterNone),
+			Saves:  c.Proficiency,
+			Features: x.features(
+				refs,
+				false,
+				gains,
+			),
+			Table: ftClassTable(c.TableGroups),
+			Desc:  withCoreTraits("", c.coreTraits()),
 		}
 		p.add(enum.KindClass, c.Name, d, featuresSearchText(d.Features))
 	}); err != nil {
@@ -311,12 +346,18 @@ func (p *ftBook) classFile(file string) error {
 		return err
 	}
 	return each(p, file, keySubclass, func(s ftSubclass) {
-		if !strings.EqualFold(s.Source, p.id) || (!strings.EqualFold(s.ClassSource, "XPHB") && has2024[twin(s)]) {
+		if !strings.EqualFold(s.Source, p.id) ||
+			(!strings.EqualFold(s.ClassSource, "XPHB") && has2024[twin(s)]) {
 			return
 		}
 		d := ClassData{
-			Caster: cmp.Or(ftCasters[s.CasterProgression], dnd5e.CasterNone), SubclassOf: Slugify(s.ClassName),
-			Features: x.features(s.SubclassFeatures, true, nil), Table: ftClassTable(s.TableGroups),
+			Caster: cmp.Or(
+				ftCasters[s.CasterProgression],
+				dnd5e.CasterNone,
+			),
+			SubclassOf: Slugify(s.ClassName),
+			Features:   x.features(s.SubclassFeatures, true, nil),
+			Table:      ftClassTable(s.TableGroups),
 		}
 		p.add(enum.KindSubclass, s.Name, d, featuresSearchText(d.Features))
 	})
@@ -343,7 +384,8 @@ func ftClassTable(groups []ftTableGroup) map[string]map[int]string {
 		for i, row := range rows {
 			for j, cell := range row {
 				v := ftClassCell(cell)
-				if j >= len(g.ColLabels) || v == "" || v == "—" || v == "-" || (prefix != "" && v == "0") {
+				if j >= len(g.ColLabels) || v == "" || v == "—" || v == "-" ||
+					(prefix != "" && v == "0") {
 					continue
 				}
 				col := prefix + plainTags(g.ColLabels[j])

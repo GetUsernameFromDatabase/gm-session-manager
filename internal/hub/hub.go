@@ -180,7 +180,8 @@ func (h *Hub) CloseCharacter(characterID int64) {
 // deleting tab follows its own redirect.
 func (h *Hub) CloseCampaign(campaignID int64) {
 	h.closeMatching(func(c *Client) bool {
-		return c.CampaignID == campaignID && !c.Viewer.IsGM || c.Pending != nil && c.Pending.CampaignID == campaignID
+		return c.CampaignID == campaignID && !c.Viewer.IsGM ||
+			c.Pending != nil && c.Pending.CampaignID == campaignID
 	})
 }
 
@@ -224,7 +225,13 @@ type ClientInfo struct {
 }
 
 func (c *Client) info() ClientInfo {
-	return ClientInfo{SessionID: c.SessionID, CharacterID: c.Viewer.CharacterID, IsGM: c.Viewer.IsGM, UserAgent: c.UserAgent, Since: c.connected}
+	return ClientInfo{
+		SessionID:   c.SessionID,
+		CharacterID: c.Viewer.CharacterID,
+		IsGM:        c.Viewer.IsGM,
+		UserAgent:   c.UserAgent,
+		Since:       c.connected,
+	}
 }
 
 // Close disconnects everyone, for shutdown.
@@ -317,8 +324,15 @@ func (h *Hub) sync(c *Client, epoch string, seq uint64, hello bool) {
 // everyCampaign topics and, for who may add sources, the gmEverywhere ones.
 func (c *Client) receives(campaignID int64, topics []Topic) bool {
 	return c.CampaignID == campaignID ||
-		slices.ContainsFunc(topics, func(t Topic) bool { return slices.Contains(everyCampaign, t.Kind) }) ||
-		perm.CanAddSources(c.Viewer) && slices.ContainsFunc(topics, func(t Topic) bool { return slices.Contains(gmEverywhere, t.Kind) })
+		slices.ContainsFunc(
+			topics,
+			func(t Topic) bool { return slices.Contains(everyCampaign, t.Kind) },
+		) ||
+		perm.CanAddSources(c.Viewer) &&
+			slices.ContainsFunc(
+				topics,
+				func(t Topic) bool { return slices.Contains(gmEverywhere, t.Kind) },
+			)
 }
 
 func (h *Hub) enqueueLocked(c *Client, m message) {

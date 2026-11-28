@@ -26,7 +26,13 @@ import (
 )
 
 // doFile posts a multipart form with one file field.
-func (e testEnv) doFile(t *testing.T, path, cookie string, fields url.Values, fileField, fileName, content string, wrap ...func(io.Reader) io.Reader) *httptest.ResponseRecorder {
+func (e testEnv) doFile(
+	t *testing.T,
+	path, cookie string,
+	fields url.Values,
+	fileField, fileName, content string,
+	wrap ...func(io.Reader) io.Reader,
+) *httptest.ResponseRecorder {
 	t.Helper()
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
@@ -62,7 +68,12 @@ func TestImageAccess(t *testing.T) {
 	player := e.token(t, enum.RolePlayer)
 
 	w := e.doFile(t, route.Path(route.CampaignImages, e.campaignID), gm, url.Values{
-		"name": {"Red dragon"}, "url": {"https://example.com/dragon.png"}, "category": {"Monster"}, "description": {"Secret lair notes"},
+		"name": {
+			"Red dragon",
+		},
+		"url":         {"https://example.com/dragon.png"},
+		"category":    {"Monster"},
+		"description": {"Secret lair notes"},
 	}, "", "", "")
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d %s", w.Code, w.Body)
@@ -83,15 +94,27 @@ func TestImageAccess(t *testing.T) {
 		}
 	}
 
-	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Lore"})
+	note, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Lore"})
 	hidden, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "gm"})
-	shared, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players"})
+	shared, _ := e.q().
+		CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players"})
 	snapshot := func(blockID int64, cookie string) {
 		t.Helper()
 		linkImage(t, e, blockID, img.ID, cookie)
 	}
 
-	if w := e.do(t, http.MethodGet, page, gm, nil, false); !strings.Contains(w.Body.String(), "Hidden from players") {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		page,
+		gm,
+		nil,
+		false,
+	); !strings.Contains(
+		w.Body.String(),
+		"Hidden from players",
+	) {
 		t.Errorf("gm page before any link does not say hidden: %d", w.Code)
 	}
 	snapshot(hidden.ID, gm)
@@ -99,15 +122,18 @@ func TestImageAccess(t *testing.T) {
 		t.Errorf("linked from a gm block: %d", w.Code)
 	}
 	// A player cannot link an image into their own block to see it.
-	own, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Mine", OwnerCharacterID: nullID(e.characterID)})
-	ownBlock, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: own.ID, Visibility: "owner"})
+	own, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Mine", OwnerCharacterID: nullID(e.characterID)})
+	ownBlock, _ := e.q().
+		CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: own.ID, Visibility: "owner"})
 	snapshot(ownBlock.ID, player)
 	if w := e.do(t, http.MethodGet, page, player, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("linked by the player's own snapshot: %d", w.Code)
 	}
 	// In a block both edit, the player's snapshot of a version may land
 	// before the GM's: the GM's link still lands.
-	both, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
+	both, _ := e.q().
+		CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "players", PlayersCanEdit: true})
 	snapshot(both.ID, player)
 	if w := e.do(t, http.MethodGet, page, player, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("linked by the player's snapshot of a shared block: %d", w.Code)
@@ -126,10 +152,28 @@ func TestImageAccess(t *testing.T) {
 			t.Errorf("player page leaks %q", secret)
 		}
 	}
-	if w := e.do(t, http.MethodGet, file, player, nil, false); w.Code != http.StatusFound || w.Header().Get("Location") != "https://example.com/dragon.png" {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		file,
+		player,
+		nil,
+		false,
+	); w.Code != http.StatusFound ||
+		w.Header().Get("Location") != "https://example.com/dragon.png" {
 		t.Errorf("player file: %d %q", w.Code, w.Header().Get("Location"))
 	}
-	if w := e.do(t, http.MethodGet, page, gm, nil, false); !strings.Contains(w.Body.String(), "Seen by all players") {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		page,
+		gm,
+		nil,
+		false,
+	); !strings.Contains(
+		w.Body.String(),
+		"Seen by all players",
+	) {
 		t.Errorf("gm page after a players link does not say seen by all: %d", w.Code)
 	}
 }
@@ -142,10 +186,16 @@ func linkImage(t *testing.T, e testEnv, blockID, imageID int64, cookie string) {
 		"links": []map[string]any{{"type": "image", "id": imageID}},
 	}
 	// The snapshot only lands at a version the block has reached.
-	if err := e.q().SetBlockVersion(t.Context(), sqlc.SetBlockVersionParams{ID: blockID, Version: 1}); err != nil {
+	if err := e.q().
+		SetBlockVersion(t.Context(), sqlc.SetBlockVersionParams{ID: blockID, Version: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if w := e.doJSON(t, route.Path(route.BlockSnapshot, blockID), cookie, snap); w.Code != http.StatusNoContent {
+	if w := e.doJSON(
+		t,
+		route.Path(route.BlockSnapshot, blockID),
+		cookie,
+		snap,
+	); w.Code != http.StatusNoContent {
 		t.Fatalf("snapshot with an image link: %d %s", w.Code, w.Body)
 	}
 }
@@ -157,7 +207,8 @@ func TestImageSeenBy(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	first := e.token(t, enum.RolePlayer)
-	other, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Borin", System: "dnd5e", SheetJson: "{}"})
+	other, err := e.q().
+		CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Borin", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +216,15 @@ func TestImageSeenBy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w := e.doFile(t, route.Path(route.CampaignImages, e.campaignID), gm, url.Values{"name": {"Hidden shrine"}, "url": {"https://example.com/shrine.png"}}, "", "", ""); w.Code != http.StatusSeeOther {
+	if w := e.doFile(
+		t,
+		route.Path(route.CampaignImages, e.campaignID),
+		gm,
+		url.Values{"name": {"Hidden shrine"}, "url": {"https://example.com/shrine.png"}},
+		"",
+		"",
+		"",
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d %s", w.Code, w.Body)
 	}
 	imgs, _ := e.q().ListImages(ctx, sqlc.ListImagesParams{CampaignID: e.campaignID})
@@ -173,19 +232,33 @@ func TestImageSeenBy(t *testing.T) {
 		t.Fatalf("images %+v", imgs)
 	}
 	img := imgs[0]
-	note, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Whispers"})
-	block, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "listed"})
-	if err := e.q().AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: block.ID, CharacterID: e.characterID}); err != nil {
+	note, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Whispers"})
+	block, _ := e.q().
+		CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: "listed"})
+	if err := e.q().
+		AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: block.ID, CharacterID: e.characterID}); err != nil {
 		t.Fatal(err)
 	}
 	linkImage(t, e, block.ID, img.ID, gm)
 
 	body := e.do(t, http.MethodGet, route.Path(route.Image, img.ID), gm, nil, false).Body.String()
 	// Borin is on the page anyway (the look picker), so the line must end at Alice.
-	if !strings.Contains(body, "Seen by Alice</span>") || strings.Contains(body, "Seen by all players") {
+	if !strings.Contains(body, "Seen by Alice</span>") ||
+		strings.Contains(body, "Seen by all players") {
 		t.Errorf("gm page does not name only the audience")
 	}
-	if body := e.do(t, http.MethodGet, route.Path(route.CampaignImages, e.campaignID), gm, nil, false).Body.String(); !strings.Contains(body, "Show Hidden shrine on display, players can see it") {
+	if body := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.CampaignImages, e.campaignID),
+		gm,
+		nil,
+		false,
+	).Body.String(); !strings.Contains(
+		body,
+		"Show Hidden shrine on display, players can see it",
+	) {
 		t.Errorf("gm list does not mark the image as seen")
 	}
 	file := route.Path(route.ImageFile, img.ID)
@@ -197,33 +270,64 @@ func TestImageSeenBy(t *testing.T) {
 	}
 
 	// Linked only from Borin's own block: Borin sees it, the GM is not told.
-	if w := e.doFile(t, route.Path(route.CampaignImages, e.campaignID), gm, url.Values{"name": {"Diary sketch"}, "url": {"https://example.com/sketch.png"}}, "", "", ""); w.Code != http.StatusSeeOther {
+	if w := e.doFile(
+		t,
+		route.Path(route.CampaignImages, e.campaignID),
+		gm,
+		url.Values{"name": {"Diary sketch"}, "url": {"https://example.com/sketch.png"}},
+		"",
+		"",
+		"",
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d %s", w.Code, w.Body)
 	}
 	imgs, _ = e.q().ListImages(ctx, sqlc.ListImagesParams{CampaignID: e.campaignID, Q: "Diary"})
 	if len(imgs) != 1 {
 		t.Fatalf("images %+v", imgs)
 	}
-	diary, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Diary", OwnerCharacterID: nullID(other.ID)})
+	diary, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Diary", OwnerCharacterID: nullID(other.ID)})
 	own, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: diary.ID, Visibility: "owner"})
-	if err := e.q().AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: diary.ID, SourceBlockID: own.ID, TargetImageID: nullID(imgs[0].ID)}); err != nil {
+	if err := e.q().
+		AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: diary.ID, SourceBlockID: own.ID, TargetImageID: nullID(imgs[0].ID)}); err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodGet, route.Path(route.ImageFile, imgs[0].ID), second, nil, false); w.Code != http.StatusFound {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.ImageFile, imgs[0].ID),
+		second,
+		nil,
+		false,
+	); w.Code != http.StatusFound {
 		t.Errorf("owner of the linking block: %d", w.Code)
 	}
-	if body := e.do(t, http.MethodGet, route.Path(route.Image, imgs[0].ID), gm, nil, false).Body.String(); !strings.Contains(body, "Hidden from players") {
+	if body := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.Image, imgs[0].ID),
+		gm,
+		nil,
+		false,
+	).Body.String(); !strings.Contains(
+		body,
+		"Hidden from players",
+	) {
 		t.Errorf("gm page reveals a link from a player's own block")
 	}
 
 	// A link from another campaign's note grants this campaign's players nothing.
-	camp, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Elsewhere", System: "dnd5e", Edition: "2024"})
+	camp, err := e.q().
+		CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Elsewhere", System: "dnd5e", Edition: "2024"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	far, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "Far away"})
-	farBlock, _ := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: far.ID, Visibility: "players"})
-	if err := e.q().AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: far.ID, SourceBlockID: farBlock.ID, TargetImageID: nullID(img.ID)}); err != nil {
+	far, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "Far away"})
+	farBlock, _ := e.q().
+		CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: far.ID, Visibility: "players"})
+	if err := e.q().
+		AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: far.ID, SourceBlockID: farBlock.ID, TargetImageID: nullID(img.ID)}); err != nil {
 		t.Fatal(err)
 	}
 	if w := e.do(t, http.MethodGet, file, second, nil, false); w.Code != http.StatusNotFound {
@@ -235,14 +339,38 @@ func TestImageUploadOnlyPictures(t *testing.T) {
 	e := newTestEnv(t)
 	gm := e.token(t, enum.RoleAdmin)
 	path := route.Path(route.CampaignImages, e.campaignID)
-	if w := e.doFile(t, path, gm, url.Values{"name": {"Notes"}}, "file", "x.png", "<html>not a picture</html>"); w.Code != http.StatusUnprocessableEntity {
+	if w := e.doFile(
+		t,
+		path,
+		gm,
+		url.Values{"name": {"Notes"}},
+		"file",
+		"x.png",
+		"<html>not a picture</html>",
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("html upload: %d", w.Code)
 	}
-	if w := e.doFile(t, path, gm, url.Values{"name": {"Nothing"}}, "", "", ""); w.Code != http.StatusUnprocessableEntity {
+	if w := e.doFile(
+		t,
+		path,
+		gm,
+		url.Values{"name": {"Nothing"}},
+		"",
+		"",
+		"",
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("no link or file: %d", w.Code)
 	}
 	png := "\x89PNG\r\n\x1a\n" + strings.Repeat("\x00", 32)
-	if w := e.doFile(t, path, gm, url.Values{"name": {"Map"}}, "file", "map.png", png); w.Code != http.StatusSeeOther {
+	if w := e.doFile(
+		t,
+		path,
+		gm,
+		url.Values{"name": {"Map"}},
+		"file",
+		"map.png",
+		png,
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("png upload: %d %s", w.Code, w.Body)
 	}
 	imgs, _ := e.q().ListImages(t.Context(), sqlc.ListImagesParams{CampaignID: e.campaignID})
@@ -260,10 +388,21 @@ func TestImageUploadOnlyPictures(t *testing.T) {
 	}
 	// Deleting the image takes its file too (back-dated past the upload guard).
 	old := time.Now().Add(-time.Hour)
-	if err := os.Chtimes(filepath.Join(e.app.attachmentsDir(), files[0].Name()), old, old); err != nil {
+	if err := os.Chtimes(
+		filepath.Join(e.app.attachmentsDir(), files[0].Name()),
+		old,
+		old,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if w := e.do(t, http.MethodPost, route.Path(route.ImageDelete, imgs[0].ID), gm, nil, true); w.Code >= http.StatusMultipleChoices {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		route.Path(route.ImageDelete, imgs[0].ID),
+		gm,
+		nil,
+		true,
+	); w.Code >= http.StatusMultipleChoices {
 		t.Fatalf("delete: %d", w.Code)
 	}
 	if files, _ := os.ReadDir(e.app.attachmentsDir()); len(files) != 0 {
@@ -280,7 +419,15 @@ func TestImageFileCache(t *testing.T) {
 	create := func(name, field, file, content string, form url.Values) sqlc.GetImageRow {
 		t.Helper()
 		form.Set("name", name)
-		if w := e.doFile(t, route.Path(route.CampaignImages, e.campaignID), gm, form, field, file, content); w.Code != http.StatusSeeOther {
+		if w := e.doFile(
+			t,
+			route.Path(route.CampaignImages, e.campaignID),
+			gm,
+			form,
+			field,
+			file,
+			content,
+		); w.Code != http.StatusSeeOther {
 			t.Fatalf("create %s: %d %s", name, w.Code, w.Body)
 		}
 		imgs, _ := e.q().ListImages(ctx, sqlc.ListImagesParams{CampaignID: e.campaignID, Q: name})
@@ -291,15 +438,42 @@ func TestImageFileCache(t *testing.T) {
 		return img
 	}
 	linked := create("Linked", "", "", "", url.Values{"url": {"https://example.com/a.png"}})
-	uploaded := create("Uploaded", "file", "map.png", "\x89PNG\r\n\x1a\n"+strings.Repeat("\x00", 32), url.Values{})
+	uploaded := create(
+		"Uploaded",
+		"file",
+		"map.png",
+		"\x89PNG\r\n\x1a\n"+strings.Repeat("\x00", 32),
+		url.Values{},
+	)
 	oldLink := imageVersion(linked.Url, linked.AttachmentID)
-	relink := url.Values{"name": {"Linked"}, "url": {"https://example.com/b.png"}, "was_name": {"Linked"}, "was_url": {"https://example.com/a.png"}, "was_source": {oldLink}}
-	if w := e.doFile(t, route.Path(route.Image, linked.ID), gm, relink, "", "", ""); w.Code != http.StatusSeeOther {
+	relink := url.Values{
+		"name":       {"Linked"},
+		"url":        {"https://example.com/b.png"},
+		"was_name":   {"Linked"},
+		"was_url":    {"https://example.com/a.png"},
+		"was_source": {oldLink},
+	}
+	if w := e.doFile(
+		t,
+		route.Path(route.Image, linked.ID),
+		gm,
+		relink,
+		"",
+		"",
+		"",
+	); w.Code != http.StatusSeeOther {
 		t.Fatalf("relink: %d", w.Code)
 	}
 	linked, _ = e.q().GetImage(ctx, linked.ID)
 
-	list := e.do(t, http.MethodGet, route.Path(route.CampaignImages, e.campaignID), gm, nil, false).Body.String()
+	list := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.CampaignImages, e.campaignID),
+		gm,
+		nil,
+		false,
+	).Body.String()
 	for _, img := range []sqlc.GetImageRow{linked, uploaded} {
 		if want := imageItem(img).Src(); !strings.Contains(list, want) {
 			t.Errorf("list lacks %s", want)
@@ -318,7 +492,14 @@ func TestImageFileCache(t *testing.T) {
 		{"upload current", uploaded, imageVersion(uploaded.Url, uploaded.AttachmentID), cacheForever},
 		{"upload bare", uploaded, "", cacheAttachment},
 	} {
-		w := e.do(t, http.MethodGet, route.Path(route.ImageFile, tc.img.ID)+"?v="+tc.v, gm, nil, false)
+		w := e.do(
+			t,
+			http.MethodGet,
+			route.Path(route.ImageFile, tc.img.ID)+"?v="+tc.v,
+			gm,
+			nil,
+			false,
+		)
 		if got := w.Header().Get("Cache-Control"); w.Code >= 400 || got != tc.want {
 			t.Errorf("%s: %d %q, want %q", tc.name, w.Code, got, tc.want)
 		}
@@ -353,7 +534,11 @@ func TestAssetCache(t *testing.T) {
 			t.Errorf("%s stale tag: %d", path, w.Code)
 		}
 	}
-	if w := get("/assets/vendor/@floating-ui/core@1.8.0/index.js", ""); w.Code != http.StatusOK || !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
+	if w := get(
+		"/assets/vendor/@floating-ui/core@1.8.0/index.js",
+		"",
+	); w.Code != http.StatusOK ||
+		!strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
 		t.Errorf("vendor: %d %q", w.Code, w.Header().Get("Cache-Control"))
 	}
 }
@@ -365,7 +550,15 @@ func TestImageImport(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	csvFile := "Title,Kind,Image\nMira,Person,https://x.test/mira.png\nOld Tom,person,https://x.test/tom.png\nThe Keep,Area,https://x.test/keep.png\nBroken,Area,not a link\n"
-	w := e.doFile(t, route.Path(route.CampaignImagesImport, e.campaignID), gm, nil, "file", "all.csv", csvFile)
+	w := e.doFile(
+		t,
+		route.Path(route.CampaignImagesImport, e.campaignID),
+		gm,
+		nil,
+		"file",
+		"all.csv",
+		csvFile,
+	)
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("upload: %d %s", w.Code, w.Body)
 	}
@@ -375,19 +568,27 @@ func TestImageImport(t *testing.T) {
 		t.Fatalf("review: %d", w.Code)
 	}
 	// Importing can take a while: the form shows a busy indicator.
-	if !strings.Contains(w.Body.String(), "data-busy") || !strings.Contains(w.Body.String(), `data-slot="spinner"`) {
+	if !strings.Contains(w.Body.String(), "data-busy") ||
+		!strings.Contains(w.Body.String(), `data-slot="spinner"`) {
 		t.Errorf("review has no loading indicator")
 	}
 	// Links can be checked in the browser: one status cell per importable row.
-	if !strings.Contains(w.Body.String(), "data-check-links") || strings.Count(w.Body.String(), "data-link-status") != 3 {
+	if !strings.Contains(w.Body.String(), "data-check-links") ||
+		strings.Count(w.Body.String(), "data-link-status") != 3 {
 		t.Errorf("review has no link check")
 	}
 	// Rows can be filtered by status, and the link check is the primary action.
-	if !strings.Contains(w.Body.String(), `name="filter_status"`) || !strings.Contains(w.Body.String(), "Untick them") {
+	if !strings.Contains(w.Body.String(), `name="filter_status"`) ||
+		!strings.Contains(w.Body.String(), "Untick them") {
 		t.Errorf("rows toolbar misses the status filter or the results line")
 	}
 	form := url.Values{
-		views.ImportColName: {"0"}, views.ImportColLink: {"2"}, views.ImportColCategory: {"1"}, views.ImportColDescription: {"-1"},
+		views.ImportColName: {
+			"0",
+		},
+		views.ImportColLink:        {"2"},
+		views.ImportColCategory:    {"1"},
+		views.ImportColDescription: {"-1"},
 		// "person" is split from "Person"; "Area" is merged into "Person"'s target.
 		views.ImportCatSource: {"Area", "Person", "person"},
 		views.ImportCatTarget: {"Folk", "Folk", "NPC"},
@@ -397,7 +598,8 @@ func TestImageImport(t *testing.T) {
 	// The rows refresh shows each row under its new category.
 	w = e.do(t, http.MethodGet, review+"?"+form.Encode(), gm, nil, true)
 	body := w.Body.String()
-	if !strings.Contains(body, `data-category="=NPC"`) || strings.Contains(body, `data-category="=Area"`) {
+	if !strings.Contains(body, `data-category="=NPC"`) ||
+		strings.Contains(body, `data-category="=Area"`) {
 		t.Errorf("rows do not follow the category targets")
 	}
 	// Merged values are boxed together, and categories sort by name.
@@ -423,7 +625,13 @@ func TestImageImport(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Errorf("import kept after commit: %d", w.Code)
 	}
-	if back := `href="` + route.Path(route.CampaignImagesImport, e.campaignID) + `"`; !strings.Contains(w.Body.String(), back) {
+	if back := `href="` + route.Path(
+		route.CampaignImagesImport,
+		e.campaignID,
+	) + `"`; !strings.Contains(
+		w.Body.String(),
+		back,
+	) {
 		t.Errorf("expired import does not link back to the upload page")
 	}
 }
@@ -445,11 +653,27 @@ func TestImageImportByLink(t *testing.T) {
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("link import: %d %s", w.Code, w.Body)
 	}
-	if w := e.do(t, http.MethodGet, w.Header().Get("Location"), gm, nil, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Mira") {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		w.Header().Get("Location"),
+		gm,
+		nil,
+		false,
+	); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), "Mira") {
 		t.Errorf("review: %d", w.Code)
 	}
 	for _, link := range []string{csvServer.URL + "/missing.csv", "ftp://x.test/a.csv", ""} {
-		if w := e.doFile(t, path, gm, url.Values{"url": {link}}, "", "", ""); w.Code != http.StatusUnprocessableEntity {
+		if w := e.doFile(
+			t,
+			path,
+			gm,
+			url.Values{"url": {link}},
+			"",
+			"",
+			"",
+		); w.Code != http.StatusUnprocessableEntity {
 			t.Errorf("link %q: %d", link, w.Code)
 		}
 	}
@@ -462,16 +686,26 @@ func TestGuessMapping(t *testing.T) {
 		csv  string
 		want views.ImportMapping
 	}{
-		{"header names", "\xef\xbb\xbfname,link,category\na,https://x/a,Person\n", views.ImportMapping{Name: 0, Link: 1, Category: 2, Description: none}},
 		{
-			"links found by their values, columns never reused", "A,B,C,D,E\nBarrel,Person,https://x/b.jpg,,Brilinta\nKeep,Area,https://x/k.jpg,,Brilinta\n",
+			"header names",
+			"\xef\xbb\xbfname,link,category\na,https://x/a,Person\n",
+			views.ImportMapping{Name: 0, Link: 1, Category: 2, Description: none},
+		},
+		{
+			"links found by their values, columns never reused",
+			"A,B,C,D,E\nBarrel,Person,https://x/b.jpg,,Brilinta\nKeep,Area,https://x/k.jpg,,Brilinta\n",
 			views.ImportMapping{Name: 0, Link: 2, Category: none, Description: none},
 		},
 		{
-			"partial header matches", "Picture Link,Title,Kind,Short description\nhttps://x/a,Mira,Person,Innkeeper\n",
+			"partial header matches",
+			"Picture Link,Title,Kind,Short description\nhttps://x/a,Mira,Person,Innkeeper\n",
 			views.ImportMapping{Name: 1, Link: 0, Category: 2, Description: 3},
 		},
-		{"no links still picks a link column", "name,other\nMira,x\n", views.ImportMapping{Name: 0, Link: 1, Category: none, Description: none}},
+		{
+			"no links still picks a link column",
+			"name,other\nMira,x\n",
+			views.ImportMapping{Name: 0, Link: 1, Category: none, Description: none},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -497,9 +731,25 @@ func TestImageImportKeepOnly(t *testing.T) {
 		"Tom,https://x.test/1.png,Other\n" +
 		"Keep,https://x.test/2.png,brilinta\n" +
 		"Inn,https://x.test/3.png,Brilinta\n"
-	w := e.doFile(t, route.Path(route.CampaignImagesImport, e.campaignID), gm, nil, "file", "all.csv", csvFile)
+	w := e.doFile(
+		t,
+		route.Path(route.CampaignImagesImport, e.campaignID),
+		gm,
+		nil,
+		"file",
+		"all.csv",
+		csvFile,
+	)
 	review := w.Header().Get("Location")
-	if w := e.do(t, http.MethodGet, review, gm, nil, false); !strings.Contains(w.Body.String(), "Campaign") || !strings.Contains(w.Body.String(), "Brilinta") {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		review,
+		gm,
+		nil,
+		false,
+	); !strings.Contains(w.Body.String(), "Campaign") ||
+		!strings.Contains(w.Body.String(), "Brilinta") {
 		t.Fatalf("overview misses the Campaign column")
 	}
 	form := url.Values{
@@ -529,7 +779,8 @@ func TestKeepValues(t *testing.T) {
 	rows := [][]string{{"Brilinta"}, {"other"}, {"brilinta"}, {""}, {"Brilinta"}}
 	vals, tooMany := keepValues(rows, 0, map[string]bool{"brilinta": true})
 	got := fmt.Sprint(vals)
-	if want := "[{ 1 false} {Brilinta 2 false} {brilinta 1 true} {other 1 false}]"; tooMany || got != want {
+	if want := "[{ 1 false} {Brilinta 2 false} {brilinta 1 true} {other 1 false}]"; tooMany ||
+		got != want {
 		t.Errorf("values %s, want %s", got, want)
 	}
 	var many [][]string
@@ -576,15 +827,39 @@ func TestImportRowLimits(t *testing.T) {
 	}{
 		{"fits", "Mira", link, "Folk", strings.Repeat("é", maxDescriptionLen), ""},
 		{"long name", strings.Repeat("a", maxNameLen+1), link, "", "", "name too long"},
-		{"long link", "Mira", link + "?" + strings.Repeat("a", maxLinkLen), "", "", "link too long"},
-		{"long description", "Mira", link, "", strings.Repeat("a", maxDescriptionLen+1), "description too long"},
-		{"long category", "Mira", link, strings.Repeat("a", maxCategoryLen+1), "", "category too long"},
+		{
+			"long link",
+			"Mira",
+			link + "?" + strings.Repeat("a", maxLinkLen),
+			"",
+			"",
+			"link too long",
+		},
+		{
+			"long description",
+			"Mira",
+			link,
+			"",
+			strings.Repeat("a", maxDescriptionLen+1),
+			"description too long",
+		},
+		{
+			"long category",
+			"Mira",
+			link,
+			strings.Repeat("a", maxCategoryLen+1),
+			"",
+			"category too long",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
-			imp := csvImport{header: []string{"name", "link", "category", "description"}, rows: [][]string{{tt.title, tt.link, tt.category, tt.description}}}
+			imp := csvImport{
+				header: []string{"name", "link", "category", "description"},
+				rows:   [][]string{{tt.title, tt.link, tt.category, tt.description}},
+			}
 			v := views.ImportView{}
 			buildReview(c, imp, &v)
 			if len(v.Rows) != 1 {
@@ -598,7 +873,14 @@ func TestImportRowLimits(t *testing.T) {
 }
 
 func TestImportCategories(t *testing.T) {
-	rows := []views.ImportRow{{Category: "Person"}, {Category: "person"}, {Category: "PERSON"}, {Category: "PERSON"}, {Category: "Area"}, {}}
+	rows := []views.ImportRow{
+		{Category: "Person"},
+		{Category: "person"},
+		{Category: "PERSON"},
+		{Category: "PERSON"},
+		{Category: "Area"},
+		{},
+	}
 	tests := []struct {
 		name     string
 		existing []sqlc.ImageCategory
@@ -637,7 +919,12 @@ func TestImageNPCLooks(t *testing.T) {
 	newImage := func(campaignID int64, name, desc string) sqlc.Image {
 		t.Helper()
 		img, err := e.q().CreateImage(ctx, sqlc.CreateImageParams{
-			CampaignID: campaignID, Name: name, Url: sql.NullString{String: "https://example.com/" + name + ".png", Valid: true},
+			CampaignID: campaignID,
+			Name:       name,
+			Url: sql.NullString{
+				String: "https://example.com/" + name + ".png",
+				Valid:  true,
+			},
 			Description: desc,
 		})
 		if err != nil {
@@ -645,18 +932,23 @@ func TestImageNPCLooks(t *testing.T) {
 		}
 		return img
 	}
-	travel, gown := newImage(e.campaignID, "travel", "Wears a grey cloak"), newImage(e.campaignID, "gown", "")
+	travel := newImage(e.campaignID, "travel", "Wears a grey cloak")
+	gown := newImage(e.campaignID, "gown", "")
 
 	w := e.do(t, http.MethodPost, route.Path(route.ImageNpc, travel.ID), gm, url.Values{}, true)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("create NPC: %d %s", w.Code, w.Body)
 	}
 	npcs, _ := e.q().ListEntitiesByCampaign(ctx, e.campaignID)
-	if len(npcs) != 1 || npcs[0].Name != "travel" || w.Header().Get("HX-Redirect") != route.Path(route.Entity, npcs[0].ID) {
+	if len(npcs) != 1 || npcs[0].Name != "travel" ||
+		w.Header().Get("HX-Redirect") != route.Path(route.Entity, npcs[0].ID) {
 		t.Fatalf("NPCs %+v, redirect %q", npcs, w.Header().Get("HX-Redirect"))
 	}
 	npc := npcs[0]
-	if !strings.Contains(npc.FieldsJson, `"description":{"value":"Wears a grey cloak","is_revealed":false}`) {
+	if !strings.Contains(
+		npc.FieldsJson,
+		`"description":{"value":"Wears a grey cloak","is_revealed":false}`,
+	) {
 		t.Errorf("fields %s", npc.FieldsJson)
 	}
 	looks := func() string {
@@ -675,24 +967,57 @@ func TestImageNPCLooks(t *testing.T) {
 		t.Fatalf("looks after create: %s", got)
 	}
 	base := route.Path(route.EntityImages, npc.ID)
-	if w := e.do(t, http.MethodPost, base, gm, url.Values{"image": {fmt.Sprint(gown.ID)}}, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		base,
+		gm,
+		url.Values{"image": {fmt.Sprint(gown.ID)}},
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("add look: %d %s", w.Code, w.Body)
 	}
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("%s/%d/current", base, gown.ID), gm, nil, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		fmt.Sprintf("%s/%d/current", base, gown.ID),
+		gm,
+		nil,
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("make current: %d %s", w.Code, w.Body)
 	}
 	if got := looks(); got != "gown:true:false travel:false:false" {
 		t.Fatalf("looks after switch: %s", got)
 	}
-	other, _ := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Elsewhere", System: "dnd5e"})
-	if w := e.do(t, http.MethodPost, base, gm, url.Values{"image": {fmt.Sprint(newImage(other.ID, "stray", "").ID)}}, true); w.Code != http.StatusUnprocessableEntity {
+	other, _ := e.q().
+		CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Elsewhere", System: "dnd5e"})
+	if w := e.do(
+		t,
+		http.MethodPost,
+		base,
+		gm,
+		url.Values{"image": {fmt.Sprint(newImage(other.ID, "stray", "").ID)}},
+		true,
+	); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("another campaign's image: %d", w.Code)
 	}
-	if w := e.do(t, http.MethodGet, route.Path(route.Image, gown.ID), gm, nil, false); !strings.Contains(w.Body.String(), route.Path(route.Entity, npc.ID)) {
+	if w := e.do(
+		t,
+		http.MethodGet,
+		route.Path(route.Image, gown.ID),
+		gm,
+		nil,
+		false,
+	); !strings.Contains(
+		w.Body.String(),
+		route.Path(route.Entity, npc.ID),
+	) {
 		t.Error("image page does not mention the NPC")
 	}
 
-	if err := e.q().UpdateEntity(ctx, sqlc.UpdateEntityParams{ID: npc.ID, Name: npc.Name, IsRevealed: true, FieldsJson: npc.FieldsJson}); err != nil {
+	if err := e.q().
+		UpdateEntity(ctx, sqlc.UpdateEntityParams{ID: npc.ID, Name: npc.Name, IsRevealed: true, FieldsJson: npc.FieldsJson}); err != nil {
 		t.Fatal(err)
 	}
 	page, file := route.Path(route.Entity, npc.ID), route.Path(route.ImageFile, gown.ID)
@@ -700,19 +1025,51 @@ func TestImageNPCLooks(t *testing.T) {
 	if w := e.do(t, http.MethodGet, file, player, nil, false); w.Code != http.StatusNotFound {
 		t.Errorf("hidden look file: %d", w.Code)
 	}
-	if body := e.do(t, http.MethodGet, page, player, nil, false).Body.String(); strings.Contains(body, src) || strings.Contains(body, "grey cloak") {
+	if body := e.do(
+		t,
+		http.MethodGet,
+		page,
+		player,
+		nil,
+		false,
+	).Body.String(); strings.Contains(body, src) ||
+		strings.Contains(body, "grey cloak") {
 		t.Error("player NPC page leaks a hidden look or field")
 	}
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("%s/%d/reveal", base, gown.ID), gm, nil, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		fmt.Sprintf("%s/%d/reveal", base, gown.ID),
+		gm,
+		nil,
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("reveal: %d %s", w.Code, w.Body)
 	}
 	if w := e.do(t, http.MethodGet, file, player, nil, false); w.Code != http.StatusFound {
 		t.Errorf("revealed look file: %d", w.Code)
 	}
-	if body := e.do(t, http.MethodGet, page, player, nil, false).Body.String(); !strings.Contains(body, src) {
+	if body := e.do(
+		t,
+		http.MethodGet,
+		page,
+		player,
+		nil,
+		false,
+	).Body.String(); !strings.Contains(
+		body,
+		src,
+	) {
 		t.Error("player NPC page misses the revealed look")
 	}
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("%s/%d/unlink", base, gown.ID), gm, nil, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		fmt.Sprintf("%s/%d/unlink", base, gown.ID),
+		gm,
+		nil,
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("unlink: %d %s", w.Code, w.Body)
 	}
 	if w := e.do(t, http.MethodGet, file, player, nil, false); w.Code != http.StatusNotFound {
@@ -727,7 +1084,8 @@ func TestCharacterLooks(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	alice := e.token(t, enum.RolePlayer)
-	other, err := e.q().CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
+	other, err := e.q().
+		CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: e.campaignID, Name: "Bob", System: "dnd5e", SheetJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -738,7 +1096,15 @@ func TestCharacterLooks(t *testing.T) {
 	add := route.Path(route.CharacterImages, e.characterID)
 	addLook := func(cookie, name string) *httptest.ResponseRecorder {
 		t.Helper()
-		return e.doFile(t, add, cookie, url.Values{"name": {name}, "url": {"https://example.com/" + name + ".png"}}, "", "", "")
+		return e.doFile(
+			t,
+			add,
+			cookie,
+			url.Values{"name": {name}, "url": {"https://example.com/" + name + ".png"}},
+			"",
+			"",
+			"",
+		)
 	}
 	for _, name := range []string{"travel", "disguise"} {
 		if w := addLook(alice, name); w.Code >= 400 {
@@ -759,7 +1125,14 @@ func TestCharacterLooks(t *testing.T) {
 		if w := addLook(cookie, "intruder"); w.Code != http.StatusForbidden {
 			t.Errorf("someone else adds a look: %d", w.Code)
 		}
-		if w := e.do(t, http.MethodPost, fmt.Sprintf("%s/%d/reveal", add, ids["disguise"]), cookie, nil, false); w.Code != http.StatusForbidden {
+		if w := e.do(
+			t,
+			http.MethodPost,
+			fmt.Sprintf("%s/%d/reveal", add, ids["disguise"]),
+			cookie,
+			nil,
+			false,
+		); w.Code != http.StatusForbidden {
 			t.Errorf("someone else reveals a look: %d", w.Code)
 		}
 	}
@@ -774,23 +1147,51 @@ func TestCharacterLooks(t *testing.T) {
 	}
 
 	// Bob sees Alice's current look in their fight, while it is revealed.
-	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	enc, _ := e.q().
+		CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
 	for _, ch := range []int64{e.characterID, other.ID} {
-		if _, err := e.q().CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, CharacterID: nullID(ch), Name: "pc"}); err != nil {
+		if _, err := e.q().
+			CreateCombatant(ctx, sqlc.CreateCombatantParams{EncounterID: enc.ID, CharacterID: nullID(ch), Name: "pc"}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
+	if err := e.q().
+		UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
 		t.Fatal(err)
 	}
 	combat := route.Path(route.CampaignCombat, e.campaignID)
-	if body := e.do(t, http.MethodGet, combat, bob, nil, false).Body.String(); !strings.Contains(body, file("travel")+"?v=") {
+	if body := e.do(
+		t,
+		http.MethodGet,
+		combat,
+		bob,
+		nil,
+		false,
+	).Body.String(); !strings.Contains(
+		body,
+		file("travel")+"?v=",
+	) {
 		t.Error("combat misses the revealed portrait")
 	}
-	if w := e.do(t, http.MethodPost, fmt.Sprintf("%s/%d/current", add, ids["disguise"]), alice, nil, true); w.Code != http.StatusOK {
+	if w := e.do(
+		t,
+		http.MethodPost,
+		fmt.Sprintf("%s/%d/current", add, ids["disguise"]),
+		alice,
+		nil,
+		true,
+	); w.Code != http.StatusOK {
 		t.Fatalf("make current: %d %s", w.Code, w.Body)
 	}
-	if body := e.do(t, http.MethodGet, combat, bob, nil, false).Body.String(); strings.Contains(body, file("disguise")) || strings.Contains(body, file("travel")) {
+	if body := e.do(
+		t,
+		http.MethodGet,
+		combat,
+		bob,
+		nil,
+		false,
+	).Body.String(); strings.Contains(body, file("disguise")) ||
+		strings.Contains(body, file("travel")) {
 		t.Error("combat shows a hidden or former portrait")
 	}
 
@@ -804,18 +1205,28 @@ func TestCharacterLooks(t *testing.T) {
 	if npcs, _ := e.q().ListEntitiesByCampaign(ctx, e.campaignID); len(npcs) != 0 {
 		t.Errorf("refused NPC was created: %+v", npcs)
 	}
-	mask, _ := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "mask", Url: sql.NullString{String: "https://example.com/mask.png", Valid: true}})
+	mask, _ := e.q().
+		CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "mask", Url: sql.NullString{String: "https://example.com/mask.png", Valid: true}})
 	if code := bind(mask.ID, url.Values{}); code != http.StatusNoContent {
 		t.Fatalf("NPC from mask: %d", code)
 	}
-	if code := bind(mask.ID, url.Values{"character": {fmt.Sprint(other.ID)}}); code != http.StatusUnprocessableEntity {
+	if code := bind(
+		mask.ID,
+		url.Values{"character": {fmt.Sprint(other.ID)}},
+	); code != http.StatusUnprocessableEntity {
 		t.Errorf("character from an NPC's look: %d", code)
 	}
-	free, _ := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "free", Url: sql.NullString{String: "https://example.com/free.png", Valid: true}})
-	if code := bind(free.ID, url.Values{"character": {fmt.Sprint(other.ID)}}); code != http.StatusNoContent {
+	free, _ := e.q().
+		CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "free", Url: sql.NullString{String: "https://example.com/free.png", Valid: true}})
+	if code := bind(
+		free.ID,
+		url.Values{"character": {fmt.Sprint(other.ID)}},
+	); code != http.StatusNoContent {
 		t.Fatalf("give to Bob: %d", code)
 	}
-	if rows, _ := e.q().ListCharacterImages(ctx, other.ID); len(rows) != 1 || !rows[0].IsCurrent || !rows[0].IsRevealed {
+	if rows, _ := e.q().
+		ListCharacterImages(ctx, other.ID); len(rows) != 1 || !rows[0].IsCurrent ||
+		!rows[0].IsRevealed {
 		t.Errorf("Bob's looks %+v", rows)
 	}
 }
@@ -827,12 +1238,16 @@ func TestEntityFieldLinks(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	player := e.token(t, enum.RolePlayer)
-	tavern, _ := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "Tavern", Url: sql.NullString{String: "https://example.com/tavern.png", Valid: true}})
-	plans, _ := e.q().CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Secret plans"})
-	if _, err := e.q().CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: plans.ID, Visibility: "gm"}); err != nil {
+	tavern, _ := e.q().
+		CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "Tavern", Url: sql.NullString{String: "https://example.com/tavern.png", Valid: true}})
+	plans, _ := e.q().
+		CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: e.campaignID, Kind: "generic", Title: "Secret plans"})
+	if _, err := e.q().
+		CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: plans.ID, Visibility: "gm"}); err != nil {
 		t.Fatal(err)
 	}
-	npc, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: "{}"})
+	npc, _ := e.q().
+		CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: "{}"})
 	page, file := route.Path(route.Entity, npc.ID), route.Path(route.ImageFile, tavern.ID)
 	post := func(path string, form url.Values) {
 		t.Helper()
@@ -863,14 +1278,26 @@ func TestEntityFieldLinks(t *testing.T) {
 		t.Errorf("image from a revealed field: %d", w.Code)
 	}
 	body := e.do(t, http.MethodGet, page, player, nil, false).Body.String()
-	if !strings.Contains(body, `href="`+route.Path(route.Image, tavern.ID)+`"`) || !strings.Contains(body, `src="`+route.Path(route.ImageFile, tavern.ID)+`"`) {
+	if !strings.Contains(body, `href="`+route.Path(route.Image, tavern.ID)+`"`) ||
+		!strings.Contains(body, `src="`+route.Path(route.ImageFile, tavern.ID)+`"`) {
 		t.Error("player page misses the image link")
 	}
-	if strings.Contains(body, `href="`+route.Path(route.Note, plans.ID)+`"`) || !strings.Contains(body, "Secret plans") {
+	if strings.Contains(body, `href="`+route.Path(route.Note, plans.ID)+`"`) ||
+		!strings.Contains(body, "Secret plans") {
 		t.Error("a note the player cannot read should show as its label only")
 	}
 	for _, path := range []string{route.Path(route.Image, tavern.ID), route.Path(route.Note, plans.ID)} {
-		if body := e.do(t, http.MethodGet, path, gm, nil, false).Body.String(); !strings.Contains(body, page) {
+		if body := e.do(
+			t,
+			http.MethodGet,
+			path,
+			gm,
+			nil,
+			false,
+		).Body.String(); !strings.Contains(
+			body,
+			page,
+		) {
 			t.Errorf("%s does not mention the NPC", path)
 		}
 	}
@@ -888,21 +1315,27 @@ func TestCombatNPCPortrait(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	player := e.token(t, enum.RolePlayer)
-	npc, _ := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: "{}"})
-	mask, _ := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "mask", Url: sql.NullString{String: "https://example.com/mask.png", Valid: true}})
-	if err := e.q().LinkEntityImage(ctx, sqlc.LinkEntityImageParams{EntityID: npc.ID, ImageID: mask.ID}); err != nil {
+	npc, _ := e.q().
+		CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Mira", FieldsJson: "{}"})
+	mask, _ := e.q().
+		CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "mask", Url: sql.NullString{String: "https://example.com/mask.png", Valid: true}})
+	if err := e.q().
+		LinkEntityImage(ctx, sqlc.LinkEntityImageParams{EntityID: npc.ID, ImageID: mask.ID}); err != nil {
 		t.Fatal(err)
 	}
-	enc, _ := e.q().CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
+	enc, _ := e.q().
+		CreateEncounter(ctx, sqlc.CreateEncounterParams{CampaignID: e.campaignID, Name: "Ambush"})
 	for _, cb := range []sqlc.CreateCombatantParams{{EncounterID: enc.ID, EntityID: nullID(npc.ID), Name: "Mira"}, {EncounterID: enc.ID, CharacterID: nullID(e.characterID), Name: "pc"}} {
 		if _, err := e.q().CreateCombatant(ctx, cb); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := e.q().UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
+	if err := e.q().
+		UpdateEncounterState(ctx, sqlc.UpdateEncounterStateParams{ID: enc.ID, Status: "active", Round: 1}); err != nil {
 		t.Fatal(err)
 	}
-	combat, src := fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, e.campaignID), enc.ID), route.Path(route.ImageFile, mask.ID)
+	combat := fmt.Sprintf("%s?encounter=%d", route.Path(route.CampaignCombat, e.campaignID), enc.ID)
+	src := route.Path(route.ImageFile, mask.ID)
 	for _, tt := range []struct {
 		name                      string
 		npcRevealed, lookRevealed bool
@@ -915,15 +1348,21 @@ func TestCombatNPCPortrait(t *testing.T) {
 		{"player sees a revealed look", true, true, player, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := e.q().UpdateEntity(ctx, sqlc.UpdateEntityParams{ID: npc.ID, Name: npc.Name, IsRevealed: tt.npcRevealed, FieldsJson: "{}"}); err != nil {
+			if err := e.q().
+				UpdateEntity(ctx, sqlc.UpdateEntityParams{ID: npc.ID, Name: npc.Name, IsRevealed: tt.npcRevealed, FieldsJson: "{}"}); err != nil {
 				t.Fatal(err)
 			}
-			if looks, _ := e.q().ListEntityImages(ctx, npc.ID); looks[0].IsRevealed != tt.lookRevealed {
-				if err := e.q().ToggleEntityImageRevealed(ctx, sqlc.ToggleEntityImageRevealedParams{EntityID: npc.ID, ImageID: mask.ID}); err != nil {
+			if looks, _ := e.q().
+				ListEntityImages(ctx, npc.ID); looks[0].IsRevealed != tt.lookRevealed {
+				if err := e.q().
+					ToggleEntityImageRevealed(ctx, sqlc.ToggleEntityImageRevealedParams{EntityID: npc.ID, ImageID: mask.ID}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if got := strings.Contains(e.do(t, http.MethodGet, combat, tt.cookie, nil, false).Body.String(), src); got != tt.want {
+			if got := strings.Contains(
+				e.do(t, http.MethodGet, combat, tt.cookie, nil, false).Body.String(),
+				src,
+			); got != tt.want {
 				t.Errorf("portrait shown = %v, want %v", got, tt.want)
 			}
 		})
@@ -938,7 +1377,8 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	ctx := t.Context()
 	gm := e.token(t, enum.RoleAdmin)
 	const link = "https://example.com/camp.png"
-	img, err := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "Camp", Url: nullString(link), Description: "Smoky"})
+	img, err := e.q().
+		CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: "Camp", Url: nullString(link), Description: "Smoky"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -953,13 +1393,23 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	// opened is the editor as a page loaded it with these stored values.
 	opened := func(name, description, source string) url.Values {
 		return url.Values{
-			"name": {name}, "url": {link}, "category": {""}, "description": {description},
-			"was_name": {name}, "was_url": {link}, "was_category": {""}, "was_description": {description}, "was_source": {source},
+			"name":        {name},
+			"url":         {link},
+			"category":    {""},
+			"description": {description},
+			"was_name": {
+				name,
+			},
+			"was_url":         {link},
+			"was_category":    {""},
+			"was_description": {description},
+			"was_source":      {source},
 		}
 	}
 	other := func(name, link, description string) {
 		t.Helper()
-		if err := e.q().UpdateImage(ctx, sqlc.UpdateImageParams{ID: img.ID, Name: name, Url: nullString(link), Description: description}); err != nil {
+		if err := e.q().
+			UpdateImage(ctx, sqlc.UpdateImageParams{ID: img.ID, Name: name, Url: nullString(link), Description: description}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -979,14 +1429,24 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	if w := e.doFile(t, path, gm, form, "", "", ""); w.Code != http.StatusSeeOther {
 		t.Fatalf("rename: %d %s", w.Code, w.Body)
 	}
-	if got := stored(); got.Name != "Old camp" || got.Description != "Burned down" || got.Url.String != link {
+	if got := stored(); got.Name != "Old camp" || got.Description != "Burned down" ||
+		got.Url.String != link {
 		t.Errorf("after rename %+v", got)
 	}
 
 	// Both changed the description: refused, the other device's text stays.
 	form = opened("Old camp", "Smoky", version)
 	form.Set("description", "Rebuilt")
-	if w := e.doFile(t, path, gm, form, "", "", ""); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "description") {
+	if w := e.doFile(
+		t,
+		path,
+		gm,
+		form,
+		"",
+		"",
+		"",
+	); w.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(w.Body.String(), "description") {
 		t.Errorf("description conflict: %d %s", w.Code, w.Body)
 	}
 	if got := stored(); got.Description != "Burned down" {
@@ -1009,9 +1469,19 @@ func TestImageEditorKeepsOtherChanges(t *testing.T) {
 	other("Old camp", "https://example.com/ruins.png", "Line one\nLine two")
 	ruins := stored()
 	form = url.Values{
-		"name": {"Old camp"}, "url": {"https://example.com/ruins.png"}, "category": {""}, "description": {"Line one\r\nLine 2"},
-		"was_name": {"Old camp"}, "was_url": {"https://example.com/ruins.png"}, "was_category": {""}, "was_description": {"Line one\r\nLine two"},
-		"was_source": {imageVersion(ruins.Url, ruins.AttachmentID)},
+		"name": {
+			"Old camp",
+		},
+		"url":         {"https://example.com/ruins.png"},
+		"category":    {""},
+		"description": {"Line one\r\nLine 2"},
+		"was_name": {
+			"Old camp",
+		},
+		"was_url":         {"https://example.com/ruins.png"},
+		"was_category":    {""},
+		"was_description": {"Line one\r\nLine two"},
+		"was_source":      {imageVersion(ruins.Url, ruins.AttachmentID)},
 	}
 	if w := e.doFile(t, path, gm, form, "", "", ""); w.Code != http.StatusSeeOther {
 		t.Fatalf("multi-line description: %d %s", w.Code, w.Body)
@@ -1057,7 +1527,8 @@ func TestImageSearchLiteral(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
 	for _, name := range []string{"50% off", "500 gold", "a_b", "axb", `back\slash`} {
-		if _, err := e.q().CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: name, Url: sql.NullString{String: "https://example.com/x.png", Valid: true}}); err != nil {
+		if _, err := e.q().
+			CreateImage(ctx, sqlc.CreateImageParams{CampaignID: e.campaignID, Name: name, Url: sql.NullString{String: "https://example.com/x.png", Valid: true}}); err != nil {
 			t.Fatal(err)
 		}
 	}

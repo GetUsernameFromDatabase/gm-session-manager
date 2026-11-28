@@ -23,9 +23,18 @@ import (
 // withSubclass adds the features of the class's subclass named name (the
 // sheet's, or the one being chosen in campaignID) to info; an unknown name
 // adds none.
-func (a *App) withSubclass(ctx context.Context, info *dnd5e.ClassInfo, sheet dnd5e.Sheet, name string, campaignID int64) error {
+func (a *App) withSubclass(
+	ctx context.Context,
+	info *dnd5e.ClassInfo,
+	sheet dnd5e.Sheet,
+	name string,
+	campaignID int64,
+) error {
 	var cl dnd5e.ClassLevel
-	if i := slices.IndexFunc(sheet.Classes, func(c dnd5e.ClassLevel) bool { return c.Slug == info.Slug }); i >= 0 {
+	if i := slices.IndexFunc(
+		sheet.Classes,
+		func(c dnd5e.ClassLevel) bool { return c.Slug == info.Slug },
+	); i >= 0 {
 		cl = sheet.Classes[i]
 	}
 	if name == "" {
@@ -52,11 +61,21 @@ func (a *App) withSubclass(ctx context.Context, info *dnd5e.ClassInfo, sheet dnd
 // name: the sheet's pin when it is cl's subclass, else found among those
 // campaignID allows (0: all; "" for none). A subclass only an unticked
 // source has is a userError.
-func subclassRef(ctx context.Context, q *sqlc.Queries, classSlug string, cl dnd5e.ClassLevel, name string, campaignID int64) (slug, pin string, err error) {
+func subclassRef(
+	ctx context.Context,
+	q *sqlc.Queries,
+	classSlug string,
+	cl dnd5e.ClassLevel,
+	name string,
+	campaignID int64,
+) (slug, pin string, err error) {
 	if cl.SubclassSlug != "" && (name == cl.SubclassSlug || strings.EqualFold(name, cl.Subclass)) {
 		return cl.SubclassSlug, cl.SubclassSource, nil
 	}
-	subs, err := q.ListSubclassesOf(ctx, sqlc.ListSubclassesOfParams{ClassSlug: classSlug, CampaignID: campaignID})
+	subs, err := q.ListSubclassesOf(
+		ctx,
+		sqlc.ListSubclassesOfParams{ClassSlug: classSlug, CampaignID: campaignID},
+	)
 	if err != nil {
 		return "", "", err
 	}
@@ -74,10 +93,16 @@ func subclassRef(ctx context.Context, q *sqlc.Queries, classSlug string, cl dnd5
 // subclassIndex finds v in subs by slug (the picker's value: two sources may
 // name a subclass alike), else by name (typed commands), or -1.
 func subclassIndex(subs []sqlc.ListSubclassesOfRow, v string) int {
-	if i := slices.IndexFunc(subs, func(s sqlc.ListSubclassesOfRow) bool { return s.Slug == v }); i >= 0 {
+	if i := slices.IndexFunc(
+		subs,
+		func(s sqlc.ListSubclassesOfRow) bool { return s.Slug == v },
+	); i >= 0 {
 		return i
 	}
-	return slices.IndexFunc(subs, func(s sqlc.ListSubclassesOfRow) bool { return strings.EqualFold(s.Name, v) })
+	return slices.IndexFunc(
+		subs,
+		func(s sqlc.ListSubclassesOfRow) bool { return strings.EqualFold(s.Name, v) },
+	)
 }
 
 // subclassOptions are the picker's choices; a name two rows share is
@@ -86,7 +111,10 @@ func subclassOptions(subs []sqlc.ListSubclassesOfRow) []views.Option {
 	out := make([]views.Option, 0, len(subs))
 	for _, s := range subs {
 		name := s.Name
-		if slices.ContainsFunc(subs, func(o sqlc.ListSubclassesOfRow) bool { return o.Slug != s.Slug && strings.EqualFold(o.Name, s.Name) }) {
+		if slices.ContainsFunc(
+			subs,
+			func(o sqlc.ListSubclassesOfRow) bool { return o.Slug != s.Slug && strings.EqualFold(o.Name, s.Name) },
+		) {
 			name += " · " + s.SourceKey
 		}
 		out = append(out, views.Option{Slug: s.Slug, Name: name, Source: s.SourceKey})
@@ -101,7 +129,8 @@ func setSubclass(info *dnd5e.ClassInfo, row sqlc.CompendiumEntry) error {
 	if err != nil {
 		return err
 	}
-	if sub.Caster != "" && sub.Caster != dnd5e.CasterNone && (info.Caster == "" || info.Caster == dnd5e.CasterNone) {
+	if sub.Caster != "" && sub.Caster != dnd5e.CasterNone &&
+		(info.Caster == "" || info.Caster == dnd5e.CasterNone) {
 		info.Caster = sub.Caster
 	}
 	info.SubclassFeatures = classFeatures(sub)
@@ -119,9 +148,15 @@ func subclassPanels(rows []sqlc.ListSubclassesOfRow) ([]views.SubclassPanel, err
 		}
 		p := views.SubclassPanel{Slug: r.Slug, Name: r.Name, Source: r.SourceKey}
 		for _, f := range d.Features {
-			p.Features = append(p.Features, views.SubclassFeature{Name: f.Name, Desc: f.Desc, Levels: f.Levels})
+			p.Features = append(
+				p.Features,
+				views.SubclassFeature{Name: f.Name, Desc: f.Desc, Levels: f.Levels},
+			)
 		}
-		slices.SortStableFunc(p.Features, func(a, b views.SubclassFeature) int { return cmp.Compare(a.FirstLevel(), b.FirstLevel()) })
+		slices.SortStableFunc(
+			p.Features,
+			func(a, b views.SubclassFeature) int { return cmp.Compare(a.FirstLevel(), b.FirstLevel()) },
+		)
 		out = append(out, p)
 	}
 	return out, nil
@@ -155,19 +190,30 @@ func (a *App) subclassChangeForm(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	i := slices.IndexFunc(sheet.Classes, func(cl dnd5e.ClassLevel) bool { return cl.Slug == c.Query("class") })
+	i := slices.IndexFunc(
+		sheet.Classes,
+		func(cl dnd5e.ClassLevel) bool { return cl.Slug == c.Query("class") },
+	)
 	if i < 0 || sheet.Classes[i].Subclass == "" {
 		a.fail(c, http.StatusNotFound, "That class has no subclass to change.")
 		return nil
 	}
 	cl := sheet.Classes[i]
-	subs, err := a.Store.ListSubclassesOf(c.Request.Context(), sqlc.ListSubclassesOfParams{ClassSlug: cl.Slug, CampaignID: ch.CampaignID})
+	subs, err := a.Store.ListSubclassesOf(
+		c.Request.Context(),
+		sqlc.ListSubclassesOfParams{ClassSlug: cl.Slug, CampaignID: ch.CampaignID},
+	)
 	if err != nil {
 		return err
 	}
 	v := views.SubclassChangeView{
-		CharacterID: ch.ID, Class: cl.Slug, ClassName: cl.Name, Level: cl.Level, Subclasses: subclassOptions(subs),
-		Current: cl.Subclass, CurrentSlug: cmp.Or(cl.SubclassSlug, compendium.Slugify(cl.Subclass)),
+		CharacterID: ch.ID,
+		Class:       cl.Slug,
+		ClassName:   cl.Name,
+		Level:       cl.Level,
+		Subclasses:  subclassOptions(subs),
+		Current:     cl.Subclass,
+		CurrentSlug: cmp.Or(cl.SubclassSlug, compendium.Slugify(cl.Subclass)),
 	}
 	if v.Panels, err = subclassPanels(subs); err != nil {
 		return err
@@ -189,7 +235,10 @@ func (a *App) changeSubclass(c *gin.Context) error {
 		return nil
 	}
 	ctx := c.Request.Context()
-	subs, err := a.Store.ListSubclassesOf(ctx, sqlc.ListSubclassesOfParams{ClassSlug: f.Class, CampaignID: ch.CampaignID})
+	subs, err := a.Store.ListSubclassesOf(
+		ctx,
+		sqlc.ListSubclassesOfParams{ClassSlug: f.Class, CampaignID: ch.CampaignID},
+	)
 	if err != nil {
 		return err
 	}

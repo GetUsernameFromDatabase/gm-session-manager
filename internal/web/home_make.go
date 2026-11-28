@@ -78,7 +78,9 @@ func (a *App) homeMakeCopy(c *gin.Context) error {
 		}
 	}()
 	lookFiles, blockFiles, err := a.saveHomeFiles(th, func(zipName string) ([]byte, error) {
-		return os.ReadFile(filepath.Join(a.attachmentsDir(), path.Base(zipName))) //nolint:gosec // our random file name, kept inside attachmentsDir by Base
+		return os.ReadFile(
+			filepath.Join(a.attachmentsDir(), path.Base(zipName)),
+		) //nolint:gosec // our random file name, kept inside attachmentsDir by Base
 	}, &saved)
 	if err != nil {
 		return err
@@ -144,11 +146,22 @@ func (a *App) homeFallback(c *gin.Context) error {
 			return err
 		}
 		for _, l := range levelUps {
-			if _, err := q.CreateLevelUpAt(ctx, sqlc.CreateLevelUpAtParams{CharacterID: fb.ID, MaxHp: l.MaxHp, SheetJson: l.SheetJson, CreatedAt: l.CreatedAt}); err != nil {
+			if _, err := q.CreateLevelUpAt(
+				ctx,
+				sqlc.CreateLevelUpAtParams{
+					CharacterID: fb.ID,
+					MaxHp:       l.MaxHp,
+					SheetJson:   l.SheetJson,
+					CreatedAt:   l.CreatedAt,
+				},
+			); err != nil {
 				return err
 			}
 		}
-		return q.SetHomeCopyFallback(ctx, sqlc.SetHomeCopyFallbackParams{FallbackCharacterID: nullID(fb.ID), CharacterID: id})
+		return q.SetHomeCopyFallback(
+			ctx,
+			sqlc.SetHomeCopyFallbackParams{FallbackCharacterID: nullID(fb.ID), CharacterID: id},
+		)
 	})
 	if err != nil {
 		return err
@@ -185,7 +198,15 @@ func (a *App) homeNew(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		ch, err = q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: campaignID, Name: name, System: gameSystem, SheetJson: sheet})
+		ch, err = q.CreateCharacterWithSheet(
+			ctx,
+			sqlc.CreateCharacterWithSheetParams{
+				CampaignID: campaignID,
+				Name:       name,
+				System:     gameSystem,
+				SheetJson:  sheet,
+			},
+		)
 		return err
 	})
 	if err != nil {

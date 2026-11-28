@@ -95,7 +95,10 @@ func (a *App) dropSession(c *gin.Context) error {
 	a.Hub.CloseSession(sess.ID)
 	a.reqs.forget(sessionKey(*sess))
 	if w.character != nil {
-		a.Hub.Publish(w.character.CampaignID, hub.Topic{Kind: hub.TopicCampaign, ID: w.character.CampaignID})
+		a.Hub.Publish(
+			w.character.CampaignID,
+			hub.Topic{Kind: hub.TopicCampaign, ID: w.character.CampaignID},
+		)
 	}
 	return nil
 }
@@ -132,7 +135,13 @@ func (a *App) homePage(c *gin.Context) error {
 		if isFallback[r.ID] {
 			continue // listed under its character
 		}
-		v := views.HomeCopyView{CharacterID: r.ID, CampaignID: r.CampaignID, Name: r.Name, Campaign: r.CampaignName, Current: w.character != nil && w.character.ID == r.ID}
+		v := views.HomeCopyView{
+			CharacterID: r.ID,
+			CampaignID:  r.CampaignID,
+			Name:        r.Name,
+			Campaign:    r.CampaignName,
+			Current:     w.character != nil && w.character.ID == r.ID,
+		}
 		if r.ManifestJson == "" {
 			onlyHere = append(onlyHere, v)
 			continue
@@ -143,7 +152,11 @@ func (a *App) homePage(c *gin.Context) error {
 		}
 		v.FromTable, v.TakenAt = true, m.CreatedAt
 		if fb, ok := byID[r.FallbackCharacterID.Int64]; r.FallbackCharacterID.Valid && ok {
-			v.Fallback = &views.HomeFallbackView{CharacterID: fb.ID, Name: fb.Name, Current: w.character != nil && w.character.ID == fb.ID}
+			v.Fallback = &views.HomeFallbackView{
+				CharacterID: fb.ID,
+				Name:        fb.Name,
+				Current:     w.character != nil && w.character.ID == fb.ID,
+			}
 		} else if v.HomeSources, err = homeBuildSources(r.SheetJson, keys); err != nil {
 			return err
 		}
@@ -153,7 +166,17 @@ func (a *App) homePage(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.render(c, http.StatusOK, views.HomePage(a.layout(w, "Characters", views.NavAtHome, nil, false), table, onlyHere, starters, a.handoffView()))
+	a.render(
+		c,
+		http.StatusOK,
+		views.HomePage(
+			a.layout(w, "Characters", views.NavAtHome, nil, false),
+			table,
+			onlyHere,
+			starters,
+			a.handoffView(),
+		),
+	)
 	return nil
 }
 
@@ -195,7 +218,11 @@ func (a *App) checkTakeHome(file *export.TakeHomeFile) (export.CharacterFile, er
 	}
 	cf, err := checkFileContent(file)
 	if errors.Is(err, errNewerSheet) {
-		return cf, userf("This file comes from a newer app (%s); this player app is %s. Get the matching app from your GM.", m.AppVersion, a.Version)
+		return cf, userf(
+			"This file comes from a newer app (%s); this player app is %s. Get the matching app from your GM.",
+			m.AppVersion,
+			a.Version,
+		)
 	}
 	return cf, err
 }
@@ -221,7 +248,12 @@ func checkFileContent(file *export.TakeHomeFile) (export.CharacterFile, error) {
 		return cf, userError{fmt.Errorf("the character is not valid: %w", err)}
 	}
 	if fb := file.Fallback; fb != nil {
-		fcf := export.CharacterFile{Name: cf.Name, System: cf.System, MaxHP: fb.MaxHP, Sheet: fb.Sheet}
+		fcf := export.CharacterFile{
+			Name:   cf.Name,
+			System: cf.System,
+			MaxHP:  fb.MaxHP,
+			Sheet:  fb.Sheet,
+		}
 		if err := normalizeCharacterFile(&fcf); err != nil {
 			return cf, userError{fmt.Errorf("the fallback build is not valid: %w", err)}
 		}
@@ -237,7 +269,9 @@ func checkFileContent(file *export.TakeHomeFile) (export.CharacterFile, error) {
 	urls := validator.New()
 	for _, l := range file.Looks {
 		if l.URL != "" && urls.Var(l.URL, "http_url,max=2000") != nil {
-			return cf, userError{fmt.Errorf("the look %q has a link that is not a web address", l.Name)}
+			return cf, userError{
+				fmt.Errorf("the look %q has a link that is not a web address", l.Name),
+			}
 		}
 	}
 	return cf, checkFileSources(file)
@@ -272,11 +306,14 @@ func checkFileSources(file *export.TakeHomeFile) error {
 		known[s.SourceKey] = true
 	}
 	for _, e := range file.Entries {
-		if k := file.Manifest.Kind; e.SourceKey == homebrewSource && k != export.KindTakeHome && k != export.KindStarter {
+		if k := file.Manifest.Kind; e.SourceKey == homebrewSource && k != export.KindTakeHome &&
+			k != export.KindStarter {
 			return userError{errors.New("the file lists homebrew among the compendium entries")}
 		}
 		if e.SourceKey != homebrewSource && !known[e.SourceKey] {
-			return userError{fmt.Errorf("the entry %q comes from a source the file does not list", e.Slug)}
+			return userError{
+				fmt.Errorf("the entry %q comes from a source the file does not list", e.Slug),
+			}
 		}
 	}
 	return nil
@@ -345,7 +382,10 @@ func (a *App) homeImport(c *gin.Context) error {
 		return err
 	}
 	replace := c.PostForm(formReplace) == "1"
-	old, err := a.Store.GetHomeCopyByTable(ctx, sqlc.GetHomeCopyByTableParams{ServerID: m.ServerID, TableCharacterID: m.CharacterID})
+	old, err := a.Store.GetHomeCopyByTable(
+		ctx,
+		sqlc.GetHomeCopyByTableParams{ServerID: m.ServerID, TableCharacterID: m.CharacterID},
+	)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -362,7 +402,12 @@ func (a *App) homeImport(c *gin.Context) error {
 				return err
 			}
 			v.CopyHere, v.Old = true, om.CreatedAt
-			if v.Sources, err = lostHomeSources(ctx, a.Store.Queries, old.CharacterID, file.Sources); err != nil {
+			if v.Sources, err = lostHomeSources(
+				ctx,
+				a.Store.Queries,
+				old.CharacterID,
+				file.Sources,
+			); err != nil {
 				return err
 			}
 			if old.FallbackCharacterID.Valid {
@@ -391,13 +436,17 @@ func (a *App) homeImport(c *gin.Context) error {
 			_ = os.Remove(filepath.Join(a.attachmentsDir(), p))
 		}
 	}()
-	lookFiles, blockFiles, err := a.saveHomeFiles(file.TakeHome, func(zipName string) ([]byte, error) {
-		body, err := file.OpenFile(zipName)
-		if err != nil {
-			return nil, userError{err}
-		}
-		return body, nil
-	}, &saved)
+	lookFiles, blockFiles, err := a.saveHomeFiles(
+		file.TakeHome,
+		func(zipName string) ([]byte, error) {
+			body, err := file.OpenFile(zipName)
+			if err != nil {
+				return nil, userError{err}
+			}
+			return body, nil
+		},
+		&saved,
+	)
 	if err != nil {
 		return err
 	}
@@ -437,7 +486,11 @@ func (a *App) homeImport(c *gin.Context) error {
 // saveHomeFiles writes the files of th's looks and note blocks (read by open
 // from their zip name) to the attachments folder as new files. Their names go
 // on *saved, which the caller removes unless rows own them.
-func (a *App) saveHomeFiles(th export.TakeHome, open func(zipName string) ([]byte, error), saved *[]string) ([]savedFile, map[int64][]savedFile, error) {
+func (a *App) saveHomeFiles(
+	th export.TakeHome,
+	open func(zipName string) ([]byte, error),
+	saved *[]string,
+) ([]savedFile, map[int64][]savedFile, error) {
 	save := func(zipName, display string) (savedFile, error) {
 		body, err := open(zipName)
 		if err != nil {
@@ -478,7 +531,12 @@ func (a *App) saveHomeFiles(th export.TakeHome, open func(zipName string) ([]byt
 // lostHomeSources are the sources added at home that the home copy's campaign
 // allows and the new file does not list: a replace deletes that campaign, so
 // the new copy leaves them off.
-func lostHomeSources(ctx context.Context, q *sqlc.Queries, homeCharacterID int64, listed []export.TakeHomeSource) ([]string, error) {
+func lostHomeSources(
+	ctx context.Context,
+	q *sqlc.Queries,
+	homeCharacterID int64,
+	listed []export.TakeHomeSource,
+) ([]string, error) {
 	ch, err := q.GetCharacterAny(ctx, homeCharacterID)
 	if err != nil {
 		return nil, err
@@ -493,7 +551,11 @@ func lostHomeSources(ctx context.Context, q *sqlc.Queries, homeCharacterID int64
 	}
 	var lost []string
 	for _, k := range allowed {
-		if slices.Contains(home, k) && !slices.ContainsFunc(listed, func(s export.TakeHomeSource) bool { return s.SourceKey == k }) {
+		if slices.Contains(home, k) &&
+			!slices.ContainsFunc(
+				listed,
+				func(s export.TakeHomeSource) bool { return s.SourceKey == k },
+			) {
 			lost = append(lost, k)
 		}
 	}
@@ -507,7 +569,9 @@ func oneTable(ctx context.Context, q *sqlc.Queries, serverID string) error {
 		return err
 	}
 	if other {
-		return userf("The characters here come from another GM's table. Unzip the player app into a second folder for this GM and open the file there.")
+		return userf(
+			"The characters here come from another GM's table. Unzip the player app into a second folder for this GM and open the file there.",
+		)
 	}
 	return nil
 }
@@ -517,19 +581,40 @@ func oneTable(ctx context.Context, q *sqlc.Queries, serverID string) error {
 // replace, the copy of the same table character and the made-at-home character
 // the file stands in for are deleted first, with their own homebrew (a
 // character's deletion only unowns it).
-func importTakeHome(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeFile, cf export.CharacterFile, lookFiles []savedFile, blockFiles map[int64][]savedFile, replace bool) (int64, error) {
+func importTakeHome(
+	ctx context.Context,
+	q *sqlc.Queries,
+	file *export.TakeHomeFile,
+	cf export.CharacterFile,
+	lookFiles []savedFile,
+	blockFiles map[int64][]savedFile,
+	replace bool,
+) (int64, error) {
 	m := file.Manifest
 	if err := oneTable(ctx, q, m.ServerID); err != nil {
 		return 0, err
 	}
-	if old, err := q.GetHomeCopyByTable(ctx, sqlc.GetHomeCopyByTableParams{ServerID: m.ServerID, TableCharacterID: m.CharacterID}); err == nil {
+	if old, err := q.GetHomeCopyByTable(
+		ctx,
+		sqlc.GetHomeCopyByTableParams{ServerID: m.ServerID, TableCharacterID: m.CharacterID},
+	); err == nil {
 		if !replace {
-			return 0, userError{errors.New("this character was opened on this computer meanwhile, try again")}
+			return 0, userError{
+				errors.New("this character was opened on this computer meanwhile, try again"),
+			}
 		}
-		if err := deleteHomeCharacter(ctx, q, old.CharacterID, old.FallbackCharacterID); err != nil {
+		if err := deleteHomeCharacter(
+			ctx,
+			q,
+			old.CharacterID,
+			old.FallbackCharacterID,
+		); err != nil {
 			return 0, err
 		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
+	} else if !errors.Is(
+		err,
+		sql.ErrNoRows,
+	) {
 		return 0, err
 	}
 	// The made-at-home original this file stands in for goes the same way.
@@ -539,18 +624,32 @@ func importTakeHome(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeF
 	}
 	if original != nil {
 		if !replace {
-			return 0, userError{errors.New("this character was made at home, confirm the replacement and try again")}
+			return 0, userError{
+				errors.New(
+					"this character was made at home, confirm the replacement and try again",
+				),
+			}
 		}
 		if err := deleteHomeCharacter(ctx, q, original.CharacterID, sql.NullInt64{}); err != nil {
 			return 0, err
 		}
 	}
 
-	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: m.Campaign.Name, System: m.Campaign.System, Edition: m.Campaign.Edition})
+	camp, err := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{
+			Name:    m.Campaign.Name,
+			System:  m.Campaign.System,
+			Edition: m.Campaign.Edition,
+		},
+	)
 	if err != nil {
 		return 0, err
 	}
-	if err := q.SetCampaignOpenJoin(ctx, sqlc.SetCampaignOpenJoinParams{OpenJoin: false, ID: camp.ID}); err != nil {
+	if err := q.SetCampaignOpenJoin(
+		ctx,
+		sqlc.SetCampaignOpenJoinParams{OpenJoin: false, ID: camp.ID},
+	); err != nil {
 		return 0, err
 	}
 	if err := importHomeCompendium(ctx, q, file, camp.ID); err != nil {
@@ -558,18 +657,37 @@ func importTakeHome(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeF
 	}
 
 	maps := newHomeIDMaps()
-	ch, err := createHomeCharacter(ctx, q, camp.ID, cf, file.TakeHome, lookFiles, blockFiles, &maps, homeMentions)
+	ch, err := createHomeCharacter(
+		ctx,
+		q,
+		camp.ID,
+		cf,
+		file.TakeHome,
+		lookFiles,
+		blockFiles,
+		&maps,
+		homeMentions,
+	)
 	if err != nil {
 		return 0, err
 	}
 	for _, e := range file.Homebrew {
 		id, err := q.UpsertHomeHomebrew(ctx, sqlc.UpsertHomeHomebrewParams{
-			Kind: e.Kind, Slug: e.Slug, Name: e.Name, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash, OwnerCharacterID: nullID(ch.ID),
+			Kind:             e.Kind,
+			Slug:             e.Slug,
+			Name:             e.Name,
+			DataJson:         string(e.Data),
+			BodyText:         e.BodyText,
+			ContentHash:      e.ContentHash,
+			OwnerCharacterID: nullID(ch.ID),
 		})
 		if err != nil {
 			return 0, err
 		}
-		if err := q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: id, CampaignID: camp.ID}); err != nil {
+		if err := q.LinkEntryCampaign(
+			ctx,
+			sqlc.LinkEntryCampaignParams{EntryID: id, CampaignID: camp.ID},
+		); err != nil {
 			return 0, err
 		}
 		maps.Homebrew[id] = e.ID
@@ -579,7 +697,15 @@ func importTakeHome(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeF
 	if err != nil {
 		return 0, err
 	}
-	err = q.CreateHomeCopy(ctx, sqlc.CreateHomeCopyParams{CharacterID: ch.ID, ServerID: m.ServerID, TableCharacterID: m.CharacterID, ManifestJson: string(manifest)})
+	err = q.CreateHomeCopy(
+		ctx,
+		sqlc.CreateHomeCopyParams{
+			CharacterID:      ch.ID,
+			ServerID:         m.ServerID,
+			TableCharacterID: m.CharacterID,
+			ManifestJson:     string(manifest),
+		},
+	)
 	return ch.ID, err
 }
 
@@ -594,15 +720,39 @@ func newHomeIDMaps() export.HomeIDMaps {
 // level-ups, looks and notes (their files already saved), recording the home
 // ids in maps. mentions (nil: none) rewrites the notes' mention ids once every
 // note exists.
-func createHomeCharacter(ctx context.Context, q *sqlc.Queries, campaignID int64, cf export.CharacterFile, th export.TakeHome, lookFiles []savedFile, blockFiles map[int64][]savedFile, maps *export.HomeIDMaps, mentions mentionMaker) (sqlc.Character, error) {
+func createHomeCharacter(
+	ctx context.Context,
+	q *sqlc.Queries,
+	campaignID int64,
+	cf export.CharacterFile,
+	th export.TakeHome,
+	lookFiles []savedFile,
+	blockFiles map[int64][]savedFile,
+	maps *export.HomeIDMaps,
+	mentions mentionMaker,
+) (sqlc.Character, error) {
 	ch, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{
-		CampaignID: campaignID, Name: cf.Name, System: cf.System, Hp: cf.HP, MaxHp: cf.MaxHP, TempHp: cf.TempHP, SheetJson: string(cf.Sheet),
+		CampaignID: campaignID,
+		Name:       cf.Name,
+		System:     cf.System,
+		Hp:         cf.HP,
+		MaxHp:      cf.MaxHP,
+		TempHp:     cf.TempHP,
+		SheetJson:  string(cf.Sheet),
 	})
 	if err != nil {
 		return ch, err
 	}
 	for _, l := range th.LevelUps {
-		id, err := q.CreateLevelUpAt(ctx, sqlc.CreateLevelUpAtParams{CharacterID: ch.ID, MaxHp: l.MaxHP, SheetJson: string(l.Sheet), CreatedAt: l.CreatedAt})
+		id, err := q.CreateLevelUpAt(
+			ctx,
+			sqlc.CreateLevelUpAtParams{
+				CharacterID: ch.ID,
+				MaxHp:       l.MaxHP,
+				SheetJson:   string(l.Sheet),
+				CreatedAt:   l.CreatedAt,
+			},
+		)
 		if err != nil {
 			return ch, err
 		}
@@ -622,17 +772,29 @@ func cloneHomeCampaign(ctx context.Context, q *sqlc.Queries, fromID int64) (int6
 	if err != nil {
 		return 0, err
 	}
-	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: from.Name, System: from.System, Edition: from.Edition})
+	camp, err := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{Name: from.Name, System: from.System, Edition: from.Edition},
+	)
 	if err != nil {
 		return 0, err
 	}
-	if err := q.SetCampaignOpenJoin(ctx, sqlc.SetCampaignOpenJoinParams{OpenJoin: false, ID: camp.ID}); err != nil {
+	if err := q.SetCampaignOpenJoin(
+		ctx,
+		sqlc.SetCampaignOpenJoinParams{OpenJoin: false, ID: camp.ID},
+	); err != nil {
 		return 0, err
 	}
-	if err := q.CopyCampaignSources(ctx, sqlc.CopyCampaignSourcesParams{ToCampaignID: camp.ID, FromCampaignID: fromID}); err != nil {
+	if err := q.CopyCampaignSources(
+		ctx,
+		sqlc.CopyCampaignSourcesParams{ToCampaignID: camp.ID, FromCampaignID: fromID},
+	); err != nil {
 		return 0, err
 	}
-	return camp.ID, q.CopyCampaignEntryLinks(ctx, sqlc.CopyCampaignEntryLinksParams{ToCampaignID: camp.ID, FromCampaignID: fromID})
+	return camp.ID, q.CopyCampaignEntryLinks(
+		ctx,
+		sqlc.CopyCampaignEntryLinksParams{ToCampaignID: camp.ID, FromCampaignID: fromID},
+	)
 }
 
 // maxCharacterName is the longest character name (the name form's max=100).
@@ -649,12 +811,29 @@ func homeName(base, suffix string) string {
 
 // importLooks makes each look an image of the home campaign, linked to the
 // character with the flags it had at the table.
-func importLooks(ctx context.Context, q *sqlc.Queries, looks []export.TakeHomeLook, files []savedFile, ch sqlc.Character, campaignID int64, maps *export.HomeIDMaps) error {
+func importLooks(
+	ctx context.Context,
+	q *sqlc.Queries,
+	looks []export.TakeHomeLook,
+	files []savedFile,
+	ch sqlc.Character,
+	campaignID int64,
+	maps *export.HomeIDMaps,
+) error {
 	homeIDs := make([]int64, len(looks))
 	for i, l := range looks {
 		var att sql.NullInt64
 		if l.File != "" {
-			a, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{CampaignID: campaignID, Path: files[i].path, Name: files[i].name, Mime: files[i].mime, Size: files[i].size})
+			a, err := q.CreateAttachment(
+				ctx,
+				sqlc.CreateAttachmentParams{
+					CampaignID: campaignID,
+					Path:       files[i].path,
+					Name:       files[i].name,
+					Mime:       files[i].mime,
+					Size:       files[i].size,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -662,14 +841,21 @@ func importLooks(ctx context.Context, q *sqlc.Queries, looks []export.TakeHomeLo
 			maps.Attachments[a.ID] = l.AttachmentID
 		}
 		img, err := q.CreateImage(ctx, sqlc.CreateImageParams{
-			CampaignID: campaignID, Name: cmp.Or(l.Name, ch.Name), Url: sql.NullString{String: l.URL, Valid: l.URL != ""}, AttachmentID: att, Description: l.Description,
+			CampaignID:   campaignID,
+			Name:         cmp.Or(l.Name, ch.Name),
+			Url:          sql.NullString{String: l.URL, Valid: l.URL != ""},
+			AttachmentID: att,
+			Description:  l.Description,
 		})
 		if err != nil {
 			return err
 		}
 		maps.Images[img.ID] = l.ImageID
 		homeIDs[i] = img.ID
-		if err := q.LinkCharacterImage(ctx, sqlc.LinkCharacterImageParams{CharacterID: ch.ID, ImageID: img.ID}); err != nil {
+		if err := q.LinkCharacterImage(
+			ctx,
+			sqlc.LinkCharacterImageParams{CharacterID: ch.ID, ImageID: img.ID},
+		); err != nil {
 			return err
 		}
 	}
@@ -679,7 +865,10 @@ func importLooks(ctx context.Context, q *sqlc.Queries, looks []export.TakeHomeLo
 	}
 	for i, l := range looks {
 		if err := q.SetCharacterImageFlags(ctx, sqlc.SetCharacterImageFlagsParams{
-			IsRevealed: l.IsRevealed, IsCurrent: l.IsCurrent, CharacterID: ch.ID, ImageID: homeIDs[i],
+			IsRevealed:  l.IsRevealed,
+			IsCurrent:   l.IsCurrent,
+			CharacterID: ch.ID,
+			ImageID:     homeIDs[i],
 		}); err != nil {
 			return err
 		}
@@ -692,12 +881,26 @@ func importLooks(ctx context.Context, q *sqlc.Queries, looks []export.TakeHomeLo
 // document pointed at its new file. A block may show another block's picture
 // (copied between notes), so every block is rewritten with the map of all files.
 // mentions (nil: none) rewrites note and image mentions once every note exists.
-func importNotes(ctx context.Context, q *sqlc.Queries, notes []export.TakeHomeNote, files map[int64][]savedFile, ch sqlc.Character, campaignID int64, maps *export.HomeIDMaps, mentions mentionMaker) error {
+func importNotes(
+	ctx context.Context,
+	q *sqlc.Queries,
+	notes []export.TakeHomeNote,
+	files map[int64][]savedFile,
+	ch sqlc.Character,
+	campaignID int64,
+	maps *export.HomeIDMaps,
+	mentions mentionMaker,
+) error {
 	byTable := map[int64]int64{}
 	docs := map[int64]json.RawMessage{} // home block id → the document as the table had it
 	for _, n := range notes {
 		noteID, err := q.CreateNoteAt(ctx, sqlc.CreateNoteAtParams{
-			CampaignID: campaignID, Kind: n.Kind, Title: n.Title, OwnerCharacterID: nullID(ch.ID), CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
+			CampaignID:       campaignID,
+			Kind:             n.Kind,
+			Title:            n.Title,
+			OwnerCharacterID: nullID(ch.ID),
+			CreatedAt:        n.CreatedAt,
+			UpdatedAt:        n.UpdatedAt,
 		})
 		if err != nil {
 			return err
@@ -709,8 +912,13 @@ func importNotes(ctx context.Context, q *sqlc.Queries, notes []export.TakeHomeNo
 				author = nullID(ch.ID)
 			}
 			blockID, err := q.CreateTakeHomeBlock(ctx, sqlc.CreateTakeHomeBlockParams{
-				NoteID: noteID, Position: b.Position, Visibility: b.Visibility, PlayersCanEdit: b.PlayersCanEdit,
-				DocJson: string(b.Doc), Text: b.Text, AuthorCharacterID: author,
+				NoteID:            noteID,
+				Position:          b.Position,
+				Visibility:        b.Visibility,
+				PlayersCanEdit:    b.PlayersCanEdit,
+				DocJson:           string(b.Doc),
+				Text:              b.Text,
+				AuthorCharacterID: author,
 			})
 			if err != nil {
 				return err
@@ -718,13 +926,26 @@ func importNotes(ctx context.Context, q *sqlc.Queries, notes []export.TakeHomeNo
 			maps.Blocks[blockID] = b.ID
 			docs[blockID] = b.Doc
 			if b.Visibility == enum.VisListed {
-				if err := q.AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: blockID, CharacterID: ch.ID}); err != nil {
+				if err := q.AddBlockAudience(
+					ctx,
+					sqlc.AddBlockAudienceParams{BlockID: blockID, CharacterID: ch.ID},
+				); err != nil {
 					return err
 				}
 			}
 			for i, bf := range b.Files {
 				sf := files[b.ID][i]
-				a, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{CampaignID: campaignID, BlockID: nullID(blockID), Path: sf.path, Name: sf.name, Mime: sf.mime, Size: sf.size})
+				a, err := q.CreateAttachment(
+					ctx,
+					sqlc.CreateAttachmentParams{
+						CampaignID: campaignID,
+						BlockID:    nullID(blockID),
+						Path:       sf.path,
+						Name:       sf.name,
+						Mime:       sf.mime,
+						Size:       sf.size,
+					},
+				)
 				if err != nil {
 					return err
 				}
@@ -750,7 +971,10 @@ func importNotes(ctx context.Context, q *sqlc.Queries, notes []export.TakeHomeNo
 				return err
 			}
 		}
-		if err := q.SetTakeHomeBlockDoc(ctx, sqlc.SetTakeHomeBlockDocParams{DocJson: string(doc), ID: blockID}); err != nil {
+		if err := q.SetTakeHomeBlockDoc(
+			ctx,
+			sqlc.SetTakeHomeBlockDocParams{DocJson: string(doc), ID: blockID},
+		); err != nil {
 			return err
 		}
 	}
@@ -768,7 +992,11 @@ func rewriteDocAttachments(doc json.RawMessage, ids map[int64]int64) (json.RawMe
 	oldSrc, oldID := map[string]string{}, map[string]string{}
 	for table, home := range ids {
 		oldSrc[route.Path(route.Attachment, table)] = route.Path(route.Attachment, home)
-		oldID[fmt.Sprintf("%s%d", attachmentMention, table)] = fmt.Sprintf("%s%d", attachmentMention, home)
+		oldID[fmt.Sprintf("%s%d", attachmentMention, table)] = fmt.Sprintf(
+			"%s%d",
+			attachmentMention,
+			home,
+		)
 	}
 	var walk func(any)
 	walk = func(n any) {
@@ -801,16 +1029,33 @@ const attachmentMention = "attachment:"
 // deleteHomeCharacter removes a character here with its own homebrew (and its
 // fallback's) and the home campaign it lives in; a character's deletion alone
 // would only unown the homebrew.
-func deleteHomeCharacter(ctx context.Context, q *sqlc.Queries, characterID int64, fallbackID sql.NullInt64) error {
+func deleteHomeCharacter(
+	ctx context.Context,
+	q *sqlc.Queries,
+	characterID int64,
+	fallbackID sql.NullInt64,
+) error {
 	ch, err := q.GetCharacterAny(ctx, characterID)
 	if err != nil {
 		return err
 	}
-	if err := q.DeleteHomebrewByOwner(ctx, sqlc.DeleteHomebrewByOwnerParams{OwnerCharacterID: nullID(characterID), CampaignID: ch.CampaignID}); err != nil {
+	if err := q.DeleteHomebrewByOwner(
+		ctx,
+		sqlc.DeleteHomebrewByOwnerParams{
+			OwnerCharacterID: nullID(characterID),
+			CampaignID:       ch.CampaignID,
+		},
+	); err != nil {
 		return err
 	}
 	if fallbackID.Valid {
-		if err := q.DeleteHomebrewByOwner(ctx, sqlc.DeleteHomebrewByOwnerParams{OwnerCharacterID: fallbackID, CampaignID: ch.CampaignID}); err != nil {
+		if err := q.DeleteHomebrewByOwner(
+			ctx,
+			sqlc.DeleteHomebrewByOwnerParams{
+				OwnerCharacterID: fallbackID,
+				CampaignID:       ch.CampaignID,
+			},
+		); err != nil {
 			return err
 		}
 	}
@@ -819,7 +1064,11 @@ func deleteHomeCharacter(ctx context.Context, q *sqlc.Queries, characterID int64
 
 // liveMadeAtHome is the character on this computer that a file's made-at-home
 // token names, nil for none (or a deleted one).
-func liveMadeAtHome(ctx context.Context, q *sqlc.Queries, token string) (*sqlc.GetNewCharacterByTokenRow, error) {
+func liveMadeAtHome(
+	ctx context.Context,
+	q *sqlc.Queries,
+	token string,
+) (*sqlc.GetNewCharacterByTokenRow, error) {
 	if token == "" {
 		return nil, nil //nolint:nilnil // nil means no such character
 	}
@@ -834,10 +1083,20 @@ func liveMadeAtHome(ctx context.Context, q *sqlc.Queries, token string) (*sqlc.G
 // file for the home campaign: its sources (ticked for the campaign) and
 // entries, homebrew linked to the campaign only. The compendium is shared by
 // every home campaign.
-func importHomeCompendium(ctx context.Context, q *sqlc.Queries, file *export.TakeHomeFile, campaignID int64) error {
+func importHomeCompendium(
+	ctx context.Context,
+	q *sqlc.Queries,
+	file *export.TakeHomeFile,
+	campaignID int64,
+) error {
 	for _, s := range file.Sources {
 		if err := q.UpsertTakeHomeSource(ctx, sqlc.UpsertTakeHomeSourceParams{
-			SourceKey: s.SourceKey, Edition: s.Edition, License: s.License, Attribution: s.Attribution, Published: s.Published, Priority: s.Priority,
+			SourceKey:   s.SourceKey,
+			Edition:     s.Edition,
+			License:     s.License,
+			Attribution: s.Attribution,
+			Published:   s.Published,
+			Priority:    s.Priority,
 		}); err != nil {
 			return err
 		}
@@ -851,7 +1110,10 @@ func importHomeCompendium(ctx context.Context, q *sqlc.Queries, file *export.Tak
 		return err
 	}
 	for _, s := range file.Sources {
-		if _, err := q.AllowCampaignSource(ctx, sqlc.AllowCampaignSourceParams{CampaignID: campaignID, SourceKey: s.SourceKey}); err != nil {
+		if _, err := q.AllowCampaignSource(
+			ctx,
+			sqlc.AllowCampaignSourceParams{CampaignID: campaignID, SourceKey: s.SourceKey},
+		); err != nil {
 			return err
 		}
 	}
@@ -862,19 +1124,33 @@ func importHomeCompendium(ctx context.Context, q *sqlc.Queries, file *export.Tak
 		}
 		if e.SourceKey != homebrewSource {
 			if err := q.UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{
-				Kind: e.Kind, Slug: e.Slug, Name: e.Name, SourceKey: e.SourceKey, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash,
+				Kind:        e.Kind,
+				Slug:        e.Slug,
+				Name:        e.Name,
+				SourceKey:   e.SourceKey,
+				DataJson:    string(e.Data),
+				BodyText:    e.BodyText,
+				ContentHash: e.ContentHash,
 			}); err != nil {
 				return err
 			}
 			continue
 		}
 		id, err := q.UpsertSharedHomebrew(ctx, sqlc.UpsertSharedHomebrewParams{
-			Kind: e.Kind, Slug: e.Slug, Name: e.Name, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash,
+			Kind:        e.Kind,
+			Slug:        e.Slug,
+			Name:        e.Name,
+			DataJson:    string(e.Data),
+			BodyText:    e.BodyText,
+			ContentHash: e.ContentHash,
 		})
 		if err != nil {
 			return err
 		}
-		if err := q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: id, CampaignID: campaignID}); err != nil {
+		if err := q.LinkEntryCampaign(
+			ctx,
+			sqlc.LinkEntryCampaignParams{EntryID: id, CampaignID: campaignID},
+		); err != nil {
 			return err
 		}
 	}

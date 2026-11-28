@@ -168,7 +168,21 @@ func (n SpellNeed) String() string {
 		out = append(out, utils.IfElse(n.CantripsUpTo, "up to ", "")+Plural(n.Cantrips, "cantrip"))
 	}
 	if n.Spells > 0 {
-		out = append(out, utils.IfElse(n.SpellsUpTo, "up to ", "")+Plural(n.Spells, "level 1+ spell")+utils.IfElse(n.Book, " for your spellbook", ""))
+		out = append(
+			out,
+			utils.IfElse(
+				n.SpellsUpTo,
+				"up to ",
+				"",
+			)+Plural(
+				n.Spells,
+				"level 1+ spell",
+			)+utils.IfElse(
+				n.Book,
+				" for your spellbook",
+				"",
+			),
+		)
 		if n.BookShort {
 			out[len(out)-1] += fmt.Sprintf(" (your spellbook has %d of %d)", n.BookHave, n.BookSize)
 		}
@@ -228,12 +242,27 @@ func taughtRules(rules []string) string {
 	return string(b)
 }
 
-var abilityItems = append([]selectcomp.ItemData{{Value: "", Label: "—"}},
-	selectItems(dnd5e.Abilities, func(a string) string { return a }, func(a string) string { return dnd5e.AbilityNames[a] })...)
+var abilityItems = append(
+	[]selectcomp.ItemData{{Value: "", Label: "—"}},
+	selectItems(
+		dnd5e.Abilities,
+		func(a string) string { return a },
+		func(a string) string { return dnd5e.AbilityNames[a] },
+	)...)
 
 // optionItems is a select over opts led by an empty choice labelled none; an
 // option from a source added at home says so (the select takes plain labels).
-func optionItems(ctx context.Context, none string, opts []Option, value func(Option) string) []selectcomp.ItemData {
-	return append([]selectcomp.ItemData{{Value: "", Label: none}},
-		selectItems(opts, value, func(o Option) string { return homeLabel(ctx, o.Name, o.Source) })...)
+func optionItems(
+	ctx context.Context,
+	none string,
+	opts []Option,
+	value func(Option) string,
+) []selectcomp.ItemData {
+	return append(
+		[]selectcomp.ItemData{{Value: "", Label: none}},
+		selectItems(
+			opts,
+			value,
+			func(o Option) string { return homeLabel(ctx, o.Name, o.Source) },
+		)...)
 }

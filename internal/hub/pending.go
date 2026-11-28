@@ -153,7 +153,8 @@ func (h *Hub) Decide(campaignID int64, id string, approve bool) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	p, ok := h.pending[id]
-	if !ok || p.CampaignID != campaignID || p.State != Waiting || approve && p.Kind == PendingNewCharacter {
+	if !ok || p.CampaignID != campaignID || p.State != Waiting ||
+		approve && p.Kind == PendingNewCharacter {
 		return false
 	}
 	if approve {
@@ -169,7 +170,8 @@ func (h *Hub) Decide(campaignID int64, id string, approve bool) bool {
 // waitingFileLocked is the waiting new-character request of a file.
 func (h *Hub) waitingFileLocked(campaignID int64, fileID string) *Pending {
 	for _, p := range h.pending {
-		if p.Kind == PendingNewCharacter && p.FileID == fileID && p.CampaignID == campaignID && p.State == Waiting {
+		if p.Kind == PendingNewCharacter && p.FileID == fileID && p.CampaignID == campaignID &&
+			p.State == Waiting {
 			return p
 		}
 	}
@@ -217,7 +219,8 @@ func (h *Hub) TakeApproved(secret string) (Pending, bool) {
 	defer h.mu.Unlock()
 	h.dropStaleLocked() // an approval older than approvedTimeout is spent
 	for id, p := range h.pending {
-		if secret != "" && subtle.ConstantTimeCompare([]byte(p.Secret), []byte(secret)) == 1 && p.State == Approved {
+		if secret != "" && subtle.ConstantTimeCompare([]byte(p.Secret), []byte(secret)) == 1 &&
+			p.State == Approved {
 			delete(h.pending, id)
 			return *p, true
 		}

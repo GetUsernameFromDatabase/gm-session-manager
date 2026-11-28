@@ -30,7 +30,8 @@ const DatabaseFile = "gm-session-manager.db"
 const (
 	DefaultPort    = 8080
 	DefaultDataDir = "data"
-	// DefaultPlayerDataDir differs so a server and a player app run from one folder never share a database.
+	// DefaultPlayerDataDir differs so a server and a player app run from one folder
+	// never share a database.
 	DefaultPlayerDataDir = "data-player"
 	// DefaultPlayerPort differs from DefaultPort so the player app can run beside a server.
 	DefaultPlayerPort = 8042
@@ -129,7 +130,10 @@ func describe(err error) error {
 		case "required", "required_unless":
 			msgs = append(msgs, fe.Field()+" is required (set it in .env, see .env.example)")
 		default:
-			msgs = append(msgs, fmt.Sprintf("%s is invalid (%s=%s)", fe.Field(), fe.Tag(), fe.Param()))
+			msgs = append(
+				msgs,
+				fmt.Sprintf("%s is invalid (%s=%s)", fe.Field(), fe.Tag(), fe.Param()),
+			)
 		}
 	}
 	return errors.New("config: " + strings.Join(msgs, "; "))

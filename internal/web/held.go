@@ -33,7 +33,9 @@ func (h *heldTopics) add(t hub.Topic) {
 
 // collectHeld gives each request a place to note the topics of cascaded effects.
 func collectHeld(c *gin.Context) {
-	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), heldTopicsKey, &heldTopics{}))
+	c.Request = c.Request.WithContext(
+		context.WithValue(c.Request.Context(), heldTopicsKey, &heldTopics{}),
+	)
 }
 
 // heldCollected are the topics noted so far.

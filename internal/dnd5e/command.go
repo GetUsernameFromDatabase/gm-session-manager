@@ -74,7 +74,11 @@ type Env struct {
 // NewCommand wraps a change built by code instead of parsed from text, for
 // forms with more fields than a command line carries.
 func NewCommand(text string, scope perm.CharacterScope, apply func(c *Character) error) Command {
-	return Command{Text: text, Scope: scope, apply: func(c *Character, _ Env, _ *Effects) error { return apply(c) }}
+	return Command{
+		Text:  text,
+		Scope: scope,
+		apply: func(c *Character, _ Env, _ *Effects) error { return apply(c) },
+	}
 }
 
 // CondOp is a change to the conditions table, applied by the caller in the
@@ -171,7 +175,11 @@ type HelpEntry struct {
 
 // Help lists the command forms for the UI, roughly by how often they are used.
 var Help = []HelpEntry{
-	{"hp -n [type] [crit] | +n | =n", "hp -7 fire crit", "Take damage (crit: a critical hit), heal, or set hit points"},
+	{
+		"hp -n [type] [crit] | +n | =n",
+		"hp -7 fire crit",
+		"Take damage (crit: a critical hit), heal, or set hit points",
+	},
 	{"temp n | +n", "temp 5", "Set or add temporary hit points"},
 	{"maxhp +n | =n", "maxhp =30", "Change max hit points"},
 	{"slot use|restore <level>", "slot use 2", "Spend or regain a spell slot"},
@@ -180,38 +188,110 @@ var Help = []HelpEntry{
 	{"rest short|long", "rest long", "Rest: long restores HP, slots and hit dice"},
 	{"hitdie use|restore", "hitdie use", "Spend or regain a hit die"},
 	{"toggle <condition>", "toggle prone", "Turn a condition on or off"},
-	{"condition add|remove <condition> [note]", "condition add poisoned spider bite", "Add or remove a condition"},
+	{
+		"condition add|remove <condition> [note]",
+		"condition add poisoned spider bite",
+		"Add or remove a condition",
+	},
 	{"concentrate <spell> | end", "concentrate Bless", "Start or end concentration"},
 	{"exhaustion +n | -n", "exhaustion +1", "Change exhaustion level"},
 	{"deathsave success|fail|reset", "deathsave fail", "Track death saves"},
 	{"revive [n]", "revive 1", "Bring a dead character back with n hit points (default 1)"},
 	{verbInspiration, verbInspiration, "Toggle Heroic Inspiration"},
-	{`item add|remove "<name>" [qty]`, `item add "Rope (50 ft)"`, "Add or remove items (quote names with spaces)"},
+	{
+		`item add|remove "<name>" [qty]`,
+		`item add "Rope (50 ft)"`,
+		"Add or remove items (quote names with spaces)",
+	},
 	{`item set "<name>" <qty>`, "item set Torch 5", "Set an item's count; 0 removes it"},
 	{`item note "<name>" <text>`, "item note Torch half burnt", "Note on an item"},
-	{"coin <cp|sp|ep|gp|pp> +n|-n|=n …", "coin gp +10 sp -3", "Gain, spend or set coins, several at once"},
-	{"spell add|remove|prepare|unprepare <slug>", "spell prepare shield", "Manage spells by compendium slug"},
+	{
+		"coin <cp|sp|ep|gp|pp> +n|-n|=n …",
+		"coin gp +10 sp -3",
+		"Gain, spend or set coins, several at once",
+	},
+	{
+		"spell add|remove|prepare|unprepare <slug>",
+		"spell prepare shield",
+		"Manage spells by compendium slug",
+	},
 	{"set ability <ab> <n>", "set ability str 16", "Set a base ability score"},
 	{"set name|species|background <text>", "set species Elf", "Change details"},
 	{"set ac|speed <n>", "set ac 1", "Set an AC bonus that always applies, or base speed"},
-	{"set size <size> | set vision <text>|none", "set vision Darkvision 60 ft", "Set size (Tiny…Gargantuan) or vision"},
+	{
+		"set size <size> | set vision <text>|none",
+		"set vision Darkvision 60 ft",
+		"Set size (Tiny…Gargantuan) or vision",
+	},
 	{"set backstory <text>", "set backstory Raised by wolves", "Replace the backstory"},
-	{"prof add|remove skill|save|expertise|other|language|armor <name>", "prof add skill athletics", "Add or remove a proficiency, or armor training (light, medium, heavy, shield)"},
-	{"prof set skill <skill> none|proficient|expertise", "prof set skill stealth expertise", "Set a skill's proficiency"},
+	{
+		"prof add|remove skill|save|expertise|other|language|armor <name>",
+		"prof add skill athletics",
+		"Add or remove a proficiency, or armor training (light, medium, heavy, shield)",
+	},
+	{
+		"prof set skill <skill> none|proficient|expertise",
+		"prof set skill stealth expertise",
+		"Set a skill's proficiency",
+	},
 	{`feature add "<name>" [description]`, `feature add "Second Wind"`, "Add or replace a feature"},
-	{`feature set "<name>" action=bonus uses=2|cha|prof reset=short|long|short-one`, `feature set "Second Wind" action=bonus uses=2 reset=short-one`, "Set how a feature is used and how often"},
-	{`feature remove "<name>"`, `feature remove "Second Wind"`, "Remove a feature and its stat changes"},
-	{`use "<feature>" | restore "<feature>"`, `use "Bardic Inspiration"`, "Spend or regain one use of a feature"},
-	{`armor wear <slug|"item"> | armor off`, "armor wear chain-mail", "Put on armor (or a shield) from the inventory or compendium, or take armor off"},
+	{
+		`feature set "<name>" action=bonus uses=2|cha|prof reset=short|long|short-one`,
+		`feature set "Second Wind" action=bonus uses=2 reset=short-one`,
+		"Set how a feature is used and how often",
+	},
+	{
+		`feature remove "<name>"`,
+		`feature remove "Second Wind"`,
+		"Remove a feature and its stat changes",
+	},
+	{
+		`use "<feature>" | restore "<feature>"`,
+		`use "Bardic Inspiration"`,
+		"Spend or regain one use of a feature",
+	},
+	{
+		`armor wear <slug|"item"> | armor off`,
+		"armor wear chain-mail",
+		"Put on armor (or a shield) from the inventory or compendium, or take armor off",
+	},
 	{"shield on|off", "shield off", "Take up or put down a shield (+2 AC)"},
-	{"weapon add <name> <ability> <dice> [type] [prof]", "weapon add Longsword str 1d8 slashing prof", "Add or replace a weapon"},
-	{"weapon ready|stow <name>", "weapon stow Longsword", "Ready a weapon from the inventory as an attack, or put it away"},
+	{
+		"weapon add <name> <ability> <dice> [type] [prof]",
+		"weapon add Longsword str 1d8 slashing prof",
+		"Add or replace a weapon",
+	},
+	{
+		"weapon ready|stow <name>",
+		"weapon stow Longsword",
+		"Ready a weapon from the inventory as an attack, or put it away",
+	},
 	{"weapon remove <name>", "weapon remove Longsword", "Remove a weapon"},
-	{"mastery add|remove <weapon>", "mastery add Longsword", "Choose or drop a weapon kind whose mastery property you use"},
-	{`mod add <target> ±n "<source>"`, `mod add ac +1 "Ring of Protection"`, "Add a custom bonus or penalty"},
-	{`mod remove <target> "<source>"`, `mod remove ac "Ring of Protection"`, "Remove a custom modifier"},
-	{"source <kind> <slug> <source>", "source spell shield XPHB", "Point a class, subclass, spell, species, background, feat or armor at another source"},
-	{"change-subclass <class> <slug> <source>", "change-subclass fighter champion XPHB", "Swap a class's subclass (owner only); its features replace the old ones"},
+	{
+		"mastery add|remove <weapon>",
+		"mastery add Longsword",
+		"Choose or drop a weapon kind whose mastery property you use",
+	},
+	{
+		`mod add <target> ±n "<source>"`,
+		`mod add ac +1 "Ring of Protection"`,
+		"Add a custom bonus or penalty",
+	},
+	{
+		`mod remove <target> "<source>"`,
+		`mod remove ac "Ring of Protection"`,
+		"Remove a custom modifier",
+	},
+	{
+		"source <kind> <slug> <source>",
+		"source spell shield XPHB",
+		"Point a class, subclass, spell, species, background, feat or armor at another source",
+	},
+	{
+		"change-subclass <class> <slug> <source>",
+		"change-subclass fighter champion XPHB",
+		"Swap a class's subclass (owner only); its features replace the old ones",
+	},
 }
 
 // Verbs are the command words Parse knows, for the command bar's checks.
@@ -399,8 +479,15 @@ func init() {
 			if err := want(args, 3, "change-subclass <class> <slug> <source>"); err != nil {
 				return Command{}, err
 			}
-			ref := SubclassRef{Class: strings.ToLower(args[0]), Slug: strings.ToLower(args[1]), Source: args[2]}
-			cmd := scoped(perm.ScopeSheet, func(c *Character, env Env, _ *Effects) error { return c.ChangeSubclass(ref, env) })
+			ref := SubclassRef{
+				Class:  strings.ToLower(args[0]),
+				Slug:   strings.ToLower(args[1]),
+				Source: args[2],
+			}
+			cmd := scoped(
+				perm.ScopeSheet,
+				func(c *Character, env Env, _ *Effects) error { return c.ChangeSubclass(ref, env) },
+			)
 			cmd.SubclassChange = ref
 			return cmd, nil
 		},
@@ -414,11 +501,18 @@ func parseSource(args []string) (Command, error) {
 	if err := want(args, 3, usage); err != nil {
 		return Command{}, err
 	}
-	ref := SourceRef{Kind: strings.ToLower(args[0]), Slug: strings.ToLower(args[1]), Source: args[2]}
+	ref := SourceRef{
+		Kind:   strings.ToLower(args[0]),
+		Slug:   strings.ToLower(args[1]),
+		Source: args[2],
+	}
 	if !slices.Contains(RefKinds, ref.Kind) {
 		return Command{}, fmt.Errorf("usage: %s", usage)
 	}
-	cmd := scoped(perm.ScopeSources, func(c *Character, env Env, _ *Effects) error { return c.SwitchSource(ref, env) })
+	cmd := scoped(
+		perm.ScopeSources,
+		func(c *Character, env Env, _ *Effects) error { return c.SwitchSource(ref, env) },
+	)
 	cmd.SourceRef = ref
 	return cmd, nil
 }

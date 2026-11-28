@@ -63,19 +63,37 @@ var wizardStepSaves = map[string]wizardStep{
 	views.StepBackground: {command: (*App).backgroundStep},
 	views.StepSpecies:    {command: (*App).speciesStep},
 	views.StepAbilities:  {needs: []string{views.StepBackground}, command: (*App).abilitiesStep},
-	views.StepChoices:    {needs: []string{views.StepClass, views.StepBackground, views.StepSpecies}, command: (*App).choicesStep},
-	views.StepEquipment:  {needs: []string{views.StepClass, views.StepBackground}, command: (*App).equipmentStep},
-	views.StepDetails:    {command: (*App).detailsStep},
-	views.StepReview:     {command: (*App).reviewStep},
+	views.StepChoices: {
+		needs:   []string{views.StepClass, views.StepBackground, views.StepSpecies},
+		command: (*App).choicesStep,
+	},
+	views.StepEquipment: {
+		needs:   []string{views.StepClass, views.StepBackground},
+		command: (*App).equipmentStep,
+	},
+	views.StepDetails: {command: (*App).detailsStep},
+	views.StepReview:  {command: (*App).reviewStep},
 }
 
 // missingSteps are the steps step needs that the sheet lacks. A background
 // is needed only when the compendium has one to pick.
-func (a *App) missingSteps(ctx context.Context, sh dnd5e.Sheet, step string, campaignID int64) ([]views.WizardStep, error) {
-	has := map[string]bool{views.StepClass: len(sh.Classes) > 0, views.StepSpecies: sh.Species != "", views.StepBackground: sh.Background != ""}
+func (a *App) missingSteps(
+	ctx context.Context,
+	sh dnd5e.Sheet,
+	step string,
+	campaignID int64,
+) ([]views.WizardStep, error) {
+	has := map[string]bool{
+		views.StepClass:      len(sh.Classes) > 0,
+		views.StepSpecies:    sh.Species != "",
+		views.StepBackground: sh.Background != "",
+	}
 	needs := wizardStepSaves[step].needs
 	if !has[views.StepBackground] && slices.Contains(needs, views.StepBackground) {
-		names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: enum.KindBackground, CampaignID: campaignID})
+		names, err := a.Store.ListCompendiumNames(
+			ctx,
+			sqlc.ListCompendiumNamesParams{Kind: enum.KindBackground, CampaignID: campaignID},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +110,8 @@ func (a *App) missingSteps(ctx context.Context, sh dnd5e.Sheet, step string, cam
 
 // legacyBackground reports a sheet whose background step added the ability
 // increases, before they moved to the abilities step.
-// shortcut: also true for a finished new sheet that skipped the abilities, which then shows the "set on the sheet" text; drop once no sheet predates the move.
+// shortcut: also true for a finished new sheet that skipped the abilities, which then shows the
+// "set on the sheet" text; drop once no sheet predates the move.
 func legacyBackground(sh dnd5e.Sheet) bool {
 	_, snap := sh.SetupSnapshots[views.StepBackground]
 	return sh.SetUp(views.StepBackground) && !snap && !sh.SetUp(views.StepAbilities)
@@ -110,7 +129,11 @@ func (a *App) backgroundChoice(ctx context.Context, sh dnd5e.Sheet) (*views.Wiza
 
 // chosenEntry is a class, species or background on the sheet as the wizard
 // shows it; nil when the compendium lacks it.
-func (a *App) chosenEntry(ctx context.Context, kind enum.CompendiumKind, name, pin string) (*views.WizardChoice, error) {
+func (a *App) chosenEntry(
+	ctx context.Context,
+	kind enum.CompendiumKind,
+	name, pin string,
+) (*views.WizardChoice, error) {
 	if name == "" {
 		return nil, nil
 	}
@@ -130,7 +153,11 @@ func (a *App) chosenEntry(ctx context.Context, kind enum.CompendiumKind, name, p
 
 // doneChoice is what an applied class, species or background step gave: the
 // wizard's class is the sheet's first.
-func (a *App) doneChoice(ctx context.Context, sh dnd5e.Sheet, kind enum.CompendiumKind) (*views.WizardChoice, error) {
+func (a *App) doneChoice(
+	ctx context.Context,
+	sh dnd5e.Sheet,
+	kind enum.CompendiumKind,
+) (*views.WizardChoice, error) {
 	switch kind {
 	case enum.KindClass:
 		if len(sh.Classes) == 0 {
@@ -158,7 +185,9 @@ func (a *App) wizardChange(c *gin.Context) error {
 	err := a.updateCharacter(ctx, ch.ID, func(q *sqlc.Queries, cc *dnd5e.Character) error {
 		snap, ok := cc.Sheet.SetupSnapshots[step]
 		if !ok {
-			return userError{errors.New("this step can no longer be changed here; change it on the sheet")}
+			return userError{
+				errors.New("this step can no longer be changed here; change it on the sheet"),
+			}
 		}
 		sh, err := dnd5e.ParseSheet(string(snap.Sheet))
 		if err != nil {
@@ -224,24 +253,45 @@ func (a *App) wizardPage(c *gin.Context) error {
 	return a.renderWizard(c, http.StatusOK, w, ch, v)
 }
 
-func (a *App) renderWizard(c *gin.Context, status int, w who, ch sqlc.Character, v views.WizardView) error {
+func (a *App) renderWizard(
+	c *gin.Context,
+	status int,
+	w who,
+	ch sqlc.Character,
+	v views.WizardView,
+) error {
 	camp, err := a.Store.GetCampaign(c.Request.Context(), ch.CampaignID)
 	if err != nil {
 		return err
 	}
-	a.render(c, status, views.WizardPage(a.layout(w, "Create "+ch.Name, views.NavCharacter, &camp, false), v))
+	a.render(
+		c,
+		status,
+		views.WizardPage(a.layout(w, "Create "+ch.Name, views.NavCharacter, &camp, false), v),
+	)
 	return nil
 }
 
 // wizardView builds a step's page; pick is the class, species or
 // background being looked at, variant the subrace of a species picked.
-func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pick, variant string) (views.WizardView, error) {
+func (a *App) wizardView(
+	ctx context.Context,
+	w who,
+	ch sqlc.Character,
+	step, pick, variant string,
+) (views.WizardView, error) {
 	s, err := a.sheetView(ctx, w.viewer, ch)
 	if err != nil {
 		return views.WizardView{}, err
 	}
 	s.CanSheet, s.CanHP, s.CanConditions = false, false, false // the review is read-only
-	v := views.WizardView{CharacterID: ch.ID, Step: step, Steps: wizardSteps, Sheet: s, Picked: pick}
+	v := views.WizardView{
+		CharacterID: ch.ID,
+		Step:        step,
+		Steps:       wizardSteps,
+		Sheet:       s,
+		Picked:      pick,
+	}
 	if v.Missing, err = a.missingSteps(ctx, s.C.Sheet, step, ch.CampaignID); err != nil {
 		return v, err
 	}
@@ -266,13 +316,19 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 		v.Choice, err = a.doneChoice(ctx, s.C.Sheet, kind)
 		return v, err
 	}
-	names, err := a.Store.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: ch.CampaignID})
+	names, err := a.Store.ListCompendiumNames(
+		ctx,
+		sqlc.ListCompendiumNamesParams{Kind: kind, CampaignID: ch.CampaignID},
+	)
 	if err != nil {
 		return v, err
 	}
 	for _, n := range names {
 		if n.SubraceOf == "" { // subraces are the variant select's
-			v.Options = append(v.Options, views.Option{Slug: n.Slug, Name: n.Name, Source: n.SourceKey})
+			v.Options = append(
+				v.Options,
+				views.Option{Slug: n.Slug, Name: n.Name, Source: n.SourceKey},
+			)
 		}
 	}
 	if pick == "" {
@@ -307,18 +363,35 @@ func (a *App) wizardView(ctx context.Context, w who, ch sqlc.Character, step, pi
 // speciesVariant offers the picked species' subraces and returns the entry
 // to preview and save: the variant when it is one of them. A subrace picked
 // (a refused save shown again) shows as its base with itself as the variant.
-func (a *App) speciesVariant(ctx context.Context, v *views.WizardView, e sqlc.CompendiumEntry, data any, variant string, campaignID int64) (sqlc.CompendiumEntry, any, error) {
+func (a *App) speciesVariant(
+	ctx context.Context,
+	v *views.WizardView,
+	e sqlc.CompendiumEntry,
+	data any,
+	variant string,
+	campaignID int64,
+) (sqlc.CompendiumEntry, any, error) {
 	if td, ok := data.(*compendium.TextData); ok && td.SubraceOf != "" {
 		v.Picked, v.Variant = td.SubraceOf, e.Slug
 	}
-	subs, err := a.Store.ListSubracesOf(ctx, sqlc.ListSubracesOfParams{CampaignID: campaignID, SpeciesSlug: v.Picked})
+	subs, err := a.Store.ListSubracesOf(
+		ctx,
+		sqlc.ListSubracesOfParams{CampaignID: campaignID, SpeciesSlug: v.Picked},
+	)
 	if err != nil {
 		return e, data, err
 	}
 	for _, s := range subs {
-		v.Variants = append(v.Variants, views.Option{Slug: s.Slug, Name: s.Name + " · " + s.SourceKey, Source: s.SourceKey})
+		v.Variants = append(
+			v.Variants,
+			views.Option{Slug: s.Slug, Name: s.Name + " · " + s.SourceKey, Source: s.SourceKey},
+		)
 	}
-	if v.Variant != "" || !slices.ContainsFunc(subs, func(s sqlc.ListSubracesOfRow) bool { return s.Slug == variant }) {
+	if v.Variant != "" ||
+		!slices.ContainsFunc(
+			subs,
+			func(s sqlc.ListSubracesOfRow) bool { return s.Slug == variant },
+		) {
 		return e, data, nil
 	}
 	sub, err := a.entryBySlug(ctx, enum.KindSpecies, variant, campaignID)
@@ -342,7 +415,14 @@ func wizardChoice(e sqlc.CompendiumEntry, data any) *views.WizardChoice {
 		ch.SkillCount, ch.Skills = skillChoice(ch.Traits[compendium.TraitSkillProficiencies])
 		for _, f := range d.Features {
 			if slices.Contains(f.Levels, 1) && !strings.Contains(strings.ToLower(f.Name), "core") {
-				ch.Features = append(ch.Features, views.FeaturePreview{Name: f.Name, Desc: f.Desc, Effects: dnd5e.ParseEffects(f.Name, f.Desc, d.Table, e.Name).Summary()})
+				ch.Features = append(
+					ch.Features,
+					views.FeaturePreview{
+						Name:    f.Name,
+						Desc:    f.Desc,
+						Effects: dnd5e.ParseEffects(f.Name, f.Desc, d.Table, e.Name).Summary(),
+					},
+				)
 			}
 		}
 	case *compendium.TextData:
@@ -356,7 +436,14 @@ func wizardChoice(e sqlc.CompendiumEntry, data any) *views.WizardChoice {
 			case "":
 				// Untyped parts are traits; typed ones (size, speed, tools,
 				// equipment, the feat) are applied or shown as facts.
-				ch.Features = append(ch.Features, views.FeaturePreview{Name: p.Name, Desc: p.Desc, Effects: dnd5e.ParseEffects(p.Name, p.Desc, nil, "").Summary()})
+				ch.Features = append(
+					ch.Features,
+					views.FeaturePreview{
+						Name:    p.Name,
+						Desc:    p.Desc,
+						Effects: dnd5e.ParseEffects(p.Name, p.Desc, nil, "").Summary(),
+					},
+				)
 			}
 			if p.Type != "" || p.Name == compendium.LabelSpeed || p.Name == compendium.LabelSize {
 				ch.Facts = append(ch.Facts, p)
@@ -400,7 +487,11 @@ func (a *App) wizardSave(c *gin.Context) error {
 
 // wizardCommand is the change a step's form asks for; nil when the step
 // changes nothing (it was applied already, or skipped).
-func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dnd5e.Command, error) {
+func (a *App) wizardCommand(
+	c *gin.Context,
+	ch sqlc.Character,
+	step string,
+) (*dnd5e.Command, error) {
 	ctx := c.Request.Context()
 	ws := wizardStepSaves[step]
 	if ws.needs != nil {
@@ -408,7 +499,13 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 		if err != nil {
 			return nil, err
 		}
-		if missing, err := a.missingSteps(ctx, sheet, step, ch.CampaignID); err != nil || len(missing) > 0 {
+		if missing, err := a.missingSteps(
+			ctx,
+			sheet,
+			step,
+			ch.CampaignID,
+		); err != nil ||
+			len(missing) > 0 {
 			return nil, err // saved now, the step could not ask for what they bring later
 		}
 	}
@@ -420,7 +517,12 @@ func (a *App) wizardCommand(c *gin.Context, ch sqlc.Character, step string) (*dn
 
 // wizardPick is the posted pick's entry, refused as a user error when the
 // character's campaign cannot see it.
-func (a *App) wizardPick(ctx context.Context, kind enum.CompendiumKind, pick string, campaignID int64) (sqlc.CompendiumEntry, error) {
+func (a *App) wizardPick(
+	ctx context.Context,
+	kind enum.CompendiumKind,
+	pick string,
+	campaignID int64,
+) (sqlc.CompendiumEntry, error) {
 	row, err := a.entryBySlug(ctx, kind, pick, campaignID)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = userError{fmt.Errorf("that %s is not in the compendium", kind)}

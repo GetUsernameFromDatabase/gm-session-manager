@@ -98,7 +98,13 @@ func (a *App) entityPage(c *gin.Context) error {
 	if ev.Backlinks, err = a.backlinks(ctx, w, row.CampaignID, enum.LinkEntity, id); err != nil {
 		return err
 	}
-	if ev.EntityLinks, err = a.entityMentions(ctx, w, row.CampaignID, enum.LinkEntity, id); err != nil {
+	if ev.EntityLinks, err = a.entityMentions(
+		ctx,
+		w,
+		row.CampaignID,
+		enum.LinkEntity,
+		id,
+	); err != nil {
 		return err
 	}
 	l := a.layout(w, ev.E.Name, views.NavEntities, &camp, true)
@@ -112,7 +118,10 @@ func (a *App) entityPage(c *gin.Context) error {
 // editEntity applies one edit command to an NPC, reading it afresh in the
 // transaction, so a stale page on another GM device changes only what it
 // sent. change gets the stored row and its fields to modify in place.
-func (a *App) editEntity(c *gin.Context, change func(e *sqlc.Entity, fields perm.Fields) error) error {
+func (a *App) editEntity(
+	c *gin.Context,
+	change func(e *sqlc.Entity, fields perm.Fields) error,
+) error {
 	id, ok := a.idParam(c, "entity")
 	if !ok {
 		return nil
@@ -136,7 +145,11 @@ func (a *App) editEntity(c *gin.Context, change func(e *sqlc.Entity, fields perm
 			return err
 		}
 		if err := q.UpdateEntity(ctx, sqlc.UpdateEntityParams{
-			ID: row.ID, Name: row.Name, IsRevealed: row.IsRevealed, FieldsJson: string(raw), CompendiumRef: row.CompendiumRef,
+			ID:            row.ID,
+			Name:          row.Name,
+			IsRevealed:    row.IsRevealed,
+			FieldsJson:    string(raw),
+			CompendiumRef: row.CompendiumRef,
 		}); err != nil {
 			return err
 		}
@@ -255,7 +268,12 @@ func (a *App) removeEntityField(c *gin.Context) error {
 }
 
 // saveFieldLinks replaces an NPC's field [[links]] with those in fields.
-func saveFieldLinks(ctx context.Context, q *sqlc.Queries, entityID int64, fields perm.Fields) error {
+func saveFieldLinks(
+	ctx context.Context,
+	q *sqlc.Queries,
+	entityID int64,
+	fields perm.Fields,
+) error {
 	if err := q.DeleteEntityFieldLinks(ctx, entityID); err != nil {
 		return err
 	}
@@ -263,7 +281,12 @@ func saveFieldLinks(ctx context.Context, q *sqlc.Queries, entityID int64, fields
 		for _, l := range views.WikiLinks(f.Value) {
 			note, entity, image := linkTarget(enum.LinkTarget(l.Kind), l.ID)
 			if err := q.AddEntityFieldLink(ctx, sqlc.AddEntityFieldLinkParams{
-				EntityID: entityID, FieldKey: key, TargetNoteID: note, TargetEntityID: entity, TargetImageID: image, IsRevealed: f.IsRevealed,
+				EntityID:       entityID,
+				FieldKey:       key,
+				TargetNoteID:   note,
+				TargetEntityID: entity,
+				TargetImageID:  image,
+				IsRevealed:     f.IsRevealed,
 			}); err != nil {
 				return err
 			}
@@ -278,7 +301,10 @@ func (a *App) entityChanged(c *gin.Context, e sqlc.Entity) {
 
 // entityTopics are the live views an NPC change touches: its page and the list.
 func entityTopics(e sqlc.Entity) []hub.Topic {
-	return []hub.Topic{{Kind: hub.TopicEntity, ID: e.ID}, {Kind: hub.TopicEntities, ID: e.CampaignID}}
+	return []hub.Topic{
+		{Kind: hub.TopicEntity, ID: e.ID},
+		{Kind: hub.TopicEntities, ID: e.CampaignID},
+	}
 }
 
 func (a *App) deleteEntity(c *gin.Context) error {
@@ -290,7 +316,10 @@ func (a *App) deleteEntity(c *gin.Context) error {
 	err := a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		// Its fights then show the name stored on the combatant: keep a hidden one hidden.
 		if !e.IsRevealed {
-			if err := q.RenameEntityCombatants(ctx, sqlc.RenameEntityCombatantsParams{Name: hiddenNPCName, EntityID: nullID(e.ID)}); err != nil {
+			if err := q.RenameEntityCombatants(
+				ctx,
+				sqlc.RenameEntityCombatantsParams{Name: hiddenNPCName, EntityID: nullID(e.ID)},
+			); err != nil {
 				return err
 			}
 		}
@@ -351,7 +380,15 @@ func (a *App) imageToEntity(c *gin.Context) error {
 	var e sqlc.Entity
 	err = a.Store.InTx(ctx, func(q *sqlc.Queries) error {
 		var err error
-		if e, err = q.CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: img.CampaignID, Kind: enum.EntityNPC, Name: img.Name, FieldsJson: string(raw)}); err != nil {
+		if e, err = q.CreateEntity(
+			ctx,
+			sqlc.CreateEntityParams{
+				CampaignID: img.CampaignID,
+				Kind:       enum.EntityNPC,
+				Name:       img.Name,
+				FieldsJson: string(raw),
+			},
+		); err != nil {
 			return err
 		}
 		return linkEntityLook(ctx, q, e, img.CampaignID, img.ID)
@@ -384,7 +421,12 @@ func (a *App) addEntityLook(c *gin.Context) error {
 }
 
 // linkEntityLook links an image to an NPC of the same campaign.
-func linkEntityLook(ctx context.Context, q *sqlc.Queries, e sqlc.Entity, imageCampaignID, imageID int64) error {
+func linkEntityLook(
+	ctx context.Context,
+	q *sqlc.Queries,
+	e sqlc.Entity,
+	imageCampaignID, imageID int64,
+) error {
 	if err := lookFree(ctx, q, e.CampaignID, imageCampaignID, imageID, false); err != nil {
 		return err
 	}

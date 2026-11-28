@@ -33,7 +33,12 @@ import (
 const maxSlug = 40
 
 // screenshotExts names the screenshot types kept, by sniffed content type.
-var screenshotExts = map[string]string{"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp"}
+var screenshotExts = map[string]string{
+	"image/png":  ".png",
+	"image/jpeg": ".jpg",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+}
 
 type feedbackForm struct {
 	Kind     string `form:"kind"     validate:"oneof=bug idea"`
@@ -100,14 +105,26 @@ func (a *App) sendFeedback(c *gin.Context) error {
 		a.fail(c, http.StatusForbidden, "Join a campaign to send feedback.")
 		return nil
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, views.MaxScreenshots*maxAttachmentBytes+1<<20)
+	c.Request.Body = http.MaxBytesReader(
+		c.Writer,
+		c.Request.Body,
+		views.MaxScreenshots*maxAttachmentBytes+1<<20,
+	)
 	var f feedbackForm
 	if err := c.ShouldBind(&f); err != nil {
 		if tooBig := new(http.MaxBytesError); errors.As(err, &tooBig) {
-			a.fail(c, http.StatusRequestEntityTooLarge, "The screenshots are too big. Attach smaller ones.")
+			a.fail(
+				c,
+				http.StatusRequestEntityTooLarge,
+				"The screenshots are too big. Attach smaller ones.",
+			)
 			return nil
 		}
-		a.fail(c, http.StatusBadRequest, "Give the report a title (up to 120 characters) and a description (up to 4000).")
+		a.fail(
+			c,
+			http.StatusBadRequest,
+			"Give the report a title (up to 120 characters) and a description (up to 4000).",
+		)
 		return nil
 	}
 	var shots []*multipart.FileHeader
@@ -115,10 +132,19 @@ func (a *App) sendFeedback(c *gin.Context) error {
 		shots = form.File["screenshots"]
 	}
 	if len(shots) > views.MaxScreenshots {
-		a.fail(c, http.StatusBadRequest, fmt.Sprintf("Attach at most %d screenshots.", views.MaxScreenshots))
+		a.fail(
+			c,
+			http.StatusBadRequest,
+			fmt.Sprintf("Attach at most %d screenshots.", views.MaxScreenshots),
+		)
 		return nil
 	}
-	r := report{form: f, from: a.reporter(c, f.Player), sent: time.Now().UTC(), browser: browserName(c.Request.UserAgent())}
+	r := report{
+		form:    f,
+		from:    a.reporter(c, f.Player),
+		sent:    time.Now().UTC(),
+		browser: browserName(c.Request.UserAgent()),
+	}
 	if f.Kind == views.FeedbackBug {
 		r.requests = a.reqs.recent(key)
 		r.console, r.consoleOK = parseConsole(f.Console)
@@ -128,7 +154,14 @@ func (a *App) sendFeedback(c *gin.Context) error {
 		return err
 	}
 	// Named like the dialog's button: "Send report" / "Send idea".
-	a.render(c, http.StatusOK, views.Toast(map[string]string{views.FeedbackBug: "Report sent.", views.FeedbackIdea: "Idea sent."}[f.Kind], false))
+	a.render(
+		c,
+		http.StatusOK,
+		views.Toast(
+			map[string]string{views.FeedbackBug: "Report sent.", views.FeedbackIdea: "Idea sent."}[f.Kind],
+			false,
+		),
+	)
 	return nil
 }
 
@@ -167,7 +200,12 @@ func (a *App) reporter(c *gin.Context, player string) string {
 // on file even when nobody says so. The response has already gone out.
 func (a *App) autoReport(c *gin.Context, key string, e reqEntry) {
 	r := report{
-		form:     feedbackForm{Kind: views.FeedbackError, Title: e.Method + " " + c.Request.URL.Path, Body: e.Error, Page: e.Path},
+		form: feedbackForm{
+			Kind:  views.FeedbackError,
+			Title: e.Method + " " + c.Request.URL.Path,
+			Body:  e.Error,
+			Page:  e.Path,
+		},
 		from:     a.reporter(c, ""),
 		sent:     e.At,
 		browser:  browserName(c.Request.UserAgent()),
@@ -208,7 +246,11 @@ func (r report) write(dir string, shots []*multipart.FileHeader) error {
 			r.dropped = append(r.dropped, fmt.Sprintf("%s (%s)", filepath.Base(fh.Filename), mime))
 		}
 	}
-	return os.WriteFile(filepath.Join(dir, r.form.Kind+"-"+slugify(r.form.Title)+".md"), []byte(r.markdown()), 0o600)
+	return os.WriteFile(
+		filepath.Join(dir, r.form.Kind+"-"+slugify(r.form.Title)+".md"),
+		[]byte(r.markdown()),
+		0o600,
+	)
 }
 
 // saveScreenshot stores one upload as base plus the extension of its sniffed
@@ -279,7 +321,11 @@ func (r report) markdown() string {
 			fmt.Fprintf(&b, "![%s](%s)\n", s, s)
 		}
 		if len(r.dropped) > 0 {
-			fmt.Fprintf(&b, "\nLeft out, not a picture: %s\n", oneLine(strings.Join(r.dropped, ", ")))
+			fmt.Fprintf(
+				&b,
+				"\nLeft out, not a picture: %s\n",
+				oneLine(strings.Join(r.dropped, ", ")),
+			)
 		}
 	}
 	return b.String()
@@ -296,10 +342,20 @@ func (r report) requestTables(b *strings.Builder) {
 			continue
 		}
 		if !failed {
-			b.WriteString("| Time (UTC) | Request | Sent | Status | Error |\n|---|---|---|---|---|\n")
+			b.WriteString(
+				"| Time (UTC) | Request | Sent | Status | Error |\n|---|---|---|---|---|\n",
+			)
 			failed = true
 		}
-		fmt.Fprintf(b, "| %s | %s | %s | %d | %s |\n", at(e), req(e), mdCell(e.Sent), e.Status, mdCell(e.Error))
+		fmt.Fprintf(
+			b,
+			"| %s | %s | %s | %d | %s |\n",
+			at(e),
+			req(e),
+			mdCell(e.Sent),
+			e.Status,
+			mdCell(e.Error),
+		)
 	}
 	if !failed {
 		b.WriteString("None.\n")
@@ -311,7 +367,15 @@ func (r report) requestTables(b *strings.Builder) {
 	}
 	b.WriteString("| Time (UTC) | Request | Sent | Status | ms |\n|---|---|---|---|---|\n")
 	for _, e := range r.requests {
-		fmt.Fprintf(b, "| %s | %s | %s | %d | %.1f |\n", at(e), req(e), mdCell(e.Sent), e.Status, float64(e.Took.Microseconds())/1000)
+		fmt.Fprintf(
+			b,
+			"| %s | %s | %s | %d | %.1f |\n",
+			at(e),
+			req(e),
+			mdCell(e.Sent),
+			e.Status,
+			float64(e.Took.Microseconds())/1000,
+		)
 	}
 }
 
@@ -319,7 +383,9 @@ func (r report) requestTables(b *strings.Builder) {
 // A table cell shows a message's first line; full stacks follow the errors.
 func (r report) consoleTables(b *strings.Builder) {
 	if !r.consoleOK {
-		b.WriteString("\n## Browser console\n\nThe browser sent an unreadable console, so it was left out.\n")
+		b.WriteString(
+			"\n## Browser console\n\nThe browser sent an unreadable console, so it was left out.\n",
+		)
 		return
 	}
 	at := func(e consoleEntry) string {
@@ -379,7 +445,13 @@ func slugify(title string) string {
 // folderName is a report's folder: time, kind and title, plus a random
 // suffix. Only [a-z0-9_-] reach the path, so it stays in the feedback folder.
 func folderName(t time.Time, kind, title string) string {
-	return fmt.Sprintf("%s_%s_%s_%s", t.Format("2006-01-02_150405"), kind, slugify(title), strings.ToLower(rand.Text()[:4]))
+	return fmt.Sprintf(
+		"%s_%s_%s_%s",
+		t.Format("2006-01-02_150405"),
+		kind,
+		slugify(title),
+		strings.ToLower(rand.Text()[:4]),
+	)
 }
 
 // FeedbackIndexName is the file in DATA_DIR listing the reports not read
@@ -418,7 +490,10 @@ func (a *App) WriteFeedbackIndex() error {
 		if t, err := time.Parse("2006-01-02_150405", sent[:min(len(sent), 17)]); err == nil {
 			sent = t.Format("2006-01-02 15:04")
 		}
-		lines = append(lines, fmt.Sprintf("- %s UTC · %s: [%s](%s)", sent, kind, mdLinkText(name), rel))
+		lines = append(
+			lines,
+			fmt.Sprintf("- %s UTC · %s: [%s](%s)", sent, kind, mdLinkText(name), rel),
+		)
 	}
 	if len(lines) == 0 {
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -426,8 +501,11 @@ func (a *App) WriteFeedbackIndex() error {
 		}
 		return nil
 	}
-	body := fmt.Sprintf("# Feedback not read: %d\n\nDelete a report's folder once read. This list is rebuilt when the app starts and when a report arrives.\n\n%s\n",
-		len(lines), strings.Join(lines, "\n"))
+	body := fmt.Sprintf(
+		"# Feedback not read: %d\n\nDelete a report's folder once read. This list is rebuilt when the app starts and when a report arrives.\n\n%s\n",
+		len(lines),
+		strings.Join(lines, "\n"),
+	)
 	return os.WriteFile(path, []byte(body), 0o600)
 }
 

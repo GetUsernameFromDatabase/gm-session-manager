@@ -20,7 +20,12 @@ const takeHomeTarget = "#take-home"
 // takeHomeLoad turns a button into the dialog's trigger, loading its body.
 func takeHomeLoad(characterID int64) templ.Attributes {
 	return with(dialog.TriggerFor(takeHomeID), templ.Attributes{
-		attrHxGet: route.Path(route.CharacterTakeHome, characterID), attrHxTarget: takeHomeTarget, attrHxSwap: swapInner,
+		attrHxGet: route.Path(
+			route.CharacterTakeHome,
+			characterID,
+		),
+		attrHxTarget: takeHomeTarget,
+		attrHxSwap:   swapInner,
 	})
 }
 
@@ -58,7 +63,8 @@ type HomeCopyView struct {
 	CampaignID int64
 	Name       string
 	Campaign   string
-	// FromTable is true for a table character (it has a home copy); false for a copy or new character.
+	// FromTable is true for a table character (it has a home copy);
+	// false for a copy or new character.
 	FromTable bool
 	// TakenAt is when the table wrote the file (zero when not FromTable).
 	TakenAt time.Time
@@ -82,7 +88,8 @@ func (c HomeCopyView) fallbackWarning() string {
 	if len(c.HomeSources) > 1 {
 		it = "them"
 	}
-	return c.Name + " uses " + sourceList(c.HomeSources) + ", added here. If the GM declines " + it + ", " + c.Name + " can't come back with this level."
+	return c.Name + " uses " + sourceList(c.HomeSources) + ", added here. If the GM declines " +
+		it + ", " + c.Name + " can't come back with this level."
 }
 
 // HomeFallbackView is a table character's fallback build.
@@ -137,9 +144,19 @@ func (v HomeConfirmView) message() string {
 	const day = "2 Jan"
 	var msg string
 	if v.CopyHere {
-		msg = "The copy here was taken home " + v.Old.Local().Format(day) + "; this file is from " + v.New.Local().Format(day) + ". Replacing it drops the changes made here since " + v.Old.Local().Format(day) + "."
+		msg = "The copy here was taken home " + v.Old.Local().
+			Format(day) +
+			"; this file is from " + v.New.Local().
+			Format(day) +
+			". Replacing it drops the changes made here since " + v.Old.Local().
+			Format(day) +
+			"."
 		if v.New.Before(v.Old) {
-			msg = "This file (" + v.New.Local().Format(day) + ") is older than the copy here (" + v.Old.Local().Format(day) + "). Replacing it drops the changes made here."
+			msg = "This file (" + v.New.Local().
+				Format(day) +
+				") is older than the copy here (" + v.Old.Local().
+				Format(day) +
+				"). Replacing it drops the changes made here."
 		}
 	}
 	if v.MadeAtHome != "" {
@@ -147,7 +164,10 @@ func (v HomeConfirmView) message() string {
 	}
 	msg = strings.TrimSpace(msg)
 	if len(v.Sources) > 0 {
-		msg += " The new copy also leaves off the sources added here (" + strings.Join(v.Sources, ", ") + "): add them again from its compendium's Import tab."
+		msg += " The new copy also leaves off the sources added here (" + strings.Join(
+			v.Sources,
+			", ",
+		) + "): add them again from its compendium's Import tab."
 	}
 	if v.Fallback != "" {
 		msg += " Its fallback build (" + v.Fallback + ") goes too."

@@ -27,7 +27,11 @@ func fiveToolsKey(id string) string { return compendium.FiveToolsPrefix + string
 
 // fiveToolsView lists the mirror's books (the cache when offline), plus any
 // downloaded book the list no longer names, with each one's import date.
-func (a *App) fiveToolsView(ctx context.Context, msg string, failed bool) (views.FiveToolsView, error) {
+func (a *App) fiveToolsView(
+	ctx context.Context,
+	msg string,
+	failed bool,
+) (views.FiveToolsView, error) {
 	dir := a.compendiumDir()
 	books, err := compendium.FiveToolsBooks(ctx, dir)
 	if err != nil {
@@ -44,7 +48,10 @@ func (a *App) fiveToolsView(ctx context.Context, msg string, failed bool) (views
 	downloaded := map[string]time.Time{}
 	for _, b := range have {
 		downloaded[strings.ToLower(b.ID)] = time.Time{}
-		if !slices.ContainsFunc(books, func(o compendium.Book) bool { return strings.EqualFold(o.ID, b.ID) }) {
+		if !slices.ContainsFunc(
+			books,
+			func(o compendium.Book) bool { return strings.EqualFold(o.ID, b.ID) },
+		) {
 			books = append(books, b)
 		}
 	}
@@ -60,7 +67,10 @@ func (a *App) fiveToolsView(ctx context.Context, msg string, failed bool) (views
 	v.Msg, v.Failed, v.Running = msg, failed, job.Running
 	// The books a running or failed import picked stay ticked.
 	tickBooks(&v, func(b compendium.Book) bool {
-		return slices.ContainsFunc(job.Books, func(id string) bool { return strings.EqualFold(id, b.ID) })
+		return slices.ContainsFunc(
+			job.Books,
+			func(id string) bool { return strings.EqualFold(id, b.ID) },
+		)
 	})
 	return v, nil
 }
@@ -87,7 +97,10 @@ type fiveToolsListForm struct {
 // posted here) gets the whole page.
 func (a *App) fiveToolsList(c *gin.Context) error {
 	if !isHTMX(c) {
-		c.Redirect(http.StatusSeeOther, compendiumPath(c, "?"+views.ImportKey+"="+views.ImportTabFiveTools))
+		c.Redirect(
+			http.StatusSeeOther,
+			compendiumPath(c, "?"+views.ImportKey+"="+views.ImportTabFiveTools),
+		)
 		return nil
 	}
 	var f fiveToolsListForm
@@ -103,7 +116,10 @@ func (a *App) fiveToolsList(c *gin.Context) error {
 		tickSet(&v)
 	}
 	tickBooks(&v, func(b compendium.Book) bool {
-		return slices.ContainsFunc(f.Books, func(id string) bool { return strings.EqualFold(id, b.ID) })
+		return slices.ContainsFunc(
+			f.Books,
+			func(id string) bool { return strings.EqualFold(id, b.ID) },
+		)
 	})
 	a.render(c, http.StatusOK, views.FiveToolsPicker(v))
 	return nil
@@ -161,7 +177,10 @@ func (a *App) fiveToolsImport(c *gin.Context) error {
 	}
 	var picked []compendium.Book
 	for _, b := range all {
-		if slices.ContainsFunc(f.Books, func(id string) bool { return strings.EqualFold(id, b.ID) }) {
+		if slices.ContainsFunc(
+			f.Books,
+			func(id string) bool { return strings.EqualFold(id, b.ID) },
+		) {
 			picked = append(picked, b)
 		}
 	}
@@ -174,7 +193,8 @@ func (a *App) fiveToolsImport(c *gin.Context) error {
 		}
 	}
 	if len(picked) == 0 { // e.g. the stale-books banner's books have left the mirror
-		notice.Msg, notice.Failed = "None of those books is on the 5etools mirror any more; remove them instead.", true
+		notice.Msg = "None of those books is on the 5etools mirror any more; remove them instead."
+		notice.Failed = true
 		return a.renderCompendium(c, notice)
 	}
 	if !a.fiveTools.start(len(picked)) {
@@ -206,17 +226,28 @@ type open5eForm struct {
 func (a *App) open5eImport(c *gin.Context) error {
 	var f open5eForm
 	if c.ShouldBind(&f) != nil {
-		return a.renderCompendium(c, views.ImportNotice{Tab: views.ImportTabFolder, Msg: "Pick an SRD.", Failed: true})
+		return a.renderCompendium(
+			c,
+			views.ImportNotice{Tab: views.ImportTabFolder, Msg: "Pick an SRD.", Failed: true},
+		)
 	}
 	if !a.fiveTools.start(0) { // the file count comes with the listing
 		tab := views.ImportTabFiveTools
 		if f.Import != "" { // posted from the Data folder tab: say it there
 			tab = views.ImportTabFolder
 		}
-		return a.renderCompendium(c, views.ImportNotice{Tab: tab, Msg: errImportRunning, Failed: true})
+		return a.renderCompendium(
+			c,
+			views.ImportNotice{Tab: tab, Msg: errImportRunning, Failed: true},
+		)
 	}
 	// The import outlives the request; a campaign's compendium gets the SRD ticked.
-	go a.runOpen5e(context.WithoutCancel(c.Request.Context()), a.compendiumDir(), f.Doc, viewerCampaign(pathCampaign(c)))
+	go a.runOpen5e(
+		context.WithoutCancel(c.Request.Context()),
+		a.compendiumDir(),
+		f.Doc,
+		viewerCampaign(pathCampaign(c)),
+	)
 	back := fiveToolsBack(c)
 	if f.Import != "" { // the Data folder tab, whose progress sits above the tabs
 		back += "?" + views.ImportKey + "=" + views.ImportTabFolder
@@ -281,7 +312,11 @@ func (a *App) importDismiss(c *gin.Context) {
 	}
 	was := strings.ReplaceAll(c.PostForm(views.DismissWasField), "\r\n", "\n")
 	if !a.fiveTools.dismiss(was) {
-		a.fail(c, http.StatusConflict, "The import changed meanwhile; dismiss the summary shown now.")
+		a.fail(
+			c,
+			http.StatusConflict,
+			"The import changed meanwhile; dismiss the summary shown now.",
+		)
 		return
 	}
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicImport})
@@ -324,7 +359,11 @@ func (a *App) fiveToolsRemove(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	a.render(c, http.StatusOK, templ.Join(views.FiveToolsPicker(v), views.Toast("Removed "+id+".", false)))
+	a.render(
+		c,
+		http.StatusOK,
+		templ.Join(views.FiveToolsPicker(v), views.Toast("Removed "+id+".", false)),
+	)
 	return nil
 }
 
@@ -347,7 +386,11 @@ func (a *App) sourceOrder(c *gin.Context) error {
 		err = a.sinkHomeSources(ctx, a.Store.Queries)
 	}
 	if errors.Is(err, compendium.ErrNoSource) {
-		a.fail(c, http.StatusConflict, "The sources changed meanwhile: reload the page and drag again.")
+		a.fail(
+			c,
+			http.StatusConflict,
+			"The sources changed meanwhile: reload the page and drag again.",
+		)
 		return nil
 	}
 	if err != nil {
@@ -373,7 +416,10 @@ func (a *App) sourceSort(c *gin.Context) error {
 // sourcesChanged tells every page and answers with the priority card.
 func (a *App) sourcesChanged(c *gin.Context) {
 	a.Hub.Publish(0, hub.Topic{Kind: hub.TopicCompendium})
-	sources, shared, counts, err := a.sourcesCard(c.Request.Context(), viewerCampaign(pathCampaign(c)))
+	sources, shared, counts, err := a.sourcesCard(
+		c.Request.Context(),
+		viewerCampaign(pathCampaign(c)),
+	)
 	if err != nil {
 		a.serverError(c, err)
 		return
@@ -382,7 +428,10 @@ func (a *App) sourcesChanged(c *gin.Context) {
 }
 
 // sourcesCard is what the priority card of campaignID's compendium shows.
-func (a *App) sourcesCard(ctx context.Context, campaignID int64) ([]sqlc.CompendiumSource, map[string]sqlc.CountSharedBySourceRow, map[string]sqlc.CountEntriesBySourceRow, error) {
+func (a *App) sourcesCard(
+	ctx context.Context,
+	campaignID int64,
+) ([]sqlc.CompendiumSource, map[string]sqlc.CountSharedBySourceRow, map[string]sqlc.CountEntriesBySourceRow, error) {
 	sources, shared, err := a.sourcePriority(ctx, campaignID)
 	if err != nil {
 		return nil, nil, nil, err
@@ -393,7 +442,10 @@ func (a *App) sourcesCard(ctx context.Context, campaignID int64) ([]sqlc.Compend
 
 // entryCounts is, by source key, each source's entries and how many of them
 // campaignID's lists show.
-func (a *App) entryCounts(ctx context.Context, campaignID int64) (map[string]sqlc.CountEntriesBySourceRow, error) {
+func (a *App) entryCounts(
+	ctx context.Context,
+	campaignID int64,
+) (map[string]sqlc.CountEntriesBySourceRow, error) {
 	rows, err := a.Store.CountEntriesBySource(ctx, campaignID)
 	counts := map[string]sqlc.CountEntriesBySourceRow{}
 	for _, r := range rows {
@@ -404,7 +456,10 @@ func (a *App) entryCounts(ctx context.Context, campaignID int64) (map[string]sql
 
 // sourcePriority is the priority card's sources and, by source key, how many
 // of each one's entries another source campaignID allows also holds.
-func (a *App) sourcePriority(ctx context.Context, campaignID int64) ([]sqlc.CompendiumSource, map[string]sqlc.CountSharedBySourceRow, error) {
+func (a *App) sourcePriority(
+	ctx context.Context,
+	campaignID int64,
+) ([]sqlc.CompendiumSource, map[string]sqlc.CountSharedBySourceRow, error) {
 	sources, err := a.Store.ListCompendiumSources(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -419,8 +474,15 @@ func (a *App) sourcePriority(ctx context.Context, campaignID int64) ([]sqlc.Comp
 
 // entryCopies are the other sources holding e's kind and slug, without
 // player homebrew the viewer may not see.
-func (a *App) entryCopies(ctx context.Context, e sqlc.CompendiumEntry, campaignID int64) ([]sqlc.ListEntryCopiesRow, error) {
-	rows, err := a.Store.ListEntryCopies(ctx, sqlc.ListEntryCopiesParams{Kind: e.Kind, Slug: e.Slug})
+func (a *App) entryCopies(
+	ctx context.Context,
+	e sqlc.CompendiumEntry,
+	campaignID int64,
+) ([]sqlc.ListEntryCopiesRow, error) {
+	rows, err := a.Store.ListEntryCopies(
+		ctx,
+		sqlc.ListEntryCopiesParams{Kind: e.Kind, Slug: e.Slug},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -450,14 +512,21 @@ func (a *App) entryCopies(ctx context.Context, e sqlc.CompendiumEntry, campaignI
 // resolveCompendiumLinks turns the [[compendium:kind/slug|label]] tokens in
 // an entry's JSON into Markdown links to the top-priority copy the viewer
 // may see, or the bare label. One query per kind; import order never matters.
-func (a *App) resolveCompendiumLinks(ctx context.Context, dataJSON string, campaignID int64) (string, error) {
+func (a *App) resolveCompendiumLinks(
+	ctx context.Context,
+	dataJSON string,
+	campaignID int64,
+) (string, error) {
 	refs := views.CompendiumRefs(dataJSON)
 	if len(refs) == 0 {
 		return dataJSON, nil
 	}
 	ids := map[string]int64{}
 	for kind, slugs := range refs {
-		rows, err := a.Store.ListCompendiumBySlugs(ctx, sqlc.ListCompendiumBySlugsParams{Kind: enum.CompendiumKind(kind), Slugs: slugs})
+		rows, err := a.Store.ListCompendiumBySlugs(
+			ctx,
+			sqlc.ListCompendiumBySlugsParams{Kind: enum.CompendiumKind(kind), Slugs: slugs},
+		)
 		if err != nil {
 			return "", err
 		}

@@ -13,19 +13,27 @@ import (
 func TestEntityMentionsStayInCampaign(t *testing.T) {
 	e := newTestEnv(t)
 	ctx := t.Context()
-	other, err := e.q().CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
+	other, err := e.q().
+		CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Other", System: "dnd5e", Edition: "2024"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Target", FieldsJson: "{}"})
+	target, err := e.q().
+		CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: e.campaignID, Kind: "npc", Name: "Target", FieldsJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, err := e.q().CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: other.ID, Kind: "npc", Name: "Foreign", FieldsJson: "{}"})
+	foreign, err := e.q().
+		CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: other.ID, Kind: "npc", Name: "Foreign", FieldsJson: "{}"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	link := sqlc.AddEntityFieldLinkParams{EntityID: foreign.ID, FieldKey: "notes", TargetEntityID: nullID(target.ID), IsRevealed: true}
+	link := sqlc.AddEntityFieldLinkParams{
+		EntityID:       foreign.ID,
+		FieldKey:       "notes",
+		TargetEntityID: nullID(target.ID),
+		IsRevealed:     true,
+	}
 	if err := e.q().AddEntityFieldLink(ctx, link); err != nil {
 		t.Fatal(err)
 	}

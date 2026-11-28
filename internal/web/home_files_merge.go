@@ -80,7 +80,15 @@ func (t tableState) stamp() string {
 		fmt.Fprintf(&b, "N%d,%q;", n.ID, n.Title)
 	}
 	for _, bl := range t.Blocks {
-		fmt.Fprintf(&b, "B%d,%d,%s,%d,%d;", bl.ID, bl.NoteID, bl.Visibility, bl.Version, bl.DocVersion)
+		fmt.Fprintf(
+			&b,
+			"B%d,%d,%s,%d,%d;",
+			bl.ID,
+			bl.NoteID,
+			bl.Visibility,
+			bl.Version,
+			bl.DocVersion,
+		)
 	}
 	for _, e := range t.Homebrew {
 		fmt.Fprintf(&b, "H%d,%s;", e.ID, e.ContentHash)
@@ -110,7 +118,13 @@ const sideTable = buildFromTable
 
 // changeGroup is a group's row: Home when only the file changed things, Both
 // with two columns when the sides conflict.
-func changeGroup(key, label string, lines []string, conflict bool, homeLines, tableLines []string, pick string) views.HomeFileGroup {
+func changeGroup(
+	key, label string,
+	lines []string,
+	conflict bool,
+	homeLines, tableLines []string,
+	pick string,
+) views.HomeFileGroup {
 	g := views.HomeFileGroup{Key: key, Label: label}
 	switch {
 	case conflict:
@@ -194,9 +208,16 @@ func planLooks(in lookIn) looksPlan {
 			key = t
 			tl, linked := table[t]
 			if b, inBase := base[t]; linked && inBase {
-				if rev, _ := merge3(b.IsRevealed, tl.IsRevealed, l.IsRevealed); rev != tl.IsRevealed {
+				if rev, _ := merge3(
+					b.IsRevealed,
+					tl.IsRevealed,
+					l.IsRevealed,
+				); rev != tl.IsRevealed {
 					p.Reveal[t] = rev
-					lines = append(lines, tl.Name+": "+map[bool]string{true: "revealed", false: "hidden"}[rev])
+					lines = append(
+						lines,
+						tl.Name+": "+map[bool]string{true: "revealed", false: "hidden"}[rev],
+					)
 				}
 			}
 		}
@@ -229,7 +250,15 @@ func planLooks(in lookIn) looksPlan {
 	p.Touched = len(p.New) > 0 || len(p.Unlink) > 0 || len(p.Reveal) > 0 || cur != tableCurrent
 	currentLine := func(id int64) string { return "Current: " + name(id) }
 	if conflict {
-		p.Group = changeGroup(groupLooks, "Looks", lines, true, []string{currentLine(homeCurrent)}, []string{currentLine(tableCurrent)}, in.Pick)
+		p.Group = changeGroup(
+			groupLooks,
+			"Looks",
+			lines,
+			true,
+			[]string{currentLine(homeCurrent)},
+			[]string{currentLine(tableCurrent)},
+			in.Pick,
+		)
 		return p
 	}
 	if cur != tableCurrent {
@@ -242,13 +271,24 @@ func planLooks(in lookIn) looksPlan {
 // applyLooks writes the looks plan: files are the saved files of the New looks,
 // in their order (empty for a look that is a link). It returns the new images
 // by home id.
-func applyLooks(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p looksPlan, file []export.TakeHomeLook, files []savedFile, used map[string]bool) (map[int64]int64, error) {
+func applyLooks(
+	ctx context.Context,
+	q *sqlc.Queries,
+	ch sqlc.Character,
+	p looksPlan,
+	file []export.TakeHomeLook,
+	files []savedFile,
+	used map[string]bool,
+) (map[int64]int64, error) {
 	created := map[int64]int64{}
 	if !p.Touched {
 		return created, nil
 	}
 	for _, t := range p.Unlink {
-		if err := q.UnlinkCharacterImage(ctx, sqlc.UnlinkCharacterImageParams{CharacterID: ch.ID, ImageID: t}); err != nil {
+		if err := q.UnlinkCharacterImage(
+			ctx,
+			sqlc.UnlinkCharacterImageParams{CharacterID: ch.ID, ImageID: t},
+		); err != nil {
 			return nil, err
 		}
 	}
@@ -261,7 +301,16 @@ func applyLooks(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p looks
 				return nil, errors.New("a look's file was not saved")
 			}
 			sf := files[n]
-			a, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{CampaignID: ch.CampaignID, Path: sf.path, Name: sf.name, Mime: sf.mime, Size: sf.size})
+			a, err := q.CreateAttachment(
+				ctx,
+				sqlc.CreateAttachmentParams{
+					CampaignID: ch.CampaignID,
+					Path:       sf.path,
+					Name:       sf.name,
+					Mime:       sf.mime,
+					Size:       sf.size,
+				},
+			)
 			if err != nil {
 				return nil, err
 			}
@@ -269,22 +318,39 @@ func applyLooks(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p looks
 			att = nullID(a.ID)
 		}
 		img, err := q.CreateImage(ctx, sqlc.CreateImageParams{
-			CampaignID: ch.CampaignID, Name: cmp.Or(l.Name, ch.Name), Url: sql.NullString{String: l.URL, Valid: l.URL != ""}, AttachmentID: att, Description: l.Description,
+			CampaignID:   ch.CampaignID,
+			Name:         cmp.Or(l.Name, ch.Name),
+			Url:          sql.NullString{String: l.URL, Valid: l.URL != ""},
+			AttachmentID: att,
+			Description:  l.Description,
 		})
 		if err != nil {
 			return nil, err
 		}
-		if err := q.LinkCharacterImage(ctx, sqlc.LinkCharacterImageParams{CharacterID: ch.ID, ImageID: img.ID}); err != nil {
+		if err := q.LinkCharacterImage(
+			ctx,
+			sqlc.LinkCharacterImageParams{CharacterID: ch.ID, ImageID: img.ID},
+		); err != nil {
 			return nil, err
 		}
-		if err := q.SetCharacterImageFlags(ctx, sqlc.SetCharacterImageFlagsParams{IsRevealed: l.IsRevealed, CharacterID: ch.ID, ImageID: img.ID}); err != nil {
+		if err := q.SetCharacterImageFlags(
+			ctx,
+			sqlc.SetCharacterImageFlagsParams{
+				IsRevealed:  l.IsRevealed,
+				CharacterID: ch.ID,
+				ImageID:     img.ID,
+			},
+		); err != nil {
 			return nil, err
 		}
 		created[l.ImageID] = img.ID
 		byIndex[i] = img.ID
 	}
 	for t, rev := range p.Reveal {
-		if err := q.SetCharacterImageFlags(ctx, sqlc.SetCharacterImageFlagsParams{IsRevealed: rev, CharacterID: ch.ID, ImageID: t}); err != nil {
+		if err := q.SetCharacterImageFlags(
+			ctx,
+			sqlc.SetCharacterImageFlagsParams{IsRevealed: rev, CharacterID: ch.ID, ImageID: t},
+		); err != nil {
 			return nil, err
 		}
 	}
@@ -298,7 +364,10 @@ func applyLooks(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p looks
 		cur = byIndex[int(-cur-1)]
 	}
 	if cur > 0 {
-		if _, err := q.SetCharacterCurrentImage(ctx, sqlc.SetCharacterCurrentImageParams{CharacterID: ch.ID, ImageID: cur}); err != nil {
+		if _, err := q.SetCharacterCurrentImage(
+			ctx,
+			sqlc.SetCharacterCurrentImageParams{CharacterID: ch.ID, ImageID: cur},
+		); err != nil {
 			return nil, err
 		}
 	}
@@ -380,7 +449,10 @@ func planNotes(in noteIn) notesPlan {
 		blocksOf[b.NoteID] = append(blocksOf[b.NoteID], b)
 	}
 	shared := func(noteID int64) bool {
-		return slices.ContainsFunc(blocksOf[noteID], func(b sqlc.NoteBlock) bool { return b.Visibility != enum.VisOwner })
+		return slices.ContainsFunc(
+			blocksOf[noteID],
+			func(b sqlc.NoteBlock) bool { return b.Visibility != enum.VisOwner },
+		)
 	}
 	inFile := map[int64]bool{}
 	for _, n := range in.File {
@@ -389,7 +461,10 @@ func planNotes(in noteIn) notesPlan {
 		if !mapped {
 			blocks := n.Blocks
 			if in.OnlyOwner {
-				blocks = slices.DeleteFunc(slices.Clone(blocks), func(b export.TakeHomeBlock) bool { return b.Visibility != enum.VisOwner })
+				blocks = slices.DeleteFunc(
+					slices.Clone(blocks),
+					func(b export.TakeHomeBlock) bool { return b.Visibility != enum.VisOwner },
+				)
 			}
 			if len(blocks) > 0 {
 				nn := n
@@ -415,19 +490,25 @@ func planNotes(in noteIn) notesPlan {
 				continue
 			}
 			// Home wins over a table edit; only a private block the character owns is replaced.
-			if cur, exists := tableBlock[tb]; b.Version > 0 && exists && cur.Visibility == enum.VisOwner {
-				p.Replace = append(p.Replace, blockWrite{NoteID: cur.NoteID, TableBlock: tb, Block: b})
+			if cur, exists := tableBlock[tb]; b.Version > 0 && exists &&
+				cur.Visibility == enum.VisOwner {
+				p.Replace = append(
+					p.Replace,
+					blockWrite{NoteID: cur.NoteID, TableBlock: tb, Block: b},
+				)
 				changed = true
 			}
 		}
 		for _, home := range slices.Sorted(maps.Keys(in.Blocks)) {
 			tb := in.Blocks[home]
-			if cur, exists := tableBlock[tb]; !fileBlock[home] && exists && cur.NoteID == t && cur.Visibility == enum.VisOwner {
+			if cur, exists := tableBlock[tb]; !fileBlock[home] && exists && cur.NoteID == t &&
+				cur.Visibility == enum.VisOwner {
 				p.DeleteBlocks = append(p.DeleteBlocks, tb)
 				changed = true
 			}
 		}
-		if bt, sent := in.BaseTitles[t]; sent && n.Title != bt && n.Title != tn.Title && !shared(t) {
+		if bt, sent := in.BaseTitles[t]; sent && n.Title != bt && n.Title != tn.Title &&
+			!shared(t) {
 			p.Rename = append(p.Rename, noteRename{NoteID: t, Kind: tn.Kind, Title: n.Title})
 			changed = true
 		}
@@ -474,7 +555,13 @@ func (p notesPlan) group(forNewCharacter bool) views.HomeFileGroup {
 	g := views.HomeFileGroup{Key: groupNotes, Label: "Notes"}
 	if forNewCharacter {
 		if p.New > 0 {
-			g.Badge, g.Lines = titleHome, []string{fmt.Sprintf("%d %s", p.New, map[bool]string{true: "note", false: "notes"}[p.New == 1])}
+			g.Badge, g.Lines = titleHome, []string{
+				fmt.Sprintf(
+					"%d %s",
+					p.New,
+					map[bool]string{true: "note", false: "notes"}[p.New == 1],
+				),
+			}
 		}
 		return g
 	}
@@ -508,7 +595,10 @@ func attachmentNeeded(attachments map[int64]int64, table map[int64]bool) needFil
 
 // filesToSave are the block's files that need saving.
 func filesToSave(b export.TakeHomeBlock, need needFile) []export.TakeHomeBlockFile {
-	return slices.DeleteFunc(slices.Clone(b.Files), func(f export.TakeHomeBlockFile) bool { return !need(f.AttachmentID) })
+	return slices.DeleteFunc(
+		slices.Clone(b.Files),
+		func(f export.TakeHomeBlockFile) bool { return !need(f.AttachmentID) },
+	)
 }
 
 // fileNotes is a holder note with the blocks Accept writes, reduced to the
@@ -542,7 +632,17 @@ type writtenBlock struct {
 // applyNotes writes the notes plan and returns the notes (table ids) it touched.
 // Documents are rewritten once every note and picture exists: pictures through
 // the attachment map, mentions through the notes and looks of the file.
-func applyNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p notesPlan, m export.HomeIDMaps, newImages map[int64]int64, blockFiles map[int64][]savedFile, need needFile, used map[string]bool) ([]int64, error) {
+func applyNotes(
+	ctx context.Context,
+	q *sqlc.Queries,
+	ch sqlc.Character,
+	p notesPlan,
+	m export.HomeIDMaps,
+	newImages map[int64]int64,
+	blockFiles map[int64][]savedFile,
+	need needFile,
+	used map[string]bool,
+) ([]int64, error) {
 	touched := slices.Clone(p.Touched)
 	for _, id := range p.DeleteBlocks {
 		if err := q.DeleteBlock(ctx, id); err != nil {
@@ -555,7 +655,10 @@ func applyNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p notes
 		}
 	}
 	for _, r := range p.Rename {
-		if err := q.RenameNote(ctx, sqlc.RenameNoteParams{Title: r.Title, Kind: r.Kind, ID: r.NoteID}); err != nil {
+		if err := q.RenameNote(
+			ctx,
+			sqlc.RenameNoteParams{Title: r.Title, Kind: r.Kind, ID: r.NoteID},
+		); err != nil {
 			return nil, err
 		}
 	}
@@ -576,7 +679,17 @@ func applyNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p notes
 				return errors.New("a note picture was not saved")
 			}
 			sf := files[i]
-			a, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{CampaignID: ch.CampaignID, BlockID: nullID(blockID), Path: sf.path, Name: sf.name, Mime: sf.mime, Size: sf.size})
+			a, err := q.CreateAttachment(
+				ctx,
+				sqlc.CreateAttachmentParams{
+					CampaignID: ch.CampaignID,
+					BlockID:    nullID(blockID),
+					Path:       sf.path,
+					Name:       sf.name,
+					Mime:       sf.mime,
+					Size:       sf.size,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -587,7 +700,12 @@ func applyNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p notes
 	}
 	addBlock := func(noteID int64, b export.TakeHomeBlock) error {
 		id, err := q.CreateTakeHomeBlock(ctx, sqlc.CreateTakeHomeBlockParams{
-			NoteID: noteID, Position: b.Position, Visibility: enum.VisOwner, DocJson: string(b.Doc), Text: b.Text, AuthorCharacterID: nullID(ch.ID),
+			NoteID:            noteID,
+			Position:          b.Position,
+			Visibility:        enum.VisOwner,
+			DocJson:           string(b.Doc),
+			Text:              b.Text,
+			AuthorCharacterID: nullID(ch.ID),
 		})
 		if err != nil {
 			return err
@@ -597,7 +715,12 @@ func applyNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p notes
 	}
 	for _, n := range p.NewNotes {
 		id, err := q.CreateNoteAt(ctx, sqlc.CreateNoteAtParams{
-			CampaignID: ch.CampaignID, Kind: n.Kind, Title: n.Title, OwnerCharacterID: nullID(ch.ID), CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
+			CampaignID:       ch.CampaignID,
+			Kind:             n.Kind,
+			Title:            n.Title,
+			OwnerCharacterID: nullID(ch.ID),
+			CreatedAt:        n.CreatedAt,
+			UpdatedAt:        n.UpdatedAt,
 		})
 		if err != nil {
 			return nil, err
@@ -616,7 +739,16 @@ func applyNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p notes
 		}
 	}
 	for _, w := range p.Replace {
-		written = append(written, writtenBlock{id: w.TableBlock, noteID: w.NoteID, doc: w.Block.Doc, text: w.Block.Text, replace: true})
+		written = append(
+			written,
+			writtenBlock{
+				id:      w.TableBlock,
+				noteID:  w.NoteID,
+				doc:     w.Block.Doc,
+				text:    w.Block.Text,
+				replace: true,
+			},
+		)
 		if err := addFiles(w.TableBlock, w.Block); err != nil {
 			return nil, err
 		}
@@ -645,7 +777,10 @@ func applyNotes(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p notes
 			return nil, err
 		}
 		if w.replace {
-			if err := q.ReplaceBlockDoc(ctx, sqlc.ReplaceBlockDocParams{DocJson: string(doc), Text: w.text, ID: w.id}); err != nil {
+			if err := q.ReplaceBlockDoc(
+				ctx,
+				sqlc.ReplaceBlockDocParams{DocJson: string(doc), Text: w.text, ID: w.id},
+			); err != nil {
 				return nil, err
 			}
 			if err := q.DeleteBlockSteps(ctx, w.id); err != nil {
@@ -738,7 +873,8 @@ func rewriteDocMentions(doc json.RawMessage, rewrite mentionIDs) (json.RawMessag
 				if s, ok := attrs["id"].(string); ok {
 					kind, rest, _ := strings.Cut(s, ":")
 					id, err := strconv.ParseInt(rest, 10, 64)
-					if k := enum.LinkTarget(kind); err == nil && (k == enum.LinkNote || k == enum.LinkImage) {
+					k := enum.LinkTarget(kind)
+					if err == nil && (k == enum.LinkNote || k == enum.LinkImage) {
 						if now := rewrite(k, id); now != id {
 							attrs["id"] = fmt.Sprintf("%s:%d", k, now)
 							changed = true
@@ -791,7 +927,10 @@ func docLinks(doc json.RawMessage) []docLink {
 						k := enum.LinkTarget(parts[0])
 						id, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
 						l := docLink{Type: k, ID: id}
-						if (k == enum.LinkNote || k == enum.LinkEntity || k == enum.LinkImage) && err == nil && id > 0 && !slices.Contains(out, l) {
+						if (k == enum.LinkNote || k == enum.LinkEntity || k == enum.LinkImage) &&
+							err == nil &&
+							id > 0 &&
+							!slices.Contains(out, l) {
 							out = append(out, l)
 						}
 					}
@@ -811,7 +950,13 @@ func docLinks(doc json.RawMessage) []docLink {
 // writeBlockLinks rebuilds a block's links from its document, as a player's
 // snapshot would: an image link stays only if the block had it or the image is
 // one of the character's looks. A target outside the campaign is skipped.
-func writeBlockLinks(ctx context.Context, q *sqlc.Queries, campaignID, noteID, blockID int64, doc json.RawMessage, lookIDs []int64) error {
+func writeBlockLinks(
+	ctx context.Context,
+	q *sqlc.Queries,
+	campaignID, noteID, blockID int64,
+	doc json.RawMessage,
+	lookIDs []int64,
+) error {
 	images, err := q.ListBlockImageLinks(ctx, blockID)
 	if err != nil {
 		return err
@@ -820,7 +965,8 @@ func writeBlockLinks(ctx context.Context, q *sqlc.Queries, campaignID, noteID, b
 		return err
 	}
 	for _, l := range docLinks(doc) {
-		if l.Type == enum.LinkImage && !slices.Contains(images, l.ID) && !slices.Contains(lookIDs, l.ID) {
+		if l.Type == enum.LinkImage && !slices.Contains(images, l.ID) &&
+			!slices.Contains(lookIDs, l.ID) {
 			continue
 		}
 		if ok, err := linkInCampaign(ctx, q, campaignID, l); err != nil {
@@ -829,7 +975,16 @@ func writeBlockLinks(ctx context.Context, q *sqlc.Queries, campaignID, noteID, b
 			continue
 		}
 		note, entity, image := linkTarget(l.Type, l.ID)
-		if err := q.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: noteID, SourceBlockID: blockID, TargetNoteID: note, TargetEntityID: entity, TargetImageID: image}); err != nil {
+		if err := q.AddBlockLink(
+			ctx,
+			sqlc.AddBlockLinkParams{
+				SourceNoteID:   noteID,
+				SourceBlockID:  blockID,
+				TargetNoteID:   note,
+				TargetEntityID: entity,
+				TargetImageID:  image,
+			},
+		); err != nil {
 			return err
 		}
 	}
@@ -837,7 +992,12 @@ func writeBlockLinks(ctx context.Context, q *sqlc.Queries, campaignID, noteID, b
 }
 
 // linkInCampaign reports whether a link's target exists in the campaign.
-func linkInCampaign(ctx context.Context, q *sqlc.Queries, campaignID int64, l docLink) (bool, error) {
+func linkInCampaign(
+	ctx context.Context,
+	q *sqlc.Queries,
+	campaignID int64,
+	l docLink,
+) (bool, error) {
 	var got int64
 	var err error
 	switch l.Type {
@@ -954,14 +1114,31 @@ func planHomebrew(in homebrewIn) homebrewPlan {
 	if len(conflicts) > 0 && pickedHome(in.Pick) {
 		p.Update = append(p.Update, conflicts...)
 	}
-	p.Group = changeGroup(groupHomebrew, "Homebrew", lines, len(conflicts) > 0, conflictHome, conflictTable, in.Pick)
+	p.Group = changeGroup(
+		groupHomebrew,
+		"Homebrew",
+		lines,
+		len(conflicts) > 0,
+		conflictHome,
+		conflictTable,
+		in.Pick,
+	)
 	return p
 }
 
 func applyHomebrew(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p homebrewPlan) error {
 	for _, u := range p.Update {
 		e := u.Entry
-		if err := q.UpdateHomebrew(ctx, sqlc.UpdateHomebrewParams{Name: e.Name, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash, ID: u.ID}); err != nil {
+		if err := q.UpdateHomebrew(
+			ctx,
+			sqlc.UpdateHomebrewParams{
+				Name:        e.Name,
+				DataJson:    string(e.Data),
+				BodyText:    e.BodyText,
+				ContentHash: e.ContentHash,
+				ID:          u.ID,
+			},
+		); err != nil {
 			return err
 		}
 	}
@@ -972,13 +1149,22 @@ func applyHomebrew(ctx context.Context, q *sqlc.Queries, ch sqlc.Character, p ho
 	}
 	for _, e := range p.Create {
 		row, err := q.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{
-			Kind: e.Kind, Slug: e.Slug, Name: e.Name, DataJson: string(e.Data), BodyText: e.BodyText, ContentHash: e.ContentHash,
-			OwnerCharacterID: nullID(ch.ID), Scoped: true,
+			Kind:             e.Kind,
+			Slug:             e.Slug,
+			Name:             e.Name,
+			DataJson:         string(e.Data),
+			BodyText:         e.BodyText,
+			ContentHash:      e.ContentHash,
+			OwnerCharacterID: nullID(ch.ID),
+			Scoped:           true,
 		})
 		if err != nil {
 			return err
 		}
-		if err := q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: row.ID, CampaignID: ch.CampaignID}); err != nil {
+		if err := q.LinkEntryCampaign(
+			ctx,
+			sqlc.LinkEntryCampaignParams{EntryID: row.ID, CampaignID: ch.CampaignID},
+		); err != nil {
 			return err
 		}
 	}
@@ -1007,7 +1193,14 @@ type homeExtras struct {
 // planExtras plans the looks, notes and homebrew of file for the campaign. A
 // new character's file (characterID 0) has no table state, base or maps, so all
 // of it is new.
-func planExtras(ctx context.Context, q *sqlc.Queries, campaignID, characterID int64, file *export.TakeHomeFile, base export.TakeHomeBase, form func(string) string) (homeExtras, error) {
+func planExtras(
+	ctx context.Context,
+	q *sqlc.Queries,
+	campaignID, characterID int64,
+	file *export.TakeHomeFile,
+	base export.TakeHomeBase,
+	form func(string) string,
+) (homeExtras, error) {
 	x := homeExtras{newChar: characterID == 0}
 	var err error
 	if !x.newChar {
@@ -1016,21 +1209,57 @@ func planExtras(ctx context.Context, q *sqlc.Queries, campaignID, characterID in
 		}
 	}
 	m := mapsOf(file)
-	x.looks = planLooks(lookIn{Base: base.Looks, Table: x.table.Looks, File: file.Looks, Images: m.Images, Pick: form(views.PickParam(groupLooks))})
-	x.notes = planNotes(noteIn{BaseTitles: base.Titles, File: file.Notes, Notes: m.Notes, Blocks: m.Blocks, Table: x.table.Notes, TableBlocks: x.table.Blocks, OnlyOwner: x.newChar})
+	x.looks = planLooks(
+		lookIn{
+			Base:   base.Looks,
+			Table:  x.table.Looks,
+			File:   file.Looks,
+			Images: m.Images,
+			Pick:   form(views.PickParam(groupLooks)),
+		},
+	)
+	x.notes = planNotes(
+		noteIn{
+			BaseTitles:  base.Titles,
+			File:        file.Notes,
+			Notes:       m.Notes,
+			Blocks:      m.Blocks,
+			Table:       x.table.Notes,
+			TableBlocks: x.table.Blocks,
+			OnlyOwner:   x.newChar,
+		},
+	)
 
 	var lookupErr error
 	x.hb = planHomebrew(homebrewIn{
-		BaseHash: base.Homebrew, Maps: m.Homebrew, File: file.Homebrew, Table: x.table.Homebrew, Pick: form(views.PickParam(groupHomebrew)),
+		BaseHash: base.Homebrew,
+		Maps:     m.Homebrew,
+		File:     file.Homebrew,
+		Table:    x.table.Homebrew,
+		Pick:     form(views.PickParam(groupHomebrew)),
 		Same: func(kind enum.CompendiumKind, hash string) (string, bool) {
-			row, err := q.FindCampaignHomebrewByHash(ctx, sqlc.FindCampaignHomebrewByHashParams{Kind: kind, ContentHash: hash, CampaignID: campaignID})
+			row, err := q.FindCampaignHomebrewByHash(
+				ctx,
+				sqlc.FindCampaignHomebrewByHashParams{
+					Kind:        kind,
+					ContentHash: hash,
+					CampaignID:  campaignID,
+				},
+			)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				lookupErr = err
 			}
 			return row.Slug, err == nil
 		},
 		Taken: func(kind enum.CompendiumKind, slug string) bool {
-			_, err := q.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: kind, Slug: slug, SourceKey: homebrewSource})
+			_, err := q.GetCompendiumEntryBySlugSource(
+				ctx,
+				sqlc.GetCompendiumEntryBySlugSourceParams{
+					Kind:      kind,
+					Slug:      slug,
+					SourceKey: homebrewSource,
+				},
+			)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				lookupErr = err
 			}
@@ -1057,8 +1286,14 @@ func (x homeExtras) needFile(attachments map[int64]int64) needFile {
 
 // saveContent is the part of file whose files Accept must save before its
 // transaction: the new looks and the pictures of the blocks it writes.
-func (x homeExtras) saveContent(file *export.TakeHomeFile, attachments map[int64]int64) export.TakeHome {
-	return export.TakeHome{Looks: x.looks.newLooks(file.Looks), Notes: x.notes.fileNotes(x.needFile(attachments))}
+func (x homeExtras) saveContent(
+	file *export.TakeHomeFile,
+	attachments map[int64]int64,
+) export.TakeHome {
+	return export.TakeHome{
+		Looks: x.looks.newLooks(file.Looks),
+		Notes: x.notes.fileNotes(x.needFile(attachments)),
+	}
 }
 
 // extrasResult is what applying the extras changed, for publishing.
@@ -1069,14 +1304,31 @@ type extrasResult struct {
 
 // applyExtras writes the looks, then the notes (which link to the looks), then
 // the homebrew of a bring-back.
-func applyExtras(ctx context.Context, q *sqlc.Queries, rv homeReview, lookFiles []savedFile, blockFiles map[int64][]savedFile, used map[string]bool) (extrasResult, error) {
+func applyExtras(
+	ctx context.Context,
+	q *sqlc.Queries,
+	rv homeReview,
+	lookFiles []savedFile,
+	blockFiles map[int64][]savedFile,
+	used map[string]bool,
+) (extrasResult, error) {
 	var res extrasResult
 	ch, m := rv.bb.ch, mapsOf(rv.file)
 	images, err := applyLooks(ctx, q, ch, rv.x.looks, rv.file.Looks, lookFiles, used)
 	if err != nil {
 		return res, err
 	}
-	if res.notes, err = applyNotes(ctx, q, ch, rv.x.notes, m, images, blockFiles, rv.x.needFile(m.Attachments), used); err != nil {
+	if res.notes, err = applyNotes(
+		ctx,
+		q,
+		ch,
+		rv.x.notes,
+		m,
+		images,
+		blockFiles,
+		rv.x.needFile(m.Attachments),
+		used,
+	); err != nil {
 		return res, err
 	}
 	res.compendium = rv.x.hb.touched()
@@ -1085,7 +1337,11 @@ func applyExtras(ctx context.Context, q *sqlc.Queries, rv homeReview, lookFiles 
 
 // applyRenames gives the home side's sheets the table's slugs for the spells
 // the homebrew plan renamed: the character's, the level-ups' and the fallback's.
-func applyRenames(renames map[string]string, cf *export.CharacterFile, file *export.TakeHomeFile) error {
+func applyRenames(
+	renames map[string]string,
+	cf *export.CharacterFile,
+	file *export.TakeHomeFile,
+) error {
 	if len(renames) == 0 {
 		return nil
 	}

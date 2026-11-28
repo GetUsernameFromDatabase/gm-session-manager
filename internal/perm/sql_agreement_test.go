@@ -24,17 +24,36 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 	q := db.NewStore(conn)
 
-	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"})
+	camp, err := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"Alice", "Bob"} { // ids 1 and 2, matching alice and bob
-		if _, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: name, System: "dnd5e", SheetJson: "{}"}); err != nil {
+		if _, err := q.CreateCharacterWithSheet(
+			ctx,
+			sqlc.CreateCharacterWithSheetParams{
+				CampaignID: camp.ID,
+				Name:       name,
+				System:     "dnd5e",
+				SheetJson:  "{}",
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	npc, err := q.CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: camp.ID, Kind: enum.EntityNPC, Name: "Target", FieldsJson: "{}"})
+	npc, err := q.CreateEntity(
+		ctx,
+		sqlc.CreateEntityParams{
+			CampaignID: camp.ID,
+			Kind:       enum.EntityNPC,
+			Name:       "Target",
+			FieldsJson: "{}",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +68,9 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 				t.Fatal(err)
 			}
 			block, err := q.CreateBlock(ctx, sqlc.CreateBlockParams{
-				NoteID: note.ID, Visibility: tt.block.Visibility, PlayersCanEdit: tt.block.PlayersCanEdit,
+				NoteID:            note.ID,
+				Visibility:        tt.block.Visibility,
+				PlayersCanEdit:    tt.block.PlayersCanEdit,
 				AuthorCharacterID: nullID(tt.block.AuthorID),
 			})
 			if len(tt.readers) == 0 && tt.block.Visibility != enum.VisListed {
@@ -63,11 +84,21 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, id := range tt.block.Audience {
-				if err := q.AddBlockAudience(ctx, sqlc.AddBlockAudienceParams{BlockID: block.ID, CharacterID: id}); err != nil {
+				if err := q.AddBlockAudience(
+					ctx,
+					sqlc.AddBlockAudienceParams{BlockID: block.ID, CharacterID: id},
+				); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := q.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: note.ID, SourceBlockID: block.ID, TargetEntityID: target}); err != nil {
+			if err := q.AddBlockLink(
+				ctx,
+				sqlc.AddBlockLinkParams{
+					SourceNoteID:   note.ID,
+					SourceBlockID:  block.ID,
+					TargetEntityID: target,
+				},
+			); err != nil {
 				t.Fatal(err)
 			}
 
@@ -79,7 +110,10 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 				}
 				isGM, char := v.IsGM, v.CharacterID
 
-				blocks, err := q.ListReadableBlocks(ctx, sqlc.ListReadableBlocksParams{NoteID: note.ID, IsGm: isGM, CharacterID: char})
+				blocks, err := q.ListReadableBlocks(
+					ctx,
+					sqlc.ListReadableBlocksParams{NoteID: note.ID, IsGm: isGM, CharacterID: char},
+				)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -88,7 +122,11 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 				}
 
 				hits, err := q.SearchReadableBlocks(ctx, sqlc.SearchReadableBlocksParams{
-					CampaignID: camp.ID, Query: "needle " + tt.name, IsGm: isGM, CharacterID: char, MaxResults: 10,
+					CampaignID:  camp.ID,
+					Query:       "needle " + tt.name,
+					IsGm:        isGM,
+					CharacterID: char,
+					MaxResults:  10,
 				})
 				if err != nil {
 					t.Fatal(err)
@@ -103,16 +141,30 @@ func TestSQLAgreesWithCanReadBlock(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if got := slices.ContainsFunc(back, func(r sqlc.ListBacklinksRow) bool { return r.ID == note.ID }); got != want {
+				if got := slices.ContainsFunc(
+					back,
+					func(r sqlc.ListBacklinksRow) bool { return r.ID == note.ID },
+				); got != want {
 					t.Errorf("%s: ListBacklinks = %v, want %v", who, got, want)
 				}
 
-				notes, err := q.ListReadableNotes(ctx, sqlc.ListReadableNotesParams{CampaignID: camp.ID, IsGm: isGM, CharacterID: char, MaxResults: 1000})
+				notes, err := q.ListReadableNotes(
+					ctx,
+					sqlc.ListReadableNotesParams{
+						CampaignID:  camp.ID,
+						IsGm:        isGM,
+						CharacterID: char,
+						MaxResults:  1000,
+					},
+				)
 				if err != nil {
 					t.Fatal(err)
 				}
 				wantNote := want || CanManageNote(v, tt.block.NoteOwnerID)
-				if got := slices.ContainsFunc(notes, func(n sqlc.Note) bool { return n.ID == note.ID }); got != wantNote {
+				if got := slices.ContainsFunc(
+					notes,
+					func(n sqlc.Note) bool { return n.ID == note.ID },
+				); got != wantNote {
 					t.Errorf("%s: ListReadableNotes = %v, want %v", who, got, wantNote)
 				}
 			}
@@ -136,7 +188,10 @@ func TestSQLAgreesWithCanSeeEntry(t *testing.T) {
 	q := db.NewStore(conn)
 	var camps []int64
 	for _, name := range []string{"A", "B"} {
-		c, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: name, System: "dnd5e", Edition: "2024"})
+		c, err := q.CreateCampaign(
+			ctx,
+			sqlc.CreateCampaignParams{Name: name, System: "dnd5e", Edition: "2024"},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -147,24 +202,51 @@ func TestSQLAgreesWithCanSeeEntry(t *testing.T) {
 		linked []int64
 	}{{false, nil}, {true, nil}, {true, camps[:1]}, {true, camps}} {
 		e, err := q.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{
-			Kind: "spell", Slug: "needle-" + string(rune('a'+i)), Name: "Needle", DataJson: "{}", BodyText: "", ContentHash: "x", Scoped: tt.scoped,
+			Kind:        "spell",
+			Slug:        "needle-" + string(rune('a'+i)),
+			Name:        "Needle",
+			DataJson:    "{}",
+			BodyText:    "",
+			ContentHash: "x",
+			Scoped:      tt.scoped,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, c := range tt.linked {
-			if err := q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: e.ID, CampaignID: c}); err != nil {
+			if err := q.LinkEntryCampaign(
+				ctx,
+				sqlc.LinkEntryCampaignParams{EntryID: e.ID, CampaignID: c},
+			); err != nil {
 				t.Fatal(err)
 			}
 		}
 		for _, campaign := range camps {
-			rows, err := q.SearchCompendium(ctx, sqlc.SearchCompendiumParams{Query: `"needle"`, CampaignID: campaign, MaxResults: -1})
+			rows, err := q.SearchCompendium(
+				ctx,
+				sqlc.SearchCompendiumParams{
+					Query:      `"needle"`,
+					CampaignID: campaign,
+					MaxResults: -1,
+				},
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
-			inSQL := slices.ContainsFunc(rows, func(r sqlc.SearchCompendiumRow) bool { return r.ID == e.ID })
+			inSQL := slices.ContainsFunc(
+				rows,
+				func(r sqlc.SearchCompendiumRow) bool { return r.ID == e.ID },
+			)
 			if want := CanSeeEntry(campaign, tt.scoped, tt.linked); inSQL != want {
-				t.Errorf("entry %d (scoped %v, linked %v) in campaign %d: SQL %v, perm %v", i, tt.scoped, tt.linked, campaign, inSQL, want)
+				t.Errorf(
+					"entry %d (scoped %v, linked %v) in campaign %d: SQL %v, perm %v",
+					i,
+					tt.scoped,
+					tt.linked,
+					campaign,
+					inSQL,
+					want,
+				)
 			}
 		}
 	}
@@ -183,18 +265,34 @@ func TestScopedEntryInEveryCompendiumQuery(t *testing.T) {
 	q := db.NewStore(conn)
 	var camps []int64
 	for _, name := range []string{"A", "B"} {
-		c, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: name, System: "dnd5e", Edition: "2024"})
+		c, err := q.CreateCampaign(
+			ctx,
+			sqlc.CreateCampaignParams{Name: name, System: "dnd5e", Edition: "2024"},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		camps = append(camps, c.ID)
 	}
 	mk := func(kind enum.CompendiumKind, slug, data string) int64 {
-		e, err := q.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: kind, Slug: slug, Name: slug, DataJson: data, ContentHash: "x", Scoped: true})
+		e, err := q.CreateHomebrew(
+			ctx,
+			sqlc.CreateHomebrewParams{
+				Kind:        kind,
+				Slug:        slug,
+				Name:        slug,
+				DataJson:    data,
+				ContentHash: "x",
+				Scoped:      true,
+			},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: e.ID, CampaignID: camps[0]}); err != nil {
+		if err := q.LinkEntryCampaign(
+			ctx,
+			sqlc.LinkEntryCampaignParams{EntryID: e.ID, CampaignID: camps[0]},
+		); err != nil {
 			t.Fatal(err)
 		}
 		return e.ID
@@ -204,7 +302,10 @@ func TestScopedEntryInEveryCompendiumQuery(t *testing.T) {
 	mk("species", "hill", `{"subrace_of":"dwarf"}`)
 	mk("subclass", "lore", `{"subclass_of":"wizard"}`)
 	monster := mk("monster", "blob", `{}`)
-	if _, err := q.AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{Habitat: "Forest", EntryID: monster}); err != nil {
+	if _, err := q.AddMonsterHabitat(
+		ctx,
+		sqlc.AddMonsterHabitatParams{Habitat: "Forest", EntryID: monster},
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -216,12 +317,24 @@ func TestScopedEntryInEveryCompendiumQuery(t *testing.T) {
 				t.Errorf("%s in campaign %d: shown %v, want %v", query, campaign, got, want)
 			}
 		}
-		byKind, err := q.ListCompendiumByKind(ctx, sqlc.ListCompendiumByKindParams{CampaignID: campaign, PageSize: 100})
+		byKind, err := q.ListCompendiumByKind(
+			ctx,
+			sqlc.ListCompendiumByKindParams{CampaignID: campaign, PageSize: 100},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		check("ListCompendiumByKind", slices.ContainsFunc(byKind, func(r sqlc.ListCompendiumByKindRow) bool { return r.ID == spell }))
-		search, err := q.SearchCompendium(ctx, sqlc.SearchCompendiumParams{Query: `"zap"`, CampaignID: campaign, MaxResults: -1})
+		check(
+			"ListCompendiumByKind",
+			slices.ContainsFunc(
+				byKind,
+				func(r sqlc.ListCompendiumByKindRow) bool { return r.ID == spell },
+			),
+		)
+		search, err := q.SearchCompendium(
+			ctx,
+			sqlc.SearchCompendiumParams{Query: `"zap"`, CampaignID: campaign, MaxResults: -1},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -230,23 +343,41 @@ func TestScopedEntryInEveryCompendiumQuery(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		check("CountCompendium", slices.ContainsFunc(counts, func(r sqlc.CountCompendiumRow) bool { return r.Kind == "spell" }))
-		names, err := q.ListCompendiumNames(ctx, sqlc.ListCompendiumNamesParams{Kind: "spell", CampaignID: campaign})
+		check(
+			"CountCompendium",
+			slices.ContainsFunc(
+				counts,
+				func(r sqlc.CountCompendiumRow) bool { return r.Kind == "spell" },
+			),
+		)
+		names, err := q.ListCompendiumNames(
+			ctx,
+			sqlc.ListCompendiumNamesParams{Kind: "spell", CampaignID: campaign},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		check("ListCompendiumNames", len(names) == 1)
-		_, err = q.RandomCompendiumEntry(ctx, sqlc.RandomCompendiumEntryParams{CampaignID: campaign, Kind: "spell"})
+		_, err = q.RandomCompendiumEntry(
+			ctx,
+			sqlc.RandomCompendiumEntryParams{CampaignID: campaign, Kind: "spell"},
+		)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			t.Fatal(err)
 		}
 		check("RandomCompendiumEntry", err == nil)
-		spells, err := q.ListSpellsForClass(ctx, sqlc.ListSpellsForClassParams{CampaignID: campaign, MaxLevel: 9, ClassSlug: "wizard"})
+		spells, err := q.ListSpellsForClass(
+			ctx,
+			sqlc.ListSpellsForClassParams{CampaignID: campaign, MaxLevel: 9, ClassSlug: "wizard"},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		check("ListSpellsForClass", len(spells) == 1)
-		items, err := q.ListItemsByCategory(ctx, sqlc.ListItemsByCategoryParams{CampaignID: campaign, Category: "weapon"})
+		items, err := q.ListItemsByCategory(
+			ctx,
+			sqlc.ListItemsByCategoryParams{CampaignID: campaign, Category: "weapon"},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -256,12 +387,18 @@ func TestScopedEntryInEveryCompendiumQuery(t *testing.T) {
 			t.Fatal(err)
 		}
 		check("ListMasteryWeapons", len(mastery) == 1)
-		subraces, err := q.ListSubracesOf(ctx, sqlc.ListSubracesOfParams{CampaignID: campaign, SpeciesSlug: "dwarf"})
+		subraces, err := q.ListSubracesOf(
+			ctx,
+			sqlc.ListSubracesOfParams{CampaignID: campaign, SpeciesSlug: "dwarf"},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		check("ListSubracesOf", len(subraces) == 1)
-		subclasses, err := q.ListSubclassesOf(ctx, sqlc.ListSubclassesOfParams{ClassSlug: "wizard", CampaignID: campaign})
+		subclasses, err := q.ListSubclassesOf(
+			ctx,
+			sqlc.ListSubclassesOfParams{ClassSlug: "wizard", CampaignID: campaign},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}

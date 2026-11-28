@@ -104,7 +104,10 @@ func UpgradeSheets(ctx context.Context, store *db.Store) (int, error) {
 			if err != nil {
 				return err
 			}
-			if err := q.UpdateCharacterSheet(ctx, sqlc.UpdateCharacterSheetParams{ID: row.ID, SheetJson: raw}); err != nil {
+			if err := q.UpdateCharacterSheet(
+				ctx,
+				sqlc.UpdateCharacterSheetParams{ID: row.ID, SheetJson: raw},
+			); err != nil {
 				return err
 			}
 		}
@@ -115,11 +118,21 @@ func UpgradeSheets(ctx context.Context, store *db.Store) (int, error) {
 
 // upgradeSpecies is the sheet's species' traits; none when the compendium
 // no longer has it.
-func upgradeSpecies(ctx context.Context, q *sqlc.Queries, sheet dnd5e.Sheet) ([]compendium.NameDesc, error) {
+func upgradeSpecies(
+	ctx context.Context,
+	q *sqlc.Queries,
+	sheet dnd5e.Sheet,
+) ([]compendium.NameDesc, error) {
 	if sheet.Species == "" {
 		return nil, nil
 	}
-	row, _, err := entryFor(ctx, q, enum.KindSpecies, compendium.Slugify(sheet.Species), sheet.SpeciesSource)
+	row, _, err := entryFor(
+		ctx,
+		q,
+		enum.KindSpecies,
+		compendium.Slugify(sheet.Species),
+		sheet.SpeciesSource,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -153,7 +166,9 @@ func catchUpClassArmor(ctx context.Context, q *sqlc.Queries, sheet *dnd5e.Sheet)
 		return false, err
 	}
 	n := len(sheet.ArmorTraining)
-	sheet.AddArmorTraining(cl.Name, dnd5e.ParseArmorTraining(compendium.CoreTraits(d.Desc)[compendium.TraitArmorTraining])...)
+	sheet.AddArmorTraining(
+		cl.Name,
+		dnd5e.ParseArmorTraining(compendium.CoreTraits(d.Desc)[compendium.TraitArmorTraining])...)
 	return len(sheet.ArmorTraining) > n, nil
 }
 
@@ -228,7 +243,12 @@ func catchUpCasters(ctx context.Context, q *sqlc.Queries, s *dnd5e.Sheet) (bool,
 
 // catchUpMasteries gives weapons without a mastery their compendium
 // weapon's, looking each kind up once per upgrade (items).
-func catchUpMasteries(ctx context.Context, q *sqlc.Queries, items map[string]string, s *dnd5e.Sheet) (bool, error) {
+func catchUpMasteries(
+	ctx context.Context,
+	q *sqlc.Queries,
+	items map[string]string,
+	s *dnd5e.Sheet,
+) (bool, error) {
 	changed := false
 	for i, w := range s.Weapons {
 		if w.Mastery != "" {
@@ -260,7 +280,12 @@ func catchUpMasteries(ctx context.Context, q *sqlc.Queries, items map[string]str
 
 // upgradeClass looks a class's pinned copy up once per upgrade; nil when
 // the compendium no longer has it.
-func upgradeClass(ctx context.Context, q *sqlc.Queries, cache map[string]*dnd5e.ClassInfo, cl dnd5e.ClassLevel) (*dnd5e.ClassInfo, error) {
+func upgradeClass(
+	ctx context.Context,
+	q *sqlc.Queries,
+	cache map[string]*dnd5e.ClassInfo,
+	cl dnd5e.ClassLevel,
+) (*dnd5e.ClassInfo, error) {
 	key := cl.Slug + "|" + cl.Source
 	if info, ok := cache[key]; ok {
 		return info, nil

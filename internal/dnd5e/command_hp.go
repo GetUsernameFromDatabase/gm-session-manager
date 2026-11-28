@@ -265,7 +265,9 @@ func parseConcentrate(args []string) (Command, error) {
 	if len(args) == 1 && strings.EqualFold(args[0], verbEnd) {
 		return condCommand(CondOp{Op: CondRemove, Slug: TrackConcentration}), nil
 	}
-	return condCommand(CondOp{Op: CondAdd, Slug: TrackConcentration, Note: strings.Join(args, " ")}), nil
+	return condCommand(
+		CondOp{Op: CondAdd, Slug: TrackConcentration, Note: strings.Join(args, " ")},
+	), nil
 }
 
 func parseExhaustion(args []string) (Command, error) {
@@ -293,7 +295,10 @@ func parseDeathSave(args []string) (Command, error) {
 		case verbSuccess:
 			ds.Successes = min(ds.Successes+1, MaxDeathSaves)
 		case verbFail:
-			ds.Failures = min(ds.Failures+1, MaxDeathSaves) // the web layer clears conditions on reaching dead
+			ds.Failures = min(
+				ds.Failures+1,
+				MaxDeathSaves,
+			) // the web layer clears conditions on reaching dead
 		default:
 			*ds = DeathSaves{}
 		}

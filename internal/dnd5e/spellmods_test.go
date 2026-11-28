@@ -82,7 +82,11 @@ func TestSpellModsSlot(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mods, _ := SpellMods(magicWeapon, tt.higher, 2, tt.slot)
-			checkMods(t, mods, []string{fmt.Sprintf("attack=%d", tt.bonus), fmt.Sprintf("damage=%d", tt.bonus)})
+			checkMods(
+				t,
+				mods,
+				[]string{fmt.Sprintf("attack=%d", tt.bonus), fmt.Sprintf("damage=%d", tt.bonus)},
+			)
 		})
 	}
 }

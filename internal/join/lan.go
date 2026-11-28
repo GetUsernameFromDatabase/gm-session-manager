@@ -38,7 +38,11 @@ func LANAddresses() ([]net.IP, error) {
 // front: Hyper-V and WSL vEthernet adapters are private and up, and can come
 // first. On any error the list is unchanged.
 func PreferDefaultRoute(ips []net.IP) []net.IP {
-	conn, err := (&net.Dialer{}).DialContext(context.Background(), "udp4", "192.0.2.1:9") // UDP connect sends nothing
+	conn, err := (&net.Dialer{}).DialContext(
+		context.Background(),
+		"udp4",
+		"192.0.2.1:9",
+	) // UDP connect sends nothing
 	if err != nil {
 		return ips
 	}

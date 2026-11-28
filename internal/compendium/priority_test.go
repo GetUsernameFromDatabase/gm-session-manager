@@ -12,11 +12,25 @@ import (
 func addCopy(t *testing.T, store *db.Store, key, edition, slug string) {
 	t.Helper()
 	ctx := t.Context()
-	if err := store.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: key, Path: key, Hash: "h", Edition: edition, Priority: DefaultRank(key, edition)}); err != nil {
+	if err := store.UpsertCompendiumSource(
+		ctx,
+		sqlc.UpsertCompendiumSourceParams{
+			SourceKey: key,
+			Path:      key,
+			Hash:      "h",
+			Edition:   edition,
+			Priority:  DefaultRank(key, edition),
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpsertCompendiumEntry(ctx, sqlc.UpsertCompendiumEntryParams{
-		Kind: "spell", Slug: slug, Name: slug, SourceKey: key, DataJson: `{"level":3}`, ContentHash: key,
+		Kind:        "spell",
+		Slug:        slug,
+		Name:        slug,
+		SourceKey:   key,
+		DataJson:    `{"level":3}`,
+		ContentHash: key,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -24,12 +38,18 @@ func addCopy(t *testing.T, store *db.Store, key, edition, slug string) {
 
 func winningSource(t *testing.T, store *db.Store, slug string) string {
 	t.Helper()
-	row, err := store.GetCompendiumEntryBySlug(t.Context(), sqlc.GetCompendiumEntryBySlugParams{Kind: "spell", Slug: slug})
+	row, err := store.GetCompendiumEntryBySlug(
+		t.Context(),
+		sqlc.GetCompendiumEntryBySlugParams{Kind: "spell", Slug: slug},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The sheets' batch lookup must pick the same copy.
-	rows, err := store.ListCompendiumBySlugs(t.Context(), sqlc.ListCompendiumBySlugsParams{Kind: "spell", Slugs: []string{slug}})
+	rows, err := store.ListCompendiumBySlugs(
+		t.Context(),
+		sqlc.ListCompendiumBySlugsParams{Kind: "spell", Slugs: []string{slug}},
+	)
 	if err != nil || len(rows) != 1 || rows[0].ID != row.ID {
 		t.Fatalf("ListCompendiumBySlugs %+v %v, want only entry %d", rows, err, row.ID)
 	}
@@ -58,14 +78,20 @@ func TestSourcePriority(t *testing.T) {
 	}
 
 	// A re-import keeps a reordered priority.
-	if err := store.SetCompendiumSourcePriority(ctx, sqlc.SetCompendiumSourcePriorityParams{Priority: 7, SourceKey: "phb-2014"}); err != nil {
+	if err := store.SetCompendiumSourcePriority(
+		ctx,
+		sqlc.SetCompendiumSourcePriorityParams{Priority: 7, SourceKey: "phb-2014"},
+	); err != nil {
 		t.Fatal(err)
 	}
 	addCopy(t, store, "phb-2014", "2014", "fireball")
 	if got := winningSource(t, store, "fireball"); got != "phb-2014" {
 		t.Errorf("after pinning phb-2014 first: got %s", got)
 	}
-	if err := store.SetCompendiumSourcePriority(ctx, sqlc.SetCompendiumSourcePriorityParams{Priority: 300, SourceKey: "phb-2014"}); err != nil {
+	if err := store.SetCompendiumSourcePriority(
+		ctx,
+		sqlc.SetCompendiumSourcePriorityParams{Priority: 300, SourceKey: "phb-2014"},
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -76,9 +102,21 @@ func TestSourcePriority(t *testing.T) {
 		wantErr  bool
 	}{
 		{name: "default winner", wantSlug: "xphb"},
-		{name: "srd above xphb", order: []string{"homebrew", "srd-2024", "xphb", "phb-2014"}, wantSlug: "srd-2024"},
-		{name: "srd below again", order: []string{"homebrew", "xphb", "srd-2024", "phb-2014"}, wantSlug: "xphb"},
-		{name: "srd above once more", order: []string{"homebrew", "srd-2024", "xphb", "phb-2014"}, wantSlug: "srd-2024"},
+		{
+			name:     "srd above xphb",
+			order:    []string{"homebrew", "srd-2024", "xphb", "phb-2014"},
+			wantSlug: "srd-2024",
+		},
+		{
+			name:     "srd below again",
+			order:    []string{"homebrew", "xphb", "srd-2024", "phb-2014"},
+			wantSlug: "xphb",
+		},
+		{
+			name:     "srd above once more",
+			order:    []string{"homebrew", "srd-2024", "xphb", "phb-2014"},
+			wantSlug: "srd-2024",
+		},
 		{name: "unknown", order: []string{"nope"}, wantErr: true},
 	}
 	for _, tt := range tests {
@@ -97,15 +135,25 @@ func TestSourcePriority(t *testing.T) {
 		})
 	}
 
-	rows, err := store.ListCompendiumByKind(ctx, sqlc.ListCompendiumByKindParams{Kind: "spell", PageSize: 50})
+	rows, err := store.ListCompendiumByKind(
+		ctx,
+		sqlc.ListCompendiumByKindParams{Kind: "spell", PageSize: 50},
+	)
 	if err != nil || len(rows) != 1 || rows[0].SourceKey != "srd-2024" {
 		t.Errorf("browse: %+v %v", rows, err)
 	}
 	// The kind badges count what browsing lists: three copies are one spell.
-	if counts, err := store.CountCompendium(ctx, 0); err != nil || len(counts) != 1 || counts[0].N != 1 {
+	if counts, err := store.CountCompendium(
+		ctx,
+		0,
+	); err != nil || len(counts) != 1 ||
+		counts[0].N != 1 {
 		t.Errorf("counts: %+v %v, want 1 spell", counts, err)
 	}
-	copies, err := store.ListEntryCopies(ctx, sqlc.ListEntryCopiesParams{Kind: "spell", Slug: "fireball"})
+	copies, err := store.ListEntryCopies(
+		ctx,
+		sqlc.ListEntryCopiesParams{Kind: "spell", Slug: "fireball"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +203,16 @@ func TestSourceOrderBeatsDate(t *testing.T) {
 		t.Errorf("undated tie: %s, want the first key", got)
 	}
 	// The newer book wins a tie; a re-import fills its date.
-	if err := store.UpsertCompendiumSource(ctx, sqlc.UpsertCompendiumSourceParams{SourceKey: "bbb", Path: "bbb", Hash: "h", Edition: "2014", Published: "2020-11-17"}); err != nil {
+	if err := store.UpsertCompendiumSource(
+		ctx,
+		sqlc.UpsertCompendiumSourceParams{
+			SourceKey: "bbb",
+			Path:      "bbb",
+			Hash:      "h",
+			Edition:   "2014",
+			Published: "2020-11-17",
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if got := winningSource(t, store, "x"); got != "bbb" {
@@ -173,7 +230,11 @@ func TestSourceOrderBeatsDate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row, err := store.GetCompendiumEntryBySlugSource(ctx, sqlc.GetCompendiumEntryBySlugSourceParams{Kind: "spell", Slug: "x", SourceKey: "aaa"}); err != nil || len(names) != 1 || names[0].ID != row.ID {
+	if row, err := store.GetCompendiumEntryBySlugSource(
+		ctx,
+		sqlc.GetCompendiumEntryBySlugSourceParams{Kind: "spell", Slug: "x", SourceKey: "aaa"},
+	); err != nil || len(names) != 1 ||
+		names[0].ID != row.ID {
 		t.Errorf("campaign_top: %+v %v", names, err)
 	}
 }
@@ -184,11 +245,24 @@ func TestSourceOrderBeatsDate(t *testing.T) {
 func TestCountsHideOtherCampaignsHomebrew(t *testing.T) {
 	store := newStore(t)
 	ctx := t.Context()
-	row, err := store.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{Kind: "monster", Slug: "mire-hag", Name: "Mire Hag", DataJson: `{}`, ContentHash: "h", Scoped: true})
+	row, err := store.CreateHomebrew(
+		ctx,
+		sqlc.CreateHomebrewParams{
+			Kind:        "monster",
+			Slug:        "mire-hag",
+			Name:        "Mire Hag",
+			DataJson:    `{}`,
+			ContentHash: "h",
+			Scoped:      true,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.AddMonsterHabitat(ctx, sqlc.AddMonsterHabitatParams{EntryID: row.ID, Habitat: "Swamp"}); err != nil {
+	if _, err := store.AddMonsterHabitat(
+		ctx,
+		sqlc.AddMonsterHabitatParams{EntryID: row.ID, Habitat: "Swamp"},
+	); err != nil {
 		t.Fatal(err)
 	}
 	for _, tt := range []struct {
@@ -227,14 +301,22 @@ func TestScopedHomebrewNeverShadows(t *testing.T) {
 	ctx := t.Context()
 	addCopy(t, store, "phb-2014", "2014", "fireball")
 	if _, err := store.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{
-		Kind: "spell", Slug: "fireball", Name: "Fireball", DataJson: `{}`, ContentHash: "p", Scoped: true,
+		Kind:        "spell",
+		Slug:        "fireball",
+		Name:        "Fireball",
+		DataJson:    `{}`,
+		ContentHash: "p",
+		Scoped:      true,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if got := winningSource(t, store, "fireball"); got != "phb-2014" {
 		t.Errorf("player homebrew shadowed the import: %s", got)
 	}
-	rows, err := store.ListCompendiumByKind(ctx, sqlc.ListCompendiumByKindParams{Kind: "spell", PageSize: 50})
+	rows, err := store.ListCompendiumByKind(
+		ctx,
+		sqlc.ListCompendiumByKindParams{Kind: "spell", PageSize: 50},
+	)
 	if err != nil || len(rows) != 1 || rows[0].SourceKey != "phb-2014" {
 		t.Errorf("browse: %+v %v", rows, err)
 	}
@@ -289,7 +371,12 @@ func TestNewSourcesAppendBelowTheGMsOrder(t *testing.T) {
 	store := newStore(t)
 	ctx := t.Context()
 	// A fresh database gives the plain group ranks.
-	importRun(t, store, Source{Key: "srd-2024", Edition: "2024"}, Source{Key: "xphb", Edition: "2024"})
+	importRun(
+		t,
+		store,
+		Source{Key: "srd-2024", Edition: "2024"},
+		Source{Key: "xphb", Edition: "2024"},
+	)
 	for _, tt := range []struct {
 		key  string
 		want int64
@@ -312,7 +399,11 @@ func TestNewSourcesAppendBelowTheGMsOrder(t *testing.T) {
 		t.Errorf("order %v, want %v", got, want)
 	}
 	// A re-import keeps the dragged priority.
-	if err := SetSourceOrder(ctx, store, []string{"homebrew", "old", "srd-2024", "xphb", "new2024", "newer"}); err != nil {
+	if err := SetSourceOrder(
+		ctx,
+		store,
+		[]string{"homebrew", "old", "srd-2024", "xphb", "new2024", "newer"},
+	); err != nil {
 		t.Fatal(err)
 	}
 	importRun(t, store, Source{Key: "xphb", Edition: "2024"})
@@ -332,7 +423,11 @@ func TestSortSources(t *testing.T) {
 		Source{Key: "srd52", Edition: "2024"},
 	)
 	// Homebrew sits at index 2 and keeps it.
-	if err := SetSourceOrder(ctx, store, []string{"undated", "a-old", "homebrew", "b-new", "srd52", "xphb"}); err != nil {
+	if err := SetSourceOrder(
+		ctx,
+		store,
+		[]string{"undated", "a-old", "homebrew", "b-new", "srd52", "xphb"},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := SortSources(ctx, store); err != nil {

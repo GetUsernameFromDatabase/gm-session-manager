@@ -64,25 +64,51 @@ type linkTarget struct {
 }
 
 // linkTargets are those kinds, keyed by their enum.LinkTarget.
-func linkTargets(ctx context.Context, q *sqlc.Queries, campaignID int64) map[enum.LinkTarget]linkTarget {
+func linkTargets(
+	ctx context.Context,
+	q *sqlc.Queries,
+	campaignID int64,
+) map[enum.LinkTarget]linkTarget {
 	return map[enum.LinkTarget]linkTarget{
 		enum.LinkImage: {
 			create: func() (int64, error) {
-				img, err := q.CreateImage(ctx, sqlc.CreateImageParams{CampaignID: campaignID, Name: "I", Url: sql.NullString{String: "u", Valid: true}})
+				img, err := q.CreateImage(
+					ctx,
+					sqlc.CreateImageParams{
+						CampaignID: campaignID,
+						Name:       "I",
+						Url:        sql.NullString{String: "u", Valid: true},
+					},
+				)
 				return img.ID, err
 			},
 			remove: func(n int64) error { return q.DeleteImage(ctx, n) },
 		},
 		enum.LinkNote: {
 			create: func() (int64, error) {
-				n, err := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: campaignID, Kind: enum.NoteGeneric, Title: "N"})
+				n, err := q.CreateNote(
+					ctx,
+					sqlc.CreateNoteParams{
+						CampaignID: campaignID,
+						Kind:       enum.NoteGeneric,
+						Title:      "N",
+					},
+				)
 				return n.ID, err
 			},
 			remove: func(n int64) error { return q.DeleteNote(ctx, n) },
 		},
 		enum.LinkEntity: {
 			create: func() (int64, error) {
-				e, err := q.CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: campaignID, Kind: enum.EntityNPC, Name: "E", FieldsJson: "{}"})
+				e, err := q.CreateEntity(
+					ctx,
+					sqlc.CreateEntityParams{
+						CampaignID: campaignID,
+						Kind:       enum.EntityNPC,
+						Name:       "E",
+						FieldsJson: "{}",
+					},
+				)
 				return e.ID, err
 			},
 			remove: func(n int64) error { return q.DeleteEntity(ctx, n) },
@@ -109,7 +135,10 @@ func targetColumns(kind enum.LinkTarget, id int64) (note, entity, image sql.Null
 func TestIDsNeverReused(t *testing.T) {
 	ctx := t.Context()
 	q := sqlc.New(openTemp(t))
-	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"})
+	camp, err := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,29 +168,64 @@ func TestLinksFollowTargets(t *testing.T) {
 	ctx := t.Context()
 	conn := openTemp(t)
 	q := sqlc.New(conn)
-	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"})
+	camp, err := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	note, err := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: enum.NoteGeneric, Title: "Source"})
+	note, err := q.CreateNote(
+		ctx,
+		sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: enum.NoteGeneric, Title: "Source"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	block, err := q.CreateBlock(ctx, sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisPlayers})
+	block, err := q.CreateBlock(
+		ctx,
+		sqlc.CreateBlockParams{NoteID: note.ID, Visibility: enum.VisPlayers},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	npc, err := q.CreateEntity(ctx, sqlc.CreateEntityParams{CampaignID: camp.ID, Kind: enum.EntityNPC, Name: "Source", FieldsJson: "{}"})
+	npc, err := q.CreateEntity(
+		ctx,
+		sqlc.CreateEntityParams{
+			CampaignID: camp.ID,
+			Kind:       enum.EntityNPC,
+			Name:       "Source",
+			FieldsJson: "{}",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	link := func(kind enum.LinkTarget, id int64) {
 		t.Helper()
 		n, e, i := targetColumns(kind, id)
-		if err := q.AddBlockLink(ctx, sqlc.AddBlockLinkParams{SourceNoteID: note.ID, SourceBlockID: block.ID, TargetNoteID: n, TargetEntityID: e, TargetImageID: i}); err != nil {
+		if err := q.AddBlockLink(
+			ctx,
+			sqlc.AddBlockLinkParams{
+				SourceNoteID:   note.ID,
+				SourceBlockID:  block.ID,
+				TargetNoteID:   n,
+				TargetEntityID: e,
+				TargetImageID:  i,
+			},
+		); err != nil {
 			t.Fatalf("note link: %v", err)
 		}
-		if err := q.AddEntityFieldLink(ctx, sqlc.AddEntityFieldLinkParams{EntityID: npc.ID, FieldKey: "f", TargetNoteID: n, TargetEntityID: e, TargetImageID: i}); err != nil {
+		if err := q.AddEntityFieldLink(
+			ctx,
+			sqlc.AddEntityFieldLinkParams{
+				EntityID:       npc.ID,
+				FieldKey:       "f",
+				TargetNoteID:   n,
+				TargetEntityID: e,
+				TargetImageID:  i,
+			},
+		); err != nil {
 			t.Fatalf("field link: %v", err)
 		}
 	}
@@ -230,13 +294,17 @@ func TestAlterAfterSchemaEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stored string
-	if err := conn.QueryRowContext(ctx, "SELECT sql FROM sqlite_schema WHERE name = 'attachments'").Scan(&stored); err != nil {
+	if err := conn.QueryRowContext(ctx, "SELECT sql FROM sqlite_schema WHERE name = 'attachments'").
+		Scan(&stored); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stored, "(id)  ON  DELETE") {
 		t.Fatal("the edit matched nothing, so the ALTER below tests nothing")
 	}
-	if _, err := conn.ExecContext(ctx, "ALTER TABLE attachments ADD COLUMN probe INTEGER NOT NULL DEFAULT 0"); err != nil {
+	if _, err := conn.ExecContext(
+		ctx,
+		"ALTER TABLE attachments ADD COLUMN probe INTEGER NOT NULL DEFAULT 0",
+	); err != nil {
 		t.Fatalf("alter: %v", err)
 	}
 	var n int
@@ -296,14 +364,25 @@ func TestSessionConstraints(t *testing.T) {
 	ctx := t.Context()
 	q := sqlc.New(conn)
 
-	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "Test", System: "dnd5e", Edition: "2024"})
+	camp, err := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{Name: "Test", System: "dnd5e", Edition: "2024"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !camp.OpenJoin {
 		t.Error("open_join should default to true")
 	}
-	char, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: "Alice", System: "dnd5e", SheetJson: "{}"})
+	char, err := q.CreateCharacterWithSheet(
+		ctx,
+		sqlc.CreateCharacterWithSheetParams{
+			CampaignID: camp.ID,
+			Name:       "Alice",
+			System:     "dnd5e",
+			SheetJson:  "{}",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,15 +395,51 @@ func TestSessionConstraints(t *testing.T) {
 		params  sqlc.CreateSessionParams
 		wantErr bool
 	}{
-		{"player with character", sqlc.CreateSessionParams{TokenHash: hash("a"), Role: "player", CharacterID: charID}, false},
-		{"second device same character", sqlc.CreateSessionParams{TokenHash: hash("b"), Role: "player", CharacterID: charID}, false},
-		{"admin without character", sqlc.CreateSessionParams{TokenHash: hash("c"), Role: "admin"}, false},
-		{"player without character", sqlc.CreateSessionParams{TokenHash: hash("d"), Role: "player"}, true},
-		{"admin with character", sqlc.CreateSessionParams{TokenHash: hash("e"), Role: "admin", CharacterID: charID}, true},
+		{
+			"player with character",
+			sqlc.CreateSessionParams{TokenHash: hash("a"), Role: "player", CharacterID: charID},
+			false,
+		},
+		{
+			"second device same character",
+			sqlc.CreateSessionParams{TokenHash: hash("b"), Role: "player", CharacterID: charID},
+			false,
+		},
+		{
+			"admin without character",
+			sqlc.CreateSessionParams{TokenHash: hash("c"), Role: "admin"},
+			false,
+		},
+		{
+			"player without character",
+			sqlc.CreateSessionParams{TokenHash: hash("d"), Role: "player"},
+			true,
+		},
+		{
+			"admin with character",
+			sqlc.CreateSessionParams{TokenHash: hash("e"), Role: "admin", CharacterID: charID},
+			true,
+		},
 		{"unknown role", sqlc.CreateSessionParams{TokenHash: hash("f"), Role: "gm"}, true},
-		{"duplicate token hash", sqlc.CreateSessionParams{TokenHash: hash("a"), Role: "admin"}, true},
-		{"short token hash", sqlc.CreateSessionParams{TokenHash: []byte("short"), Role: "admin"}, true},
-		{"missing character", sqlc.CreateSessionParams{TokenHash: hash("g"), Role: "player", CharacterID: sql.NullInt64{Int64: 9999, Valid: true}}, true},
+		{
+			"duplicate token hash",
+			sqlc.CreateSessionParams{TokenHash: hash("a"), Role: "admin"},
+			true,
+		},
+		{
+			"short token hash",
+			sqlc.CreateSessionParams{TokenHash: []byte("short"), Role: "admin"},
+			true,
+		},
+		{
+			"missing character",
+			sqlc.CreateSessionParams{
+				TokenHash:   hash("g"),
+				Role:        "player",
+				CharacterID: sql.NullInt64{Int64: 9999, Valid: true},
+			},
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -340,7 +455,8 @@ func TestSessionConstraints(t *testing.T) {
 			t.Fatal(err)
 		}
 		var n int
-		if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE role = 'player'").Scan(&n); err != nil {
+		if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE role = 'player'").
+			Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		if n != 0 {
@@ -352,7 +468,10 @@ func TestSessionConstraints(t *testing.T) {
 // The milestone 2 compendium search depends on FTS5 being compiled into the driver.
 func TestFTS5Available(t *testing.T) {
 	conn := openTemp(t)
-	if _, err := conn.ExecContext(t.Context(), "CREATE VIRTUAL TABLE temp.fts_probe USING fts5(body)"); err != nil {
+	if _, err := conn.ExecContext(
+		t.Context(),
+		"CREATE VIRTUAL TABLE temp.fts_probe USING fts5(body)",
+	); err != nil {
 		t.Fatalf("fts5 not available: %v", err)
 	}
 }
@@ -362,11 +481,17 @@ func TestFTS5Available(t *testing.T) {
 func TestAttachmentOutlivesBlock(t *testing.T) {
 	ctx := t.Context()
 	q := sqlc.New(openTemp(t))
-	camp, err := q.CreateCampaign(ctx, sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"})
+	camp, err := q.CreateCampaign(
+		ctx,
+		sqlc.CreateCampaignParams{Name: "C", System: "dnd5e", Edition: "2024"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	note, err := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "N"})
+	note, err := q.CreateNote(
+		ctx,
+		sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "N"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,12 +500,24 @@ func TestAttachmentOutlivesBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	att, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{
-		CampaignID: camp.ID, BlockID: sql.NullInt64{Int64: block.ID, Valid: true}, Path: "f", Name: "map.png", Mime: "image/png", Size: 1,
+		CampaignID: camp.ID,
+		BlockID:    sql.NullInt64{Int64: block.ID, Valid: true},
+		Path:       "f",
+		Name:       "map.png",
+		Mime:       "image/png",
+		Size:       1,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	img, err := q.CreateImage(ctx, sqlc.CreateImageParams{CampaignID: camp.ID, Name: "Map", AttachmentID: sql.NullInt64{Int64: att.ID, Valid: true}})
+	img, err := q.CreateImage(
+		ctx,
+		sqlc.CreateImageParams{
+			CampaignID:   camp.ID,
+			Name:         "Map",
+			AttachmentID: sql.NullInt64{Int64: att.ID, Valid: true},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,11 +537,27 @@ func TestAttachmentOutlivesBlock(t *testing.T) {
 	}
 
 	// A private block's file goes with it, even through a cascade.
-	ch, err := q.CreateCharacterWithSheet(ctx, sqlc.CreateCharacterWithSheetParams{CampaignID: camp.ID, Name: "A", System: "dnd5e", SheetJson: "{}"})
+	ch, err := q.CreateCharacterWithSheet(
+		ctx,
+		sqlc.CreateCharacterWithSheetParams{
+			CampaignID: camp.ID,
+			Name:       "A",
+			System:     "dnd5e",
+			SheetJson:  "{}",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	own, err := q.CreateNote(ctx, sqlc.CreateNoteParams{CampaignID: camp.ID, Kind: "generic", Title: "Mine", OwnerCharacterID: sql.NullInt64{Int64: ch.ID, Valid: true}})
+	own, err := q.CreateNote(
+		ctx,
+		sqlc.CreateNoteParams{
+			CampaignID:       camp.ID,
+			Kind:             "generic",
+			Title:            "Mine",
+			OwnerCharacterID: sql.NullInt64{Int64: ch.ID, Valid: true},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +566,12 @@ func TestAttachmentOutlivesBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	private, err := q.CreateAttachment(ctx, sqlc.CreateAttachmentParams{
-		CampaignID: camp.ID, BlockID: sql.NullInt64{Int64: ownBlock.ID, Valid: true}, Path: "p", Name: "diary.png", Mime: "image/png", Size: 1,
+		CampaignID: camp.ID,
+		BlockID:    sql.NullInt64{Int64: ownBlock.ID, Valid: true},
+		Path:       "p",
+		Name:       "diary.png",
+		Mime:       "image/png",
+		Size:       1,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -8,40 +8,115 @@ import (
 
 // TestParseEffects runs the parser over the 2024 SRD's own sentences.
 func TestParseEffects(t *testing.T) {
-	table := map[string]map[int]string{"Rages": {1: "2", 3: "3", 6: "4"}, "Focus Points": {1: "-", 2: "2", 3: "3"}, "Channel Divinity": {2: "2", 6: "3"}}
+	table := map[string]map[int]string{
+		"Rages":            {1: "2", 3: "3", 6: "4"},
+		"Focus Points":     {1: "-", 2: "2", 3: "3"},
+		"Channel Divinity": {2: "2", 6: "3"},
+	}
 	byLevel := func(m map[int]int) Uses { return Uses{ByLevel: m, Class: "Barbarian"} }
 	tests := []struct {
 		name, desc string
 		want       FeatureEffects
 	}{
-		{"Bardic Inspiration", "You can supernaturally inspire others. **Using Bardic Inspiration.** As a Bonus Action, you can inspire another creature within 60 feet of yourself. **Number of Uses.** You can confer a Bardic Inspiration die a number of times equal to your Charisma modifier (minimum of once), and you regain all expended uses when you finish a Long Rest.",
-			FeatureEffects{Action: ActionBonus, Uses: Uses{Ability: Cha, Reset: ResetLong}}},
-		{"Rage", "You can enter it as a Bonus Action if you aren't wearing Heavy armor. You can enter your Rage the number of times shown for your Barbarian level in the Rages column of the Barbarian Features table. You regain one expended use when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest.",
-			FeatureEffects{Action: ActionBonus, Uses: Uses{ByLevel: map[int]int{1: 2, 3: 3, 6: 4}, Class: "Barbarian", Reset: ResetShortOne}}},
-		{"Second Wind", "As a Bonus Action, you can use it to regain Hit Points equal to 1d10 plus your Fighter level. You can use this feature twice. You regain one expended use when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest.",
-			FeatureEffects{Action: ActionBonus, Uses: Uses{Fixed: 2, Reset: ResetShortOne}}},
-		{"Action Surge", "On your turn, you can take one additional action. Once you use this feature, you can't do so again until you finish a Short or Long Rest.",
-			FeatureEffects{Uses: Uses{Fixed: 1, Reset: ResetShort}}},
-		{"Stonecunning", "As a Bonus Action, you gain Tremorsense. You can use this Bonus Action a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest.",
-			FeatureEffects{Action: ActionBonus, Uses: Uses{Prof: true, Reset: ResetLong}}},
-		{"Fast Movement", "Your speed increases by 10 feet while you aren't wearing Heavy armor.",
-			FeatureEffects{Mods: []CustomMod{{Target: ModSpeed, Value: 10, Note: "Fast Movement", Source: "Fast Movement", When: "no-heavy-armor"}}}},
-		{"Unarmored Defense", "While you aren't wearing any armor, your base Armor Class equals 10 plus your Dexterity and Constitution modifiers. You can use a Shield and still gain this benefit.",
-			FeatureEffects{Unarmored: Con}},
-		{"Unarmored Defense", "While you aren't wearing armor or wielding a Shield, your base Armor Class equals 10 plus your Dexterity and Wisdom modifiers.",
-			FeatureEffects{Unarmored: Wis, NoShield: true}},
-		{"Divine Spark", "As a Magic action, you point your Holy Symbol at another creature.", FeatureEffects{Action: ActionMagic}},
+		{
+			"Bardic Inspiration",
+			"You can supernaturally inspire others. **Using Bardic Inspiration.** As a Bonus Action, you can inspire another creature within 60 feet of yourself. **Number of Uses.** You can confer a Bardic Inspiration die a number of times equal to your Charisma modifier (minimum of once), and you regain all expended uses when you finish a Long Rest.",
+			FeatureEffects{Action: ActionBonus, Uses: Uses{Ability: Cha, Reset: ResetLong}},
+		},
+		{
+			"Rage",
+			"You can enter it as a Bonus Action if you aren't wearing Heavy armor. You can enter your Rage the number of times shown for your Barbarian level in the Rages column of the Barbarian Features table. You regain one expended use when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest.",
+			FeatureEffects{
+				Action: ActionBonus,
+				Uses: Uses{
+					ByLevel: map[int]int{1: 2, 3: 3, 6: 4},
+					Class:   "Barbarian",
+					Reset:   ResetShortOne,
+				},
+			},
+		},
+		{
+			"Second Wind",
+			"As a Bonus Action, you can use it to regain Hit Points equal to 1d10 plus your Fighter level. You can use this feature twice. You regain one expended use when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest.",
+			FeatureEffects{Action: ActionBonus, Uses: Uses{Fixed: 2, Reset: ResetShortOne}},
+		},
+		{
+			"Action Surge",
+			"On your turn, you can take one additional action. Once you use this feature, you can't do so again until you finish a Short or Long Rest.",
+			FeatureEffects{Uses: Uses{Fixed: 1, Reset: ResetShort}},
+		},
+		{
+			"Stonecunning",
+			"As a Bonus Action, you gain Tremorsense. You can use this Bonus Action a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest.",
+			FeatureEffects{Action: ActionBonus, Uses: Uses{Prof: true, Reset: ResetLong}},
+		},
+		{
+			"Fast Movement",
+			"Your speed increases by 10 feet while you aren't wearing Heavy armor.",
+			FeatureEffects{
+				Mods: []CustomMod{
+					{
+						Target: ModSpeed,
+						Value:  10,
+						Note:   "Fast Movement",
+						Source: "Fast Movement",
+						When:   "no-heavy-armor",
+					},
+				},
+			},
+		},
+		{
+			"Unarmored Defense",
+			"While you aren't wearing any armor, your base Armor Class equals 10 plus your Dexterity and Constitution modifiers. You can use a Shield and still gain this benefit.",
+			FeatureEffects{Unarmored: Con},
+		},
+		{
+			"Unarmored Defense",
+			"While you aren't wearing armor or wielding a Shield, your base Armor Class equals 10 plus your Dexterity and Wisdom modifiers.",
+			FeatureEffects{Unarmored: Wis, NoShield: true},
+		},
+		{
+			"Divine Spark",
+			"As a Magic action, you point your Holy Symbol at another creature.",
+			FeatureEffects{Action: ActionMagic},
+		},
 		{"Darkvision", "You have Darkvision with a range of 60 feet.", FeatureEffects{}},
-		{"Monk's Focus", "This energy is represented by Focus Points. Your Monk level determines the number of points you have, as shown in the Focus Points column of the Monk Features table. When you expend a Focus Point, it is unavailable until you finish a Short or Long Rest, at the end of which you regain all your expended points.",
-			FeatureEffects{Uses: func() Uses { u := byLevel(map[int]int{2: 2, 3: 3}); u.Reset = ResetShort; return u }()}},
-		{"Channel Divinity", "You can use this class's Channel Divinity twice. You regain one of its expended uses when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest. You gain additional uses when you reach certain Cleric levels, as shown in the Channel Divinity column of the Cleric Features table.",
-			FeatureEffects{Uses: func() Uses { u := byLevel(map[int]int{2: 2, 6: 3}); u.Reset = ResetShortOne; return u }()}},
-		{"Martial Arts", "You can roll 1d6 in place of the normal damage of your Unarmed Strike. This die changes as you gain Monk levels, as shown in the Martial Arts column of the Monk Features table.", FeatureEffects{}},
-		{"Rage Damage", "You gain a bonus to the damage that increases as you gain levels as a Barbarian, as shown in the Rage Damage column of the Barbarian Features table.", FeatureEffects{}},
+		{
+			"Monk's Focus",
+			"This energy is represented by Focus Points. Your Monk level determines the number of points you have, as shown in the Focus Points column of the Monk Features table. When you expend a Focus Point, it is unavailable until you finish a Short or Long Rest, at the end of which you regain all your expended points.",
+			FeatureEffects{
+				Uses: func() Uses { u := byLevel(map[int]int{2: 2, 3: 3}); u.Reset = ResetShort; return u }(),
+			},
+		},
+		{
+			"Channel Divinity",
+			"You can use this class's Channel Divinity twice. You regain one of its expended uses when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest. You gain additional uses when you reach certain Cleric levels, as shown in the Channel Divinity column of the Cleric Features table.",
+			FeatureEffects{
+				Uses: func() Uses { u := byLevel(map[int]int{2: 2, 6: 3}); u.Reset = ResetShortOne; return u }(),
+			},
+		},
+		{
+			"Martial Arts",
+			"You can roll 1d6 in place of the normal damage of your Unarmed Strike. This die changes as you gain Monk levels, as shown in the Martial Arts column of the Monk Features table.",
+			FeatureEffects{},
+		},
+		{
+			"Rage Damage",
+			"You gain a bonus to the damage that increases as you gain levels as a Barbarian, as shown in the Rage Damage column of the Barbarian Features table.",
+			FeatureEffects{},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ParseEffects(tt.name, tt.desc, table, "Barbarian"); !reflect.DeepEqual(got, tt.want) {
+			if got := ParseEffects(
+				tt.name,
+				tt.desc,
+				table,
+				"Barbarian",
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("got %+v\nwant %+v", got, tt.want)
 			}
 		})
@@ -57,7 +132,13 @@ func TestExplainSums(t *testing.T) {
 	breast := &WornArmor{Name: "Breastplate", Type: "medium", Base: 14, AddDex: true, DexCap: 2}
 	barb := Feature{Name: "Unarmored Defense", Unarmored: Con}
 	monk := Feature{Name: "Unarmored Defense", Unarmored: Wis, NoShield: true}
-	fast := CustomMod{Target: ModSpeed, Value: 10, Note: "Fast Movement", Source: "Fast Movement", When: "no-heavy-armor"}
+	fast := CustomMod{
+		Target: ModSpeed,
+		Value:  10,
+		Note:   "Fast Movement",
+		Source: "Fast Movement",
+		When:   "no-heavy-armor",
+	}
 	tests := []struct {
 		name         string
 		armor        *WornArmor
@@ -74,8 +155,28 @@ func TestExplainSums(t *testing.T) {
 		{"breastplate caps dex", breast, false, nil, nil, 16, 30, false, false},
 		{"barbarian unarmored + shield", nil, true, []Feature{barb}, nil, 17, 30, false, false},
 		{"monk with shield loses it", nil, true, []Feature{monk}, nil, 15, 30, false, false},
-		{"fast movement in light armor", studded, false, nil, []CustomMod{fast}, 15, 40, false, false},
-		{"fast movement off in heavy armor", chain, false, nil, []CustomMod{fast}, 16, 20, true, true},
+		{
+			"fast movement in light armor",
+			studded,
+			false,
+			nil,
+			[]CustomMod{fast},
+			15,
+			40,
+			false,
+			false,
+		},
+		{
+			"fast movement off in heavy armor",
+			chain,
+			false,
+			nil,
+			[]CustomMod{fast},
+			16,
+			20,
+			true,
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -93,9 +194,18 @@ func TestExplainSums(t *testing.T) {
 		})
 	}
 	s := base
-	s.SkillProfs, s.Expertise, s.SaveProfs = []string{"perception"}, []string{"stealth"}, []string{Dex}
+	s.SkillProfs, s.Expertise, s.SaveProfs = []string{
+		"perception",
+	}, []string{
+		"stealth",
+	}, []string{
+		Dex,
+	}
 	s.Weapons = []Weapon{{Name: "Rapier", Ability: "finesse", Proficient: true}}
-	s.Modifiers = []CustomMod{{Target: "skill.stealth", Value: 1, Note: "Cloak"}, {Target: ModPassive, Value: 5, Note: "Observant"}}
+	s.Modifiers = []CustomMod{
+		{Target: "skill.stealth", Value: 1, Note: "Cloak"},
+		{Target: ModPassive, Value: 5, Note: "Observant"},
+	}
 	for target, want := range map[string]int{
 		ModInit: 3, ModPassive: 18, "save.dex": 5, "skill.stealth": 8, "attack.Rapier": 5,
 	} {
@@ -120,8 +230,13 @@ func TestExplainSums(t *testing.T) {
 func TestArmorAndFeatureUses(t *testing.T) {
 	c := Character{Name: "Tess", MaxHP: 10, HP: 10, Sheet: NewSheet()}
 	c.Sheet.Scores[Cha] = 14
-	c.Sheet.Features = []Feature{{Name: "Bardic Inspiration"}, {Name: "Second Wind", Uses: Uses{Fixed: 2, Reset: ResetShortOne}}}
-	c.Sheet.Modifiers = []CustomMod{{Target: ModSpeed, Value: 10, Note: "Bardic Inspiration", Source: "Bardic Inspiration"}}
+	c.Sheet.Features = []Feature{
+		{Name: "Bardic Inspiration"},
+		{Name: "Second Wind", Uses: Uses{Fixed: 2, Reset: ResetShortOne}},
+	}
+	c.Sheet.Modifiers = []CustomMod{
+		{Target: ModSpeed, Value: 10, Note: "Bardic Inspiration", Source: "Bardic Inspiration"},
+	}
 	run := func(line string, env Env) error {
 		t.Helper()
 		cmd, err := Parse(line)
@@ -153,7 +268,9 @@ func TestArmorAndFeatureUses(t *testing.T) {
 		}
 	}
 	bi, sw := c.Sheet.Features[0], c.Sheet.Features[1]
-	if c.Sheet.ArmorClass() != 18 || bi.Action != ActionBonus || bi.Uses.Used != 2 || bi.Uses.Reset != ResetLong || sw.Uses.Used != 1 {
+	if c.Sheet.ArmorClass() != 18 || bi.Action != ActionBonus || bi.Uses.Used != 2 ||
+		bi.Uses.Reset != ResetLong ||
+		sw.Uses.Used != 1 {
 		t.Errorf("after short rest: AC %d %+v %+v", c.Sheet.ArmorClass(), bi, sw)
 	}
 	// Restore gives back one use and never goes below zero.
@@ -170,8 +287,14 @@ func TestArmorAndFeatureUses(t *testing.T) {
 			t.Fatalf("%s: %v", line, err)
 		}
 	}
-	if c.Sheet.Features[0].Uses.Used != 0 || c.Sheet.ArmorClass() != 10 || len(c.Sheet.Modifiers) != 0 {
-		t.Errorf("after long rest, armor off, feature removed: %+v AC %d mods %+v", c.Sheet.Features, c.Sheet.ArmorClass(), c.Sheet.Modifiers)
+	if c.Sheet.Features[0].Uses.Used != 0 || c.Sheet.ArmorClass() != 10 ||
+		len(c.Sheet.Modifiers) != 0 {
+		t.Errorf(
+			"after long rest, armor off, feature removed: %+v AC %d mods %+v",
+			c.Sheet.Features,
+			c.Sheet.ArmorClass(),
+			c.Sheet.Modifiers,
+		)
 	}
 }
 
@@ -181,23 +304,80 @@ func TestParseProfs(t *testing.T) {
 		name, desc    string
 		skills, tools []string
 	}{
-		{"xphb tagged", "You gain proficiency in the {@skill Insight|XPHB} and {@skill Medicine|XPHB} skills, and you gain proficiency with the {@item Herbalism Kit|XPHB}.", []string{"insight", "medicine"}, []string{"Herbalism Kit"}},
-		{"compendium links", "You gain proficiency in the [[compendium:skill/insight|Insight]] skill.", []string{"insight"}, nil},
-		{"plain srd", "You gain proficiency in the Insight and Medicine skills, and you gain proficiency with the herbalism kit.", []string{"insight", "medicine"}, []string{"herbalism kit"}},
-		{"three skills", "You gain proficiency in the Arcana, History, and Religion skills.", []string{"arcana", "history", "religion"}, nil},
-		{"choice of listed skills", "You have proficiency in the Insight, Perception, or Survival skill.", nil, nil},
+		{
+			"xphb tagged",
+			"You gain proficiency in the {@skill Insight|XPHB} and {@skill Medicine|XPHB} skills, and you gain proficiency with the {@item Herbalism Kit|XPHB}.",
+			[]string{"insight", "medicine"},
+			[]string{"Herbalism Kit"},
+		},
+		{
+			"compendium links",
+			"You gain proficiency in the [[compendium:skill/insight|Insight]] skill.",
+			[]string{"insight"},
+			nil,
+		},
+		{
+			"plain srd",
+			"You gain proficiency in the Insight and Medicine skills, and you gain proficiency with the herbalism kit.",
+			[]string{"insight", "medicine"},
+			[]string{"herbalism kit"},
+		},
+		{
+			"three skills",
+			"You gain proficiency in the Arcana, History, and Religion skills.",
+			[]string{"arcana", "history", "religion"},
+			nil,
+		},
+		{
+			"choice of listed skills",
+			"You have proficiency in the Insight, Perception, or Survival skill.",
+			nil,
+			nil,
+		},
 		{"skills of your choice", "You gain proficiency in two skills of your choice.", nil, nil},
-		{"tool of your choice", "You gain proficiency with one type of Artisan's Tools of your choice.", nil, nil},
+		{
+			"tool of your choice",
+			"You gain proficiency with one type of Artisan's Tools of your choice.",
+			nil,
+			nil,
+		},
 		{"weapons are not tools", "You have proficiency with all firearms.", nil, nil},
-		{"two tools", "You gain proficiency with [[compendium:item/alchemist-s-supplies|Alchemist's Supplies]] and the [[compendium:item/herbalism-kit|Herbalism Kit]].", nil, []string{"Alchemist's Supplies", "Herbalism Kit"}},
-		{"armor beside a tool", "you gain proficiency with heavy armor and [[compendium:item/smith-s-tools|smith's tools]].", nil, []string{"smith's tools"}},
-		{"listed with a choice", "You gain proficiency with the disguise kit, the forgery kit, and one gaming set of your choice.", nil, []string{"disguise kit", "forgery kit"}},
-		{"a set already given", "You gain a Gaming Set. You have proficiency with this Gaming Set, and you can use it as a Spellcasting Focus: a drum.", nil, nil},
+		{
+			"two tools",
+			"You gain proficiency with [[compendium:item/alchemist-s-supplies|Alchemist's Supplies]] and the [[compendium:item/herbalism-kit|Herbalism Kit]].",
+			nil,
+			[]string{"Alchemist's Supplies", "Herbalism Kit"},
+		},
+		{
+			"armor beside a tool",
+			"you gain proficiency with heavy armor and [[compendium:item/smith-s-tools|smith's tools]].",
+			nil,
+			[]string{"smith's tools"},
+		},
+		{
+			"listed with a choice",
+			"You gain proficiency with the disguise kit, the forgery kit, and one gaming set of your choice.",
+			nil,
+			[]string{"disguise kit", "forgery kit"},
+		},
+		{
+			"a set already given",
+			"You gain a Gaming Set. You have proficiency with this Gaming Set, and you can use it as a Spellcasting Focus: a drum.",
+			nil,
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		e := ParseEffects("Test", tt.desc, nil, "")
 		if !slices.Equal(e.Skills, tt.skills) || !slices.Equal(e.Tools, tt.tools) {
-			t.Errorf("%s: skills %q tools %q, want %q %q", tt.name, e.Skills, e.Tools, tt.skills, tt.tools)
+			t.Errorf(
+				"%s: skills %q tools %q, want %q %q",
+				tt.name,
+				e.Skills,
+				e.Tools,
+				tt.skills,
+				tt.tools,
+			)
 		}
 	}
 }
@@ -215,9 +395,22 @@ func TestRepeatedFeature(t *testing.T) {
 		{"every level", []int{2, 2, 3, 4, 5, 6}},
 	} {
 		monk := ClassInfo{
-			Slug: "monk", Name: "Monk", HitDie: 8, Caster: CasterNone,
-			Table:    map[string]map[int]string{"Unarmored Movement": {2: "+10 ft.", 3: "+10 ft.", 4: "+10 ft.", 5: "+10 ft.", 6: "+15 ft."}},
-			Features: []ClassFeature{{Name: "Unarmored Movement", Description: desc, Levels: tt.levels}},
+			Slug:   "monk",
+			Name:   "Monk",
+			HitDie: 8,
+			Caster: CasterNone,
+			Table: map[string]map[int]string{
+				"Unarmored Movement": {
+					2: "+10 ft.",
+					3: "+10 ft.",
+					4: "+10 ft.",
+					5: "+10 ft.",
+					6: "+15 ft.",
+				},
+			},
+			Features: []ClassFeature{
+				{Name: "Unarmored Movement", Description: desc, Levels: tt.levels},
+			},
 		}
 		c := Character{Name: "Tam", Sheet: NewSheet()}
 		for range 6 {
@@ -225,9 +418,18 @@ func TestRepeatedFeature(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		rows := slices.DeleteFunc(slices.Clone(c.Sheet.Features), func(f Feature) bool { return f.Name != "Unarmored Movement" })
+		rows := slices.DeleteFunc(
+			slices.Clone(c.Sheet.Features),
+			func(f Feature) bool { return f.Name != "Unarmored Movement" },
+		)
 		if len(rows) != 1 || rows[0].Level != 2 || c.Sheet.WalkSpeed() != c.Sheet.Speed+15 {
-			t.Errorf("%s: rows %+v, speed %d, mods %+v", tt.name, rows, c.Sheet.WalkSpeed(), c.Sheet.Modifiers)
+			t.Errorf(
+				"%s: rows %+v, speed %d, mods %+v",
+				tt.name,
+				rows,
+				c.Sheet.WalkSpeed(),
+				c.Sheet.Modifiers,
+			)
 		}
 	}
 }
@@ -238,16 +440,34 @@ func TestDedupeFeatures(t *testing.T) {
 	s := NewSheet()
 	s.Speed = 30
 	s.Classes = []ClassLevel{{Slug: "monk", Name: "Monk", Level: 4}}
-	mod := CustomMod{Target: ModSpeed, Value: 10, Note: "Unarmoed Movement", Source: "Unarmoed Movement", When: "unarmored-no-shield"}
+	mod := CustomMod{
+		Target: ModSpeed,
+		Value:  10,
+		Note:   "Unarmoed Movement",
+		Source: "Unarmoed Movement",
+		When:   "unarmored-no-shield",
+	}
 	mobile := CustomMod{Target: ModSpeed, Value: 10, Note: "Mobile", Source: "Mobile"}
 	for _, lvl := range []int{2, 3, 4} {
-		s.Features = append(s.Features, Feature{Name: "Unarmoed Movement", Source: "Monk", Level: lvl})
+		s.Features = append(
+			s.Features,
+			Feature{Name: "Unarmoed Movement", Source: "Monk", Level: lvl},
+		)
 	}
-	s.Features = append(s.Features, Feature{Name: "Mobile", Source: "Feat"}, Feature{Name: "Way of Mercy", Source: "Monk", Level: 3,
-		Description: "**Implements of Mercy.** You gain proficiency in the Insight and Medicine skills, and you gain proficiency with the herbalism kit."})
+	s.Features = append(
+		s.Features,
+		Feature{Name: "Mobile", Source: "Feat"},
+		Feature{
+			Name:        "Way of Mercy",
+			Source:      "Monk",
+			Level:       3,
+			Description: "**Implements of Mercy.** You gain proficiency in the Insight and Medicine skills, and you gain proficiency with the herbalism kit.",
+		},
+	)
 	s.Modifiers = []CustomMod{mod, mod, mod, mobile}
 
-	if !s.DedupeFeatures() || len(s.Features) != 3 || s.Features[0].Level != 2 || !slices.Equal(s.Modifiers, []CustomMod{mod, mobile}) {
+	if !s.DedupeFeatures() || len(s.Features) != 3 || s.Features[0].Level != 2 ||
+		!slices.Equal(s.Modifiers, []CustomMod{mod, mobile}) {
 		t.Errorf("features %+v, mods %+v", s.Features, s.Modifiers)
 	}
 	if s.DedupeFeatures() {
@@ -256,7 +476,9 @@ func TestDedupeFeatures(t *testing.T) {
 	if s.WalkSpeed() != 50 { // 30 + Unarmored Movement 10 + Mobile 10
 		t.Errorf("speed %d", s.WalkSpeed())
 	}
-	if !s.CatchUpProfs() || s.ProfSources["insight"] != "Way of Mercy" || s.ProfSources["herbalism kit"] != "Way of Mercy" || !slices.Contains(s.SkillProfs, "medicine") {
+	if !s.CatchUpProfs() || s.ProfSources["insight"] != "Way of Mercy" ||
+		s.ProfSources["herbalism kit"] != "Way of Mercy" ||
+		!slices.Contains(s.SkillProfs, "medicine") {
 		t.Errorf("profs %q %q sources %v", s.SkillProfs, s.OtherProfs, s.ProfSources)
 	}
 	s.RemoveProfsFrom("Way of Mercy")

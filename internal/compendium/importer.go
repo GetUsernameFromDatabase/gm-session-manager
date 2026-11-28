@@ -45,7 +45,13 @@ func Import(ctx context.Context, store *db.Store, dir string) ([]Report, error) 
 // ImportProgress is Import telling progress, if set, of each source as it
 // starts: done of total sources so far; and finished, if set, each source's
 // report as soon as it is imported.
-func ImportProgress(ctx context.Context, store *db.Store, dir string, progress func(done, total int, source string), finished func(Report)) ([]Report, error) {
+func ImportProgress(
+	ctx context.Context,
+	store *db.Store,
+	dir string,
+	progress func(done, total int, source string),
+	finished func(Report),
+) ([]Report, error) {
 	all, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -54,7 +60,10 @@ func ImportProgress(ctx context.Context, store *db.Store, dir string, progress f
 		return nil, fmt.Errorf("compendium: %w", err)
 	}
 	// Dot folders are caches and downloads in progress (.5etools).
-	dirs := slices.DeleteFunc(all, func(d fs.DirEntry) bool { return !d.IsDir() || strings.HasPrefix(d.Name(), ".") })
+	dirs := slices.DeleteFunc(
+		all,
+		func(d fs.DirEntry) bool { return !d.IsDir() || strings.HasPrefix(d.Name(), ".") },
+	)
 	// Read once: this run's new sources go below everything ordered so far, by group rank.
 	base, err := store.MaxSourcePriority(ctx)
 	if err != nil {
@@ -75,7 +84,10 @@ func ImportProgress(ctx context.Context, store *db.Store, dir string, progress f
 		if r.Err != nil || !formatOf(d.Name()).guessImages {
 			continue
 		}
-		if err := store.BindMonsterImages(ctx, sqlc.BindMonsterImagesParams{Prefix: MonsterImagePrefix, SourceKey: d.Name()}); err != nil {
+		if err := store.BindMonsterImages(
+			ctx,
+			sqlc.BindMonsterImagesParams{Prefix: MonsterImagePrefix, SourceKey: d.Name()},
+		); err != nil {
 			return reports, fmt.Errorf("compendium: bind monster images: %w", err)
 		}
 	}
@@ -142,9 +154,21 @@ func importSource(ctx context.Context, store *db.Store, base int64, key, path st
 	return r
 }
 
-func bindFiveToolsImages(ctx context.Context, q *sqlc.Queries, key string, files map[string][]byte) error {
+func bindFiveToolsImages(
+	ctx context.Context,
+	q *sqlc.Queries,
+	key string,
+	files map[string][]byte,
+) error {
 	for slug, link := range FiveToolsImages(files) {
-		if err := q.BindMonsterImage(ctx, sqlc.BindMonsterImageParams{ImageUrl: sql.NullString{String: link, Valid: true}, SourceKey: key, Slug: slug}); err != nil {
+		if err := q.BindMonsterImage(
+			ctx,
+			sqlc.BindMonsterImageParams{
+				ImageUrl:  sql.NullString{String: link, Valid: true},
+				SourceKey: key,
+				Slug:      slug,
+			},
+		); err != nil {
 			return fmt.Errorf("%s: bind image of %s: %w", key, slug, err)
 		}
 	}
@@ -156,7 +180,15 @@ func bindFiveToolsImages(ctx context.Context, q *sqlc.Queries, key string, files
 // runs in the same transaction, so a failure rolls back the stored hash too
 // and leaves the source to be imported again. A new source gets base plus its
 // default rank as priority; an existing one keeps its priority.
-func storeSource(ctx context.Context, store *db.Store, base int64, src Source, path, hash string, entries []Entry, afterSave func(q *sqlc.Queries) error) (int, error) {
+func storeSource(
+	ctx context.Context,
+	store *db.Store,
+	base int64,
+	src Source,
+	path, hash string,
+	entries []Entry,
+	afterSave func(q *sqlc.Queries) error,
+) (int, error) {
 	removed := 0
 	err := store.InTx(ctx, func(q *sqlc.Queries) error {
 		// First: entries reference their source row.
@@ -207,7 +239,10 @@ func SeedHabitats(ctx context.Context, q *sqlc.Queries, id int64, habitats []enu
 	if err != nil {
 		return err
 	}
-	return q.SeedMonsterHabitats(ctx, sqlc.SeedMonsterHabitatsParams{EntryID: id, Habitats: string(b)})
+	return q.SeedMonsterHabitats(
+		ctx,
+		sqlc.SeedMonsterHabitatsParams{EntryID: id, Habitats: string(b)},
+	)
 }
 
 func upsert(ctx context.Context, q *sqlc.Queries, src Source, e Entry) error {
@@ -242,7 +277,8 @@ func readSource(dir string) (map[string][]byte, string, error) {
 	h := sha256.New()
 	h.Write([]byte(normalizeVersion))
 	for _, p := range paths {
-		body, err := os.ReadFile(p) //nolint:gosec // p comes from globbing the operator's data directory
+		//nolint:gosec // p comes from globbing the operator's data directory
+		body, err := os.ReadFile(p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -275,17 +311,41 @@ func ftsQuery(input string) string {
 // Search finds entries matching every word of query, best match first:
 // every entry whose name matches, then up to limit others whose text does.
 // kind "" searches every kind; habitat "" does not filter by habitat.
-func Search(ctx context.Context, q *sqlc.Queries, query, kind, habitat string, campaignID int64, limit int) (names, text []sqlc.SearchCompendiumRow, err error) {
+func Search(
+	ctx context.Context,
+	q *sqlc.Queries,
+	query, kind, habitat string,
+	campaignID int64,
+	limit int,
+) (names, text []sqlc.SearchCompendiumRow, err error) {
 	fq := ftsQuery(query)
 	if fq == "" {
 		return nil, nil, nil
 	}
 	byName := "name : (" + fq + ")"
 	// LIMIT -1 is no limit in SQLite.
-	if names, err = q.SearchCompendium(ctx, sqlc.SearchCompendiumParams{Query: byName, Kind: kind, Habitat: habitat, CampaignID: campaignID, MaxResults: -1}); err != nil {
+	if names, err = q.SearchCompendium(
+		ctx,
+		sqlc.SearchCompendiumParams{
+			Query:      byName,
+			Kind:       kind,
+			Habitat:    habitat,
+			CampaignID: campaignID,
+			MaxResults: -1,
+		},
+	); err != nil {
 		return nil, nil, err
 	}
-	text, err = q.SearchCompendium(ctx, sqlc.SearchCompendiumParams{Query: "(" + fq + ") NOT " + byName, Kind: kind, Habitat: habitat, CampaignID: campaignID, MaxResults: int64(limit)})
+	text, err = q.SearchCompendium(
+		ctx,
+		sqlc.SearchCompendiumParams{
+			Query:      "(" + fq + ") NOT " + byName,
+			Kind:       kind,
+			Habitat:    habitat,
+			CampaignID: campaignID,
+			MaxResults: int64(limit),
+		},
+	)
 	return names, text, err
 }
 
@@ -317,7 +377,7 @@ type HomebrewInput struct {
 	Wis           int    `form:"wis"               validate:"min=0,max=30"`
 	Cha           int    `form:"cha"               validate:"min=0,max=30"`
 	MonsterSaves  string `form:"monster_saves"     validate:"max=300"`
-	MonsterSkills string `form:"monster_skills"   validate:"max=500"`
+	MonsterSkills string `form:"monster_skills"    validate:"max=500"`
 	Senses        string `form:"senses"            validate:"max=300"`
 	Resistances   string `form:"resistances"       validate:"max=500"`
 	Immunities    string `form:"immunities"        validate:"max=500"`
@@ -329,24 +389,24 @@ type HomebrewInput struct {
 	// Habitats come from a link import and seed a new monster's habitats.
 	Habitats []enum.Habitat `form:"habitats" validate:"dive,oneof=Arctic Coastal Desert Forest Grassland Hill Mountain Planar Swamp Underdark Underwater Urban"`
 
-	School        string `form:"school"         validate:"max=50"`
-	CastingTime   string `form:"casting_time"   validate:"max=100"`
-	Range         string `form:"range"          validate:"max=100"`
-	Components    string `form:"components"     validate:"max=300"`
-	Duration      string `form:"duration"       validate:"max=100"`
+	School        string `form:"school"        validate:"max=50"`
+	CastingTime   string `form:"casting_time"  validate:"max=100"`
+	Range         string `form:"range"         validate:"max=100"`
+	Components    string `form:"components"    validate:"max=300"`
+	Duration      string `form:"duration"      validate:"max=100"`
 	Concentration bool   `form:"concentration"`
 	Ritual        bool   `form:"ritual"`
-	HigherLevel   string `form:"higher_level"   validate:"max=5000"`
-	Classes       string `form:"classes"        validate:"max=300"`
+	HigherLevel   string `form:"higher_level"  validate:"max=5000"`
+	Classes       string `form:"classes"       validate:"max=300"`
 
-	Category     string `form:"category"     validate:"max=50"`
-	Damage       string `form:"damage"       validate:"max=100"`
-	Properties   string `form:"properties"   validate:"max=300"`
-	WeaponRange  string `form:"weapon_range" validate:"max=20"`
+	Category     string `form:"category"      validate:"max=50"`
+	Damage       string `form:"damage"        validate:"max=100"`
+	Properties   string `form:"properties"    validate:"max=300"`
+	WeaponRange  string `form:"weapon_range"  validate:"max=20"`
 	Martial      bool   `form:"martial"`
-	Mastery      string `form:"mastery"      validate:"omitempty,oneof=Cleave Graze Nick Push Sap Slow Topple Vex"`
-	ArmorType    string `form:"armor_type"   validate:"omitempty,oneof=light medium heavy shield"`
-	ArmorBase    int    `form:"armor_base"   validate:"min=0,max=30"`
+	Mastery      string `form:"mastery"       validate:"omitempty,oneof=Cleave Graze Nick Push Sap Slow Topple Vex"`
+	ArmorType    string `form:"armor_type"    validate:"omitempty,oneof=light medium heavy shield"`
+	ArmorBase    int    `form:"armor_base"    validate:"min=0,max=30"`
 	ArmorAddDex  bool   `form:"armor_add_dex"`
 	ArmorDexCap  int    `form:"armor_dex_cap" validate:"min=0,max=10"`
 	ArmorStrReq  int    `form:"armor_str_req" validate:"min=0,max=30"`
@@ -376,31 +436,55 @@ type HomebrewInput struct {
 	Prerequisite string `form:"prerequisite" validate:"max=300"`
 }
 
+// abilityFields maps each ability key to its score field.
+func (in *HomebrewInput) abilityFields() map[string]*int {
+	return map[string]*int{
+		dnd5e.Str: &in.Str, dnd5e.Dex: &in.Dex, dnd5e.Con: &in.Con,
+		dnd5e.Int: &in.Int, dnd5e.Wis: &in.Wis, dnd5e.Cha: &in.Cha,
+	}
+}
+
 // HomebrewInputFor fills the editor from a stored entry.
 func HomebrewInputFor(kind enum.CompendiumKind, name, desc string, data any) HomebrewInput {
 	in := HomebrewInput{Kind: kind, Name: name, Desc: desc}
 	switch d := data.(type) {
 	case *MonsterData:
 		in.AC, in.HP, in.CR, in.Desc = d.AC, d.HP, d.CR, d.Desc
-		in.Size, in.MonsterType, in.Alignment, in.ACDetail, in.HitDice, in.Initiative = d.Size, d.Type, d.Alignment, d.ACDetail, d.HitDice, d.Initiative
-		in.MonsterSpeed, in.MonsterSaves, in.MonsterSkills = speedText(d.Speed), bonusText(d.Saves), bonusText(d.Skills)
-		in.Str, in.Dex, in.Con, in.Int, in.Wis, in.Cha = d.Abilities[dnd5e.Str], d.Abilities[dnd5e.Dex], d.Abilities[dnd5e.Con], d.Abilities[dnd5e.Int], d.Abilities[dnd5e.Wis], d.Abilities[dnd5e.Cha]
-		in.Senses, in.Languages, in.Resistances, in.Immunities, in.Vulnerable, in.Traits = d.Senses, d.Languages, d.Resistance, d.Immunity, d.Vulnerability, TraitsText(d.Traits)
-		in.Actions, in.BonusActions = actionsText(d.Actions, actionTypes[0]), actionsText(d.Actions, actionTypes[1])
-		in.Reactions, in.Legendary = actionsText(d.Actions, actionTypes[2]), actionsText(d.Actions, actionTypes[3])
+		in.Size, in.MonsterType, in.Alignment = d.Size, d.Type, d.Alignment
+		in.ACDetail, in.HitDice, in.Initiative = d.ACDetail, d.HitDice, d.Initiative
+		in.MonsterSpeed = speedText(d.Speed)
+		in.MonsterSaves = bonusText(d.Saves)
+		in.MonsterSkills = bonusText(d.Skills)
+		for k, f := range in.abilityFields() {
+			*f = d.Abilities[k]
+		}
+		in.Senses, in.Languages, in.Resistances = d.Senses, d.Languages, d.Resistance
+		in.Immunities, in.Vulnerable = d.Immunity, d.Vulnerability
+		in.Traits = TraitsText(d.Traits)
+		in.Actions = actionsText(d.Actions, actionTypes[0])
+		in.BonusActions = actionsText(d.Actions, actionTypes[1])
+		in.Reactions = actionsText(d.Actions, actionTypes[2])
+		in.Legendary = actionsText(d.Actions, actionTypes[3])
 	case *SpellData:
-		in.Level, in.School, in.CastingTime, in.Range, in.Components, in.Duration = d.Level, d.School, d.CastingTime, d.Range, d.Components, d.Duration
-		in.Concentration, in.Ritual, in.HigherLevel, in.Classes, in.Desc = d.Concentration, d.Ritual, d.HigherLevel, strings.Join(d.Classes, ", "), d.Desc
+		in.Level, in.School, in.CastingTime = d.Level, d.School, d.CastingTime
+		in.Range, in.Components, in.Duration = d.Range, d.Components, d.Duration
+		in.Concentration, in.Ritual, in.HigherLevel = d.Concentration, d.Ritual, d.HigherLevel
+		in.Classes = strings.Join(d.Classes, ", ")
+		in.Desc = d.Desc
 	case *ItemData:
-		in.Category, in.Damage, in.Properties, in.WeaponRange, in.Martial, in.Mastery, in.Desc = d.Category, d.Damage, d.Properties, d.Range, d.Martial, d.Mastery, d.Desc
+		in.Category, in.Damage, in.Properties = d.Category, d.Damage, d.Properties
+		in.WeaponRange, in.Martial, in.Mastery, in.Desc = d.Range, d.Martial, d.Mastery, d.Desc
 		if a := d.Armor; a != nil {
-			in.ArmorType, in.ArmorBase, in.ArmorAddDex, in.ArmorDexCap, in.ArmorStrReq, in.ArmorStealth = a.Type, a.Base, a.AddDex, a.DexCap, a.StrReq, a.Stealth
+			in.ArmorType, in.ArmorBase, in.ArmorAddDex = a.Type, a.Base, a.AddDex
+			in.ArmorDexCap, in.ArmorStrReq, in.ArmorStealth = a.DexCap, a.StrReq, a.Stealth
 		}
 	case *ClassData:
-		in.HitDie, in.Caster, in.Saves, in.SubclassOf, in.Desc = d.HitDie, d.Caster, d.Saves, d.SubclassOf, withoutTable(d.Desc)
+		in.HitDie, in.Caster, in.Saves, in.SubclassOf = d.HitDie, d.Caster, d.Saves, d.SubclassOf
+		in.Desc = withoutTable(d.Desc)
 		in.Features, in.Table = FeaturesText(d.Features), TableText(d.Table)
 		traits := CoreTraits(d.Desc)
-		in.Skills, in.Armor, in.Weapons, in.Tools = traits[classTraits[0]], traits[classTraits[1]], traits[classTraits[2]], traits[classTraits[3]]
+		in.Skills, in.Armor = traits[classTraits[0]], traits[classTraits[1]]
+		in.Weapons, in.Tools = traits[classTraits[2]], traits[classTraits[3]]
 	case *TextData:
 		in.Desc, in.Prerequisite, in.Traits = d.Desc, d.Prerequisite, TraitsText(d.Parts)
 		for _, p := range d.Parts {
@@ -493,29 +577,54 @@ func (in HomebrewInput) typedParts() []NameDesc {
 
 // homebrewSource attributes homebrew to the table that wrote it; its
 // compendium_sources row is created in 0001_schema.sql.
-var homebrewSource = Source{Key: HomebrewSource, License: "Homebrew", Attribution: "Homebrew content written for this table."}
+var homebrewSource = Source{
+	Key:         HomebrewSource,
+	License:     "Homebrew",
+	Attribution: "Homebrew content written for this table.",
+}
 
 // Entry converts the form into a normalized entry of its kind.
 func (in HomebrewInput) Entry() (Entry, error) {
 	if !ValidKind(in.Kind) {
 		return Entry{}, fmt.Errorf("unknown kind %q", in.Kind)
 	}
-	e := Entry{Kind: in.Kind, Slug: Slugify(in.Name), Name: strings.TrimSpace(in.Name), Text: in.Desc}
+	e := Entry{
+		Kind: in.Kind,
+		Slug: Slugify(in.Name),
+		Name: strings.TrimSpace(in.Name),
+		Text: in.Desc,
+	}
 	if e.Slug == "" {
 		return Entry{}, errors.New("name needs at least one letter or digit")
 	}
 	switch e.Kind {
 	case enum.KindMonster:
 		d := MonsterData{
-			Size: strings.TrimSpace(in.Size), Type: strings.TrimSpace(in.MonsterType), Alignment: strings.TrimSpace(in.Alignment),
-			AC: in.AC, ACDetail: strings.TrimSpace(in.ACDetail), HP: in.HP, HitDice: strings.TrimSpace(in.HitDice), Initiative: in.Initiative,
-			Speed: parseSpeed(in.MonsterSpeed), Abilities: map[string]int{}, Saves: parseBonuses(in.MonsterSaves, true), Skills: parseBonuses(in.MonsterSkills, false),
-			CR: in.CR, Senses: in.Senses, Languages: in.Languages, Resistance: in.Resistances, Immunity: in.Immunities, Vulnerability: in.Vulnerable,
-			Traits: ParseTraits(in.Traits), Actions: parseActions(in.Actions, in.BonusActions, in.Reactions, in.Legendary), Desc: in.Desc,
+			Size:          strings.TrimSpace(in.Size),
+			Type:          strings.TrimSpace(in.MonsterType),
+			Alignment:     strings.TrimSpace(in.Alignment),
+			AC:            in.AC,
+			ACDetail:      strings.TrimSpace(in.ACDetail),
+			HP:            in.HP,
+			HitDice:       strings.TrimSpace(in.HitDice),
+			Initiative:    in.Initiative,
+			Speed:         parseSpeed(in.MonsterSpeed),
+			Abilities:     map[string]int{},
+			Saves:         parseBonuses(in.MonsterSaves, true),
+			Skills:        parseBonuses(in.MonsterSkills, false),
+			CR:            in.CR,
+			Senses:        in.Senses,
+			Languages:     in.Languages,
+			Resistance:    in.Resistances,
+			Immunity:      in.Immunities,
+			Vulnerability: in.Vulnerable,
+			Traits:        ParseTraits(in.Traits),
+			Actions:       parseActions(in.Actions, in.BonusActions, in.Reactions, in.Legendary),
+			Desc:          in.Desc,
 		}
-		for k, v := range map[string]int{dnd5e.Str: in.Str, dnd5e.Dex: in.Dex, dnd5e.Con: in.Con, dnd5e.Int: in.Int, dnd5e.Wis: in.Wis, dnd5e.Cha: in.Cha} {
-			if v > 0 {
-				d.Abilities[k] = v
+		for k, f := range in.abilityFields() {
+			if *f > 0 {
+				d.Abilities[k] = *f
 			}
 		}
 		e.Data = d
@@ -528,21 +637,56 @@ func (in HomebrewInput) Entry() (Entry, error) {
 			}
 		}
 		e.Data = SpellData{
-			Level: in.Level, School: strings.ToLower(strings.TrimSpace(in.School)), CastingTime: in.CastingTime, Range: in.Range,
-			Components: in.Components, Duration: in.Duration, Concentration: in.Concentration, Ritual: in.Ritual,
-			Classes: classes, Desc: in.Desc, HigherLevel: in.HigherLevel,
+			Level:         in.Level,
+			School:        strings.ToLower(strings.TrimSpace(in.School)),
+			CastingTime:   in.CastingTime,
+			Range:         in.Range,
+			Components:    in.Components,
+			Duration:      in.Duration,
+			Concentration: in.Concentration,
+			Ritual:        in.Ritual,
+			Classes:       classes,
+			Desc:          in.Desc,
+			HigherLevel:   in.HigherLevel,
 		}
 	case enum.KindItem:
-		d := ItemData{Category: in.Category, Damage: in.Damage, Properties: in.Properties, Range: in.WeaponRange, Martial: in.Martial, Mastery: in.Mastery, Desc: in.Desc}
+		d := ItemData{
+			Category:   in.Category,
+			Damage:     in.Damage,
+			Properties: in.Properties,
+			Range:      in.WeaponRange,
+			Martial:    in.Martial,
+			Mastery:    in.Mastery,
+			Desc:       in.Desc,
+		}
 		if in.ArmorType != "" {
-			d.Armor = &ArmorData{Type: in.ArmorType, Base: in.ArmorBase, AddDex: in.ArmorAddDex, DexCap: in.ArmorDexCap, StrReq: in.ArmorStrReq, Stealth: in.ArmorStealth}
+			d.Armor = &ArmorData{
+				Type:    in.ArmorType,
+				Base:    in.ArmorBase,
+				AddDex:  in.ArmorAddDex,
+				DexCap:  in.ArmorDexCap,
+				StrReq:  in.ArmorStrReq,
+				Stealth: in.ArmorStealth,
+			}
 			d.ArmorClass = armorText(*d.Armor)
 		}
 		e.Data = d
 	case enum.KindClass, enum.KindSubclass:
 		d := ClassData{
-			HitDie: in.HitDie, Caster: cmp.Or(in.Caster, dnd5e.CasterNone), Saves: in.Saves, Features: ParseFeatures(in.Features), Table: ParseTable(in.Table),
-			Desc: withCoreTraits(in.Desc, map[string]string{classTraits[0]: in.Skills, classTraits[1]: in.Armor, classTraits[2]: in.Weapons, classTraits[3]: in.Tools}),
+			HitDie:   in.HitDie,
+			Caster:   cmp.Or(in.Caster, dnd5e.CasterNone),
+			Saves:    in.Saves,
+			Features: ParseFeatures(in.Features),
+			Table:    ParseTable(in.Table),
+			Desc: withCoreTraits(
+				in.Desc,
+				map[string]string{
+					classTraits[0]: in.Skills,
+					classTraits[1]: in.Armor,
+					classTraits[2]: in.Weapons,
+					classTraits[3]: in.Tools,
+				},
+			),
 		}
 		if e.Kind == enum.KindSubclass {
 			d.SubclassOf = Slugify(in.SubclassOf)
@@ -550,7 +694,11 @@ func (in HomebrewInput) Entry() (Entry, error) {
 		e.Data = d
 		e.Text = joinText(in.Desc, FeaturesText(d.Features))
 	default:
-		d := TextData{Desc: in.Desc, Prerequisite: strings.TrimSpace(in.Prerequisite), Parts: in.typedParts()}
+		d := TextData{
+			Desc:         in.Desc,
+			Prerequisite: strings.TrimSpace(in.Prerequisite),
+			Parts:        in.typedParts(),
+		}
 		e.Data = d
 		e.Text = joinText(in.Desc, partsText(d.Parts))
 	}
@@ -566,7 +714,13 @@ type HomebrewOwner struct {
 // SaveHomebrew creates (id 0) or updates a homebrew entry. A player's new
 // entry is linked to their campaign and gets a slug of its own, so it never
 // collides with another player's entry of the same name.
-func SaveHomebrew(ctx context.Context, q *sqlc.Queries, id int64, in HomebrewInput, owner HomebrewOwner) (int64, error) {
+func SaveHomebrew(
+	ctx context.Context,
+	q *sqlc.Queries,
+	id int64,
+	in HomebrewInput,
+	owner HomebrewOwner,
+) (int64, error) {
 	e, err := in.Entry()
 	if err != nil {
 		return 0, err
@@ -579,17 +733,43 @@ func SaveHomebrew(ctx context.Context, q *sqlc.Queries, id int64, in HomebrewInp
 		return 0, err
 	}
 	if id != 0 {
-		return id, q.UpdateHomebrew(ctx, sqlc.UpdateHomebrewParams{ID: id, Name: e.Name, DataJson: data, BodyText: e.Text, ContentHash: hash})
+		return id, q.UpdateHomebrew(
+			ctx,
+			sqlc.UpdateHomebrewParams{
+				ID:          id,
+				Name:        e.Name,
+				DataJson:    data,
+				BodyText:    e.Text,
+				ContentHash: hash,
+			},
+		)
 	}
 	row, err := q.CreateHomebrew(ctx, sqlc.CreateHomebrewParams{
-		Kind: e.Kind, Slug: e.Slug, Name: e.Name, DataJson: data, BodyText: e.Text, ContentHash: hash,
-		OwnerCharacterID: sql.NullInt64{Int64: owner.CharacterID, Valid: owner.CharacterID != 0}, Scoped: owner.CharacterID != 0,
+		Kind:        e.Kind,
+		Slug:        e.Slug,
+		Name:        e.Name,
+		DataJson:    data,
+		BodyText:    e.Text,
+		ContentHash: hash,
+		OwnerCharacterID: sql.NullInt64{
+			Int64: owner.CharacterID,
+			Valid: owner.CharacterID != 0,
+		},
+		Scoped: owner.CharacterID != 0,
 	})
 	if err != nil {
-		return 0, fmt.Errorf("a homebrew %s named like %q may already exist: %w", e.Kind, e.Name, err)
+		return 0, fmt.Errorf(
+			"a homebrew %s named like %q may already exist: %w",
+			e.Kind,
+			e.Name,
+			err,
+		)
 	}
 	if owner.CampaignID != 0 {
-		if err := q.LinkEntryCampaign(ctx, sqlc.LinkEntryCampaignParams{EntryID: row.ID, CampaignID: owner.CampaignID}); err != nil {
+		if err := q.LinkEntryCampaign(
+			ctx,
+			sqlc.LinkEntryCampaignParams{EntryID: row.ID, CampaignID: owner.CampaignID},
+		); err != nil {
 			return row.ID, err
 		}
 	}
@@ -601,7 +781,8 @@ func SaveHomebrew(ctx context.Context, q *sqlc.Queries, id int64, in HomebrewInp
 // page source like wikidot:lineage:giff has none; Windows rejects the colons)
 // removes nothing.
 func RemoveSourceDir(dir, key string) error {
-	if key == "" || key == "." || key == ".." || key != filepath.Base(key) || strings.ContainsAny(key, `/\:`) {
+	if key == "" || key == "." || key == ".." || key != filepath.Base(key) ||
+		strings.ContainsAny(key, `/\:`) {
 		return nil
 	}
 	return os.RemoveAll(filepath.Join(dir, key))

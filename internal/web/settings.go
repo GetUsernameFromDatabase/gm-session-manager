@@ -40,7 +40,8 @@ func (s *appState) get() (settings, []compendium.Book) {
 // loadSettings reads settings.json; a missing file is the defaults.
 func loadSettings(dataDir string) (settings, error) {
 	var st settings
-	body, err := os.ReadFile(filepath.Join(dataDir, settingsFile)) //nolint:gosec // the operator's DATA_DIR
+	//nolint:gosec // the operator's DATA_DIR
+	body, err := os.ReadFile(filepath.Join(dataDir, settingsFile))
 	if errors.Is(err, fs.ErrNotExist) {
 		return st, nil
 	}
@@ -69,7 +70,10 @@ func saveSettings(dataDir string, st settings) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), filepath.Join(dataDir, settingsFile)) //nolint:gosec // the operator's DATA_DIR
+	return os.Rename(
+		tmp.Name(),
+		filepath.Join(dataDir, settingsFile),
+	) //nolint:gosec // the operator's DATA_DIR
 }
 
 // setAutoRedownload stores the GM's switch.

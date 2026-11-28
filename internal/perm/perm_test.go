@@ -33,18 +33,90 @@ type blockCase struct {
 // agreement test runs the same cases against the readable-block queries.
 var blockCases = []blockCase{
 	{"gm", Block{Visibility: enum.VisGM}, []string{"gm"}, []string{"gm"}, []string{"gm"}},
-	{"players read-only", Block{Visibility: enum.VisPlayers}, []string{"gm", "alice", "bob"}, []string{"gm"}, []string{"gm"}},
-	{"players editable", Block{Visibility: enum.VisPlayers, PlayersCanEdit: true}, []string{"gm", "alice", "bob"}, []string{"gm", "alice", "bob"}, []string{"gm"}},
-	{"listed alice", Block{Visibility: enum.VisListed, Audience: []int64{alice}}, []string{"gm", "alice"}, []string{"gm"}, []string{"gm"}},
-	{"listed alice, editable flag ignored", Block{Visibility: enum.VisListed, PlayersCanEdit: true, Audience: []int64{alice}}, []string{"gm", "alice"}, []string{"gm"}, []string{"gm"}},
-	{"listed empty fails closed", Block{Visibility: enum.VisListed}, []string{"gm"}, []string{"gm"}, []string{"gm"}},
-	{"owner alice", Block{Visibility: enum.VisOwner, NoteOwnerID: alice}, []string{"alice"}, []string{"alice"}, []string{"alice"}},
-	{"players block in alice's note", Block{Visibility: enum.VisPlayers, NoteOwnerID: alice}, []string{"gm", "alice", "bob"}, []string{"gm", "alice"}, []string{"alice"}},
-	{"players block alice wrote in gm note", Block{Visibility: enum.VisPlayers, AuthorID: alice}, []string{"gm", "alice", "bob"}, []string{"gm", "alice"}, []string{"gm"}},
-	{"alice's block the gm hid", Block{Visibility: enum.VisGM, AuthorID: alice}, []string{"gm"}, []string{"gm"}, []string{"gm"}},
-	{"alice's block made secret for alice", Block{Visibility: enum.VisListed, AuthorID: alice, Audience: []int64{alice}}, []string{"gm", "alice"}, []string{"gm", "alice"}, []string{"gm"}},
-	{"alice's block made secret for bob", Block{Visibility: enum.VisListed, AuthorID: alice, Audience: []int64{bob}}, []string{"gm", "bob"}, []string{"gm"}, []string{"gm"}},
-	{"owner with no owner reads as nobody", Block{Visibility: enum.VisOwner}, nil, nil, []string{"gm"}},
+	{
+		"players read-only",
+		Block{Visibility: enum.VisPlayers},
+		[]string{"gm", "alice", "bob"},
+		[]string{"gm"},
+		[]string{"gm"},
+	},
+	{
+		"players editable",
+		Block{Visibility: enum.VisPlayers, PlayersCanEdit: true},
+		[]string{"gm", "alice", "bob"},
+		[]string{"gm", "alice", "bob"},
+		[]string{"gm"},
+	},
+	{
+		"listed alice",
+		Block{Visibility: enum.VisListed, Audience: []int64{alice}},
+		[]string{"gm", "alice"},
+		[]string{"gm"},
+		[]string{"gm"},
+	},
+	{
+		"listed alice, editable flag ignored",
+		Block{Visibility: enum.VisListed, PlayersCanEdit: true, Audience: []int64{alice}},
+		[]string{"gm", "alice"},
+		[]string{"gm"},
+		[]string{"gm"},
+	},
+	{
+		"listed empty fails closed",
+		Block{Visibility: enum.VisListed},
+		[]string{"gm"},
+		[]string{"gm"},
+		[]string{"gm"},
+	},
+	{
+		"owner alice",
+		Block{Visibility: enum.VisOwner, NoteOwnerID: alice},
+		[]string{"alice"},
+		[]string{"alice"},
+		[]string{"alice"},
+	},
+	{
+		"players block in alice's note",
+		Block{Visibility: enum.VisPlayers, NoteOwnerID: alice},
+		[]string{"gm", "alice", "bob"},
+		[]string{"gm", "alice"},
+		[]string{"alice"},
+	},
+	{
+		"players block alice wrote in gm note",
+		Block{Visibility: enum.VisPlayers, AuthorID: alice},
+		[]string{"gm", "alice", "bob"},
+		[]string{"gm", "alice"},
+		[]string{"gm"},
+	},
+	{
+		"alice's block the gm hid",
+		Block{Visibility: enum.VisGM, AuthorID: alice},
+		[]string{"gm"},
+		[]string{"gm"},
+		[]string{"gm"},
+	},
+	{
+		"alice's block made secret for alice",
+		Block{Visibility: enum.VisListed, AuthorID: alice, Audience: []int64{alice}},
+		[]string{"gm", "alice"},
+		[]string{"gm", "alice"},
+		[]string{"gm"},
+	},
+	{
+		"alice's block made secret for bob",
+		Block{Visibility: enum.VisListed, AuthorID: alice, Audience: []int64{bob}},
+		[]string{"gm", "bob"},
+		[]string{"gm"},
+		[]string{"gm"},
+	},
+	{
+		"owner with no owner reads as nobody",
+		Block{Visibility: enum.VisOwner},
+		nil,
+		nil,
+		[]string{"gm"},
+	},
 	{"unknown visibility", Block{Visibility: "public"}, nil, nil, []string{"gm"}},
 }
 
@@ -53,13 +125,19 @@ func TestBlockRules(t *testing.T) {
 		for _, who := range viewerOf {
 			v := viewers[who]
 			t.Run(tt.name+"/"+who, func(t *testing.T) {
-				if got, want := CanReadBlock(v, tt.block), slices.Contains(tt.readers, who); got != want {
+				got := CanReadBlock(v, tt.block)
+				want := slices.Contains(tt.readers, who)
+				if got != want {
 					t.Errorf("read = %v, want %v", got, want)
 				}
-				if got, want := CanEditBlock(v, tt.block), slices.Contains(tt.editors, who); got != want {
+				got = CanEditBlock(v, tt.block)
+				want = slices.Contains(tt.editors, who)
+				if got != want {
 					t.Errorf("edit = %v, want %v", got, want)
 				}
-				if got, want := CanManageNote(v, tt.block.NoteOwnerID), slices.Contains(tt.managers, who); got != want {
+				got = CanManageNote(v, tt.block.NoteOwnerID)
+				want = slices.Contains(tt.managers, who)
+				if got != want {
 					t.Errorf("manage = %v, want %v", got, want)
 				}
 				if CanEditBlock(v, tt.block) && !CanReadBlock(v, tt.block) {
@@ -77,15 +155,33 @@ func TestCanManageBlock(t *testing.T) {
 		managers []string
 	}{
 		{"gm block in gm note", Block{Visibility: enum.VisPlayers}, []string{"gm"}},
-		{"alice's block in gm note", Block{Visibility: enum.VisPlayers, AuthorID: alice}, []string{"gm", "alice"}},
-		{"alice's block the gm hid", Block{Visibility: enum.VisGM, AuthorID: alice}, []string{"gm"}},
-		{"alice's block for listed bob", Block{Visibility: enum.VisListed, AuthorID: alice, Audience: []int64{bob}}, []string{"gm"}},
-		{"players block in alice's note", Block{Visibility: enum.VisPlayers, NoteOwnerID: alice}, []string{"alice"}},
+		{
+			"alice's block in gm note",
+			Block{Visibility: enum.VisPlayers, AuthorID: alice},
+			[]string{"gm", "alice"},
+		},
+		{
+			"alice's block the gm hid",
+			Block{Visibility: enum.VisGM, AuthorID: alice},
+			[]string{"gm"},
+		},
+		{
+			"alice's block for listed bob",
+			Block{Visibility: enum.VisListed, AuthorID: alice, Audience: []int64{bob}},
+			[]string{"gm"},
+		},
+		{
+			"players block in alice's note",
+			Block{Visibility: enum.VisPlayers, NoteOwnerID: alice},
+			[]string{"alice"},
+		},
 	}
 	for _, tt := range tests {
 		for _, who := range viewerOf {
 			t.Run(tt.name+"/"+who, func(t *testing.T) {
-				if got, want := CanManageBlock(viewers[who], tt.block), slices.Contains(tt.managers, who); got != want {
+				got := CanManageBlock(viewers[who], tt.block)
+				want := slices.Contains(tt.managers, who)
+				if got != want {
 					t.Errorf("manage = %v, want %v", got, want)
 				}
 			})
@@ -101,10 +197,28 @@ func TestBlockVisibilities(t *testing.T) {
 		gameSession bool
 		allowed     []enum.Visibility
 	}{
-		{"gm in gm note", GM, 0, false, []enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed}},
-		{"gm in gm game session", GM, 0, true, []enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed}},
+		{
+			"gm in gm note",
+			GM,
+			0,
+			false,
+			[]enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed},
+		},
+		{
+			"gm in gm game session",
+			GM,
+			0,
+			true,
+			[]enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed},
+		},
 		{"gm in player note", GM, alice, false, nil},
-		{"owner in own note", asAlice, alice, false, []enum.Visibility{enum.VisOwner, enum.VisPlayers}},
+		{
+			"owner in own note",
+			asAlice,
+			alice,
+			false,
+			[]enum.Visibility{enum.VisOwner, enum.VisPlayers},
+		},
 		{"other player in note", asBob, alice, false, nil},
 		{"other player in player game session", asBob, alice, true, nil},
 		{"player in gm note", asAlice, 0, false, nil},
@@ -115,11 +229,20 @@ func TestBlockVisibilities(t *testing.T) {
 	all := []enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed, enum.VisOwner, "public"}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := BlockVisibilities(tt.v, tt.owner, tt.gameSession); !slices.Equal(got, tt.allowed) {
+			if got := BlockVisibilities(
+				tt.v,
+				tt.owner,
+				tt.gameSession,
+			); !slices.Equal(
+				got,
+				tt.allowed,
+			) {
 				t.Errorf("got %v, want %v", got, tt.allowed)
 			}
 			for _, vis := range all {
-				if got, want := ValidBlockVisibility(tt.v, tt.owner, tt.gameSession, vis), slices.Contains(tt.allowed, vis); got != want {
+				got := ValidBlockVisibility(tt.v, tt.owner, tt.gameSession, vis)
+				want := slices.Contains(tt.allowed, vis)
+				if got != want {
 					t.Errorf("%s: valid = %v, want %v", vis, got, want)
 				}
 			}
@@ -370,8 +493,24 @@ func TestVisibleEntity(t *testing.T) {
 		wantImages []int64
 	}{
 		{"gm sees all", GM, npc, true, []string{"motivation", "role"}, 42, []int64{1, 2}},
-		{"gm sees hidden entity", GM, hidden, true, []string{"motivation", "role"}, 42, []int64{1, 2}},
-		{"player sees revealed fields and looks only", asAlice, npc, true, []string{"role"}, 0, []int64{2}},
+		{
+			"gm sees hidden entity",
+			GM,
+			hidden,
+			true,
+			[]string{"motivation", "role"},
+			42,
+			[]int64{1, 2},
+		},
+		{
+			"player sees revealed fields and looks only",
+			asAlice,
+			npc,
+			true,
+			[]string{"role"},
+			0,
+			[]int64{2},
+		},
 		{"player cannot see hidden entity", asAlice, hidden, false, nil, 0, nil},
 		{"anon sees nothing", anon, npc, false, nil, 0, nil},
 	}
@@ -437,17 +576,34 @@ func TestCanReadImage(t *testing.T) {
 	}{
 		{"unlinked is the gm's", nil, ImageLook{}, []string{"gm"}},
 		{"linked from a gm block", []Block{gmOnly}, ImageLook{}, []string{"gm"}},
-		{"linked from a players block", []Block{players}, ImageLook{}, []string{"gm", "alice", "bob"}},
+		{
+			"linked from a players block",
+			[]Block{players},
+			ImageLook{},
+			[]string{"gm", "alice", "bob"},
+		},
 		{"linked from a block for alice", []Block{forAlice}, ImageLook{}, []string{"gm", "alice"}},
-		{"any readable link is enough", []Block{gmOnly, forAlice}, ImageLook{}, []string{"gm", "alice"}},
+		{
+			"any readable link is enough",
+			[]Block{gmOnly, forAlice},
+			ImageLook{},
+			[]string{"gm", "alice"},
+		},
 		{"revealed look", nil, ImageLook{Revealed: true}, []string{"gm", "alice", "bob"}},
 		{"hidden look of alice's character", nil, ImageLook{Owner: alice}, []string{"gm", "alice"}},
-		{"revealed look of alice's character", nil, ImageLook{Revealed: true, Owner: alice}, []string{"gm", "alice", "bob"}},
+		{
+			"revealed look of alice's character",
+			nil,
+			ImageLook{Revealed: true, Owner: alice},
+			[]string{"gm", "alice", "bob"},
+		},
 	}
 	for _, tt := range tests {
 		for _, who := range viewerOf {
 			t.Run(tt.name+"/"+who, func(t *testing.T) {
-				if got, want := CanReadImage(viewers[who], tt.blocks, tt.look), slices.Contains(tt.readers, who); got != want {
+				got := CanReadImage(viewers[who], tt.blocks, tt.look)
+				want := slices.Contains(tt.readers, who)
+				if got != want {
 					t.Errorf("read = %v, want %v", got, want)
 				}
 			})
@@ -482,16 +638,35 @@ func TestAtHomeBlockRules(t *testing.T) {
 	for _, vis := range []enum.Visibility{enum.VisGM, enum.VisPlayers, enum.VisListed, enum.VisOwner} {
 		for _, noteOwner := range []int64{alice, bob, 0} {
 			for _, authored := range []bool{false, true} {
-				b := Block{Visibility: vis, NoteOwnerID: noteOwner, PlayersCanEdit: true, Audience: []int64{alice}}
+				b := Block{
+					Visibility:     vis,
+					NoteOwnerID:    noteOwner,
+					PlayersCanEdit: true,
+					Audience:       []int64{alice},
+				}
 				if authored {
 					b.AuthorID = alice
 				}
 				want := vis == enum.VisOwner && noteOwner == alice
 				if got := CanEditBlock(home, b); got != want {
-					t.Errorf("%s note %d authored %v: edit = %v, want %v", vis, noteOwner, authored, got, want)
+					t.Errorf(
+						"%s note %d authored %v: edit = %v, want %v",
+						vis,
+						noteOwner,
+						authored,
+						got,
+						want,
+					)
 				}
 				if got := CanManageBlock(home, b); got != want {
-					t.Errorf("%s note %d authored %v: manage = %v, want %v", vis, noteOwner, authored, got, want)
+					t.Errorf(
+						"%s note %d authored %v: manage = %v, want %v",
+						vis,
+						noteOwner,
+						authored,
+						got,
+						want,
+					)
 				}
 			}
 		}
@@ -501,7 +676,14 @@ func TestAtHomeBlockRules(t *testing.T) {
 func TestAtHomeBlockVisibilities(t *testing.T) {
 	home := Viewer{CharacterID: alice, AtHome: true}
 	for _, gameSession := range []bool{false, true} {
-		if got := BlockVisibilities(home, alice, gameSession); !slices.Equal(got, []enum.Visibility{enum.VisOwner}) {
+		if got := BlockVisibilities(
+			home,
+			alice,
+			gameSession,
+		); !slices.Equal(
+			got,
+			[]enum.Visibility{enum.VisOwner},
+		) {
 			t.Errorf("own note: %v", got)
 		}
 		if got := BlockVisibilities(home, bob, gameSession); got != nil {

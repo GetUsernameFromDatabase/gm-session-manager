@@ -30,8 +30,20 @@ func TestEntryCount(t *testing.T) {
 		"empty": {},
 		"one":   {Total: 1, Visible: 1},
 	}
-	text := map[string]string{"all": "3", "some": "147/215", "none": "0/3", "empty": "0", "one": "1"}
-	title := map[string]string{"all": "3 entries, all shown.", "some": "215 entries, 147 shown.", "none": "3 entries, 0 shown.", "empty": "0 entries.", "one": "1 entry, all shown."}
+	text := map[string]string{
+		"all":   "3",
+		"some":  "147/215",
+		"none":  "0/3",
+		"empty": "0",
+		"one":   "1",
+	}
+	title := map[string]string{
+		"all":   "3 entries, all shown.",
+		"some":  "215 entries, 147 shown.",
+		"none":  "3 entries, 0 shown.",
+		"empty": "0 entries.",
+		"one":   "1 entry, all shown.",
+	}
 	colour := map[string]string{"none": countNoneShown}
 	for name, c := range counts {
 		if got := entryCountText(c); got != text[name] {
@@ -44,7 +56,11 @@ func TestEntryCount(t *testing.T) {
 		}
 	}
 	shared := sqlc.CountSharedBySourceRow{Shared: 68, Shown: 0}
-	if got, want := entryCountTitle(counts["some"], shared, true), "215 entries, 147 shown. 68 shared with other sources, 0 of those win."; got != want {
+	if got, want := entryCountTitle(
+		counts["some"],
+		shared,
+		true,
+	), "215 entries, 147 shown. 68 shared with other sources, 0 of those win."; got != want {
 		t.Errorf("shared title %q, want %q", got, want)
 	}
 	for name, c := range counts {

@@ -32,7 +32,8 @@ func TestNoRouteLiterals(t *testing.T) {
 	roots, parts := map[string]bool{}, map[string]bool{}
 	for _, r := range newTestEnv(t).router.Routes() {
 		segs := strings.Split(strings.TrimPrefix(r.Path, "/"), "/")
-		if segs[0] == "" || segs[0] == "assets" || strings.Contains(segs[0], ".") { // /join.png is under /join
+		if segs[0] == "" || segs[0] == "assets" ||
+			strings.Contains(segs[0], ".") { // /join.png is under /join
 			continue
 		}
 		roots[segs[0]] = true
@@ -46,7 +47,8 @@ func TestNoRouteLiterals(t *testing.T) {
 	// "notes/1" do, "notesy" does not.
 	startsWith := func(rest, seg string) bool {
 		after, ok := strings.CutPrefix(rest, seg)
-		return ok && (after == "" || !strings.ContainsRune("_-", rune(after[0])) && !unicode.IsLetter(rune(after[0])) && !unicode.IsDigit(rune(after[0])))
+		return ok &&
+			(after == "" || !strings.ContainsRune("_-", rune(after[0])) && !unicode.IsLetter(rune(after[0])) && !unicode.IsDigit(rune(after[0])))
 	}
 	// routeIn is the route segment a path in lit starts with ("" for none): a
 	// root at the start of lit or after a quote, =, ( or space
@@ -98,7 +100,8 @@ func TestNoRouteLiterals(t *testing.T) {
 			return nil
 		}
 		// shadcn-templ-*.js is the generated component bundle.
-		if slices.Contains(skipFiles, d.Name()) || strings.HasSuffix(p, "_templ.go") || strings.HasPrefix(d.Name(), "shadcn-templ-") {
+		if slices.Contains(skipFiles, d.Name()) || strings.HasSuffix(p, "_templ.go") ||
+			strings.HasPrefix(d.Name(), "shadcn-templ-") {
 			return nil
 		}
 		ext := filepath.Ext(p)
